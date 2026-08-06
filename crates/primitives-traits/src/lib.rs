@@ -43,7 +43,13 @@ mod log;
 pub use alloy_primitives::{logs_bloom, Log, LogData};
 
 mod storage;
-pub use storage::StorageEntry;
+pub use storage::{StorageEntry, ValueWithSubKey};
+
+mod size;
+pub use size::InMemorySize;
+
+mod node;
+pub use node::{BlockTy, BodyTy, HeaderTy, NodePrimitives, ReceiptTy, TxTy};
 
 /// Transaction types
 pub mod tx_type;
