@@ -28,6 +28,9 @@ pub trait BlockHeader {
     /// Retrieves the block number
     fn number(&self) -> BlockNumber;
 
+    /// Retrieves the gas used by the block
+    fn gas_used(&self) -> u64;
+
     /// Retrieves the gas limit of the block
     fn gas_limit(&self) -> u64;
 
@@ -55,6 +58,10 @@ impl BlockHeader for Header {
 
     fn number(&self) -> BlockNumber {
         self.number
+    }
+
+    fn gas_used(&self) -> u64 {
+        self.gas_used
     }
 
     fn gas_limit(&self) -> u64 {

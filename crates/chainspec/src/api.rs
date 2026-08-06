@@ -77,7 +77,7 @@ pub trait EthChainSpec: Send + Sync + Unpin + Debug {
     }
 }
 
-impl<H: BlockHeader + Debug + Send + Sync + Unpin> EthChainSpec for ChainSpec<H> {
+impl<H: BlockHeader + Debug + Send + Sync + Unpin + alloy_primitives::Sealable> EthChainSpec for ChainSpec<H> {
     type Header = H;
 
     fn chain(&self) -> Chain {

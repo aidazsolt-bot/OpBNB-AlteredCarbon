@@ -59,6 +59,12 @@ pub use blob_sidecar::{BlobSidecar, BlobSidecars};
 pub use header::test_utils;
 pub use header::{BlockHeader, Header, HeaderError, SealedHeader};
 
+/// Re-exports of `std::sync` primitives used by restored/compat crates that were previously
+/// exposed indirectly via `reth-primitives-traits`.
+pub mod sync {
+    pub use std::sync::{LazyLock, OnceLock};
+}
+
 /// Bincode-compatible serde implementations for common abstracted types in Reth.
 ///
 /// `bincode` crate doesn't work with optionally serializable serde fields, but some of the
