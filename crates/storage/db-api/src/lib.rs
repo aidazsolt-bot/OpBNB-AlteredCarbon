@@ -59,8 +59,6 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-extern crate alloc;
-
 /// Common types used throughout the abstraction.
 pub mod common;
 
@@ -89,6 +87,7 @@ pub use reth_storage_errors::db::{DatabaseError, DatabaseWriteOperation};
 
 pub mod models;
 
+mod scale;
 mod utils;
 
 pub use database::Database;

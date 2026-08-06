@@ -1,4 +1,5 @@
 use crate::{PruneMode, ReceiptsLogPruneConfig};
+use alloc::format;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Minimum distance from the tip necessary for the node to work correctly:

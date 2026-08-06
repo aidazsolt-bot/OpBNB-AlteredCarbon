@@ -9132,6 +9132,7 @@ name = "reth-db-api"
 version = "2.4.1"
 dependencies = [
  "alloy-consensus",
+ "alloy-genesis",
  "alloy-primitives",
  "arbitrary",
  "arrayvec",
@@ -9139,12 +9140,14 @@ dependencies = [
  "derive_more",
  "metrics",
  "modular-bitfield",
+ "parity-scale-codec",
  "proptest",
  "proptest-arbitrary-interop",
  "rand 0.9.5",
  "reth-codecs 0.5.2",
  "reth-db-models",
  "reth-ethereum-primitives",
+ "reth-primitives",
  "reth-primitives-traits 2.4.1",
  "reth-prune-types",
  "reth-stages-types",
