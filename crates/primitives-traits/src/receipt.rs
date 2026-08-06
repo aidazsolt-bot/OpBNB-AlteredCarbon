@@ -54,3 +54,16 @@ impl<T> Receipt for T where
         + for<'de> Deserialize<'de>
 {
 }
+
+/// Retrieves gas spent by transactions as a vector of tuples (transaction index, gas used).
+pub fn gas_spent_by_transactions<I, T>(receipts: I) -> alloc::vec::Vec<(u64, u64)>
+where
+    I: IntoIterator<Item = T>,
+    T: TxReceipt,
+{
+    receipts
+        .into_iter()
+        .enumerate()
+        .map(|(id, receipt)| (id as u64, receipt.cumulative_gas_used()))
+        .collect()
+}
