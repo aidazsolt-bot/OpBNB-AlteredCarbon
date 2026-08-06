@@ -2101,21 +2101,11 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        if let Some(offset) = provider.user_header().changeset_offset(block_number) {
-            let mut cursor = provider.cursor()?;
-            let mut changeset = Vec::with_capacity(offset.num_changes() as usize);
-
-            for i in offset.changeset_range() {
-                if let Some(change) =
-                    cursor.get_one::<reth_db::static_file::AccountChangesetMask>(i.into())?
-                {
-                    changeset.push(change)
-                }
-            }
-            Ok(changeset)
-        } else {
-            Ok(Vec::new())
-        }
+        let _ = (provider, block_number);
+        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
+        // offsets for static-file access. Keep account changesets MDBX-backed until that support
+        // is ported coherently.
+        Ok(Vec::new())
     }
 
     fn get_account_before_block(
@@ -2133,53 +2123,10 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        let user_header = provider.user_header();
-
-        let Some(offset) = user_header.changeset_offset(block_number) else {
-            return Ok(None);
-        };
-
-        let mut cursor = provider.cursor()?;
-        let range = offset.changeset_range();
-        let mut low = range.start;
-        let mut high = range.end;
-
-        while low < high {
-            let mid = low + (high - low) / 2;
-            if let Some(change) =
-                cursor.get_one::<reth_db::static_file::AccountChangesetMask>(mid.into())?
-            {
-                if change.address < address {
-                    low = mid + 1;
-                } else {
-                    high = mid;
-                }
-            } else {
-                // This is not expected but means we are out of the range / file somehow, and can't
-                // continue
-                debug!(
-                    target: "provider::static_file",
-                    ?low,
-                    ?mid,
-                    ?high,
-                    ?range,
-                    ?block_number,
-                    ?address,
-                    "Cannot continue binary search for account changeset fetch"
-                );
-                low = range.end;
-                break;
-            }
-        }
-
-        if low < range.end &&
-            let Some(change) = cursor
-                .get_one::<reth_db::static_file::AccountChangesetMask>(low.into())?
-                .filter(|change| change.address == address)
-        {
-            return Ok(Some(change));
-        }
-
+        let _ = (provider, block_number, address);
+        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
+        // offsets for static-file access. Keep account changesets MDBX-backed until that support
+        // is ported coherently.
         Ok(None)
     }
 
