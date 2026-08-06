@@ -10513,7 +10513,6 @@ version = "2.4.1"
 dependencies = [
  "alloy-rpc-types-engine",
  "eyre",
- "reth-beacon-consensus",
  "reth-bsc-consensus",
  "reth-consensus",
  "reth-engine-primitives",
@@ -10993,6 +10992,7 @@ dependencies = [
  "alloy-genesis",
  "alloy-primitives",
  "alloy-rlp",
+ "alloy-rpc-types-eth",
  "alloy-trie",
  "arbitrary",
  "bincode",
@@ -11801,8 +11801,10 @@ dependencies = [
 name = "reth-tasks"
 version = "2.4.1"
 dependencies = [
+ "auto_impl",
  "crossbeam-utils",
  "dashmap 6.2.1",
+ "dyn-clone",
  "futures-util",
  "libc",
  "metrics",
@@ -12063,6 +12065,7 @@ version = "2.4.1"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
+ "alloy-trie",
  "codspeed-criterion-compat",
  "dashmap 6.2.1",
  "derive_more",
@@ -12079,6 +12082,7 @@ dependencies = [
  "reth-trie",
  "reth-trie-db",
  "reth-trie-parallel",
+ "revm 41.0.0",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
