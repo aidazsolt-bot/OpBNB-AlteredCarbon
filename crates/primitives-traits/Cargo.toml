@@ -19,6 +19,7 @@ alloy-eips.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
+alloy-trie.workspace = true
 
 revm = { workspace = true, features = ["serde"] }
 
@@ -58,6 +59,7 @@ std = [
 	"alloy-eips/std",
 	"alloy-genesis/std",
 	"alloy-primitives/std",
+	"alloy-trie/std",
 	"revm/std",
 	"serde/std",
 	"bytes/std"

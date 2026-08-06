@@ -56,6 +56,17 @@ impl Account {
     pub fn get_bytecode_hash(&self) -> B256 {
         self.bytecode_hash.unwrap_or(KECCAK_EMPTY)
     }
+
+    /// Converts the account into a trie account with the given storage root.
+    pub fn into_trie_account(self, storage_root: B256) -> alloy_trie::TrieAccount {
+        let Self { nonce, balance, bytecode_hash } = self;
+        alloy_trie::TrieAccount {
+            nonce,
+            balance,
+            storage_root,
+            code_hash: bytecode_hash.unwrap_or(KECCAK_EMPTY),
+        }
+    }
 }
 
 /// Bytecode for an account.
@@ -147,6 +158,17 @@ impl From<&GenesisAccount> for Account {
 
 impl From<AccountInfo> for Account {
     fn from(revm_acc: AccountInfo) -> Self {
+        let code_hash = revm_acc.code_hash;
+        Self {
+            balance: revm_acc.balance,
+            nonce: revm_acc.nonce,
+            bytecode_hash: (code_hash != KECCAK_EMPTY).then_some(code_hash),
+        }
+    }
+}
+
+impl From<&AccountInfo> for Account {
+    fn from(revm_acc: &AccountInfo) -> Self {
         let code_hash = revm_acc.code_hash;
         Self {
             balance: revm_acc.balance,
