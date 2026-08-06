@@ -29,6 +29,9 @@ alloy-consensus.workspace = true
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
 
+# misc
+serde = { workspace = true, optional = true }
+
 # async
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
 tokio-stream = { workspace = true, features = ["sync"] }
@@ -67,10 +70,15 @@ serial_test = "3.1.1"
 
 [features]
 serde = [
+    "dep:serde",
     "reth-execution-types/serde",
     "reth-trie/serde",
     "reth-storage-api/serde"
 ]
+# Declared only to satisfy `#[cfg(feature = "rayon")]` gates in
+# `state_trie_overlay.rs`; no `rayon` dependency is wired up in this fork, so
+# the feature is always inactive (parallel code paths there are dead for now).
+rayon = []
 test-utils = [
 	"alloy-signer",
 	"alloy-signer-local",

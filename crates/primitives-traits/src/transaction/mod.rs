@@ -13,7 +13,7 @@ pub mod error;
 pub mod execute;
 pub mod recover;
 
-pub use alloy_consensus::transaction::Recovered;
+pub use alloy_consensus::transaction::{Recovered, SignerRecoverable, TransactionMeta, TxHashRef};
 pub use execute::FillTxEnv;
 
 #[allow(dead_code)]

@@ -425,8 +425,8 @@ impl<T> From<(BlockExecutionOutput<T>, BlockNumber)> for ExecutionOutcome<T> {
 pub(super) mod serde_bincode_compat {
     use alloc::{borrow::Cow, vec::Vec};
     use alloy_eips::eip7685::Requests;
-    use alloy_primitives::BlockNumber;
-    use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
+    use alloy_primitives::{BlockNumber, Bytes};
+    use reth_primitives_traits::Receipt;
     use revm::database::BundleState;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
@@ -436,32 +436,28 @@ pub(super) mod serde_bincode_compat {
     /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
     /// ```rust
     /// use reth_execution_types::{serde_bincode_compat, ExecutionOutcome};
-    /// ///
-    /// use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
     /// use serde::{Deserialize, Serialize};
     /// use serde_with::serde_as;
     ///
     /// #[serde_as]
     /// #[derive(Serialize, Deserialize)]
-    /// struct Data<T: SerdeBincodeCompat + core::fmt::Debug> {
-    ///     #[serde_as(as = "serde_bincode_compat::ExecutionOutcome<'_, T>")]
-    ///     chain: ExecutionOutcome<T>,
+    /// struct Data {
+    ///     #[serde_as(as = "serde_bincode_compat::ExecutionOutcome<'_>")]
+    ///     chain: ExecutionOutcome,
     /// }
     /// ```
     #[derive(Debug, Serialize, Deserialize)]
-    pub struct ExecutionOutcome<'a, T>
-    where
-        T: SerdeBincodeCompat + core::fmt::Debug,
-    {
+    pub struct ExecutionOutcome<'a> {
         bundle: Cow<'a, BundleState>,
-        receipts: Vec<Vec<T::BincodeRepr<'a>>>,
+        receipts: Vec<Vec<Bytes>>,
         first_block: BlockNumber,
+        #[expect(clippy::owned_cow)]
         requests: Cow<'a, Vec<Requests>>,
     }
 
-    impl<'a, T> From<&'a super::ExecutionOutcome<T>> for ExecutionOutcome<'a, T>
+    impl<'a, T> From<&'a super::ExecutionOutcome<T>> for ExecutionOutcome<'a>
     where
-        T: SerdeBincodeCompat + core::fmt::Debug,
+        T: Receipt,
     {
         fn from(value: &'a super::ExecutionOutcome<T>) -> Self {
             ExecutionOutcome {
@@ -469,7 +465,9 @@ pub(super) mod serde_bincode_compat {
                 receipts: value
                     .receipts
                     .iter()
-                    .map(|vec| vec.iter().map(|receipt| T::as_repr(receipt)).collect())
+                    .map(|vec| {
+                        vec.iter().map(|receipt| Bytes::from(alloy_rlp::encode(receipt))).collect()
+                    })
                     .collect(),
                 first_block: value.first_block,
                 requests: Cow::Borrowed(&value.requests),
@@ -477,28 +475,37 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<'a, T> From<ExecutionOutcome<'a, T>> for super::ExecutionOutcome<T>
+    impl<T> From<ExecutionOutcome<'_>> for super::ExecutionOutcome<T>
     where
-        T: SerdeBincodeCompat + core::fmt::Debug,
+        T: Receipt,
     {
-        fn from(value: ExecutionOutcome<'a, T>) -> Self {
+        fn from(value: ExecutionOutcome<'_>) -> Self {
             Self {
                 bundle: value.bundle.into_owned(),
                 receipts: value
                     .receipts
                     .into_iter()
-                    .map(|vec| vec.into_iter().map(|receipt| T::from_repr(receipt)).collect())
+                    .map(|vec| {
+                        vec.into_iter()
+                            .map(|rlp| {
+                                T::decode(&mut rlp.as_ref())
+                                    .expect("invalid RLP for receipt in serde_bincode_compat")
+                            })
+                            .collect()
+                    })
                     .collect(),
                 first_block: value.first_block,
                 requests: value.requests.into_owned(),
+                // Parlia/BSC-specific snapshots are not part of the wire-compatible
+                // bincode representation; default to empty on deserialize.
                 snapshots: Vec::new(),
             }
         }
     }
 
-    impl<T> SerializeAs<super::ExecutionOutcome<T>> for ExecutionOutcome<'_, T>
+    impl<T> SerializeAs<super::ExecutionOutcome<T>> for ExecutionOutcome<'_>
     where
-        T: SerdeBincodeCompat + core::fmt::Debug,
+        T: Receipt,
     {
         fn serialize_as<S>(
             source: &super::ExecutionOutcome<T>,
@@ -511,9 +518,9 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<'de, T> DeserializeAs<'de, super::ExecutionOutcome<T>> for ExecutionOutcome<'de, T>
+    impl<'de, T> DeserializeAs<'de, super::ExecutionOutcome<T>> for ExecutionOutcome<'de>
     where
-        T: SerdeBincodeCompat + core::fmt::Debug,
+        T: Receipt,
     {
         fn deserialize_as<D>(deserializer: D) -> Result<super::ExecutionOutcome<T>, D::Error>
         where
@@ -522,20 +529,7 @@ pub(super) mod serde_bincode_compat {
             ExecutionOutcome::deserialize(deserializer).map(Into::into)
         }
     }
-
-    impl<T: SerdeBincodeCompat + core::fmt::Debug> SerdeBincodeCompat for super::ExecutionOutcome<T> {
-        type BincodeRepr<'a> = ExecutionOutcome<'a, T>;
-
-        fn as_repr(&self) -> Self::BincodeRepr<'_> {
-            self.into()
-        }
-
-        fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
-            repr.into()
-        }
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

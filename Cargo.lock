@@ -8949,6 +8949,7 @@ dependencies = [
  "reth-trie",
  "reth-trie-sparse",
  "revm 41.0.0",
+ "serde",
  "serial_test",
  "tokio",
  "tokio-stream",
@@ -10984,27 +10985,6 @@ dependencies = [
 
 [[package]]
 name = "reth-primitives-traits"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f59c928b2865af5bcdbce94800270b7f7798f27a22ca0aabdd2b7d3e6587c9ce"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-genesis",
- "alloy-primitives",
- "alloy-rlp",
- "alloy-trie",
- "bytes",
- "derive_more",
- "once_cell",
- "revm-bytecode 41.0.0",
- "revm-primitives 41.0.0",
- "revm-state 41.0.0",
- "thiserror 2.0.19",
-]
-
-[[package]]
-name = "reth-primitives-traits"
 version = "2.4.1"
 dependencies = [
  "alloy-consensus",
@@ -11359,7 +11339,7 @@ dependencies = [
  "jsonrpsee-types",
  "reth-evm",
  "reth-primitives-traits 2.4.1",
- "reth-rpc-traits 0.5.2",
+ "reth-rpc-traits 2.4.1",
  "serde_json",
  "thiserror 2.0.19",
 ]
@@ -11571,16 +11551,14 @@ dependencies = [
 
 [[package]]
 name = "reth-rpc-traits"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace77dbcdd59c014fda4565ebfec76cd1fe6f5d98584b4655e8d22a947b9eee3"
+version = "2.4.1"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
  "alloy-primitives",
  "alloy-rpc-types-eth",
  "alloy-signer",
- "reth-primitives-traits 0.5.2",
+ "reth-primitives-traits 2.4.1",
  "thiserror 2.0.19",
 ]
 

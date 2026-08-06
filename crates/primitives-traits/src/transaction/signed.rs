@@ -65,6 +65,13 @@ pub trait SignedTransaction:
     /// the signature has a low `s` value.
     fn recover_signer(&self) -> Option<Address>;
 
+    /// Recover signer from signature and hash.
+    ///
+    /// Returns an error if the transaction's signature is invalid.
+    fn try_recover(&self) -> Result<Address, RecoveryError> {
+        self.recover_signer().ok_or_else(RecoveryError::default)
+    }
+
     /// Recover signer from signature and hash _without ensuring that the signature has a low `s`
     /// value_.
     ///
@@ -157,6 +164,13 @@ where
 
     fn recover_signer(&self) -> Option<Address> {
         <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self).ok()
+    }
+
+    /// Recover signer from signature and hash.
+    ///
+    /// Returns an error if the transaction's signature is invalid.
+    fn try_recover(&self) -> Result<Address, RecoveryError> {
+        <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self)
     }
 
     fn recover_signer_unchecked(&self) -> Option<Address> {
