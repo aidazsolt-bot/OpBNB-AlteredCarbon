@@ -8768,6 +8768,7 @@ dependencies = [
  "reth-ethereum-forks",
  "reth-primitives",
  "reth-primitives-traits 2.4.1",
+ "revm 41.0.0",
  "thiserror 2.0.19",
 ]
 

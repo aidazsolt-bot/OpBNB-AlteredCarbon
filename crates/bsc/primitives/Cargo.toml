@@ -24,6 +24,8 @@ alloy-consensus.workspace = true
 reth-bsc-chainspec.workspace = true
 reth-bsc-forks.workspace = true
 
+revm.workspace = true
+
 include_dir = { version = "0.7.4" }
 lazy_static = { version = "1.4.0" }
 thiserror.workspace = true
