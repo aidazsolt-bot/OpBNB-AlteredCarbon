@@ -140,9 +140,14 @@ impl Decodable for SealedHeader {
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-impl SealedHeader {
+impl<H: super::test_utils::TestHeader> SealedHeader<H> {
+    /// Returns a mutable reference to the header.
+    pub fn header_mut(&mut self) -> &mut H {
+        &mut self.header
+    }
+
     /// Updates the block header.
-    pub fn set_header(&mut self, header: Header) {
+    pub fn set_header(&mut self, header: H) {
         self.header = header
     }
 
@@ -153,22 +158,27 @@ impl SealedHeader {
 
     /// Updates the parent block hash.
     pub fn set_parent_hash(&mut self, hash: BlockHash) {
-        self.header.parent_hash = hash
+        self.header.set_parent_hash(hash)
     }
 
     /// Updates the block number.
     pub fn set_block_number(&mut self, number: BlockNumber) {
-        self.header.number = number;
+        self.header.set_block_number(number);
+    }
+
+    /// Updates the block timestamp.
+    pub fn set_timestamp(&mut self, timestamp: u64) {
+        self.header.set_timestamp(timestamp);
     }
 
     /// Updates the block state root.
     pub fn set_state_root(&mut self, state_root: B256) {
-        self.header.state_root = state_root;
+        self.header.set_state_root(state_root);
     }
 
     /// Updates the block difficulty.
     pub fn set_difficulty(&mut self, difficulty: U256) {
-        self.header.difficulty = difficulty;
+        self.header.set_difficulty(difficulty);
     }
 }
 

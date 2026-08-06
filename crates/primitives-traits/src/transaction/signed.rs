@@ -3,13 +3,17 @@
 use alloc::fmt;
 use core::hash::Hash;
 
+use crate::InMemorySize;
 use alloy_consensus::Transaction;
 use alloy_eips::eip2718::{Decodable2718, Encodable2718};
 use alloy_primitives::{keccak256, Address, Signature, TxHash, B256};
 use revm::context::TxEnv;
 
+/// Opaque error type for sender recovery, re-exported from `alloy-consensus`.
+pub use alloy_consensus::crypto::RecoveryError;
+
 /// A signed transaction.
-pub trait SignedTransaction:
+pub trait SignedTransaction: 'static +
     fmt::Debug
     + Clone
     + PartialEq
@@ -17,6 +21,8 @@ pub trait SignedTransaction:
     + Hash
     + Send
     + Sync
+    + Unpin
+    + InMemorySize
     + serde::Serialize
     + for<'a> serde::Deserialize<'a>
     + alloy_rlp::Encodable
@@ -68,4 +74,12 @@ pub trait SignedTransaction:
 
     /// Fills [`TxEnv`] with an [`Address`] and transaction.
     fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address);
+
+    /// Returns a [`super::Recovered`] with the given sender, without additional validation.
+    fn with_signer(self, signer: Address) -> super::Recovered<Self>
+    where
+        Self: Sized,
+    {
+        super::Recovered::new_unchecked(self, signer)
+    }
 }
