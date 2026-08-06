@@ -50,9 +50,7 @@ where
     let mut limiter = input.limiter;
 
     let mut last_pruned_transaction = tx_range_end;
-    let (pruned, done) = provider.tx_ref().prune_table_with_range::<tables::Receipts<
-        <Provider::Primitives as NodePrimitives>::Receipt,
-    >>(
+    let (pruned, done) = provider.tx_ref().prune_table_with_range::<tables::Receipts>(
         tx_range,
         &mut limiter,
         |_| false,

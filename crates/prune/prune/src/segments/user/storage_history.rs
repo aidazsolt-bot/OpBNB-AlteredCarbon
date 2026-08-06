@@ -12,11 +12,13 @@ use reth_db_api::{
     tables,
     transaction::DbTxMut,
 };
-use reth_provider::{DBProvider, EitherWriter, RocksDBProviderFactory, StaticFileProviderFactory};
+use reth_provider::{
+    changeset_walker::StaticFileStorageChangesetWalker, DBProvider, RocksDBProviderFactory,
+    StaticFileProviderFactory,
+};
 use reth_prune_types::{
     PruneMode, PrunePurpose, PruneSegment, SegmentOutput, SegmentOutputCheckpoint,
 };
-use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{StorageChangeSetReader, StorageSettingsCache};
 use rustc_hash::FxHashMap;
 use tracing::{instrument, trace};
@@ -79,12 +81,7 @@ where
             return self.prune_rocksdb(provider, input, range, range_end);
         }
 
-        // Check where storage changesets are stored (MDBX path)
-        if EitherWriter::storage_changesets_destination(provider).is_static_file() {
-            self.prune_static_files(provider, input, range, range_end)
-        } else {
-            self.prune_database(provider, input, range, range_end)
-        }
+        self.prune_database(provider, input, range, range_end)
     }
 }
 
@@ -98,7 +95,7 @@ impl StorageHistory {
         range_end: BlockNumber,
     ) -> Result<SegmentOutput, PrunerError>
     where
-        Provider: DBProvider<Tx: DbTxMut> + StaticFileProviderFactory,
+        Provider: DBProvider<Tx: DbTxMut> + StaticFileProviderFactory + StorageChangeSetReader + Sync,
     {
         let mut limiter = if let Some(limit) = input.limiter.deleted_entries_limit() {
             input.limiter.set_deleted_entries_limit(limit / STORAGE_HISTORY_TABLES_TO_PRUNE)
@@ -125,7 +122,7 @@ impl StorageHistory {
         let mut pruned_changesets = 0;
         let mut done = true;
 
-        let walker = provider.static_file_provider().walk_storage_changeset_range(range);
+        let walker = StaticFileStorageChangesetWalker::new(provider, range);
         for result in walker {
             if limiter.is_limit_reached() {
                 done = false;
@@ -140,12 +137,6 @@ impl StorageHistory {
             limiter.increment_deleted_entries_count();
         }
 
-        // Delete static file jars only when fully processed
-        if done && let Some(last_block) = last_changeset_pruned_block {
-            provider
-                .static_file_provider()
-                .delete_segment_below_block(StaticFileSegment::StorageChangeSets, last_block + 1)?;
-        }
         trace!(target: "pruner", pruned = %pruned_changesets, %done, "Pruned storage history (changesets from static files)");
 
         let result = HistoryPruneResult {
@@ -243,7 +234,11 @@ impl StorageHistory {
         range_end: BlockNumber,
     ) -> Result<SegmentOutput, PrunerError>
     where
-        Provider: DBProvider + StaticFileProviderFactory + RocksDBProviderFactory,
+        Provider: DBProvider
+            + StaticFileProviderFactory
+            + RocksDBProviderFactory
+            + StorageChangeSetReader
+            + Sync,
     {
         let mut limiter = input.limiter;
 
@@ -262,7 +257,7 @@ impl StorageHistory {
         // Walk storage changesets from static files using a streaming iterator.
         // For each changeset, track the highest block number seen for each (address, storage_key)
         // pair to determine which history shard entries need pruning.
-        let walker = provider.static_file_provider().walk_storage_changeset_range(range);
+        let walker = StaticFileStorageChangesetWalker::new(provider, range);
         for result in walker {
             if limiter.is_limit_reached() {
                 done = false;
@@ -291,7 +286,7 @@ impl StorageHistory {
         let mut sorted_storages: Vec<_> = highest_deleted_storages.into_iter().collect();
         sorted_storages.sort_unstable_by_key(|((addr, key), _)| (*addr, *key));
 
-        provider.with_rocksdb_batch(|mut batch| {
+        provider.with_rocksdb_batch(|_| {
             let targets: Vec<_> = sorted_storages
                 .iter()
                 .map(|((addr, key), highest)| {
@@ -299,6 +294,7 @@ impl StorageHistory {
                 })
                 .collect();
 
+            let mut batch = provider.rocksdb_provider().batch();
             let outcomes = batch.prune_storage_history_batch(&targets)?;
             deleted_shards = outcomes.deleted;
             updated_shards = outcomes.updated;
@@ -313,13 +309,6 @@ impl StorageHistory {
         // but before MDBX commit, on restart the pruner checkpoint indicates data needs
         // re-pruning, but the RocksDB shards are already pruned - this is safe because pruning
         // is idempotent (re-pruning already-pruned shards is a no-op).
-        if done {
-            provider.static_file_provider().delete_segment_below_block(
-                StaticFileSegment::StorageChangeSets,
-                last_changeset_pruned_block + 1,
-            )?;
-        }
-
         let progress = limiter.progress(done);
 
         Ok(SegmentOutput {
