@@ -15,12 +15,18 @@ workspace = true
 # reth
 reth-primitives.workspace = true
 reth-db.workspace = true
-reth-trie.workspace = true
+reth-trie = { workspace = true, features = ["metrics"] }
 reth-trie-db.workspace = true
 reth-provider.workspace = true
-reth-trie-parallel.workspace = true
+reth-trie-parallel = { path = "../../trie/parallel", default-features = false }
 reth-tasks.workspace = true
 reth-execution-errors.workspace = true
+
+# alloy
+alloy-trie = { workspace = true }
+
+# revm
+revm = { workspace = true, default-features = false }
 
 # alloy
 alloy-rlp.workspace = true
@@ -55,4 +61,4 @@ proptest.workspace = true
 
 [features]
 default = ["metrics"]
-metrics = ["reth-metrics", "dep:metrics", "reth-trie/metrics"]
+metrics = ["reth-metrics", "dep:metrics", "reth-trie/metrics", "reth-trie-parallel/metrics"]
