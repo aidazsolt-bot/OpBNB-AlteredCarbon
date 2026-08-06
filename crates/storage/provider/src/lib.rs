@@ -38,6 +38,8 @@ pub mod test_utils;
 pub mod either_writer;
 pub use either_writer::*;
 
+pub mod writer;
+
 mod bal;
 pub use bal::{BalConfig, InMemoryBalStore};
 
