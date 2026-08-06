@@ -9886,6 +9886,7 @@ dependencies = [
  "futures-util",
  "metrics",
  "parking_lot",
+ "rayon",
  "reth-ethereum-forks",
  "reth-execution-errors",
  "reth-execution-types",
