@@ -10,7 +10,7 @@ use core::mem;
 use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use crate::sync::OnceLock;
 
 /// A [`Header`] that is sealed at a precalculated hash, use [`SealedHeader::unseal()`] if you want
 /// to modify header.
