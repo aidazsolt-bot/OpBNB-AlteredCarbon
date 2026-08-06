@@ -1300,6 +1300,13 @@ impl<N: ProviderNodeTypes> BlockReaderIdExt for ConsistentProvider<N> {
             BlockId::Hash(hash) => self.header(hash.block_hash)?,
         })
     }
+
+    fn ommers_by_id(&self, id: BlockId) -> ProviderResult<Option<Vec<HeaderTy<N>>>> {
+        Ok(match id {
+            BlockId::Number(num) => self.ommers(num.into())?,
+            BlockId::Hash(hash) => self.ommers(hash.block_hash.into())?,
+        })
+    }
 }
 
 impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
@@ -1352,6 +1359,22 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for ConsistentProvider<N> {
 
             self.storage_provider.storage_changeset(block_number)
         }
+    }
+
+    fn get_storage_before_block(
+        &self,
+        block_number: BlockNumber,
+        address: Address,
+        storage_key: B256,
+    ) -> ProviderResult<Option<StorageEntry>> {
+        self.storage_provider.get_storage_before_block(block_number, address, storage_key)
+    }
+
+    fn storage_changesets_range(
+        &self,
+        range: impl std::ops::RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        self.storage_provider.storage_changesets_range(range)
     }
 }
 
