@@ -13,10 +13,10 @@ use crate::cache::plain_state::{
 /// Writes the execution outcomes of the given blocks to the cache.
 pub fn write_to_cache(blocks: Vec<ExecutedBlock>) {
     for block in blocks {
-        debug!("Start to write block {} to cache", block.block.header.number);
-        let bundle_state = block.execution_outcome().clone().bundle;
+        debug!("Start to write block {} to cache", block.recovered_block.header().number);
+        let bundle_state = block.execution_output.state.clone();
         write_plain_state(bundle_state);
-        debug!("Finish to write block {} to cache", block.block.header.number);
+        debug!("Finish to write block {} to cache", block.recovered_block.header().number);
     }
 }
 
