@@ -534,11 +534,12 @@ pub(super) mod serde_bincode_compat {
     pub struct Chain<'a, N = EthPrimitives>
     where
         N: NodePrimitives,
+        N::Receipt: reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat + core::fmt::Debug,
     {
         #[serde(skip)]
         _phantom: PhantomData<N>,
         blocks: BTreeMap<BlockNumber, RecoveredBlockRepr>,
-        execution_outcome: serde_bincode_compat::ExecutionOutcome<'a>,
+        execution_outcome: serde_bincode_compat::ExecutionOutcome<'a, N::Receipt>,
         #[serde(default)]
         trie_updates: BTreeMap<
             BlockNumber,
@@ -560,6 +561,7 @@ pub(super) mod serde_bincode_compat {
     impl<'a, N> From<&'a super::Chain<N>> for Chain<'a, N>
     where
         N: NodePrimitives,
+        N::Receipt: reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat + core::fmt::Debug,
     {
         fn from(value: &'a super::Chain<N>) -> Self {
             Self {
@@ -591,6 +593,7 @@ pub(super) mod serde_bincode_compat {
     impl<'a, N> From<Chain<'a, N>> for super::Chain<N>
     where
         N: NodePrimitives,
+        N::Receipt: reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat + core::fmt::Debug,
     {
         fn from(value: Chain<'a, N>) -> Self {
             use reth_primitives_traits::RecoveredBlock;
@@ -632,6 +635,7 @@ pub(super) mod serde_bincode_compat {
     impl<N> SerializeAs<super::Chain<N>> for Chain<'_, N>
     where
         N: NodePrimitives,
+        N::Receipt: reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat + core::fmt::Debug,
     {
         fn serialize_as<S>(source: &super::Chain<N>, serializer: S) -> Result<S::Ok, S::Error>
         where
@@ -644,6 +648,7 @@ pub(super) mod serde_bincode_compat {
     impl<'de, N> DeserializeAs<'de, super::Chain<N>> for Chain<'de, N>
     where
         N: NodePrimitives,
+        N::Receipt: reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat + core::fmt::Debug,
     {
         fn deserialize_as<D>(deserializer: D) -> Result<super::Chain<N>, D::Error>
         where
