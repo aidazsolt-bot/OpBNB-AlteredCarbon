@@ -522,10 +522,10 @@ alloy-transport = { version = "2.1.1" }
 alloy-transport-http = { version = "2.1.1", features = ["reqwest-rustls-tls"], default-features = false }
 alloy-transport-ipc = { version = "2.1.1", default-features = false }
 alloy-transport-ws = { version = "2.1.1", default-features = false }
-op-alloy-rpc-types = "0.5"
-op-alloy-rpc-types-engine = "0.5"
-op-alloy-network = "0.5"
-op-alloy-consensus = "0.5"
+op-alloy-rpc-types = "2.0.0"
+op-alloy-rpc-types-engine = "2.0.0"
+op-alloy-network = "2.0.0"
+op-alloy-consensus = "2.0.0"
 
 # misc
 either = { version = "1.16.0", default-features = false }
