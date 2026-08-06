@@ -1779,7 +1779,7 @@ impl PropagateTransaction {
     /// Direct transactions use their EIP-2718 encoded length so eth/68+ hash announcements carry
     /// the same size metadata as [`NewPooledTransactionHashes68::push`] and
     /// [`NewPooledTransactionHashes72::push`].
-    fn new<T: SignedTransaction>(transaction: T) -> Self {
+    fn new<T: SignedTransaction + alloy_consensus::transaction::TxHashRef>(transaction: T) -> Self {
         let is_broadcastable_in_full = transaction.is_broadcastable_in_full();
         let propagation_size = transaction.encode_2718_len();
 
