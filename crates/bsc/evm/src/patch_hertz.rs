@@ -6,7 +6,7 @@ use reth_errors::ProviderError;
 use reth_evm::ConfigureEvm;
 use reth_primitives::{Header, TransactionSigned};
 use reth_revm::{db::states::StorageSlot, State};
-use revm_primitives::db::Database;
+use revm::Database;
 use tracing::trace;
 
 use crate::{execute::BscEvmExecutor, BscBlockExecutionError};

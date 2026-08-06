@@ -16,7 +16,7 @@ use reth_primitives::{
     GotExpected, Header,
 };
 use reth_provider::ParliaProvider;
-use revm_primitives::db::Database;
+use revm::Database;
 
 use crate::{BscBlockExecutionError, BscBlockExecutor, SnapshotReader};
 

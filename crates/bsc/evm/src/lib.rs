@@ -14,14 +14,14 @@ use reth_ethereum_forks::EthereumHardfork;
 use reth_evm::{ConfigureEvm, ConfigureEvmEnv, NextBlockEnvAttributes};
 use reth_primitives::{
     constants::EIP1559_INITIAL_BASE_FEE,
-    revm_primitives::{
+    revm::primitives::{
         AnalysisKind, BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId, TxEnv,
     },
     transaction::FillTxEnv,
     Head, Header, TransactionSigned,
 };
 use reth_revm::{inspector_handle_register, Database, Evm, EvmBuilder, GetInspector};
-use revm_primitives::Env;
+use revm::primitives::Env;
 
 mod config;
 pub use config::{revm_spec, revm_spec_by_timestamp_after_shanghai};
@@ -181,8 +181,8 @@ impl ConfigureEvm for BscEvmConfig {
 mod tests {
     use alloy_genesis::Genesis;
     use reth_chainspec::{Chain, ChainSpec};
-    use reth_primitives::revm_primitives::{BlockEnv, CfgEnv};
-    use revm_primitives::SpecId;
+    use reth_primitives::revm::primitives::{BlockEnv, CfgEnv};
+    use revm::primitives::hardfork::SpecId;
 
     use super::*;
 

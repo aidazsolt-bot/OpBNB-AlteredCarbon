@@ -14,7 +14,7 @@ use reth_execution_types::ExecutionOutcome;
 use reth_payload_primitives::{PayloadBuilderAttributes, PayloadBuilderError};
 use reth_primitives::{
     proofs,
-    revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg},
+    revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg},
     Block, BlockBody, Header, Receipt,
 };
 use reth_provider::StateProviderFactory;
@@ -28,7 +28,7 @@ use revm::{
     primitives::{EVMError, EnvWithHandlerCfg, InvalidTransaction, ResultAndState},
     DatabaseCommit,
 };
-use revm_primitives::calc_excess_blob_gas;
+use revm::primitives::calc_excess_blob_gas;
 use tracing::{debug, trace, warn};
 
 use crate::payload::{BscBuiltPayload, BscPayloadBuilderAttributes};

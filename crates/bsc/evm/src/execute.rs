@@ -33,7 +33,7 @@ use reth_primitives::{
 use reth_provider::{ExecutionOutcome, ParliaProvider};
 use reth_prune_types::PruneModes;
 use reth_revm::{batch::BlockBatchRecord, db::states::bundle_state::BundleRetention, Evm, State};
-use revm_primitives::{
+use revm::context::{
     db::{Database, DatabaseCommit},
     BlockEnv, CfgEnvWithHandlerCfg, EVMError, EnvWithHandlerCfg, EvmState, ResultAndState,
     TransactTo,
