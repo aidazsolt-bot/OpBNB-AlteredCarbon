@@ -15,7 +15,7 @@ use std::{
 
 use alloy_consensus::EMPTY_OMMER_ROOT_HASH;
 use alloy_json_abi::JsonAbi;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256};
 use alloy_rlp::Decodable;
 use lazy_static::lazy_static;
 use lru::LruCache;
@@ -23,16 +23,17 @@ use parking_lot::RwLock;
 use reth_bsc_chainspec::BscChainSpec;
 use reth_bsc_forks::BscHardforks;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
-use reth_consensus::{Consensus, ConsensusError};
+use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
     validate_against_parent_4844, validate_against_parent_hash_number,
     validate_against_parent_timestamp, validate_header_base_fee, validate_header_gas,
 };
 use reth_primitives::{
     constants::EMPTY_MIX_HASH,
-    parlia::{ParliaConfig, Snapshot, VoteAddress, VoteAttestation},
-    BlockWithSenders, GotExpected, Header, SealedBlock, SealedHeader,
+    parlia::{ParliaConfig, Snapshot, VoteAddress, VoteAttestation}, GotExpected, Header, SealedBlock, SealedHeader,
 };
+use reth_execution_types::BlockExecutionResult;
+use reth_primitives_traits::{Block as BlockTrait, BlockBody as BlockBodyTrait, RecoveredBlock};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId},
     Message, SECP256K1,
@@ -138,7 +139,7 @@ impl Parlia {
         let recovery_byte = extra_data[signature_offset + EXTRA_SEAL_LEN - 1] as i32;
         let signature_bytes = &extra_data[signature_offset..signature_offset + EXTRA_SEAL_LEN - 1];
 
-        let recovery_id = RecoveryId::from_i32(recovery_byte)
+        let recovery_id = RecoveryId::try_from(recovery_byte)
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
         let signature = RecoverableSignature::from_compact(signature_bytes, recovery_id)
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
@@ -507,8 +508,8 @@ impl Parlia {
             ));
         }
 
-        validate_header_gas(header)?;
-        validate_header_base_fee(header, &self.chain_spec)?;
+        validate_header_gas(header.header())?;
+        validate_header_base_fee(header.header(), &self.chain_spec)?;
 
         // Ensures that EIP-4844 fields are valid once cancun is active.
         if self.chain_spec.is_cancun_active_at_timestamp(header.timestamp) {
@@ -537,13 +538,13 @@ impl Parlia {
         header: &SealedHeader,
         parent: &SealedHeader,
     ) -> Result<(), ConsensusError> {
-        validate_against_parent_hash_number(header, parent)?;
-        validate_against_parent_timestamp(header, parent)?;
-        validate_against_parent_eip1559_base_fee_of_bsc(header, parent, &self.chain_spec)?;
+        validate_against_parent_hash_number(header.header(), parent)?;
+        validate_against_parent_timestamp(header.header(), parent.header())?;
+        validate_against_parent_eip1559_base_fee_of_bsc(header.header(), parent.header(), &self.chain_spec)?;
 
         // ensure that the blob gas fields for this block
-        if self.chain_spec.is_cancun_active_at_timestamp(header.timestamp) {
-            validate_against_parent_4844(header, parent)?;
+        if let Some(blob_params) = self.chain_spec.blob_params_at_timestamp(header.timestamp) {
+            validate_against_parent_4844(header.header(), parent.header(), blob_params)?;
         }
 
         Ok(())
@@ -561,7 +562,7 @@ impl Parlia {
             // each blob tx
             let header_blob_gas_used =
                 block.blob_gas_used.ok_or(ConsensusError::BlobGasUsedMissing)?;
-            let total_blob_gas = block.blob_gas_used();
+            let total_blob_gas = block.body().blob_gas_used();
             if total_blob_gas != header_blob_gas_used {
                 return Err(ConsensusError::BlobGasUsedDiff(GotExpected {
                     got: header_blob_gas_used,
@@ -574,7 +575,7 @@ impl Parlia {
     }
 }
 
-impl Consensus for Parlia {
+impl HeaderValidator<Header> for Parlia {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         self.validate_header(header)
     }
@@ -586,11 +587,13 @@ impl Consensus for Parlia {
     ) -> Result<(), ConsensusError> {
         self.validate_header_against_parent(header, parent)
     }
+}
 
-    fn validate_header_with_total_difficulty(
+impl Consensus<reth_ethereum_primitives::Block> for Parlia {
+    fn validate_body_against_header(
         &self,
-        _header: &Header,
-        _total_difficulty: U256,
+        _body: &<reth_ethereum_primitives::Block as BlockTrait>::Body,
+        _header: &SealedHeader,
     ) -> Result<(), ConsensusError> {
         Ok(())
     }
@@ -598,13 +601,21 @@ impl Consensus for Parlia {
     fn validate_block_pre_execution(&self, block: &SealedBlock) -> Result<(), ConsensusError> {
         self.validate_block_pre_execution(block)
     }
+}
 
+impl FullConsensus<reth_ethereum_primitives::EthPrimitives> for Parlia {
     fn validate_block_post_execution(
         &self,
-        block: &BlockWithSenders,
-        input: reth_consensus::PostExecutionInput<'_>,
+        block: &RecoveredBlock<reth_ethereum_primitives::Block>,
+        result: &BlockExecutionResult<reth_ethereum_primitives::Receipt>,
+        _receipt_root_bloom: Option<ReceiptRootBloom>,
+        _block_access_list_hash: Option<B256>,
     ) -> Result<(), ConsensusError> {
-        validate_block_post_execution_of_bsc(block, &self.chain_spec, input.receipts)
+        validate_block_post_execution_of_bsc(
+            block.header(),
+            &self.chain_spec,
+            &result.receipts,
+        )
     }
 }
 
