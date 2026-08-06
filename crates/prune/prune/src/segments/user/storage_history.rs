@@ -46,7 +46,8 @@ where
         + StaticFileProviderFactory
         + StorageChangeSetReader
         + StorageSettingsCache
-        + RocksDBProviderFactory,
+        + RocksDBProviderFactory
+        + Sync,
 {
     fn segment(&self) -> PruneSegment {
         PruneSegment::StorageHistory
