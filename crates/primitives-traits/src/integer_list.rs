@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use bytes::BufMut;
+use bytes::BufMut as _;
 use core::fmt;
 use derive_more::Deref;
 use roaring::RoaringTreemap;
