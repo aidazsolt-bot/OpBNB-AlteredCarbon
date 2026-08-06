@@ -891,7 +891,7 @@ where
         let BscExecuteOutput { receipts, gas_used: _, snapshot } =
             self.executor.execute_without_verification(block, total_difficulty, None)?;
 
-        validate_block_post_execution_of_bsc(block, self.executor.chain_spec(), &receipts)?;
+        validate_block_post_execution_of_bsc(&block.header, self.executor.chain_spec(), &receipts)?;
 
         // prepare the state according to the prune mode
         let retention = self.batch_record.bundle_retention(block.number);
