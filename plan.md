@@ -311,3 +311,101 @@ behobenen Blocker (jeweils mit `cargo check -p <crate> --no-default-features` ve
    dann breitere Workspace-Prüfung.
 4. `plan.md` nach jedem Meilenstein weiter aktualisieren (inkl. Token-/Zeit-Aufwand für
    spätere User-Doku-Übernahme).
+
+## Session-Fortsetzung: reth-provider grün (156→0), reth-network grün — 2026-08-06
+
+**reth-provider (crates/storage/provider) ist jetzt vollständig grün** (sowohl
+`--no-default-features` als auch mit Default-Features/RocksDB), nach einer sehr langen
+iterativen Fehlerbehebungs-Session, die über mehrere vorherige Kompaktierungen lief.
+Fehleranzahl-Verlauf (dieser Fortsetzungs-Abschnitt): 156 → 126 → 108 → 100 → 85 → 75 → 72
+→ 67 → 65 → 54 → 34 → 31 → 17 → 10 → 8 → 6 → **0**. Der Agent (`fix-reth-provider`) hat den
+Großteil (156→17) automatisiert erledigt; die letzten ~17 Fehler wurden direkt von mir (ohne
+Agent) gelöst, da der Agent bei größeren Verallgemeinerungen (Bound-Propagation) wiederholt
+Regressionen verursachte und konservativ zurückrollte — bei architektonisch kniffligen
+Restfehlern ist direktes Eingreifen effizienter als weitere Agent-Iteration.
+
+**Kernerkenntnisse / Root Causes:**
+- `tables::Receipts`/`tables::Headers` sind in diesem Fork **nicht generisch** (fixiert auf
+  konkrete `reth_ethereum_primitives::Receipt`/`alloy_consensus::Header`), im Gegensatz zum
+  Referenz-Repo (`bnb-chain_reth.git`), wo `table Receipts<R = Receipt> { ... }` generisch mit
+  Default-Typparameter ist. Der `tables!`-Macro dieses Forks unterstützt nur Single-Line-Syntax
+  ohne generische Default-Parameter — eine "richtige" architektonische Lösung würde den Macro
+  erweitern (nicht gemacht, zu invasiv für die verbleibende Zeit).
+- Da aktuell **nur `EthPrimitives` `NodePrimitives` implementiert**, sind `N::Receipt`/
+  `N::BlockHeader` in der Praxis immer konkret `EthereumReceipt`/`alloy_consensus::Header` —
+  der Compiler kann das aber generisch nicht wissen. Lösung: neue Helper-Funktion
+  `crate::compact_convert<From: Compact, To: Compact>()` in `storage/provider/src/lib.rs` —
+  eine sichere, generische Byte-Roundtrip-Konvertierung über den bereits garantierten
+  `Compact`-Trait-Bound (aus `NodeTypesForProvider`). Angewandt an 5 Stellen:
+  `header_by_number`, `receipt`, `receipts_by_tx_range`, `write_execution_outcome`
+  (Receipt-Schreiben via `EitherWriter::append_receipt`), und einem `.collect()`-Call beim
+  Sammeln von `(u64, Receipt)`-Tupeln.
+- `EitherWriter::append_receipt`'s `where`-Bound wurde von `N::Receipt: Into<TableValue>`
+  (was einen expliziten `From`-Impl je `NodePrimitives`-Implementierung verlangt hätte, den es
+  nicht gibt) auf `N::Receipt: Value + Clone` gelockert, Konvertierung erfolgt jetzt intern via
+  `compact_convert`.
+- `BlockHeader`-Trait fehlte der Supertrait-Bound `+ AsRef<Self>` (im Referenz-Repo vorhanden)
+  — ein einzeiliger Fix, der mehrere `AsRef<HeaderTy<N>>`-Fehler in generischen
+  Block-Lese-Funktionen (`recovered_block`, `block_range`, `block_with_senders_range`) behob.
+- `Range<u64>` (aus dem lokalen `to_range()`-Helper) hat `.start`/`.end` als **Felder**, nicht
+  Methoden — mehrere `E0689`-Fehler durch fälschliche `.start()/.end()`-Methodenaufrufe (Agent
+  hatte das per Sed-Fix falsch gemacht) korrigiert via Feldzugriff +
+  `saturating_sub(1)`-Rekonstruktion zu `RangeInclusive` wo nötig.
+- `write_storage_trie_updates_sorted`: Cursor für `tables::StoragesTrie`/`PackedStoragesTrie`
+  muss **innerhalb** des `with_adapter!`-Makro-Closures geöffnet werden (via
+  `<A as TrieTableAdapter>::StorageTrieTable`, vollqualifizierte Syntax wegen `E0223`), nicht
+  davor mit fest codiertem Tabellentyp — der Makro wählt den Adapter (Legacy vs. Packed) zur
+  Laufzeit.
+- `tx_hash()`/`recover_signer_unchecked()`: fehlender Import `use
+  reth_primitives_traits::SignedTransaction;` — klassischer "Trait-Methode nicht gefunden, weil
+  Trait nicht importiert"-Rust-Fallstrick.
+- **Wichtigste Lektion:** Ein `where`-Bound auf einen **ganzen impl-Block** (statt einer
+  einzelnen Methode) kann durch Bound-Propagation dramatische Regressionen an entfernten
+  Stellen verursachen (Beispiel: ein Versuch sprang von 17 auf 63-69 Fehler). Lokale,
+  call-site-spezifische Konvertierungen (wie `compact_convert`) sind der sicherere Weg.
+
+**Commit:** `fix(provider): resolve final reth-provider compile errors, reach green`
+(direkt nach den `fix-reth-provider`-Agent-Commits `bdf13bfc3` … `869e3066d`).
+
+**reth-network (crates/net/network + net/eth-wire-types) danach direkt (ohne Agent, schnell)
+gelöst — 6 Fehler:**
+- `SignedTransaction`-Trait fehlte `is_broadcastable_in_full()`-Default-Methode (nutzt
+  bereits verfügbares `is_eip4844()` aus `alloy_consensus::Transaction`-Supertrait) —
+  Upstream-Parität hergestellt.
+- `NetworkPrimitives::PooledTransaction` fehlte `IsTyped2718`-Bound (für
+  `N::PooledTransaction::is_type(ty)` in `transactions/config.rs`-Announcement-Policies).
+- `NetworkPrimitives::BroadcastedTransaction` fehlte `TxHashRef + IsTyped2718`-Bounds (für
+  `PropagateTransaction::new()`/`BroadcastPoolTransaction`-Bound in `transactions/mod.rs`).
+- `NetworkHandle::fetch_client()` gab fälschlich nicht-generisches `FetchClient` zurück statt
+  `FetchClient<N>`.
+- Commit: `fix(network): resolve reth-network compile errors (Typed2718/TxHashRef bounds)`.
+
+**Verifiziert grün (dieser Fortsetzungs-Abschnitt):** `reth-provider` (beide Feature-Varianten),
+`reth-network` (`--no-default-features`).
+
+**Neuer Blocker:** `cargo check -p reth-bsc-evm --no-default-features` → als nächstes
+`reth-bsc-consensus` (crates/bsc/consensus, **BSC-spezifisch**) mit 10 Fehlern. Root Cause:
+die `Consensus`/`FullConsensus`/`HeaderValidator`-Trait-Hierarchie wurde in v2.4.1
+grundlegend umgebaut (drei separate Traits statt einem monolithischen `Consensus`-Trait;
+`PostExecutionInput`-Struct entfernt zugunsten von `&BlockExecutionResult<N::Receipt>` +
+neuen Optional-Parametern `receipt_root_bloom`/`block_access_list_hash`). Zusätzlich:
+`revm_primitives`/`reth_revm::primitives::Account`-Importpfade veraltet,
+`alloy_eips::eip4844::MAX_DATA_GAS_PER_BLOCK`-Konstante umbenannt/verschoben. An
+Hintergrund-Agent `fix-bsc-consensus` delegiert (detaillierter Prompt inkl. exaktem neuen
+Trait-API-Shape, Referenz auf `bnb-chain_reth.git`s Ethereum/Optimism-Consensus-Impls als
+Template für die Drei-Trait-Aufspaltung).
+
+**Commits dieser Fortsetzung:** `fix(provider): resolve final reth-provider compile errors,
+reach green`, `fix(network): resolve reth-network compile errors (Typed2718/TxHashRef bounds)`
+(+ ggf. `fix-bsc-consensus`-Agent-Commit sobald abgeschlossen).
+
+**Wichtiger Hinweis für User-Doku (Standing-Notiz, bereits vom User bestätigt):** nach den
+ersten Live-Tests müssen alle Aufwands-/Token-/Zeit-Angaben in der User-Doku aktualisiert
+werden — dieser Plan.md-Log ist die Rohdaten-Quelle dafür.
+
+**Nächste Schritte:**
+1. Warten auf `fix-bsc-consensus`-Agent-Ergebnis, verifizieren, ggf. nachbessern, committen.
+2. `cargo check -p reth-bsc-evm --no-default-features` erneut, nächsten Blocker identifizieren.
+3. Iterieren bis `reth-bsc-evm` grün (Phase-3-Meilenstein), danach `reth-bsc-node`, dann
+   breitere Workspace-Prüfung (`cargo check --workspace`).
+4. `plan.md` nach jedem Meilenstein weiter aktualisieren.
