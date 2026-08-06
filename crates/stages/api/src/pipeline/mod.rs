@@ -129,8 +129,11 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
     }
 }
 
-impl<N: ProviderNodeTypes> Pipeline<N> {
-    /// Registers progress metrics for each registered stage
+impl<N: ProviderNodeTypes> Pipeline<N>
+where
+    <N::Primitives as reth_primitives_traits::NodePrimitives>::Receipt:
+        From<reth_ethereum_primitives::Receipt>,
+{
     pub fn register_metrics(&mut self) -> Result<(), PipelineError> {
         let Some(metrics_tx) = &mut self.metrics_tx else { return Ok(()) };
         let provider = self.provider_factory.provider()?;
@@ -282,7 +285,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
 
         // Copies data from database to static files
         let lowest_static_file_height =
-            self.static_file_producer.lock().copy_to_static_files()?.min_block_num();
+            self.static_file_producer.lock().copy_to_static_files()?.min();
 
         // Deletes data which has been copied to static files.
         if let Some(prune_tip) = lowest_static_file_height {
@@ -324,8 +327,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
         // attempt to proceed with a finalized block which has been unwinded
         let _locked_sf_producer = self.static_file_producer.lock();
 
-        let mut provider_rw =
-            self.provider_factory.unwind_provider_rw()?.disable_long_read_transaction_safety();
+        let mut provider_rw = self.provider_factory.provider_rw()?;
 
         for stage in unwind_pipeline {
             let stage_id = stage.id();
@@ -415,7 +417,7 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
 
                         stage.post_unwind_commit()?;
 
-                        provider_rw = self.provider_factory.unwind_provider_rw()?;
+                        provider_rw = self.provider_factory.provider_rw()?.into();
                     }
                     Err(err) => {
                         self.event_sender.notify(PipelineEvent::Error { stage_id });

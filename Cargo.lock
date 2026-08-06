@@ -11650,6 +11650,7 @@ dependencies = [
  "reth-db",
  "reth-db-api",
  "reth-errors",
+ "reth-ethereum-primitives",
  "reth-metrics 2.4.1",
  "reth-network-p2p",
  "reth-primitives-traits 2.4.1",
