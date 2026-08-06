@@ -82,3 +82,6 @@ arbitrary = [
     "alloy-consensus/arbitrary",
     "reth-ethereum-primitives/arbitrary",
 ]
+optimism = [
+    "reth-codecs/optimism"
+]

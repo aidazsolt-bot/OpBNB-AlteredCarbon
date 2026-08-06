@@ -97,3 +97,6 @@ arbitrary = [
     "reth-prune-types/arbitrary",
 ]
 disable-lock = []
+optimism = [
+	"reth-db-api/optimism"
+]

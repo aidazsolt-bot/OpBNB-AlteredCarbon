@@ -74,5 +74,4 @@ optimism = [
 opbnb = [
     "reth-optimism-evm/opbnb",
     "reth-primitives/opbnb",
-    "revm/opbnb",
 ]
