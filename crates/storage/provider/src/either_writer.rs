@@ -319,7 +319,7 @@ impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N> {
 
 impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N>
 where
-    N::Receipt: Value,
+    N::Receipt: Value + Into<<tables::Receipts as reth_db_api::table::Table>::Value> + Clone,
     CURSOR: DbCursorRW<tables::Receipts>,
 {
     /// Append a transaction receipt.
@@ -328,7 +328,7 @@ where
         N::Receipt: Compact,
     {
         match self {
-            Self::Database(cursor) => Ok(cursor.append(tx_num, receipt)?),
+            Self::Database(cursor) => Ok(cursor.append(tx_num, &receipt.clone().into())?),
             Self::StaticFile(writer) => writer.append_receipt(tx_num, receipt),
             #[cfg(all(unix, feature = "rocksdb"))]
             Self::RocksDB(_) => Err(ProviderError::UnsupportedProvider),
@@ -712,7 +712,7 @@ where
                 .zip(provider.fetch_range_iter(
                     StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                     range,
-                    |cursor, number| cursor.get_one::<TransactionMask>(number.into()),
+                    |cursor, number| cursor.get_one::<TransactionMask<Address>>(number.into()),
                 )?)
                 .filter_map(|(tx_num, sender)| {
                     let result = sender.transpose()?;
