@@ -11,7 +11,6 @@ use reth_primitives::{
 pub fn validate_4844_header_of_bsc(header: &SealedHeader) -> Result<(), ConsensusError> {
     let blob_gas_used = header.blob_gas_used.ok_or(ConsensusError::BlobGasUsedMissing)?;
     let excess_blob_gas = header.excess_blob_gas.ok_or(ConsensusError::ExcessBlobGasMissing)?;
-
     if blob_gas_used > MAX_DATA_GAS_PER_BLOCK {
         return Err(ConsensusError::BlobGasUsedExceedsMaxBlobGasPerBlock {
             blob_gas_used,
@@ -74,7 +73,6 @@ pub fn validate_block_post_execution_of_bsc<ChainSpec: EthereumHardforks>(
     chain_spec: &ChainSpec,
     receipts: &[Receipt],
 ) -> Result<(), ConsensusError> {
-    // Check if gas used matches the value set in header.
     let cumulative_gas_used =
         receipts.last().map(|receipt| receipt.cumulative_gas_used).unwrap_or(0);
     if block.gas_used != cumulative_gas_used {
@@ -102,11 +100,9 @@ fn verify_receipts(
     expected_logs_bloom: Bloom,
     receipts: &[Receipt],
 ) -> Result<(), ConsensusError> {
-    // Calculate receipts root.
     let receipts_with_bloom = receipts.iter().map(Receipt::with_bloom_ref).collect::<Vec<_>>();
     let receipts_root = reth_primitives::proofs::calculate_receipt_root(&receipts_with_bloom);
 
-    // Calculate header logs bloom.
     let logs_bloom = receipts_with_bloom.iter().fold(Bloom::ZERO, |bloom, r| bloom | r.bloom);
 
     compare_receipts_root_and_logs_bloom(

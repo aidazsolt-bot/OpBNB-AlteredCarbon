@@ -23,7 +23,7 @@ use parking_lot::RwLock;
 use reth_bsc_chainspec::BscChainSpec;
 use reth_bsc_forks::BscHardforks;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
-use reth_consensus::{Consensus, ConsensusError, PostExecutionInput};
+use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus_common::validation::{
     validate_against_parent_4844, validate_against_parent_hash_number,
     validate_against_parent_timestamp, validate_header_base_fee, validate_header_gas,
@@ -587,7 +587,6 @@ impl Consensus for Parlia {
         self.validate_header_against_parent(header, parent)
     }
 
-    // No total difficulty check for Parlia
     fn validate_header_with_total_difficulty(
         &self,
         _header: &Header,
@@ -603,7 +602,7 @@ impl Consensus for Parlia {
     fn validate_block_post_execution(
         &self,
         block: &BlockWithSenders,
-        input: PostExecutionInput<'_>,
+        input: reth_consensus::PostExecutionInput<'_>,
     ) -> Result<(), ConsensusError> {
         validate_block_post_execution_of_bsc(block, &self.chain_spec, input.receipts)
     }
