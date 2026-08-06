@@ -500,6 +500,7 @@ where
         + From<T::Error>
         + Into<jsonrpsee_types::ErrorObject<'static>>,
     T: RpcConvert,
+    T::Primitives::SignedTx: TxHashRef,
 {
     let mut calls: Vec<SimCallResult> = Vec::with_capacity(results.len());
 
