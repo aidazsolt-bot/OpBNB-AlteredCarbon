@@ -30,7 +30,7 @@ use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{BlockBodyIndicesProvider, NodePrimitivesProvider, StorageChangeSetReader};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{HashedPostState, KeccakKeyHasher};
-use revm_database::BundleState;
+use revm::revm_database::BundleState;
 use std::{
     ops::{RangeBounds, RangeInclusive},
     sync::Arc,
@@ -683,6 +683,10 @@ where
     fn header_by_id(&self, id: BlockId) -> ProviderResult<Option<Self::Header>> {
         self.consistent_provider()?.header_by_id(id)
     }
+
+    fn ommers_by_id(&self, id: BlockId) -> ProviderResult<Option<Vec<Self::Header>>> {
+        self.consistent_provider()?.ommers_by_id(id)
+    }
 }
 
 impl<N: ProviderNodeTypes> CanonStateSubscriptions for BlockchainProvider<N> {
@@ -718,6 +722,22 @@ impl<N: ProviderNodeTypes> StorageChangeSetReader for BlockchainProvider<N> {
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
         self.consistent_provider()?.storage_changeset(block_number)
+    }
+
+    fn get_storage_before_block(
+        &self,
+        block_number: BlockNumber,
+        address: Address,
+        storage_key: B256,
+    ) -> ProviderResult<Option<StorageEntry>> {
+        self.consistent_provider()?.get_storage_before_block(block_number, address, storage_key)
+    }
+
+    fn storage_changesets_range(
+        &self,
+        range: impl std::ops::RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        self.consistent_provider()?.storage_changesets_range(range)
     }
 }
 

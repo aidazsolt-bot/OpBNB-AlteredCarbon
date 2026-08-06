@@ -70,6 +70,7 @@ notify = { workspace = true, default-features = false, features = [
 parking_lot.workspace = true
 dashmap = { workspace = true, features = ["inline"] }
 strum.workspace = true
+eyre.workspace = true
 
 alloy-consensus.workspace = true
 alloy-genesis.workspace = true
