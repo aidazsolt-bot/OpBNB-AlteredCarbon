@@ -3,7 +3,7 @@
 use crate::ExecutionOutcome;
 use alloc::{borrow::Cow, collections::BTreeMap, sync::Arc, vec::Vec};
 use alloy_consensus::{
-    transaction::{Recovered, TxHashRef},
+    transaction::Recovered,
     BlockHeader, TxReceipt,
 };
 use alloy_eips::{eip1898::ForkBlock, BlockNumHash};
