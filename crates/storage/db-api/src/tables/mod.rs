@@ -5,7 +5,7 @@
 //! This module defines the tables in reth, as well as some table-related abstractions:
 //!
 //! - [`codecs`] integrates different codecs into [`Encode`] and [`Decode`]
-//! - [`models`](reth_db_api::models) defines the values written to tables
+//! - [`models`](crate::models) defines the values written to tables
 //!
 //! # Database Tour
 //!
@@ -19,21 +19,21 @@ pub use raw::{RawDupSort, RawKey, RawTable, RawValue, TableRawRow};
 #[cfg(feature = "mdbx")]
 pub(crate) mod utils;
 
+use alloy_consensus::Header;
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
-use reth_db_api::{
+use crate::{
     models::{
         accounts::BlockNumberAddress,
         blocks::{HeaderHash, StoredBlockOmmers},
         storage_sharded_key::StorageShardedKey,
-        AccountBeforeTx, ClientVersion, CompactU256, ShardedKey, StoredBlockBodyIndices,
-        StoredBlockWithdrawals,
+        AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
+        StoredBlockBodyIndices, StoredBlockWithdrawals,
     },
     table::{Decode, DupSort, Encode, Table},
 };
-use reth_primitives::{
-    parlia::Snapshot, Account, Bytecode, Header, Receipt, StorageEntry, TransactionSignedNoHash,
-};
-use reth_primitives_traits::{BlobSidecars, IntegerList};
+use reth_ethereum_primitives::{Receipt, TransactionSigned};
+use reth_primitives::parlia::Snapshot;
+use reth_primitives_traits::{Account, BlobSidecars, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
@@ -129,8 +129,9 @@ macro_rules! tables {
                 }
             }
 
-            impl reth_db_api::table::Table for $name {
+            impl crate::table::Table for $name {
                 const NAME: &'static str = table_names::$name;
+                const DUPSORT: bool = tables!(@bool $($subkey)?);
 
                 type Key = $key;
                 type Value = $value;
@@ -247,7 +248,7 @@ macro_rules! tables {
         ///
         /// ```
         /// use reth_db::{Tables, tables_to_generic};
-        /// use reth_db_api::table::Table;
+        /// use crate::table::Table;
         ///
         /// let table = Tables::Headers;
         /// let result = tables_to_generic!(table, |GenericTable| GenericTable::NAME);
@@ -294,7 +295,7 @@ tables! {
     table BlockWithdrawals<Key = BlockNumber, Value = StoredBlockWithdrawals>;
 
     /// Canonical only Stores the transaction body for canonical transactions.
-    table Transactions<Key = TxNumber, Value = TransactionSignedNoHash>;
+    table Transactions<Key = TxNumber, Value = TransactionSigned>;
 
     /// Stores the mapping of the transaction hash to the transaction number.
     table TransactionHashNumbers<Key = TxHash, Value = TxNumber>;
@@ -435,11 +436,11 @@ impl Encode for ChainStateKey {
 }
 
 impl Decode for ChainStateKey {
-    fn decode(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decode(value: &[u8]) -> Result<Self, crate::DatabaseError> {
         match value {
             [0] => Ok(Self::LastFinalizedBlock),
             [1] => Ok(Self::LastSafeBlockBlock),
-            _ => Err(reth_db_api::DatabaseError::Decode),
+            _ => Err(crate::DatabaseError::Decode),
         }
     }
 }
