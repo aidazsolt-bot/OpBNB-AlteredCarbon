@@ -13,13 +13,13 @@ pub mod hardfork;
 
 mod dev;
 
-pub use alloy_op_hardforks::{OpHardfork, OpHardforks};
 pub use dev::DEV_HARDFORKS;
 pub use hardfork::OptimismHardfork;
-pub use reth_ethereum_forks::{EthereumHardforks, Hardforks};
+
+use reth_ethereum_forks::EthereumHardforks;
 
 /// Extends [`EthereumHardforks`] with optimism helper methods.
-pub trait OptimismHardforks: EthereumHardforks + Hardforks {
+pub trait OptimismHardforks: EthereumHardforks {
     /// Convenience method to check if [`OptimismHardfork::Bedrock`] is active at a given block
     /// number.
     fn is_bedrock_active_at_block(&self, block_number: u64) -> bool {
@@ -58,56 +58,9 @@ pub trait OptimismHardforks: EthereumHardforks + Hardforks {
         self.fork(OptimismHardfork::Regolith).active_at_timestamp(timestamp)
     }
 
-    /// Convenience method to check if this is the exact
-    /// [`PreContractForkBlock`](OptimismHardfork::PreContractForkBlock) activation block.
-    ///
-    /// Matches op-geth: apply only when `header.Number == PreContractForkBlock`.
-    fn is_pre_contract_fork_block(&self, block_number: u64) -> bool {
-        self.fork(OptimismHardfork::PreContractForkBlock).transitions_at_block(block_number)
-    }
-
-    /// Returns `true` if [`Fermat`](OptimismHardfork::Fermat) is active at the given block number.
-    ///
-    /// Fermat is a block fork in bnb-chain/op-geth (`Fermat *big.Int`), not a timestamp fork.
-    fn is_fermat_active_at_block(&self, block_number: u64) -> bool {
-        self.fork(OptimismHardfork::Fermat).active_at_block(block_number)
-    }
-
-    /// Returns `true` if [`Haber`](OptimismHardfork::Haber) is active at given block timestamp.
-    fn is_haber_active_at_timestamp(&self, timestamp: u64) -> bool {
-        self.fork(OptimismHardfork::Haber).active_at_timestamp(timestamp)
-    }
-
-    /// Convenience method to check if [`OptimismHardfork::Wright`] is active at a given timestamp.
+    /// Convenience method to check if [`OptimismHardfork::Wright`] is active at a given block
+    /// number.
     fn is_wright_active_at_timestamp(&self, timestamp: u64) -> bool {
         self.fork(OptimismHardfork::Wright).active_at_timestamp(timestamp)
-    }
-
-    /// Returns `true` if [`Snow`](OptimismHardfork::Snow) is active at given block timestamp.
-    fn is_snow_active_at_timestamp(&self, timestamp: u64) -> bool {
-        self.fork(OptimismHardfork::Snow).active_at_timestamp(timestamp)
-    }
-
-    /// Returns `true` if [`Volta`](OptimismHardfork::Volta) is active at given block timestamp.
-    fn is_volta_active_at_timestamp(&self, timestamp: u64) -> bool {
-        self.fork(OptimismHardfork::Volta).active_at_timestamp(timestamp)
-    }
-
-    /// Returns `true` if [`Fourier`](OptimismHardfork::Fourier) is active at given block timestamp.
-    fn is_fourier_active_at_timestamp(&self, timestamp: u64) -> bool {
-        self.fork(OptimismHardfork::Fourier).active_at_timestamp(timestamp)
-    }
-
-    /// opBNB L2 block interval in milliseconds for the active hardfork at `timestamp`.
-    ///
-    /// Pre-Volta: 1000ms, Volta: 500ms, Fourier: 250ms (bnb-chain/opbnb rollup config).
-    fn opbnb_block_interval_ms_at_timestamp(&self, timestamp: u64) -> u64 {
-        if self.is_fourier_active_at_timestamp(timestamp) {
-            250
-        } else if self.is_volta_active_at_timestamp(timestamp) {
-            500
-        } else {
-            1000
-        }
     }
 }

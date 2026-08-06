@@ -6,29 +6,24 @@
 #![cfg(feature = "bsc")]
 
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{BlockHash, BlockNumber, B256, Bytes};
+use alloy_primitives::{BlockHash, BlockNumber, B256};
 pub use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
-    ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadV1,
-    PayloadAttributes,
+    ExecutionPayloadV1, PayloadAttributes,
 };
-use alloy_rpc_types_engine::ExecutionData;
 use reth_beacon_consensus::{BeaconEngineMessage, EngineNodeTypes};
 use reth_bsc_consensus::Parlia;
 use reth_bsc_evm::SnapshotReader;
 use reth_bsc_payload_builder::{BscBuiltPayload, BscPayloadBuilderAttributes};
 use reth_chainspec::EthChainSpec;
-use reth_engine_primitives::{EngineApiValidator, EngineTypes};
-use reth_network_api::events::EngineMessage;
-use reth_payload_primitives::{
-    BuiltPayload, EngineApiMessageVersion, EngineObjectValidationError, PayloadOrAttributes,
-    PayloadTypes,
+use reth_engine_primitives::{
+    EngineApiMessageVersion, EngineObjectValidationError, EngineTypes, EngineValidator,
+    PayloadOrAttributes, PayloadTypes,
 };
+use reth_network_api::events::EngineMessage;
 use reth_network_p2p::BlockClient;
-use reth_primitives::{BlockBody, Header, SealedHeader};
-use reth_primitives_traits::{NodePrimitives, SealedBlock};
-use reth_provider::{BlockReaderIdExt, CanonChainTracker, HeaderProvider, ParliaProvider};
-use alloy_rpc_types_engine::ExecutionPayload as RpcExecutionPayload;
+use reth_primitives::{BlockBody, SealedHeader};
+use reth_provider::{BlockReaderIdExt, CanonChainTracker, ParliaProvider};
 use std::{
     clone::Clone,
     collections::{HashMap, VecDeque},
@@ -57,49 +52,23 @@ pub struct BscEngineTypes<T: PayloadTypes = BscPayloadTypes> {
     _marker: PhantomData<T>,
 }
 
-impl<T> PayloadTypes for BscEngineTypes<T>
-where
-    T: PayloadTypes<
-        ExecutionData = ExecutionData,
-        BuiltPayload: BuiltPayload<
-            Primitives: NodePrimitives<Block = reth_ethereum_primitives::Block>,
-        >,
-    >,
-    ExecutionData: From<T::BuiltPayload>,
-{
-    type ExecutionData = T::ExecutionData;
+impl<T: PayloadTypes> PayloadTypes for BscEngineTypes<T> {
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
     type PayloadBuilderAttributes = T::PayloadBuilderAttributes;
-
-    fn block_to_payload(
-        block: SealedBlock<
-            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
-        >,
-        bal: Option<Bytes>,
-    ) -> Self::ExecutionData {
-        T::block_to_payload(block, bal)
-    }
 }
 
-impl<T> EngineTypes for BscEngineTypes<T>
+impl<T: PayloadTypes> EngineTypes for BscEngineTypes<T>
 where
-    T: PayloadTypes<ExecutionData = ExecutionData>,
-    ExecutionData: From<T::BuiltPayload>,
-    T::BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = reth_ethereum_primitives::Block>>
-        + TryInto<ExecutionPayloadV1>
+    T::BuiltPayload: TryInto<ExecutionPayloadV1>
         + TryInto<ExecutionPayloadEnvelopeV2>
         + TryInto<ExecutionPayloadEnvelopeV3>
-        + TryInto<ExecutionPayloadEnvelopeV4>
-        + TryInto<ExecutionPayloadEnvelopeV5>
-        + TryInto<ExecutionPayloadEnvelopeV6>,
+        + TryInto<ExecutionPayloadEnvelopeV4>,
 {
     type ExecutionPayloadEnvelopeV1 = ExecutionPayloadV1;
     type ExecutionPayloadEnvelopeV2 = ExecutionPayloadEnvelopeV2;
     type ExecutionPayloadEnvelopeV3 = ExecutionPayloadEnvelopeV3;
     type ExecutionPayloadEnvelopeV4 = ExecutionPayloadEnvelopeV4;
-    type ExecutionPayloadEnvelopeV5 = ExecutionPayloadEnvelopeV5;
-    type ExecutionPayloadEnvelopeV6 = ExecutionPayloadEnvelopeV6;
 }
 
 /// A default payload type for [`BscEngineTypes`]
@@ -111,35 +80,20 @@ impl PayloadTypes for BscPayloadTypes {
     type BuiltPayload = BscBuiltPayload;
     type PayloadAttributes = PayloadAttributes;
     type PayloadBuilderAttributes = BscPayloadBuilderAttributes;
-    type ExecutionData = ExecutionData;
-
-    fn block_to_payload(
-        block: SealedBlock<
-            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
-        >,
-        bal: Option<Bytes>,
-    ) -> Self::ExecutionData {
-        let (payload, sidecar) = RpcExecutionPayload::from_block_unchecked_with_extras(
-            block.hash(),
-            &block.into_block(),
-            bal,
-        );
-        ExecutionData { payload, sidecar }
-    }
 }
 
 /// Validator for the bsc engine API.
 #[derive(Debug, Clone)]
 pub struct BscEngineValidator {}
 
-impl<Types> EngineApiValidator<Types> for BscEngineValidator
+impl<Types> EngineValidator<Types> for BscEngineValidator
 where
-    Types: PayloadTypes<PayloadAttributes = PayloadAttributes, ExecutionData = ExecutionData>,
+    Types: EngineTypes<PayloadAttributes = PayloadAttributes>,
 {
     fn validate_version_specific_fields(
         &self,
         _version: EngineApiMessageVersion,
-        _payload_or_attrs: PayloadOrAttributes<'_, Types::ExecutionData, PayloadAttributes>,
+        _payload_or_attrs: PayloadOrAttributes<'_, PayloadAttributes>,
     ) -> Result<(), EngineObjectValidationError> {
         Ok(())
     }
@@ -163,7 +117,7 @@ where
 {
     chain_spec: Arc<N::ChainSpec>,
     storage: Storage,
-    to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
+    to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
     network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
     fetch_client: Client,
     provider: Provider,
@@ -178,10 +132,10 @@ where
 impl<Client, N, Provider, SnapShotProvider>
     ParliaEngineBuilder<Client, N, Provider, SnapShotProvider>
 where
-    Client: BlockClient<Block = reth_primitives::Block> + 'static,
-    N: EngineNodeTypes<ChainSpec: EthChainSpec<Header = Header>> + 'static,
-    Provider: BlockReaderIdExt<Header = Header> + CanonChainTracker<Header = Header> + Clone + 'static,
-    SnapShotProvider: ParliaProvider + HeaderProvider<Header = Header> + 'static,
+    Client: BlockClient + 'static,
+    N: EngineNodeTypes + 'static,
+    Provider: BlockReaderIdExt + CanonChainTracker + Clone + 'static,
+    SnapShotProvider: ParliaProvider + 'static,
 {
     /// Creates a new builder instance to configure all parts.
     #[allow(clippy::too_many_arguments)]
@@ -190,7 +144,7 @@ where
         provider: Provider,
         parlia_provider: SnapShotProvider,
         parlia: Parlia,
-        to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
+        to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
         network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
         fetch_client: Client,
         merkle_clean_threshold: u64,
@@ -204,7 +158,7 @@ where
         let mut safe_hash = None;
         let snapshot_reader =
             SnapshotReader::new(Arc::new(parlia_provider), Arc::new(parlia.clone()));
-        let snapshot_result = snapshot_reader.snapshot(latest_header.header(), None);
+        let snapshot_result = snapshot_reader.snapshot(&latest_header, None);
         if snapshot_result.is_ok() {
             let snap = snapshot_result.unwrap();
             finalized_hash = Some(snap.vote_data.source_hash);

@@ -16,14 +16,13 @@ futures-util.workspace = true
 reqwest.workspace = true
 serde_with = { workspace = true, optional = true }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["time", "rt"] }
+tokio = { workspace = true, features = ["time"] }
 if-addrs.workspace = true
 tracing.workspace = true
-igd-next.workspace = true
 
 [dev-dependencies]
 reth-tracing.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros"] }
 
 [features]
 default = ["serde"]

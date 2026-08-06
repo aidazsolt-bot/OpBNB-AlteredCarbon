@@ -268,7 +268,7 @@ mod tests {
 
         fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
             if self.fail_account_reads {
-                return Err(ProviderError::UnsupportedProvider);
+                return Err(ProviderError::UnsupportedProvider)
             }
 
             self.account_reads.fetch_add(1, Ordering::Relaxed);
@@ -277,7 +277,7 @@ mod tests {
 
         fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
             if self.fail_bytecode_reads {
-                return Err(ProviderError::UnsupportedProvider);
+                return Err(ProviderError::UnsupportedProvider)
             }
 
             self.bytecode_reads.fetch_add(1, Ordering::Relaxed);

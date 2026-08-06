@@ -173,8 +173,8 @@ where
         }
 
         // Ensure peer's total difficulty is reasonable
-        if let StatusMessage::Legacy(s) = &their_status_message
-            && s.total_difficulty.bit_len() > 160
+        if let StatusMessage::Legacy(s) = &their_status_message &&
+            s.total_difficulty.bit_len() > 160
         {
             unauth
                 .disconnect(DisconnectReason::ProtocolBreach)
@@ -200,12 +200,7 @@ where
         }
 
         if let StatusMessage::Eth69(s) = &their_status_message {
-            // eth/69 Status must advertise a valid serve window (devp2p caps/eth.md).
             if s.earliest > s.latest {
-                unauth
-                    .disconnect(DisconnectReason::ProtocolBreach)
-                    .await
-                    .map_err(EthStreamError::from)?;
                 return Err(EthHandshakeError::EarliestBlockGreaterThanLatestBlock {
                     got: s.earliest,
                     latest: s.latest,
@@ -214,10 +209,6 @@ where
             }
 
             if s.blockhash.is_zero() {
-                unauth
-                    .disconnect(DisconnectReason::ProtocolBreach)
-                    .await
-                    .map_err(EthStreamError::from)?;
                 return Err(EthHandshakeError::BlockhashZero.into());
             }
         }

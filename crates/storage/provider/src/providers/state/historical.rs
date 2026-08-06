@@ -190,8 +190,9 @@ where
             return Err(ProviderError::StateAtBlockPruned(self.block_number))
         }
 
+        let visible_tip = self.provider.best_block_number()?;
+
         self.provider.with_rocksdb_snapshot(|rocksdb_ref| {
-            let visible_tip = self.provider.best_block_number()?;
             let mut reader = EitherReader::new_accounts_history(self.provider, rocksdb_ref)?;
             reader.account_history_info(
                 address,
@@ -217,8 +218,9 @@ where
             return Err(ProviderError::StateAtBlockPruned(self.block_number))
         }
 
+        let visible_tip = self.provider.best_block_number()?;
+
         self.provider.with_rocksdb_snapshot(|rocksdb_ref| {
-            let visible_tip = self.provider.best_block_number()?;
             let mut reader = EitherReader::new_storages_history(self.provider, rocksdb_ref)?;
             reader.storage_history_info(
                 address,
@@ -330,13 +332,6 @@ where
         block_number: BlockNumber,
     ) -> Self {
         self.lowest_available_blocks.storage_history_block_number = Some(block_number);
-        self
-    }
-
-    /// Retained for compatibility with older provider call sites. Current historical readers
-    /// already derive safe fallback behavior from the stage checkpoints used to build the
-    /// provider, so this is a no-op adapter.
-    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
         self
     }
 }
@@ -736,13 +731,6 @@ impl<Provider: DBProvider + ChangeSetReader + StorageChangeSetReader + BlockNumR
         self.lowest_available_blocks.storage_history_block_number = Some(block_number);
         self
     }
-
-    /// Retained for compatibility with older provider call sites. Current historical readers
-    /// already derive safe fallback behavior from the stage checkpoints used to build the
-    /// provider, so this is a no-op adapter.
-    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
-        self
-    }
 }
 
 impl<
@@ -767,47 +755,6 @@ impl<
 
 // Delegates all provider impls to [HistoricalStateProviderRef]
 reth_storage_api::macros::delegate_provider_impls!(HistoricalStateProvider<Provider> where [Provider: DBProvider + BlockNumReader + BlockHashReader + ChangeSetReader + StorageChangeSetReader + PruneCheckpointReader + StageCheckpointReader + StorageSettingsCache + RocksDBProviderFactory + NodePrimitivesProvider]);
-
-/// Captures the on-disk checkpoints for the execution stage and the account/storage history
-/// index stages, so callers can detect when a history-index-based query might return stale
-/// data from a future block.
-///
-/// When the Execution checkpoint is ahead of the history index checkpoint, we know `PlainState`
-/// has been silently advanced and the `InPlainState` path must not be used.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct PipelineConsistency {
-    /// Block number up to which the Execution stage has committed `PlainState`.
-    pub execution_tip: Option<BlockNumber>,
-    /// Block number up to which the account history index has been built.
-    pub account_history_tip: Option<BlockNumber>,
-    /// Block number up to which the storage history index has been built.
-    pub storage_history_tip: Option<BlockNumber>,
-}
-
-impl PipelineConsistency {
-    /// Returns `Some((exec_tip, hist_tip))` if account history is inconsistent with `PlainState`,
-    /// meaning the `InPlainState` fallback would return wrong data.
-    ///
-    /// A `None` history tip means the index stage has never run, which is equivalent to block 0.
-    pub const fn account_inconsistency(&self) -> Option<(BlockNumber, BlockNumber)> {
-        match (self.execution_tip, self.account_history_tip) {
-            (Some(exec), Some(hist)) if exec > hist => Some((exec, hist)),
-            (Some(exec), None) => Some((exec, 0)),
-            _ => None,
-        }
-    }
-
-    /// Returns `Some((exec_tip, hist_tip))` if storage history is inconsistent with `PlainState`.
-    ///
-    /// A `None` history tip means the index stage has never run, which is equivalent to block 0.
-    pub const fn storage_inconsistency(&self) -> Option<(BlockNumber, BlockNumber)> {
-        match (self.execution_tip, self.storage_history_tip) {
-            (Some(exec), Some(hist)) if exec > hist => Some((exec, hist)),
-            (Some(exec), None) => Some((exec, 0)),
-            _ => None,
-        }
-    }
-}
 
 /// Lowest blocks at which different parts of the state are available.
 /// They may be [Some] if pruning is enabled.

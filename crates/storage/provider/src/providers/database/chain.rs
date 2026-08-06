@@ -23,7 +23,7 @@ pub trait ChainStorage<Primitives: NodePrimitives>: Send + Sync {
 impl<N, T, H> ChainStorage<N> for EthStorage<T, H>
 where
     T: FullSignedTx,
-    H: FullBlockHeader + Into<alloy_consensus::Header> + From<alloy_consensus::Header>,
+    H: FullBlockHeader,
     N: NodePrimitives<
         Block = alloy_consensus::Block<T, H>,
         BlockHeader = H,
@@ -51,7 +51,7 @@ where
 impl<N, T, H> ChainStorage<N> for EmptyBodyStorage<T, H>
 where
     T: FullSignedTx,
-    H: FullBlockHeader + Into<alloy_consensus::Header> + From<alloy_consensus::Header>,
+    H: FullBlockHeader,
     N: NodePrimitives<
         Block = alloy_consensus::Block<T, H>,
         BlockHeader = H,

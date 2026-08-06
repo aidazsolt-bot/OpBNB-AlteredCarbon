@@ -33,7 +33,7 @@ macro_rules! delegate_provider_impls {
         $crate::macros::delegate_impls_to_as_ref!(
             for $target =>
             AccountReader $(where [$($generics)*])? {
-                fn basic_account(&self, address: &alloy_primitives::Address) -> reth_storage_api::errors::provider::ProviderResult<Option<reth_primitives::Account>>;
+                fn basic_account(&self, address: &alloy_primitives::Address) -> reth_storage_api::errors::provider::ProviderResult<Option<reth_primitives_traits::Account>>;
             }
             BlockHashReader $(where [$($generics)*])? {
                 fn block_hash(&self, number: u64) -> reth_storage_api::errors::provider::ProviderResult<Option<alloy_primitives::B256>>;

@@ -10,7 +10,7 @@ use alloy_primitives::{map::B256Map, BlockNumber, TxHash, B256};
 use parking_lot::RwLock;
 use reth_chainspec::ChainInfo;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_execution_types::{BlockExecutionOutput, Chain, ExecutionOutcome};
+use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome};
 use reth_metrics::{metrics::Gauge, Metrics};
 use reth_primitives_traits::{
     BlockBody as _, IndexedTx, NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader,
@@ -327,7 +327,7 @@ impl<N: NodePrimitives> CanonicalInMemoryState<N> {
         {
             if self.inner.in_memory_state.blocks.read().get(&persisted_num_hash.hash).is_none() {
                 // do nothing
-                return;
+                return
             }
         }
 
@@ -566,7 +566,7 @@ impl<N: NodePrimitives> CanonicalInMemoryState<N> {
             if let Some(tx) =
                 block_state.block_ref().recovered_block().body().transaction_by_hash(&hash)
             {
-                return Some(tx.clone());
+                return Some(tx.clone())
             }
         }
         None
@@ -766,9 +766,13 @@ impl<N: NodePrimitives> Default for ExecutedBlock<N> {
         Self {
             recovered_block: Default::default(),
             execution_output: Arc::new(BlockExecutionOutput {
+                result: BlockExecutionResult {
+                    receipts: Default::default(),
+                    requests: Default::default(),
+                    gas_used: 0,
+                    blob_gas_used: 0,
+                },
                 state: Default::default(),
-                result: Default::default(),
-                snapshot: None,
             }),
             trie_data: LazyTrieData::ready(ComputedTrieData::default()),
         }
@@ -778,8 +782,8 @@ impl<N: NodePrimitives> Default for ExecutedBlock<N> {
 impl<N: NodePrimitives> PartialEq for ExecutedBlock<N> {
     fn eq(&self, other: &Self) -> bool {
         // Trie data is computed asynchronously and doesn't define block identity.
-        self.recovered_block == other.recovered_block
-            && self.execution_output == other.execution_output
+        self.recovered_block == other.recovered_block &&
+            self.execution_output == other.execution_output
     }
 }
 

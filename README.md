@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/logo.png" alt="reth-bsc-trail" width="720">
-</p>
-
 # ‼️ Project Notice — Read Before Use ‼️
 
 This repository is an **independent, personal experiment**. It is **not affiliated with, endorsed by, or
@@ -16,28 +12,6 @@ client codebase — rebasing it onto a current upstream ([paradigmxyz/reth](http
 and porting forward protocol changes from an actively maintained downstream fork. It is a technology/process
 evaluation, not a production initiative.
 
-### Permitted use — private individuals only (non-commercial)
-
-**The results of this experiment** (this repository as packaged, including author-original port/docs/skills,
-effort logs, and any binaries or artifacts derived from this tree for the experiment) are made available
-**only for private natural persons** for personal, educational, or hobby use.
-
-**Not permitted** without a separate written license from the project author:
-
-- any **commercial** use (paid services, SaaS, consulting deliverables, product bundling, token/ops revenue, …);
-- any use **by or for companies / enterprises / organizations** (including internal R&D, staging, or production
-  infrastructure), whether or not money changes hands;
-- redistribution of this experimental packaging **for** commercial or organizational purposes.
-
-See **`NOTICE-PERSONAL-USE.md`** for the full additional terms and the relationship to upstream licenses.
-
-**Why not GPL / public domain for this restriction?** GPL, MIT, Apache-2.0, and public-domain dedications
-all **allow commercial use**. A non-commercial / private-individuals-only policy cannot honestly be expressed
-by relicensing the whole tree as GPL or “open domain.” Upstream Reth code remains under its existing
-**Apache-2.0 OR MIT** terms (`LICENSE-APACHE` / `LICENSE-MIT`); those rights are **not** revoked here. The
-additional personal-use terms apply to **this experiment’s packaging and author-original material** as stated
-in `NOTICE-PERSONAL-USE.md`. For production BSC/opBNB, use official maintained clients.
-
 **No warranty, no liability, use at your own risk.** This software is provided "AS IS", without warranty of
 any kind, express or implied, including but not limited to fitness for a particular purpose, merchantability,
 or non-infringement. The author(s) and contributors accept **no responsibility or liability whatsoever** for
@@ -46,12 +20,6 @@ misuse, or inability to use this software — whether run as a node, a library, 
 code has **not** been security-audited and should not be trusted with real funds or run against mainnet
 without independent review. If you need a supported client for BNB Smart Chain or opBNB, use one of the
 actively maintained official clients instead (see upstream project links further below).
-
-**DE (Kurzfassung):** Die Ergebnisse dieses Experiments stehen **nur Privatpersonen** für persönliche /
-nicht-kommerzielle Nutzung zur Verfügung. **Kommerzielle Nutzung und jeder Einsatz in/durch Unternehmen
-oder Organisationen sind nicht gestattet.** Details: `NOTICE-PERSONAL-USE.md`. Upstream-Reth bleibt
-Apache-2.0/MIT; GPL/Public Domain würden kommerzielle Nutzung erlauben und werden deshalb für diese
-Zusatzbeschränkung **nicht** verwendet.
 
 -------
 
@@ -172,13 +140,10 @@ export network=bsc
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs
+    --log.file.directory ./datadir/logs \
+    --enable-prefetch \
+    --optimize.enable-execution-cache
 ```
-
-New databases use storage V2 by default (`--storage.v2`; opt out with `--storage.v2=false`).
-Legacy BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` are **obsolete** on this
-v2.4.1 rebase — use engine prewarming/cache controls instead (e.g. `--engine.disable-prewarming` to
-opt out; see `bsc-reth node --help` under Engine).
 
 You can run `bsc-reth --help` for command explanations.
 
@@ -203,7 +168,9 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs
+    --log.file.directory /data/logs \
+    --enable-prefetch \
+    --optimize.enable-execution-cache
 ```
 
 ### Snapshots
@@ -301,14 +268,10 @@ export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
     --authrpc.jwtsecret=./jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs
+    --log.file.directory ./datadir/logs \
+    --enable-prefetch \
+    --optimize.enable-execution-cache
 ```
-
-Built-in chain names: `opbnb` / `opbnb-mainnet` (mainnet), `opbnb-testnet`, `opbnb-qa`
-(so `opbnb-${network}` with `network=mainnet|testnet` is correct).
-New databases default to storage V2 (`--storage.v2`; `--storage.v2=false` for legacy v1).
-Do **not** pass the old BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` — they are
-not wired on this rebase; use `--engine.*` prewarming/cache flags instead.
 
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be
 found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
@@ -343,7 +306,9 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
     --authrpc.jwtsecret=/jwt/jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs
+    --log.file.directory /data/logs \
+    --enable-prefetch \
+    --optimize.enable-execution-cache
 ```
 
 ## Contribution
@@ -371,88 +336,34 @@ changes from [bnb-chain/opbnb](https://github.com/bnb-chain/opbnb). The explicit
 far current-generation AI coding assistants can carry this class of work — not to produce a production-ready
 or officially supported client.
 
-**Availability:** experiment results are for **private individuals only** (personal / non-commercial).
-**Commercial use and any company/enterprise use are not permitted.** See the Project Notice and
-`NOTICE-PERSONAL-USE.md`. Upstream Reth remains Apache-2.0 OR MIT; this project does **not** relicense
-the tree as GPL or public domain (those allow commercial use and would not express the NC intent).
-
 ### Method
 
-Work was performed interactively with AI coding agents across multiple sessions — primarily
-**GitHub Copilot CLI** (session `a95758da`, 2026-08-06–07) and follow-on **Cursor Composer**
-sessions (2026-08-09–11) — using a mix of direct agent-driven edits and delegated background
-sub-agents supervising/verifying each other's changes (given the scale of the merge — 200+
-conflicting files across the initial rebase alone). Progress was checkpointed via small,
-incrementally verified git commits where possible, specifically to keep the change history
-auditable and revertible given the semi-autonomous nature of the work. Large mid-session compile
-loops may leave uncommitted working-tree diffs until explicitly reviewed (see `plan.md`).
-
-### Method finding: AI needs an explicit porting skill / approach hints
-
-A central result of this experiment: **generic AI coding agents were not able to perform a
-meaningful protocol port on their own.** They can drive large compile/fix loops and surface
-plausible diffs, but without **operator-supplied approach hints** (reference-first against
-`bnb-chain/op-geth`, stage-by-stage live verify, dual **`PORT-PIPE` + `PORT-FLOW`** matrices,
-Engine vs Pipeline vs Consensus vs Downloader layering) they repeatedly stop at “builds green”
-or chase the wrong layer (e.g. Eth second-resolution timestamps, tip-chase instead of backfill,
-Cap/Falling stalls treated as “live follow-ups” instead of missing dataflow analysis).
-
-Those hints were therefore given explicitly during live-sync debugging (Session 10). From that
-procedure the agent was instructed to author a reusable Cursor skill; Session 10 cont. then
-hardened `plan.md` with a mandatory **Migrations-Gate** (PIPE = consensus rule, FLOW = state
-machine / wire / persistence) so Bodies/Execution cannot repeat the Headers dataflow gap:
-
-- **`.cursor/skills/reth-opbnb-port/SKILL.md`** — *Reth / opBNB Portierungs-Spezialist*
-- **`.cursor/skills/rust-best-practices/SKILL.md`** — *Experienced Rust / best practices*
-- **`.cursor/rules/reth-opbnb-port-mandatory.mdc`** — `alwaysApply: true` (load both skills first every session)
-- **`.cursor/hooks.json`** `sessionStart` — injects both skills into agent context
-
-Subsequent port/sync work on this fork **must** load both skills at session start (rule + hook enforce it)
-and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) instead of unaided vibecoding.
+Work was performed interactively with an AI coding agent (GitHub Copilot CLI) across multiple sessions,
+using a mix of direct agent-driven edits and delegated background sub-agents supervising/verifying each
+other's changes (given the scale of the merge — 200+ conflicting files across the initial rebase alone).
+Progress was checkpointed via small, incrementally verified git commits rather than large unreviewed
+batches, specifically to keep the change history auditable and revertible given the semi-autonomous
+nature of the work.
 
 ### Effort log (approximate, based on available session telemetry)
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: calendar **~88 h** 08-12→16, interactive clusters **~4.5 h** early + **~4 h** 08-15 evening / 08-16 morning) |
-| LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
-| LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
-| LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
-| LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); ~250 tool_use in resume transcript |
-| LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **P2P-003/004/005** + **Migrations-Gate PIPE+FLOW** |
-| LLM models used (Cursor Session 12, chat `ea987bef…`) | Parent Auto/Composer (+ occasional Task); **84** user / **367** assistant; **567** tool_use |
-| Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
-| Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
-| Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
-| Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
-| Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
-| Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
-| Cursor Session 12 activity (EXEC-001 → UPnP / past Fail / X02 / A02) | Snapshot **08-16:** Transcript **~1.58 MB** → proxy **~396K tokens** (filesize÷4); calendar **~88 h**; interactive **~4.5 h** early + **~4 h** 08-15 evening/08-16 morning; billed **n/a** — `files/cursor-session12-metrics.json` + `…-20260816.json` |
-| Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
-| Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API. |
-| Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
-| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003/004/005** (reachable tip + Cap idempotent + Falling-Prime — Downloader-Dataflow, not live follow-ups): Falling from peer head ~173.37M @ ~22k hdr/s. Checkpoint 0 until ETL write (Upstream TempDir). |
-| Live sync progress (2026-08-12 ~17:03 CEST) | Headers+Bodies+**Sender** = Tip **173 369 140**. **Execution ~10 M (~5.8 %)**, Fermat **`9397477` Point4 MATCH** (IPC). Block-ETA ~**24–25 h** (entities-lag → 2–4 d). CL Tip ~173.7 M (op-node Tip-Feed; L1-re-org warns = Dataseed noise). Next: Haber / FLOW-X02. Details: `plan.md` § Live Sync Progress. |
-| Live sync + Session 12 (2026-08-13 ~16:00 CEST, chat `ea987bef…`) | **PORT-EXEC-001** receipt-root @ **`21591154`** → Unwind FLOW-X05 → Headers Tip **~174.0 M** again; Bodies rebuild. Harness + `re-execute --dump-receipts-on-fail`; maxperf rebuild-only `target/maxperf/op-reth` (~22 min). **Ops:** Exec ≤`21591153` then offline FLOW-X04. Upstream: stay on **2.4.1** (bnb/op not on 2.5). |
-| Live sync Session 12 cont. (2026-08-14 ~13:35 CEST) | **2. Fail** same `21591154` (~5 min Exec). Cap: **`--debug.max-block`** (+`terminate`); `skip-fcu`≠block stop. Journal via machine journal path. MerkleExecute @ `21579110`. |
-| Live sync Session 12 cont. (2026-08-14 ~18:01 CEST) | Dirty Cap → Merkle fail @`21579110` → unwind_to=0; Kill rettet Headers Tip **174 M**. Reload/Stop Panic `SelectNextSome` (ENGINE-004 parked). Bodies clean **0→21579110**. **Ops:** Process-Stop ≫ max-block; Cap only if checkpoints ≤ H (OPS-001). |
-| Live sync Session 12 cont. (2026-08-14 ~21:26 CEST) | Bodies+Sender Cap ✅; Exec ~**6.5 M**→`21579110`. Point4 via IPC `/tmp/<archive-ct>.ipc` MATCH (no HTTP without `--http`). PORT-OPS-001/ENGINE-004 in `plan.md`. |
-| Live sync Session 12 cont. (2026-08-15 ~10:54 CEST) | Offline X04 + SF-Gap + **Effort-Metriken**: Bodies/Sender→`21591154`; SF tip `20365614`≠Cap; Exec→`21591153`; CLI half-open `54..55`. Agent: **~4.5–6 h** interactive / proxy **~72K–216K** tok; `files/cursor-session12-metrics.json`. |
-| Live sync Session 12 cont. (2026-08-15 ~11:47 CEST) | Docs: op-geth `ValidateState` (receipt+state eager) vs Reth Execution+MerkleExecute staged; `21591154` = receipt content (PIPE-014), not state-root formula. |
-| Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics: `files/cursor-session12-metrics-20260816.json`. |
-| Commits | See `git log` on `rebase/reth-v2.4.1` |
-| Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9), **`files/cursor-session12-metrics.json`** + **`files/cursor-session12-metrics-20260816.json`** |
-| Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install **`dist/bin/op-reth-bnb`** (avoids overwriting a generic `op-reth` on PATH); default CLI chain `opbnb` |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days |
+| LLM models used | Claude Sonnet 5 (primary), GPT-5.4 (secondary/delegated sub-agent work) |
+| Approx. input tokens consumed (latest session alone) | ~58.7M (Claude Sonnet 5) + ~38.5M (GPT-5.4) |
+| Approx. output tokens generated (latest session alone) | ~231K (Claude Sonnet 5) + ~78K (GPT-5.4) |
+| Approx. tool/agent turns (latest session alone) | ~800 |
+| Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch for the full, itemized commit history and messages, which double as a technical changelog of what was ported, what was fixed, and why |
 
-These figures are session telemetry snapshots and are illustrative of the scale of context/inference
-required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
-consumption (see historical rows in `plan.md`). They are provided for transparency about the practical
-cost of AI-assisted maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency
-optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
-figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
+These figures cover the most recent working session and are illustrative of the scale of context/inference
+required for this kind of large structural migration; total cumulative consumption across all sessions in
+this effort is higher. They are provided for transparency about the practical cost of AI-assisted
+maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency optimization was
+attempted.
 
-> **TODO:** After human catch-up/full sync validation on BSC/opBNB, refresh final cumulative token/time
-> figures (replace Cursor proxies with account billing export if available) and live-test outcome.
+> **TODO:** Update this effort log once the port has been validated against live BSC/opBNB testnet (or
+> mainnet) sync, including final cumulative token/time figures and the outcome of live testing.
 
 ### Side-evaluation: `kona-node` as an alternative to `op-node` for opBNB
 

@@ -110,8 +110,8 @@ impl DiskFileBlobStore {
             {
                 // this is safe because the result vec has the same len
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -169,7 +169,7 @@ impl DiskFileBlobStore {
             }
 
             if missing_count == 0 && result.iter().all(Option::is_some) {
-                return Ok(result);
+                return Ok(result)
             }
         }
 
@@ -181,8 +181,8 @@ impl DiskFileBlobStore {
                 result.iter().enumerate().filter(|(_, cells_and_proofs)| cells_and_proofs.is_none())
             {
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -219,7 +219,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<(B256, BlobTransactionSidecarVariant)>,
     ) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(());
+            return Ok(())
         }
         self.inner.insert_many(txs)
     }
@@ -233,7 +233,7 @@ impl BlobStore for DiskFileBlobStore {
 
     fn delete_all(&self, txs: Vec<B256>) -> Result<(), BlobStoreError> {
         if txs.is_empty() {
-            return Ok(());
+            return Ok(())
         }
         let txs = self.inner.retain_existing(txs)?;
         self.inner.txs_to_delete.write().extend(txs);
@@ -282,7 +282,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<B256>,
     ) -> Result<Vec<(B256, Arc<BlobTransactionSidecarVariant>)>, BlobStoreError> {
         if txs.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
         self.inner.get_all(txs)
     }
@@ -292,7 +292,7 @@ impl BlobStore for DiskFileBlobStore {
         txs: Vec<B256>,
     ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if txs.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
         self.inner.get_exact(txs)
     }
@@ -332,8 +332,8 @@ impl BlobStore for DiskFileBlobStore {
             {
                 // this is safe because the result vec has the same len
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -400,7 +400,7 @@ impl BlobStore for DiskFileBlobStore {
             }
 
             if result.iter().all(|available| *available) {
-                return Ok(result);
+                return Ok(result)
             }
         }
 
@@ -408,8 +408,8 @@ impl BlobStore for DiskFileBlobStore {
         {
             let mut versioned_to_txhashes = self.inner.versioned_hashes_to_txhash.lock();
             for (idx, requested_hash) in versioned_hashes.iter().enumerate() {
-                if !result[idx]
-                    && let Some(tx_hash) = versioned_to_txhashes.get(requested_hash).copied()
+                if !result[idx] &&
+                    let Some(tx_hash) = versioned_to_txhashes.get(requested_hash).copied()
                 {
                     missing_tx_hashes.push((idx, tx_hash));
                 }
@@ -582,7 +582,7 @@ impl DiskFileBlobStoreInner {
     /// Returns true if the blob for the given transaction hash is in the blob cache or on disk.
     fn contains(&self, tx: B256) -> Result<bool, BlobStoreError> {
         if self.blob_cache.lock().get(&tx).is_some() {
-            return Ok(true);
+            return Ok(true)
         }
         // we only check if the file exists and assume it's valid
         Ok(self.blob_disk_file(tx).is_file())
@@ -611,13 +611,13 @@ impl DiskFileBlobStoreInner {
         tx: B256,
     ) -> Result<Option<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
         if let Some(blob) = self.blob_cache.lock().get(&tx) {
-            return Ok(Some(blob.clone()));
+            return Ok(Some(blob.clone()))
         }
 
         if let Some(blob) = self.read_one(tx)? {
             let blob_arc = Arc::new(blob);
             self.blob_cache.lock().insert(tx, blob_arc.clone());
-            return Ok(Some(blob_arc));
+            return Ok(Some(blob_arc))
         }
 
         Ok(None)
@@ -724,11 +724,11 @@ impl DiskFileBlobStoreInner {
             }
         }
         if cache_miss.is_empty() {
-            return Ok(res);
+            return Ok(res)
         }
         let from_disk = self.read_many_decoded(cache_miss);
         if from_disk.is_empty() {
-            return Ok(res);
+            return Ok(res)
         }
         let from_disk = from_disk
             .into_iter()

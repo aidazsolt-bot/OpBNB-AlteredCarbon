@@ -15,7 +15,7 @@ workspace = true
 reth-ethereum-engine-primitives = { workspace = true, features = ["std"] }
 reth-ethereum-payload-builder.workspace = true
 reth-ethereum-consensus.workspace = true
-reth-ethereum-primitives = { workspace = true, features = ["reth-codec", "serde-bincode-compat"] }
+reth-ethereum-primitives.workspace = true
 ## ensure secp256k1 recovery with rayon support is activated
 reth-primitives-traits = { workspace = true, features = ["secp256k1", "rayon"] }
 reth-node-builder.workspace = true
@@ -53,6 +53,9 @@ tokio = { workspace = true, features = ["sync"] }
 # revm with required ethereum features
 # Note: this must be kept to ensure all features are properly enabled/forwarded
 revm = { workspace = true, features = ["secp256k1", "blst", "c-kzg", "memory_limit", "p256-aws-lc-rs"] }
+
+# bsc
+reth-bsc-consensus.workspace = true
 
 # misc
 eyre.workspace = true

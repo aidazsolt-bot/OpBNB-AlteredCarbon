@@ -1,19 +1,17 @@
 //! Handler that can download blocks on demand (e.g. from the network).
 
 use crate::{engine::DownloadRequest, metrics::BlockDownloaderMetrics};
-use alloy_consensus::BlockHeader;
-use alloy_primitives::{map::B256Set, B256};
+use alloy_primitives::B256;
 use futures::FutureExt;
 use reth_consensus::Consensus;
 use reth_network_p2p::{
     full_block::{FetchFullBlockFuture, FetchFullBlockRangeFuture, FullBlockClient},
     BlockClient,
 };
-use reth_primitives_traits::{Block, SealedBlock};
+use reth_primitives::{SealedBlock, SealedBlockWithSenders};
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{binary_heap::PeekMut, BinaryHeap},
-    fmt::Debug,
+    collections::{binary_heap::PeekMut, BinaryHeap, HashSet, VecDeque},
     sync::Arc,
     task::{Context, Poll},
 };
@@ -21,14 +19,11 @@ use tracing::trace;
 
 /// A trait that can download blocks on demand.
 pub trait BlockDownloader: Send + Sync {
-    /// Type of the block being downloaded.
-    type Block: Block;
-
     /// Handle an action.
     fn on_action(&mut self, action: DownloadAction);
 
     /// Advance in progress requests if any
-    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<DownloadOutcome<Self::Block>>;
+    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<DownloadOutcome>;
 }
 
 /// Actions that can be performed by the block downloader.
@@ -42,14 +37,21 @@ pub enum DownloadAction {
 
 /// Outcome of downloaded blocks.
 #[derive(Debug)]
-pub enum DownloadOutcome<B: Block> {
+pub enum DownloadOutcome {
     /// Downloaded blocks.
-    Blocks(Vec<SealedBlock<B>>),
+    Blocks(Vec<SealedBlockWithSenders>),
+    /// New download started.
+    NewDownloadStarted {
+        /// How many blocks are pending in this download.
+        remaining_blocks: u64,
+        /// The hash of the highest block of this download.
+        target: B256,
+    },
 }
 
 /// Basic [`BlockDownloader`].
-#[expect(missing_debug_implementations)]
-pub struct BasicBlockDownloader<Client, B: Block>
+#[allow(missing_debug_implementations)]
+pub struct BasicBlockDownloader<Client>
 where
     Client: BlockClient + 'static,
 {
@@ -61,24 +63,26 @@ where
     inflight_block_range_requests: Vec<FetchFullBlockRangeFuture<Client>>,
     /// Buffered blocks from downloads - this is a min-heap of blocks, using the block number for
     /// ordering. This means the blocks will be popped from the heap with ascending block numbers.
-    set_buffered_blocks: BinaryHeap<Reverse<OrderedSealedBlock<B>>>,
+    set_buffered_blocks: BinaryHeap<Reverse<OrderedSealedBlockWithSenders>>,
     /// Engine download metrics.
     metrics: BlockDownloaderMetrics,
+    /// Pending events to be emitted.
+    pending_events: VecDeque<DownloadOutcome>,
 }
 
-impl<Client, B> BasicBlockDownloader<Client, B>
+impl<Client> BasicBlockDownloader<Client>
 where
-    Client: BlockClient<Block = B> + 'static,
-    B: Block,
+    Client: BlockClient + 'static,
 {
     /// Create a new instance
-    pub fn new(client: Client, consensus: Arc<dyn Consensus<B>>) -> Self {
+    pub fn new(client: Client, consensus: Arc<dyn Consensus>) -> Self {
         Self {
             full_block_client: FullBlockClient::new(client, consensus),
             inflight_full_block_requests: Vec::new(),
             inflight_block_range_requests: Vec::new(),
             set_buffered_blocks: BinaryHeap::new(),
             metrics: BlockDownloaderMetrics::default(),
+            pending_events: Default::default(),
         }
     }
 
@@ -99,7 +103,7 @@ where
     }
 
     /// Processes a block set download request.
-    fn download_block_set(&mut self, hashes: B256Set) {
+    fn download_block_set(&mut self, hashes: HashSet<B256>) {
         for hash in hashes {
             self.download_full_block(hash);
         }
@@ -111,16 +115,18 @@ where
             self.download_full_block(hash);
         } else {
             trace!(
-                target: "engine::download",
+                target: "consensus::engine",
                 ?hash,
                 ?count,
                 "start downloading full block range."
             );
 
             let request = self.full_block_client.get_full_block_range(hash, count);
+            self.push_pending_event(DownloadOutcome::NewDownloadStarted {
+                remaining_blocks: request.count(),
+                target: request.start_hash(),
+            });
             self.inflight_block_range_requests.push(request);
-
-            self.update_block_download_metrics();
         }
     }
 
@@ -132,9 +138,13 @@ where
         if self.is_inflight_request(hash) {
             return false
         }
+        self.push_pending_event(DownloadOutcome::NewDownloadStarted {
+            remaining_blocks: 1,
+            target: hash,
+        });
 
         trace!(
-            target: "engine::download",
+            target: "consensus::engine::sync",
             ?hash,
             "Start downloading full block"
         );
@@ -158,15 +168,22 @@ where
             self.inflight_block_range_requests.iter().map(|r| r.count() as usize).sum::<usize>();
         self.metrics.active_block_downloads.set(blocks as f64);
     }
+
+    /// Adds a pending event to the FIFO queue.
+    fn push_pending_event(&mut self, pending_event: DownloadOutcome) {
+        self.pending_events.push_back(pending_event);
+    }
+
+    /// Removes a pending event from the FIFO queue.
+    fn pop_pending_event(&mut self) -> Option<DownloadOutcome> {
+        self.pending_events.pop_front()
+    }
 }
 
-impl<Client, B> BlockDownloader for BasicBlockDownloader<Client, B>
+impl<Client> BlockDownloader for BasicBlockDownloader<Client>
 where
-    Client: BlockClient<Block = B>,
-    B: Block,
+    Client: BlockClient + 'static,
 {
-    type Block = B;
-
     /// Handles incoming download actions.
     fn on_action(&mut self, action: DownloadAction) {
         match action {
@@ -176,12 +193,16 @@ where
     }
 
     /// Advances the download process.
-    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<DownloadOutcome<B>> {
+    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<DownloadOutcome> {
+        if let Some(pending_event) = self.pop_pending_event() {
+            return Poll::Ready(pending_event);
+        }
+
         // advance all full block requests
         for idx in (0..self.inflight_full_block_requests.len()).rev() {
             let mut request = self.inflight_full_block_requests.swap_remove(idx);
             if let Poll::Ready(block) = request.poll_unpin(cx) {
-                trace!(target: "engine::download", block=?block.num_hash(), "Received single full block, buffering");
+                trace!(target: "consensus::engine", block=?block.num_hash(), "Received single full block, buffering");
                 self.set_buffered_blocks.push(Reverse(block.into()));
             } else {
                 // still pending
@@ -193,9 +214,19 @@ where
         for idx in (0..self.inflight_block_range_requests.len()).rev() {
             let mut request = self.inflight_block_range_requests.swap_remove(idx);
             if let Poll::Ready(blocks) = request.poll_unpin(cx) {
-                trace!(target: "engine::download", len=?blocks.len(), first=?blocks.first().map(|b| b.num_hash()), last=?blocks.last().map(|b| b.num_hash()), "Received full block range, buffering");
-                self.set_buffered_blocks
-                    .extend(blocks.into_iter().map(OrderedSealedBlock).map(Reverse));
+                trace!(target: "consensus::engine", len=?blocks.len(), first=?blocks.first().map(|b| b.num_hash()), last=?blocks.last().map(|b| b.num_hash()), "Received full block range, buffering");
+                self.set_buffered_blocks.extend(
+                    blocks
+                        .into_iter()
+                        .map(|b| {
+                            let senders = b.senders().unwrap_or_default();
+                            OrderedSealedBlockWithSenders(SealedBlockWithSenders {
+                                block: b,
+                                senders,
+                            })
+                        })
+                        .map(Reverse),
+                );
             } else {
                 // still pending
                 self.inflight_block_range_requests.push(request);
@@ -209,7 +240,8 @@ where
         }
 
         // drain all unique element of the block buffer if there are any
-        let mut downloaded_blocks = Vec::with_capacity(self.set_buffered_blocks.len());
+        let mut downloaded_blocks: Vec<SealedBlockWithSenders> =
+            Vec::with_capacity(self.set_buffered_blocks.len());
         while let Some(block) = self.set_buffered_blocks.pop() {
             // peek ahead and pop duplicates
             while let Some(peek) = self.set_buffered_blocks.peek_mut() {
@@ -225,46 +257,46 @@ where
     }
 }
 
-/// A wrapper type around [`SealedBlock`] that implements the [Ord]
+/// A wrapper type around [`SealedBlockWithSenders`] that implements the [Ord]
 /// trait by block number.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct OrderedSealedBlock<B: Block>(SealedBlock<B>);
+struct OrderedSealedBlockWithSenders(SealedBlockWithSenders);
 
-impl<B: Block> PartialOrd for OrderedSealedBlock<B> {
+impl PartialOrd for OrderedSealedBlockWithSenders {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<B: Block> Ord for OrderedSealedBlock<B> {
+impl Ord for OrderedSealedBlockWithSenders {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.number().cmp(&other.0.number())
+        self.0.number.cmp(&other.0.number)
     }
 }
 
-impl<B: Block> From<SealedBlock<B>> for OrderedSealedBlock<B> {
-    fn from(block: SealedBlock<B>) -> Self {
-        Self(block)
+impl From<SealedBlock> for OrderedSealedBlockWithSenders {
+    fn from(block: SealedBlock) -> Self {
+        let senders = block.senders().unwrap_or_default();
+        Self(SealedBlockWithSenders { block, senders })
     }
 }
 
-impl<B: Block> From<OrderedSealedBlock<B>> for SealedBlock<B> {
-    fn from(value: OrderedSealedBlock<B>) -> Self {
-        value.0
+impl From<OrderedSealedBlockWithSenders> for SealedBlockWithSenders {
+    fn from(value: OrderedSealedBlockWithSenders) -> Self {
+        let senders = value.0.senders;
+        Self { block: value.0.block, senders }
     }
 }
 
 /// A [`BlockDownloader`] that does nothing.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct NoopBlockDownloader<B>(core::marker::PhantomData<B>);
+pub struct NoopBlockDownloader;
 
-impl<B: Block> BlockDownloader for NoopBlockDownloader<B> {
-    type Block = B;
-
+impl BlockDownloader for NoopBlockDownloader {
     fn on_action(&mut self, _event: DownloadAction) {}
 
-    fn poll(&mut self, _cx: &mut Context<'_>) -> Poll<DownloadOutcome<B>> {
+    fn poll(&mut self, _cx: &mut Context<'_>) -> Poll<DownloadOutcome> {
         Poll::Pending
     }
 }
@@ -273,18 +305,17 @@ impl<B: Block> BlockDownloader for NoopBlockDownloader<B> {
 mod tests {
     use super::*;
     use crate::test_utils::insert_headers_into_client;
-    use alloy_consensus::Header;
-    use alloy_eips::eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M;
+    use alloy_primitives::Sealable;
     use assert_matches::assert_matches;
+    #[cfg(not(feature = "bsc"))]
+    use reth_beacon_consensus::EthBeaconConsensus;
     use reth_chainspec::{ChainSpecBuilder, MAINNET};
-    use reth_ethereum_consensus::EthBeaconConsensus;
     use reth_network_p2p::test_utils::TestFullBlockClient;
-    use reth_primitives_traits::SealedHeader;
+    use reth_primitives::{Header, SealedHeader};
     use std::{future::poll_fn, sync::Arc};
 
     struct TestHarness {
-        block_downloader:
-            BasicBlockDownloader<TestFullBlockClient, reth_ethereum_primitives::Block>,
+        block_downloader: BasicBlockDownloader<TestFullBlockClient>,
         client: TestFullBlockClient,
     }
 
@@ -299,14 +330,20 @@ mod tests {
             );
 
             let client = TestFullBlockClient::default();
-            let header = Header {
+            let sealed = Header {
                 base_fee_per_gas: Some(7),
-                gas_limit: ETHEREUM_BLOCK_GAS_LIMIT_30M,
+                gas_limit: chain_spec.max_gas_limit,
                 ..Default::default()
-            };
-            let header = SealedHeader::seal_slow(header);
+            }
+            .seal_slow();
+            let (header, seal) = sealed.into_parts();
+            let header = SealedHeader::new(header, seal);
 
             insert_headers_into_client(&client, header, 0..total_blocks);
+
+            #[cfg(feature = "bsc")]
+            let consensus = Arc::new(reth_consensus::test_utils::TestConsensus::default());
+            #[cfg(not(feature = "bsc"))]
             let consensus = Arc::new(EthBeaconConsensus::new(chain_spec));
 
             let block_downloader = BasicBlockDownloader::new(client.clone(), consensus);
@@ -334,7 +371,14 @@ mod tests {
         assert_eq!(first_req.start_hash(), tip.hash());
         assert_eq!(first_req.count(), tip.number);
 
-        // poll downloader — range completes into Blocks (no intermediate NewDownloadStarted)
+        // poll downloader
+        let sync_future = poll_fn(|cx| block_downloader.poll(cx));
+        let next_ready = sync_future.await;
+
+        assert_matches!(next_ready, DownloadOutcome::NewDownloadStarted { remaining_blocks, .. } => {
+            assert_eq!(remaining_blocks, TOTAL_BLOCKS as u64);
+        });
+
         let sync_future = poll_fn(|cx| block_downloader.poll(cx));
         let next_ready = sync_future.await;
 
@@ -344,7 +388,7 @@ mod tests {
 
             // ensure they are in ascending order
             for num in 1..=TOTAL_BLOCKS {
-                assert_eq!(blocks[num-1].number(), num as u64);
+                assert_eq!(blocks[num-1].number, num as u64);
             }
         });
     }
@@ -358,13 +402,22 @@ mod tests {
 
         // send block set download request
         block_downloader.on_action(DownloadAction::Download(DownloadRequest::BlockSet(
-            B256Set::from_iter([tip.hash(), tip.parent_hash]),
+            HashSet::from([tip.hash(), tip.parent_hash]),
         )));
 
         // ensure we have TOTAL_BLOCKS in flight full block request
         assert_eq!(block_downloader.inflight_full_block_requests.len(), TOTAL_BLOCKS);
 
-        // poll downloader — full blocks complete into Blocks
+        // poll downloader
+        for _ in 0..TOTAL_BLOCKS {
+            let sync_future = poll_fn(|cx| block_downloader.poll(cx));
+            let next_ready = sync_future.await;
+
+            assert_matches!(next_ready, DownloadOutcome::NewDownloadStarted { remaining_blocks, .. } => {
+                assert_eq!(remaining_blocks, 1);
+            });
+        }
+
         let sync_future = poll_fn(|cx| block_downloader.poll(cx));
         let next_ready = sync_future.await;
         assert_matches!(next_ready, DownloadOutcome::Blocks(blocks) => {
@@ -373,7 +426,7 @@ mod tests {
 
             // ensure they are in ascending order
             for num in 1..=TOTAL_BLOCKS {
-                assert_eq!(blocks[num-1].number(), num as u64);
+                assert_eq!(blocks[num-1].number, num as u64);
             }
         });
     }
@@ -392,7 +445,7 @@ mod tests {
         )));
 
         // send block set download request
-        let download_set = B256Set::from_iter([tip.hash(), tip.parent_hash]);
+        let download_set = HashSet::from([tip.hash(), tip.parent_hash]);
         block_downloader
             .on_action(DownloadAction::Download(DownloadRequest::BlockSet(download_set.clone())));
 

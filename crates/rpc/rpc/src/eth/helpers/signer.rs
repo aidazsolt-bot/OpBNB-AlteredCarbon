@@ -2,19 +2,18 @@
 
 use alloy_dyn_abi::TypedData;
 use alloy_eips::eip2718::Decodable2718;
-use alloy_primitives::{eip191_hash_message, Address, Signature, B256};
+use alloy_primitives::{eip191_hash_message, map::AddressMap, Address, Signature, B256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::{coins_bip39::English, MnemonicBuilder, PrivateKeySigner};
 use reth_rpc_convert::SignableTxRequest;
 use reth_rpc_eth_api::helpers::{signer::Result, EthSigner};
 use reth_rpc_eth_types::SignError;
-use std::collections::HashMap;
 
 /// Holds developer keys
 #[derive(Debug, Clone)]
 pub struct DevSigner {
     addresses: Vec<Address>,
-    accounts: HashMap<Address, PrivateKeySigner>,
+    accounts: AddressMap<PrivateKeySigner>,
 }
 
 impl DevSigner {
@@ -30,7 +29,7 @@ impl DevSigner {
             let address = sk.address();
             let addresses = vec![address];
 
-            let accounts = HashMap::from([(address, sk)]);
+            let accounts = AddressMap::from_iter([(address, sk)]);
             signers.push(Box::new(Self { addresses, accounts }) as Box<dyn EthSigner<T, TxReq>>);
         }
         signers
@@ -54,7 +53,7 @@ impl DevSigner {
 
             let address = sk.address();
             let addresses = vec![address];
-            let accounts = HashMap::from([(address, sk)]);
+            let accounts = AddressMap::from_iter([(address, sk)]);
 
             signers.push(Box::new(Self { addresses, accounts }) as Box<dyn EthSigner<T, TxReq>>);
         }
@@ -112,16 +111,15 @@ impl<T: Decodable2718, TxReq: SignableTxRequest<T>> EthSigner<T, TxReq> for DevS
 mod tests {
     use super::*;
     use alloy_consensus::Transaction;
-    use alloy_primitives::{Bytes, U256};
+    use alloy_primitives::{Bytes, TxKind, U256};
     use alloy_rpc_types_eth::{TransactionInput, TransactionRequest};
     use reth_ethereum_primitives::TransactionSigned;
-    use revm_primitives::TxKind;
 
     fn build_signer() -> DevSigner {
         let signer: PrivateKeySigner =
             "4646464646464646464646464646464646464646464646464646464646464646".parse().unwrap();
         let address = signer.address();
-        let accounts = HashMap::from([(address, signer)]);
+        let accounts = AddressMap::from_iter([(address, signer)]);
         let addresses = vec![address];
         DevSigner { addresses, accounts }
     }

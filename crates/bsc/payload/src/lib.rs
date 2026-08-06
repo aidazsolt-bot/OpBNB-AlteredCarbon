@@ -8,12 +8,6 @@
 #![cfg(feature = "bsc")]
 
 pub mod builder;
-pub use builder::{default_bsc_payload, BscPayloadBuilder};
-
-mod config;
-pub use config::BscBuilderConfig;
-
+pub use builder::BscPayloadBuilder;
 pub mod payload;
-pub use payload::{
-    BscBuiltPayload, BscBuiltPayloadConversionError, BscPayloadBuilderAttributes,
-};
+pub use payload::{BscBuiltPayload, BscPayloadBuilderAttributes};

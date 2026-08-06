@@ -14,19 +14,15 @@ workspace = true
 [dependencies]
 reth-codecs.workspace = true
 
-alloy-consensus = { workspace = true, features = ["serde", "k256"] }
+alloy-consensus = { workspace = true, features = ["serde"] }
 alloy-eips.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
-alloy-rpc-types-eth = { workspace = true, optional = true }
 alloy-trie.workspace = true
 
 revm = { workspace = true, features = ["serde"] }
 alloy-evm.workspace = true
-
-# op (optional)
-op-alloy-consensus = { workspace = true, optional = true, features = ["k256"] }
 
 # misc
 byteorder = "1"
@@ -68,12 +64,7 @@ std = [
 	"alloy-trie/std",
 	"revm/std",
 	"serde/std",
-	"bytes/std",
-	"op-alloy-consensus?/std",
-]
-op = [
-	"dep:op-alloy-consensus",
-	"op-alloy-consensus/serde",
+	"bytes/std"
 ]
 test-utils = [
 	"arbitrary",
@@ -93,19 +84,16 @@ arbitrary = [
 serde-bincode-compat = [
 	"serde_with",
 	"alloy-consensus/serde-bincode-compat",
-	"alloy-eips/serde-bincode-compat",
-	"op-alloy-consensus?/serde-bincode-compat",
+	"alloy-eips/serde-bincode-compat"
 ]
 bsc = []
 secp256k1 = [
-    "alloy-consensus/secp256k1",
-    "revm/secp256k1",
+    "revm/secp256k1"
 ]
 rayon = []
 quanta = []
 serde = []
 reth-codec = [
-    "reth-codecs/alloy",
-    "op-alloy-consensus?/reth-codec",
+    "reth-codecs/alloy"
 ]
-rpc-compat = ["alloy-rpc-types-eth"]
+rpc-compat = []

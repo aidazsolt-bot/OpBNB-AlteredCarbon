@@ -18,18 +18,21 @@ use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
 mod hashing_storage;
-use hashing_storage::dump_hashing_storage_stage;
+pub use hashing_storage::dump_hashing_storage_stage;
 
 mod hashing_account;
-use hashing_account::dump_hashing_account_stage;
+pub use hashing_account::dump_hashing_account_stage;
 
 mod execution;
-use execution::dump_execution_stage;
+pub use execution::dump_execution_stage;
 
 mod merkle;
-use merkle::dump_merkle_stage;
+pub use merkle::dump_merkle_stage;
 
-/// `reth dump-stage` command
+/// `reth dump-stage` command.
+///
+/// Note: mutates the source datadir (unwinds hashing/merkle/execution before copying tables).
+/// Stop the node and back up the datadir first.
 #[derive(Debug, Parser)]
 pub struct Command<C: ChainSpecParser> {
     #[command(flatten)]
@@ -57,45 +60,53 @@ pub enum Stages {
 pub struct StageCommand {
     /// The path to the new datadir folder.
     #[arg(long, value_name = "OUTPUT_PATH", verbatim_doc_comment)]
-    output_datadir: PlatformPath<DataDirPath>,
+    pub output_datadir: PlatformPath<DataDirPath>,
 
     /// From which block.
     #[arg(long, short)]
-    from: u64,
+    pub from: u64,
     /// To which block.
     #[arg(long, short)]
-    to: u64,
+    pub to: u64,
     /// If passed, it will dry-run a stage execution from the newly created database right after
     /// dumping.
     #[arg(long, short, default_value = "false")]
-    dry_run: bool,
+    pub dry_run: bool,
 }
 
+#[macro_export]
 macro_rules! handle_stage {
-    ($stage_fn:ident, $tool:expr, $command:expr) => {{
+    ($stage_fn:ident, $tool:expr, $command:expr, $runtime:expr) => {{
         let StageCommand { output_datadir, from, to, dry_run, .. } = $command;
         let output_datadir =
             output_datadir.with_chain($tool.chain().chain(), DatadirArgs::default());
-        $stage_fn($tool, *from, *to, output_datadir, *dry_run).await?
+        $stage_fn($tool, *from, *to, output_datadir, *dry_run, $runtime).await?
     }};
 
-    ($stage_fn:ident, $tool:expr, $command:expr, $executor:expr, $consensus:expr) => {{
+    ($stage_fn:ident, $tool:expr, $command:expr, $executor:expr, $consensus:expr, $runtime:expr) => {{
         let StageCommand { output_datadir, from, to, dry_run, .. } = $command;
         let output_datadir =
             output_datadir.with_chain($tool.chain().chain(), DatadirArgs::default());
-        $stage_fn($tool, *from, *to, output_datadir, *dry_run, $executor, $consensus).await?
+        $stage_fn($tool, *from, *to, output_datadir, *dry_run, $executor, $consensus, $runtime)
+            .await?
     }};
 }
 
 impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C> {
     /// Execute `dump-stage` command
-    pub async fn execute<N, Comp, F>(self, components: F) -> eyre::Result<()>
+    pub async fn execute<N, Comp, F>(
+        self,
+        components: F,
+        runtime: reth_tasks::Runtime,
+    ) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
         Comp: CliNodeComponents<N>,
         F: FnOnce(Arc<C::ChainSpec>) -> Comp,
     {
-        let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
+        // `unwind_and_copy` opens a RW provider on the source datadir, so open RW here.
+        let Environment { provider_factory, .. } =
+            self.env.init::<N>(AccessRights::RW, runtime.clone())?;
         let tool = DbTool::new(provider_factory)?;
         let components = components(tool.chain());
         let evm_config = components.evm_config().clone();
@@ -103,12 +114,23 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
 
         match &self.command {
             Stages::Execution(cmd) => {
-                handle_stage!(dump_execution_stage, &tool, cmd, evm_config, consensus)
+                handle_stage!(
+                    dump_execution_stage,
+                    &tool,
+                    cmd,
+                    evm_config,
+                    consensus,
+                    runtime.clone()
+                )
             }
-            Stages::StorageHashing(cmd) => handle_stage!(dump_hashing_storage_stage, &tool, cmd),
-            Stages::AccountHashing(cmd) => handle_stage!(dump_hashing_account_stage, &tool, cmd),
+            Stages::StorageHashing(cmd) => {
+                handle_stage!(dump_hashing_storage_stage, &tool, cmd, runtime.clone())
+            }
+            Stages::AccountHashing(cmd) => {
+                handle_stage!(dump_hashing_account_stage, &tool, cmd, runtime.clone())
+            }
             Stages::Merkle(cmd) => {
-                handle_stage!(dump_merkle_stage, &tool, cmd, evm_config, consensus)
+                handle_stage!(dump_merkle_stage, &tool, cmd, evm_config, consensus, runtime.clone())
             }
         }
 
@@ -125,7 +147,7 @@ impl<C: ChainSpecParser> Command<C> {
 
 /// Sets up the database and initial state on [`tables::BlockBodyIndices`]. Also returns the tip
 /// block number.
-pub(crate) fn setup<N: NodeTypesWithDB>(
+pub fn setup<N: NodeTypesWithDB>(
     from: u64,
     to: u64,
     output_db: &PathBuf,

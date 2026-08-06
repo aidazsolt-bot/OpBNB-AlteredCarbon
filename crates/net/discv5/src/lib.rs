@@ -26,7 +26,7 @@ use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
 use reth_network_peers::{NodeRecord, PeerId};
 use secp256k1::SecretKey;
 use tokio::{sync::mpsc, task};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, trace};
 
 pub mod config;
 pub mod enr;
@@ -103,7 +103,7 @@ impl Discv5 {
                 err="key not utf-8",
                 "failed to update local enr"
             );
-            return;
+            return
         };
         if let Err(err) = self.discv5.enr_insert(key_str, &rlp) {
             error!(target: "net::discv5",
@@ -167,28 +167,6 @@ impl Discv5 {
     /// The port the discv5 service is listening on.
     pub const fn local_port(&self) -> u16 {
         self.local_node_record.udp_port
-    }
-
-    /// Updates the local discv5 ENR with the dialable NAT endpoint (IP + TCP/UDP ports).
-    ///
-    /// TCP should be the RLPx mapped port; UDP should be the (possibly separately mapped)
-    /// discv5 discovery port.
-    pub fn apply_nat_endpoint(&self, ip: IpAddr, tcp_port: u16, udp_port: u16) {
-        let tcp = SocketAddr::new(ip, tcp_port);
-        let udp = SocketAddr::new(ip, udp_port);
-        if !self.discv5.update_local_enr_socket(tcp, true) {
-            debug!(target: "net::discv5", %tcp, "discv5 ENR TCP socket unchanged or update failed");
-        }
-        if !self.discv5.update_local_enr_socket(udp, false) {
-            debug!(target: "net::discv5", %udp, "discv5 ENR UDP socket unchanged or update failed");
-        }
-        info!(
-            target: "net::discv5",
-            %ip,
-            tcp_port,
-            udp_port,
-            "Updated discv5 ENR with NAT endpoint"
-        );
     }
 
     /// Spawns [`discv5::Discv5`]. Returns [`discv5::Discv5`] handle in reth compatible wrapper type
@@ -345,7 +323,7 @@ impl Discv5 {
 
                 self.metrics.discovered_peers.increment_established_sessions_unreachable_enr(1);
 
-                return None;
+                return None
             }
         };
         if let FilterOutcome::Ignore { reason } = self.filter_discovered_peer(enr) {
@@ -357,7 +335,7 @@ impl Discv5 {
 
             self.metrics.discovered_peers.increment_established_sessions_filtered(1);
 
-            return None;
+            return None
         }
 
         let fork_id = self.get_fork_id(enr).ok();
@@ -385,11 +363,25 @@ impl Discv5 {
         enr: &discv5::Enr,
         socket: SocketAddr,
     ) -> Result<NodeRecord, Error> {
+        // ignore UDP socket advertised in ENR, use sender socket instead
+        let address = socket.ip();
+        let udp_port = socket.port();
+
         let id = enr_to_discv4_id(enr).ok_or(Error::IncompatibleKeyType)?;
 
-        // Proven-reachable UDP endpoint from the discv5 session (may disagree with ENR IPs).
-        let udp_port = socket.port();
-        let (address, tcp_port) = select_rlpx_dial_target(enr, socket, self.rlpx_ip_mode);
+        let tcp_port = (match self.rlpx_ip_mode {
+            IpMode::Ip4 => enr.tcp4(),
+            IpMode::Ip6 => enr.tcp6(),
+            IpMode::DualStack => unimplemented!("dual-stack support not implemented for rlpx"),
+        })
+        .unwrap_or(
+            // tcp socket is missing from ENR, or is wrong IP version.
+            //
+            // by default geth runs discv5 and discv4 behind the same udp port (the discv4 default
+            // port 30303), so rlpx has a chance of successfully dialing the peer on its discv5
+            // udp port if its running geth's p2p code.
+            udp_port,
+        );
 
         Ok(NodeRecord { address, tcp_port, udp_port, id })
     }
@@ -472,62 +464,6 @@ pub struct DiscoveredPeer {
     pub fork_id: Option<ForkId>,
 }
 
-/// Selects the RLPx dial IP and TCP port for a peer discovered over discv5.
-///
-/// `reachable` is the proven UDP socket from the discv5 session. UDP in the resulting
-/// [`NodeRecord`] stays on that socket; only the dial IP/TCP may switch family when the ENR
-/// has a complete endpoint on the other stack.
-///
-/// # [`IpMode`] behaviour
-///
-/// - [`IpMode::Ip4`]: dial IPv4 only (`tcp4`, else UDP-port fallback).
-/// - [`IpMode::Ip6`] / [`IpMode::DualStack`]: prefer the reachable family's TCP; if missing,
-///   switch to the other family's `ip`+`tcp` when advertised; else use the other family's TCP
-///   on the reachable IP (dual-bound hosts); else UDP-port fallback (geth same-port compat).
-pub fn select_rlpx_dial_target(
-    enr: &discv5::Enr,
-    reachable: SocketAddr,
-    mode: IpMode,
-) -> (IpAddr, u16) {
-    let udp_fallback = reachable.port();
-
-    match mode {
-        IpMode::Ip4 => {
-            let address = match reachable.ip() {
-                IpAddr::V4(ip) => IpAddr::V4(ip),
-                IpAddr::V6(_) => enr.ip4().map(IpAddr::from).unwrap_or_else(|| reachable.ip()),
-            };
-            (address, enr.tcp4().unwrap_or(udp_fallback))
-        }
-        // Outbound dials are not limited by the local listen family: an IPv6-only RLPx listener
-        // can still dial IPv4 peers. DualStack and Ip6 therefore share dial selection.
-        IpMode::Ip6 | IpMode::DualStack => match reachable.ip() {
-            IpAddr::V4(ip) => {
-                if let Some(tcp) = enr.tcp4() {
-                    (IpAddr::V4(ip), tcp)
-                } else if let (Some(ip6), Some(tcp6)) = (enr.ip6(), enr.tcp6()) {
-                    (IpAddr::V6(ip6), tcp6)
-                } else if let Some(tcp6) = enr.tcp6() {
-                    (IpAddr::V4(ip), tcp6)
-                } else {
-                    (IpAddr::V4(ip), udp_fallback)
-                }
-            }
-            IpAddr::V6(ip) => {
-                if let Some(tcp) = enr.tcp6() {
-                    (IpAddr::V6(ip), tcp)
-                } else if let (Some(ip4), Some(tcp4)) = (enr.ip4(), enr.tcp4()) {
-                    (IpAddr::V4(ip4), tcp4)
-                } else if let Some(tcp4) = enr.tcp4() {
-                    (IpAddr::V6(ip), tcp4)
-                } else {
-                    (IpAddr::V6(ip), udp_fallback)
-                }
-            }
-        },
-    }
-}
-
 /// Builds the local ENR with the supplied key.
 pub fn build_local_enr(
     sk: &SecretKey,
@@ -545,7 +481,7 @@ pub fn build_local_enr(
         ..
     } = config;
 
-    let (socket, rlpx_ip_mode) = {
+    let socket = {
         let v4 = crate::config::ipv4(&discv5_config.listen_config);
         let v6 = crate::config::ipv6(&discv5_config.listen_config);
 
@@ -567,37 +503,20 @@ pub fn build_local_enr(
             }
             builder.udp6(addr.port());
         }
-
-        // Advertise RLPx TCP for every discovery address family we listen on. Dual-stack nodes
-        // must publish both `tcp4` and `tcp6` so peers dial RLPx instead of the UDP discport.
+        // Advertise tcp4 when v4 is configured, else tcp6.
         if v4.is_some() {
             builder.tcp4(tcp_socket.port());
-        }
-        if v6.is_some() {
+        } else if v6.is_some() {
             builder.tcp6(tcp_socket.port());
         }
 
-        let rlpx_ip_mode = match (v4.is_some(), v6.is_some()) {
-            (true, true) => IpMode::DualStack,
-            (true, false) => IpMode::Ip4,
-            (false, true) => IpMode::Ip6,
-            (false, false) => {
-                if tcp_socket.is_ipv4() {
-                    IpMode::Ip4
-                } else {
-                    IpMode::Ip6
-                }
-            }
-        };
-
         // Prefer v6 when both are configured
-        let socket = v6
-            .map(SocketAddr::V6)
+        v6.map(SocketAddr::V6)
             .or_else(|| v4.map(SocketAddr::V4))
-            .unwrap_or_else(|| SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)));
-
-        (socket, rlpx_ip_mode)
+            .unwrap_or_else(|| SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))
     };
+
+    let rlpx_ip_mode = if tcp_socket.is_ipv4() { IpMode::Ip4 } else { IpMode::Ip6 };
 
     // identifies which network node is on
     let network_stack_id = fork.as_ref().map(|(network_stack_id, fork_value)| {
@@ -635,7 +554,7 @@ pub async fn bootstrap(
         match node {
             BootNode::Enr(node) => {
                 if let Err(err) = discv5.add_enr(node) {
-                    return Err(Error::AddNodeFailed(err));
+                    return Err(Error::AddNodeFailed(err))
                 }
             }
             BootNode::Enode(enode) => {
@@ -976,119 +895,6 @@ mod test {
             },
             filtered_peer.unwrap().node_record
         )
-    }
-
-    #[test]
-    fn select_rlpx_dial_target_ip4_uses_tcp4() {
-        const TCP: u16 = 30303;
-        let key = CombinedKey::generate_secp256k1();
-        let enr = Enr::builder().tcp4(TCP).tcp6(30304).build(&key).unwrap();
-        let reachable = "<ipv4>:30304".parse().unwrap();
-
-        assert_eq!(
-            select_rlpx_dial_target(&enr, reachable, IpMode::Ip4),
-            (reachable.ip(), TCP)
-        );
-    }
-
-    #[test]
-    fn select_rlpx_dial_target_ip6_uses_tcp6_then_tcp4_on_reachable() {
-        const TCP4: u16 = 30303;
-        const TCP6: u16 = 30305;
-        let key = CombinedKey::generate_secp256k1();
-        let enr_tcp6 = Enr::builder().tcp6(TCP6).build(&key).unwrap();
-        let reachable6 = "[<ipv6><ipv6>]:30304".parse().unwrap();
-        assert_eq!(
-            select_rlpx_dial_target(&enr_tcp6, reachable6, IpMode::Ip6),
-            (reachable6.ip(), TCP6)
-        );
-
-        let enr_tcp4_only = Enr::builder().tcp4(TCP4).build(&key).unwrap();
-        assert_eq!(
-            select_rlpx_dial_target(&enr_tcp4_only, reachable6, IpMode::Ip6),
-            (reachable6.ip(), TCP4)
-        );
-    }
-
-    #[test]
-    fn select_rlpx_dial_target_dual_stack_switches_to_ip4_when_tcp6_missing() {
-        const TCP4: u16 = 30303;
-        let key = CombinedKey::generate_secp256k1();
-        let ip4 = Ipv4Addr::new(52, 193, 218, 151);
-        let enr = Enr::builder().ip4(ip4).tcp4(TCP4).udp4(30304).build(&key).unwrap();
-        let reachable6 = "[<ipv6><ipv6>]:30304".parse().unwrap();
-
-        assert_eq!(
-            select_rlpx_dial_target(&enr, reachable6, IpMode::DualStack),
-            (IpAddr::V4(ip4), TCP4)
-        );
-    }
-
-    #[test]
-    fn select_rlpx_dial_target_dual_stack_ipv4_reachable_with_tcp4() {
-        const TCP4: u16 = 30303;
-        const DISC: u16 = 30304;
-        let key = CombinedKey::generate_secp256k1();
-        let enr = Enr::builder().tcp4(TCP4).build(&key).unwrap();
-        let reachable = format!("<ipv4>:{DISC}").parse().unwrap();
-
-        assert_eq!(
-            select_rlpx_dial_target(&enr, reachable, IpMode::DualStack),
-            (reachable.ip(), TCP4)
-        );
-    }
-
-    #[test]
-    fn select_rlpx_dial_target_udp_fallback_when_no_tcp() {
-        let key = CombinedKey::generate_secp256k1();
-        let enr = Enr::builder().ip4(Ipv4Addr::new(83, 229, 71, 210)).udp4(9000).build(&key).unwrap();
-        let reachable = "[2a06:c5c0:900:15::10]:9000".parse().unwrap();
-
-        assert_eq!(
-            select_rlpx_dial_target(&enr, reachable, IpMode::DualStack),
-            (reachable.ip(), 9000)
-        );
-    }
-
-    #[test]
-    fn build_local_enr_dual_stack_advertises_tcp4_and_tcp6() {
-        const TCP_PORT: u16 = 30303;
-        let listen = discv5::ListenConfig::DualStack {
-            ipv4: Ipv4Addr::UNSPECIFIED,
-            ipv4_port: 30303,
-            ipv6: Ipv6Addr::UNSPECIFIED,
-            ipv6_port: 30303,
-        };
-        let config = Config::builder((Ipv6Addr::UNSPECIFIED, TCP_PORT).into())
-            .discv5_config(discv5::ConfigBuilder::new(listen).build())
-            .build();
-
-        let sk = SecretKey::new(&mut thread_rng());
-        let (enr, _, _, mode) = build_local_enr(&sk, &config);
-
-        assert_eq!(mode, IpMode::DualStack);
-        assert_eq!(enr.tcp4(), Some(TCP_PORT));
-        assert_eq!(enr.tcp6(), Some(TCP_PORT));
-    }
-
-    /// opBNB-style: UDP discport ≠ RLPx TCP; local node on `[::]` (Ip6) still dials `tcp4`.
-    #[test]
-    fn discovered_enr_ip6_mode_dials_tcp4_not_udp_discport() {
-        reth_tracing::init_test_tracing();
-
-        const REMOTE_RLPX_PORT: u16 = 30303;
-        const REMOTE_DISC_PORT: u16 = 30304;
-        let remote_socket = format!("<ipv4>:{REMOTE_DISC_PORT}").parse().unwrap();
-        let remote_key = CombinedKey::generate_secp256k1();
-        let remote_enr = Enr::builder().tcp4(REMOTE_RLPX_PORT).build(&remote_key).unwrap();
-
-        let mut discv5 = discv5_noop();
-        discv5.rlpx_ip_mode = IpMode::Ip6;
-
-        let filtered_peer = discv5.on_discovered_peer(&remote_enr, remote_socket).unwrap();
-        assert_eq!(filtered_peer.node_record.tcp_port, REMOTE_RLPX_PORT);
-        assert_eq!(filtered_peer.node_record.udp_port, REMOTE_DISC_PORT);
-        assert_eq!(filtered_peer.node_record.address, remote_socket.ip());
     }
 
     // Copied from sigp/discv5 with slight modification (U256 type)

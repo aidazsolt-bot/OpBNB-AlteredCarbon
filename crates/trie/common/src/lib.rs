@@ -50,7 +50,7 @@ pub use nibbles::{
 };
 
 mod storage;
-pub use storage::{PackedStorageTrieEntry, StorageTrieEntry, TrieChangeSetsEntry};
+pub use storage::{PackedStorageTrieEntry, StorageTrieEntry};
 
 mod subnode;
 pub use subnode::StoredSubNode;

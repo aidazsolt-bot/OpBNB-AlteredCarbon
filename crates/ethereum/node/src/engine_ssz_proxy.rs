@@ -175,7 +175,7 @@ where
     fn call(&mut self, request: HttpRequest) -> Self::Future {
         if !request.uri().path().starts_with("/engine/") {
             let fut = self.inner.call(request);
-            return Box::pin(fut);
+            return Box::pin(fut)
         }
 
         let handle = self.handle.clone();
@@ -196,64 +196,64 @@ where
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
     let Some(endpoint) = parse_engine_path(&path) else {
-        return text_response(STATUS_NOT_FOUND, "unknown engine ssz endpoint");
+        return text_response(STATUS_NOT_FOUND, "unknown engine ssz endpoint")
     };
 
     match endpoint {
         EngineSszEndpoint::Capabilities => {
             if method != "GET" {
-                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed");
+                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed")
             }
             handle_capabilities()
         }
         EngineSszEndpoint::Identity => {
             if method != "GET" {
-                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed");
+                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed")
             }
             let Some(engine_api) = handle.engine_api().await else {
-                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable");
+                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable")
             };
             handle_identity(engine_api)
         }
         EngineSszEndpoint::NewPayload => {
             if method != "POST" {
-                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed");
+                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed")
             }
             let Some(fork) = request_fork(&request) else {
-                return text_response(STATUS_BAD_REQUEST, "unsupported fork");
+                return text_response(STATUS_BAD_REQUEST, "unsupported fork")
             };
             let Ok(body) = request.into_body().collect().await.map(|body| body.to_bytes()) else {
-                return text_response(STATUS_BAD_REQUEST, "failed to read request body");
+                return text_response(STATUS_BAD_REQUEST, "failed to read request body")
             };
             let Some(engine_api) = handle.engine_api().await else {
-                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable");
+                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable")
             };
             handle_new_payload(engine_api, fork.payloads_version(), &body).await
         }
         EngineSszEndpoint::Forkchoice => {
             if method != "POST" {
-                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed");
+                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed")
             }
             let Some(fork) = request_fork(&request) else {
-                return text_response(STATUS_BAD_REQUEST, "unsupported fork");
+                return text_response(STATUS_BAD_REQUEST, "unsupported fork")
             };
             let Ok(body) = request.into_body().collect().await.map(|body| body.to_bytes()) else {
-                return text_response(STATUS_BAD_REQUEST, "failed to read request body");
+                return text_response(STATUS_BAD_REQUEST, "failed to read request body")
             };
             let Some(engine_api) = handle.engine_api().await else {
-                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable");
+                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable")
             };
             handle_forkchoice_updated(engine_api, fork.forkchoice_version(), &body).await
         }
         EngineSszEndpoint::Blobs(version) => {
             if method != "POST" {
-                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed");
+                return text_response(STATUS_METHOD_NOT_ALLOWED, "method not allowed")
             }
             let Ok(body) = request.into_body().collect().await.map(|body| body.to_bytes()) else {
-                return text_response(STATUS_BAD_REQUEST, "failed to read request body");
+                return text_response(STATUS_BAD_REQUEST, "failed to read request body")
             };
             let Some(engine_api) = handle.engine_api().await else {
-                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable");
+                return text_response(STATUS_SERVICE_UNAVAILABLE, "engine api unavailable")
             };
             handle_get_blobs(engine_api, version, &body).await
         }
@@ -613,7 +613,7 @@ fn payload_attrs(
     attrs: Vec<PayloadAttributes>,
 ) -> Result<Option<PayloadAttributes>, &'static str> {
     if attrs.len() > 1 {
-        return Err("payload_attributes must contain at most one value");
+        return Err("payload_attributes must contain at most one value")
     }
 
     attrs.into_iter().next().map(|attrs| validate_payload_attrs_version(version, attrs)).transpose()
@@ -621,7 +621,7 @@ fn payload_attrs(
 
 fn custody_columns_opt(custody_columns: Vec<B128>) -> Result<Option<B128>, &'static str> {
     if custody_columns.len() > 1 {
-        return Err("invalid params");
+        return Err("invalid params")
     }
 
     Ok(custody_columns.into_iter().next())
@@ -633,24 +633,24 @@ fn validate_payload_attrs_version(
 ) -> Result<PayloadAttributes, &'static str> {
     let matches_version = match version {
         1 => {
-            attrs.withdrawals.is_none()
-                && attrs.parent_beacon_block_root.is_none()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_none() &&
+                attrs.parent_beacon_block_root.is_none() &&
+                attrs.slot_number.is_none()
         }
         2 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_none()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_none() &&
+                attrs.slot_number.is_none()
         }
         3 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_some()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_some() &&
+                attrs.slot_number.is_none()
         }
         4 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_some()
-                && attrs.slot_number.is_some()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_some() &&
+                attrs.slot_number.is_some()
         }
         _ => false,
     };
@@ -672,7 +672,7 @@ fn ssz_response<T: ssz::Encode>(value: T) -> HttpResponse {
 
 fn json_response<T: serde::Serialize>(value: T) -> HttpResponse {
     let Ok(body) = serde_json::to_string(&value) else {
-        return text_response(STATUS_INTERNAL_SERVER_ERROR, "failed to encode json");
+        return text_response(STATUS_INTERNAL_SERVER_ERROR, "failed to encode json")
     };
 
     HttpResponse::builder()

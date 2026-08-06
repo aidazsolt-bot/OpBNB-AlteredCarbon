@@ -1,36 +1,30 @@
-use alloy_primitives::{keccak256, Address, BlockNumber, TxHash, TxNumber, B256};
+use alloy_primitives::{keccak256, Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use reth_chainspec::MAINNET;
 use reth_db::{
-    test_utils::{
-        create_test_rocksdb_dir, create_test_rw_db, create_test_rw_db_with_path,
-        create_test_static_files_dir,
-    },
+    tables,
+    test_utils::{create_test_rw_db, create_test_rw_db_with_path, create_test_static_files_dir},
     DatabaseEnv,
 };
 use reth_db_api::{
     common::KeyValue,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
     database::Database,
-    models::{AccountBeforeTx, StorageBeforeTx, StoredBlockBodyIndices},
+    models::{AccountBeforeTx, StoredBlockBodyIndices},
     table::Table,
-    tables,
     transaction::{DbTx, DbTxMut},
     DatabaseError as DbError,
 };
-use reth_ethereum_primitives::{Block, EthPrimitives, Receipt};
-use reth_primitives_traits::{Account, SealedBlock, SealedHeader, StorageEntry};
-use reth_provider::{
-    providers::{
-        RocksDBProvider, StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter,
-    },
-    test_utils::MockNodeTypesWithDB,
-    DatabaseProviderFactory, EitherWriter, HistoryWriter, ProviderError, ProviderFactory,
-    RocksBatchArg, StaticFileProviderFactory, StatsReader,
+use reth_primitives::{
+    Account, Receipt, SealedBlock, SealedHeader, StaticFileSegment, StorageEntry,
 };
-use reth_static_file_types::StaticFileSegment;
+use reth_provider::{
+    providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
+    test_utils::MockNodeTypesWithDB,
+    HistoryWriter, ProviderError, ProviderFactory, StaticFileProviderFactory,
+};
 use reth_storage_errors::provider::ProviderResult;
 use reth_testing_utils::generators::ChangeSet;
-use std::{collections::BTreeMap, fmt::Debug, path::Path};
+use std::{collections::BTreeMap, path::Path};
 use tempfile::TempDir;
 
 /// Test database that is used for testing stage implementations.
@@ -44,16 +38,13 @@ impl Default for TestStageDB {
     /// Create a new instance of [`TestStageDB`]
     fn default() -> Self {
         let (static_dir, static_dir_path) = create_test_static_files_dir();
-        let (_, rocksdb_dir_path) = create_test_rocksdb_dir();
         Self {
             temp_static_files_dir: static_dir,
             factory: ProviderFactory::new(
                 create_test_rw_db(),
                 MAINNET.clone(),
                 StaticFileProvider::read_write(static_dir_path).unwrap(),
-                RocksDBProvider::builder(rocksdb_dir_path).with_default_tables().build().unwrap(),
-            )
-            .expect("failed to create test provider factory"),
+            ),
         }
     }
 }
@@ -61,7 +52,6 @@ impl Default for TestStageDB {
 impl TestStageDB {
     pub fn new(path: &Path) -> Self {
         let (static_dir, static_dir_path) = create_test_static_files_dir();
-        let (_, rocksdb_dir_path) = create_test_rocksdb_dir();
 
         Self {
             temp_static_files_dir: static_dir,
@@ -69,9 +59,7 @@ impl TestStageDB {
                 create_test_rw_db_with_path(path),
                 MAINNET.clone(),
                 StaticFileProvider::read_write(static_dir_path).unwrap(),
-                RocksDBProvider::builder(rocksdb_dir_path).with_default_tables().build().unwrap(),
-            )
-            .expect("failed to create test provider factory"),
+            ),
         }
     }
 
@@ -94,30 +82,6 @@ impl TestStageDB {
         f(self.factory.provider()?.tx_ref())
     }
 
-    /// Invoke a callback with a provider that can be used to create transactions or fetch from
-    /// static files.
-    pub fn query_with_provider<F, Ok>(&self, f: F) -> ProviderResult<Ok>
-    where
-        F: FnOnce(
-            <ProviderFactory<MockNodeTypesWithDB> as DatabaseProviderFactory>::Provider,
-        ) -> ProviderResult<Ok>,
-    {
-        f(self.factory.provider()?)
-    }
-
-    /// Invoke a callback with a writable provider, committing afterwards.
-    pub fn commit_with_provider<F>(&self, f: F) -> ProviderResult<()>
-    where
-        F: FnOnce(
-            &<ProviderFactory<MockNodeTypesWithDB> as DatabaseProviderFactory>::ProviderRW,
-        ) -> ProviderResult<()>,
-    {
-        let provider = self.factory.provider_rw()?;
-        f(&provider)?;
-        provider.commit().expect("failed to commit");
-        Ok(())
-    }
-
     /// Check if the table is empty
     pub fn table_is_empty<T: Table>(&self) -> ProviderResult<bool> {
         self.query(|tx| {
@@ -137,11 +101,6 @@ impl TestStageDB {
                 .walk(Some(T::Key::default()))?
                 .collect::<Result<Vec<_>, DbError>>()?)
         })
-    }
-
-    /// Return the number of entries in the table or static file segment
-    pub fn count_entries<T: Table>(&self) -> ProviderResult<usize> {
-        self.factory.provider()?.count_entries::<T>()
     }
 
     /// Check that there is no table entry above a given
@@ -183,9 +142,10 @@ impl TestStageDB {
 
     /// Insert header to static file if `writer` exists, otherwise to DB.
     pub fn insert_header<TX: DbTx + DbTxMut>(
-        writer: Option<&mut StaticFileProviderRWRefMut<'_, EthPrimitives>>,
+        writer: Option<&mut StaticFileProviderRWRefMut<'_>>,
         tx: &TX,
         header: &SealedHeader,
+        td: U256,
     ) -> ProviderResult<()> {
         if let Some(writer) = writer {
             // Backfill: some tests start at a forward block number, but static files require no
@@ -193,15 +153,16 @@ impl TestStageDB {
             let segment_header = writer.user_header();
             if segment_header.block_end().is_none() && segment_header.expected_block_start() == 0 {
                 for block_number in 0..header.number {
-                    let mut prev = header.header().clone();
+                    let mut prev = header.clone().unseal();
                     prev.number = block_number;
-                    writer.append_header(&prev, &B256::ZERO)?;
+                    writer.append_header(&prev, U256::ZERO, &B256::ZERO)?;
                 }
             }
 
-            writer.append_header(header.header(), &header.hash())?;
+            writer.append_header(header.header(), td, &header.hash())?;
         } else {
             tx.put::<tables::CanonicalHeaders>(header.number, header.hash())?;
+            tx.put::<tables::HeaderTerminalDifficulties>(header.number, td.into())?;
             tx.put::<tables::Headers>(header.number, header.header().clone())?;
         }
 
@@ -209,16 +170,46 @@ impl TestStageDB {
         Ok(())
     }
 
-    fn insert_headers_inner<'a, I>(&self, headers: I) -> ProviderResult<()>
+    /// Insert sidecars to static file if `writer` exists, otherwise to DB.
+    /// Always insert empty data.
+    pub fn insert_sidecars<TX: DbTx + DbTxMut>(
+        writer: Option<&mut StaticFileProviderRWRefMut<'_>>,
+        tx: &TX,
+        hash: BlockHash,
+        block_number: BlockNumber,
+    ) -> ProviderResult<()> {
+        if let Some(writer) = writer {
+            // Backfill: some tests start at a forward block number, but static files require no
+            // gaps.
+            let segment_header = writer.user_header();
+            if segment_header.block_end().is_none() && segment_header.expected_block_start() == 0 {
+                for block_number in 0..block_number {
+                    writer.append_sidecars(&Default::default(), block_number, &B256::ZERO)?;
+                }
+            }
+
+            writer.append_sidecars(&Default::default(), block_number, &hash)?;
+        } else {
+            tx.put::<tables::Sidecars>(block_number, Default::default())?;
+        }
+
+        Ok(())
+    }
+
+    fn insert_headers_inner<'a, I, const TD: bool>(&self, headers: I) -> ProviderResult<()>
     where
         I: IntoIterator<Item = &'a SealedHeader>,
     {
         let provider = self.factory.static_file_provider();
         let mut writer = provider.latest_writer(StaticFileSegment::Headers)?;
         let tx = self.factory.provider_rw()?.into_tx();
+        let mut td = U256::ZERO;
 
         for header in headers {
-            Self::insert_header(Some(&mut writer), &tx, header)?;
+            if TD {
+                td += header.difficulty;
+            }
+            Self::insert_header(Some(&mut writer), &tx, header, td)?;
         }
 
         writer.commit()?;
@@ -233,7 +224,17 @@ impl TestStageDB {
     where
         I: IntoIterator<Item = &'a SealedHeader>,
     {
-        self.insert_headers_inner::<I>(headers)
+        self.insert_headers_inner::<I, false>(headers)
+    }
+
+    /// Inserts total difficulty of headers into the corresponding static file and tables.
+    ///
+    /// Superset functionality of [`TestStageDB::insert_headers`].
+    pub fn insert_headers_with_td<'a, I>(&self, headers: I) -> ProviderResult<()>
+    where
+        I: IntoIterator<Item = &'a SealedHeader>,
+    {
+        self.insert_headers_inner::<I, true>(headers)
     }
 
     /// Insert ordered collection of [`SealedBlock`] into corresponding tables.
@@ -245,7 +246,7 @@ impl TestStageDB {
     /// Assumes that there's a single transition for each transaction (i.e. no block rewards).
     pub fn insert_blocks<'a, I>(&self, blocks: I, storage_kind: StorageKind) -> ProviderResult<()>
     where
-        I: IntoIterator<Item = &'a SealedBlock<Block>>,
+        I: IntoIterator<Item = &'a SealedBlock>,
     {
         let provider = self.factory.static_file_provider();
 
@@ -258,12 +259,24 @@ impl TestStageDB {
             let mut headers_writer = storage_kind
                 .is_static()
                 .then(|| provider.latest_writer(StaticFileSegment::Headers).unwrap());
+            let mut sidecars_writer = storage_kind
+                .is_static()
+                .then(|| provider.latest_writer(StaticFileSegment::Sidecars).unwrap());
 
             blocks.iter().try_for_each(|block| {
-                Self::insert_header(headers_writer.as_mut(), &tx, block.sealed_header())
+                Self::insert_sidecars(
+                    sidecars_writer.as_mut(),
+                    &tx,
+                    block.header.hash(),
+                    block.header.number,
+                )?;
+                Self::insert_header(headers_writer.as_mut(), &tx, &block.header, U256::ZERO)
             })?;
 
             if let Some(mut writer) = headers_writer {
+                writer.commit()?;
+            }
+            if let Some(mut writer) = sidecars_writer {
                 writer.commit()?;
             }
         }
@@ -277,10 +290,10 @@ impl TestStageDB {
                 // Insert into body tables.
                 let block_body_indices = StoredBlockBodyIndices {
                     first_tx_num: next_tx_num,
-                    tx_count: block.transaction_count() as u64,
+                    tx_count: block.body.transactions.len() as u64,
                 };
 
-                if !block.body().transactions.is_empty() {
+                if !block.body.transactions.is_empty() {
                     tx.put::<tables::TransactionBlocks>(
                         block_body_indices.last_tx_num(),
                         block.number,
@@ -288,11 +301,11 @@ impl TestStageDB {
                 }
                 tx.put::<tables::BlockBodyIndices>(block.number, block_body_indices)?;
 
-                let res = block.body().transactions.iter().try_for_each(|body_tx| {
+                let res = block.body.transactions.iter().try_for_each(|body_tx| {
                     if let Some(txs_writer) = &mut txs_writer {
-                        txs_writer.append_transaction(next_tx_num, body_tx)?;
+                        txs_writer.append_transaction(next_tx_num, &body_tx.clone().into())?;
                     } else {
-                        tx.put::<tables::Transactions>(next_tx_num, body_tx.clone())?
+                        tx.put::<tables::Transactions>(next_tx_num, body_tx.clone().into())?
                     }
                     next_tx_num += 1;
                     Ok::<(), ProviderError>(())
@@ -328,13 +341,10 @@ impl TestStageDB {
     where
         I: IntoIterator<Item = (TxHash, TxNumber)>,
     {
-        self.commit_with_provider(|provider| {
-            provider.with_rocksdb_batch(|batch: RocksBatchArg<'_>| {
-                let mut writer = EitherWriter::new_transaction_hash_numbers(provider, batch)?;
-                for (tx_hash, tx_num) in tx_hash_numbers {
-                    writer.put_transaction_hash_number(tx_hash, tx_num, false)?;
-                }
-                Ok(((), writer.into_raw_rocksdb_batch()))
+        self.commit(|tx| {
+            tx_hash_numbers.into_iter().try_for_each(|(tx_hash, tx_num)| {
+                // Insert into tx hash numbers table.
+                Ok(tx.put::<tables::TransactionHashNumbers>(tx_hash, tx_num)?)
             })
         })
     }
@@ -424,7 +434,7 @@ impl TestStageDB {
                     {
                         cursor.delete_current()?;
                     }
-                    cursor.upsert(address, &entry)?;
+                    cursor.upsert(address, entry)?;
 
                     let mut cursor = tx.cursor_dup_write::<tables::HashedStorages>()?;
                     if cursor
@@ -434,7 +444,7 @@ impl TestStageDB {
                     {
                         cursor.delete_current()?;
                     }
-                    cursor.upsert(hashed_address, &hashed_entry)?;
+                    cursor.upsert(hashed_address, hashed_entry)?;
 
                     Ok(())
                 })
@@ -473,45 +483,6 @@ impl TestStageDB {
         })
     }
 
-    /// Insert collection of [`ChangeSet`] into the `AccountChangeSets` and `StorageChangeSets`
-    /// static file segments instead of the corresponding MDBX tables.
-    pub fn insert_changesets_to_static_files<I>(
-        &self,
-        changesets: I,
-        block_offset: Option<u64>,
-    ) -> ProviderResult<()>
-    where
-        I: IntoIterator<Item = ChangeSet>,
-    {
-        let offset = block_offset.unwrap_or_default();
-        let sf_provider = self.factory.static_file_provider();
-        let mut account_writer = sf_provider.latest_writer(StaticFileSegment::AccountChangeSets)?;
-        let mut storage_writer = sf_provider.latest_writer(StaticFileSegment::StorageChangeSets)?;
-
-        for (block, changeset) in changesets.into_iter().enumerate() {
-            let block = offset + block as u64;
-
-            let mut account_changeset = Vec::new();
-            let mut storage_changeset = Vec::new();
-            for (address, old_account, old_storage) in changeset {
-                account_changeset.push(AccountBeforeTx { address, info: Some(old_account) });
-                storage_changeset.extend(old_storage.into_iter().map(|entry| StorageBeforeTx {
-                    address,
-                    key: entry.key,
-                    value: entry.value,
-                }));
-            }
-
-            account_writer.append_account_changeset(account_changeset, block)?;
-            storage_writer.append_storage_changeset(storage_changeset, block)?;
-        }
-
-        account_writer.commit()?;
-        storage_writer.commit()?;
-
-        Ok(())
-    }
-
     pub fn insert_history<I>(&self, changesets: I, _block_offset: Option<u64>) -> ProviderResult<()>
     where
         I: IntoIterator<Item = ChangeSet>,
@@ -545,7 +516,7 @@ pub enum StorageKind {
 }
 
 impl StorageKind {
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     const fn is_database(&self) -> bool {
         matches!(self, Self::Database(_))
     }

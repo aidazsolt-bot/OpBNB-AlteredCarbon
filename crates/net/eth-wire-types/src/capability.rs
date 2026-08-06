@@ -180,13 +180,13 @@ impl Capability {
     /// Whether this is any eth version.
     #[inline]
     pub fn is_eth(&self) -> bool {
-        self.is_eth_v66()
-            || self.is_eth_v67()
-            || self.is_eth_v68()
-            || self.is_eth_v69()
-            || self.is_eth_v70()
-            || self.is_eth_v71()
-            || self.is_eth_v72()
+        self.is_eth_v66() ||
+            self.is_eth_v67() ||
+            self.is_eth_v68() ||
+            self.is_eth_v69() ||
+            self.is_eth_v70() ||
+            self.is_eth_v71() ||
+            self.is_eth_v72()
     }
 }
 
@@ -253,21 +253,21 @@ impl Capabilities {
     pub const fn supports_eth_at_least(&self, version: &EthVersion) -> bool {
         match version {
             EthVersion::Eth66 => {
-                self.eth_66
-                    || self.eth_67
-                    || self.eth_68
-                    || self.eth_69
-                    || self.eth_70
-                    || self.eth_71
-                    || self.eth_72
+                self.eth_66 ||
+                    self.eth_67 ||
+                    self.eth_68 ||
+                    self.eth_69 ||
+                    self.eth_70 ||
+                    self.eth_71 ||
+                    self.eth_72
             }
             EthVersion::Eth67 => {
-                self.eth_67
-                    || self.eth_68
-                    || self.eth_69
-                    || self.eth_70
-                    || self.eth_71
-                    || self.eth_72
+                self.eth_67 ||
+                    self.eth_68 ||
+                    self.eth_69 ||
+                    self.eth_70 ||
+                    self.eth_71 ||
+                    self.eth_72
             }
             EthVersion::Eth68 => {
                 self.eth_68 || self.eth_69 || self.eth_70 || self.eth_71 || self.eth_72
@@ -294,13 +294,13 @@ impl Capabilities {
     /// Whether the peer supports `eth` sub-protocol.
     #[inline]
     pub const fn supports_eth(&self) -> bool {
-        self.eth_72
-            || self.eth_71
-            || self.eth_70
-            || self.eth_69
-            || self.eth_68
-            || self.eth_67
-            || self.eth_66
+        self.eth_72 ||
+            self.eth_71 ||
+            self.eth_70 ||
+            self.eth_69 ||
+            self.eth_68 ||
+            self.eth_67 ||
+            self.eth_66
     }
 
     /// Whether this peer supports eth v66 protocol.

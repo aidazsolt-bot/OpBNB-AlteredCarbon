@@ -109,18 +109,8 @@ where
         self.logs.log_file_directory =
             self.logs.log_file_directory.join(self.chain.chain().to_string());
 
-        // `--log.file.max-files` defaults to unset → effective 0 (disabled). For `node`,
-        // apply the documented default of 5 before init_tracing wires the file layer.
-        if matches!(self.command, Commands::Node(_)) {
-            self.logs.apply_node_defaults();
-        }
-
         let _guard = self.init_tracing()?;
-        if self.logs.effective_log_file_max_files() > 0 {
-            info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.logs.log_file_directory);
-        } else {
-            info!(target: "reth::cli", "Initialized tracing (file logging disabled; set --log.file.max-files > 0 to enable)");
-        }
+        info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.logs.log_file_directory);
 
         let runner = CliRunner::default();
         match self.command {

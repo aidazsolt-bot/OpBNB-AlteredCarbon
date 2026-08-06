@@ -1,8 +1,5 @@
 mod sealed;
-pub use sealed::{SealedHeader, SealedHeaderFor};
-
-mod header_mut;
-pub use header_mut::HeaderMut;
+pub use sealed::SealedHeader;
 
 mod error;
 pub use error::HeaderError;
@@ -12,7 +9,7 @@ pub mod test_utils;
 
 pub use alloy_consensus::Header;
 
-use crate::{InMemorySize, MaybeSerdeBincodeCompat};
+use crate::InMemorySize;
 use alloy_primitives::Sealable;
 use core::{fmt, hash::Hash};
 
@@ -44,10 +41,9 @@ pub trait BlockHeader:
     + InMemorySize
     + serde::Serialize
     + for<'a> serde::Deserialize<'a>
-    + MaybeSerdeBincodeCompat
-    + AsRef<Self>
     + 'static
 {
 }
 
 impl BlockHeader for Header {}
+

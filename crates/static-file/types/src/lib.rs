@@ -9,19 +9,11 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 mod compression;
-mod changeset_offsets;
-mod event;
 mod segment;
 
 use alloy_primitives::BlockNumber;
-pub use changeset_offsets::{ChangesetOffsetReader, ChangesetOffsetWriter};
 pub use compression::Compression;
-use core::ops::RangeInclusive;
-pub use event::StaticFileProducerEvent;
-pub use segment::{ChangesetOffset, SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
-
-/// Map keyed by [`StaticFileSegment`].
-pub type StaticFileMap<T> = std::collections::HashMap<StaticFileSegment, T>;
+pub use segment::{SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
 
 /// Default static file block count.
 pub const DEFAULT_BLOCKS_PER_STATIC_FILE: u64 = 500_000;
@@ -41,29 +33,9 @@ pub struct HighestStaticFiles {
     /// Highest static file block of sidecars, inclusive.
     /// If [`None`], no static file is available.
     pub sidecars: Option<BlockNumber>,
-    /// Highest static file block of transaction senders, inclusive.
-    pub transaction_senders: Option<BlockNumber>,
-    /// Highest static file block of account changesets, inclusive.
-    pub account_changesets: Option<BlockNumber>,
-    /// Highest static file block of storage changesets, inclusive.
-    pub storage_changesets: Option<BlockNumber>,
 }
 
 impl HighestStaticFiles {
-    /// Returns `true` if all segments are either [`None`] or start at the next static file block.
-    fn iter(&self) -> impl Iterator<Item = Option<BlockNumber>> {
-        [
-            self.headers,
-            self.receipts,
-            self.transactions,
-            self.sidecars,
-            self.transaction_senders,
-            self.account_changesets,
-            self.storage_changesets,
-        ]
-        .into_iter()
-    }
-
     /// Returns the highest static file if it exists for a segment
     pub const fn highest(&self, segment: StaticFileSegment) -> Option<BlockNumber> {
         match segment {
@@ -71,9 +43,6 @@ impl HighestStaticFiles {
             StaticFileSegment::Transactions => self.transactions,
             StaticFileSegment::Receipts => self.receipts,
             StaticFileSegment::Sidecars => self.sidecars,
-            StaticFileSegment::TransactionSenders => self.transaction_senders,
-            StaticFileSegment::AccountChangeSets => self.account_changesets,
-            StaticFileSegment::StorageChangeSets => self.storage_changesets,
         }
     }
 
@@ -84,67 +53,17 @@ impl HighestStaticFiles {
             StaticFileSegment::Transactions => &mut self.transactions,
             StaticFileSegment::Receipts => &mut self.receipts,
             StaticFileSegment::Sidecars => &mut self.sidecars,
-            StaticFileSegment::TransactionSenders => &mut self.transaction_senders,
-            StaticFileSegment::AccountChangeSets => &mut self.account_changesets,
-            StaticFileSegment::StorageChangeSets => &mut self.storage_changesets,
         }
     }
 
     /// Returns the minimum block of all segments.
     pub fn min(&self) -> Option<u64> {
-        self.iter().flatten().min()
-    }
-
-    /// Returns the minimum block of all segments.
-    pub fn min_block_num(&self) -> Option<u64> {
-        self.min()
+        [self.headers, self.transactions, self.receipts].iter().filter_map(|&option| option).min()
     }
 
     /// Returns the maximum block of all segments.
     pub fn max(&self) -> Option<u64> {
-        self.iter().flatten().max()
-    }
-}
-
-/// Static File targets, per data segment, measured in [`BlockNumber`].
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct StaticFileTargets {
-    /// Targeted range of headers.
-    pub headers: Option<RangeInclusive<BlockNumber>>,
-    /// Targeted range of receipts.
-    pub receipts: Option<RangeInclusive<BlockNumber>>,
-    /// Targeted range of transactions.
-    pub transactions: Option<RangeInclusive<BlockNumber>>,
-    /// Targeted range of sidecars.
-    pub sidecars: Option<RangeInclusive<BlockNumber>>,
-}
-
-impl StaticFileTargets {
-    /// Returns `true` if any of the targets are [Some].
-    pub const fn any(&self) -> bool {
-        self.headers.is_some()
-            || self.receipts.is_some()
-            || self.transactions.is_some()
-            || self.sidecars.is_some()
-    }
-
-    /// Returns `true` if all targets are either [`None`] or contiguous to the current static files.
-    pub fn is_contiguous_to_highest_static_files(&self, static_files: HighestStaticFiles) -> bool {
-        [
-            (self.headers.as_ref(), static_files.headers),
-            (self.receipts.as_ref(), static_files.receipts),
-            (self.transactions.as_ref(), static_files.transactions),
-            (self.sidecars.as_ref(), static_files.sidecars),
-        ]
-        .into_iter()
-        .all(|(target_block_range, highest_static_file_block)| {
-            target_block_range.is_none_or(|target_block_range| {
-                *target_block_range.start()
-                    == highest_static_file_block.map_or(0, |highest_static_file_block| {
-                        highest_static_file_block + 1
-                    })
-            })
-        })
+        [self.headers, self.transactions, self.receipts].iter().filter_map(|&option| option).max()
     }
 }
 
@@ -169,9 +88,6 @@ mod tests {
             receipts: Some(200),
             transactions: None,
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Test for headers segment
@@ -208,9 +124,6 @@ mod tests {
             receipts: Some(100),
             transactions: None,
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Minimum value among the available segments
@@ -228,9 +141,6 @@ mod tests {
             receipts: Some(100),
             transactions: Some(500),
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Maximum value among the available segments

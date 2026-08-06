@@ -26,9 +26,10 @@ use reth_storage_errors::{
     provider::{ProviderError, ProviderResult},
 };
 use rocksdb::{
-    BlockBasedOptions, BoundColumnFamily, Cache, ColumnFamilyDescriptor, CompactionPri, DBCompressionType, DBRawIteratorWithThreadMode, IteratorMode,
-    OptimisticTransactionDB, OptimisticTransactionOptions, Options, SnapshotWithThreadMode,
-    Transaction, WriteBatchWithTransaction, WriteBufferManager, WriteOptions, DB,
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, CompactionPri, DBCompressionType,
+    DBRawIteratorWithThreadMode, IteratorMode, OptimisticTransactionDB,
+    OptimisticTransactionOptions, Options, SnapshotWithThreadMode, Transaction,
+    WriteBatchWithTransaction, WriteBufferManager, WriteOptions, DB,
 };
 use std::{
     collections::BTreeMap,
@@ -467,7 +468,7 @@ impl RocksDBProviderInner {
     }
 
     /// Gets the column family handle for a table.
-    fn cf_handle<T: Table>(&self) -> Result<Arc<BoundColumnFamily<'_>>, DatabaseError> {
+    fn cf_handle<T: Table>(&self) -> Result<&rocksdb::ColumnFamily, DatabaseError> {
         let cf = match self {
             Self::ReadWrite { db, .. } => db.cf_handle(T::NAME),
             Self::Secondary { db, .. } => db.cf_handle(T::NAME),
@@ -478,53 +479,53 @@ impl RocksDBProviderInner {
     /// Gets a value from a column family.
     fn get_cf(
         &self,
-        cf: Arc<BoundColumnFamily<'_>>,
+        cf: &rocksdb::ColumnFamily,
         key: impl AsRef<[u8]>,
     ) -> Result<Option<Vec<u8>>, rocksdb::Error> {
         match self {
-            Self::ReadWrite { db, .. } => db.get_cf(&cf, key),
-            Self::Secondary { db, .. } => db.get_cf(&cf, key),
+            Self::ReadWrite { db, .. } => db.get_cf(cf, key),
+            Self::Secondary { db, .. } => db.get_cf(cf, key),
         }
     }
 
     /// Puts a value into a column family.
     fn put_cf(
         &self,
-        cf: Arc<BoundColumnFamily<'_>>,
+        cf: &rocksdb::ColumnFamily,
         key: impl AsRef<[u8]>,
         value: impl AsRef<[u8]>,
     ) -> Result<(), rocksdb::Error> {
-        self.db_rw().put_cf(&cf, key, value)
+        self.db_rw().put_cf(cf, key, value)
     }
 
     /// Deletes a value from a column family.
     fn delete_cf(
         &self,
-        cf: Arc<BoundColumnFamily<'_>>,
+        cf: &rocksdb::ColumnFamily,
         key: impl AsRef<[u8]>,
     ) -> Result<(), rocksdb::Error> {
-        self.db_rw().delete_cf(&cf, key)
+        self.db_rw().delete_cf(cf, key)
     }
 
     /// Deletes a range of values from a column family.
     fn delete_range_cf<K: AsRef<[u8]>>(
         &self,
-        cf: Arc<BoundColumnFamily<'_>>,
+        cf: &rocksdb::ColumnFamily,
         from: K,
         to: K,
     ) -> Result<(), rocksdb::Error> {
-        self.db_rw().delete_range_cf(&cf, from, to)
+        self.db_rw().delete_range_cf(cf, from, to)
     }
 
     /// Returns an iterator over a column family.
     fn iterator_cf(
         &self,
-        cf: Arc<BoundColumnFamily<'_>>,
+        cf: &rocksdb::ColumnFamily,
         mode: IteratorMode<'_>,
     ) -> RocksDBIterEnum<'_> {
         match self {
-            Self::ReadWrite { db, .. } => RocksDBIterEnum::ReadWrite(db.iterator_cf(&cf, mode)),
-            Self::Secondary { db, .. } => RocksDBIterEnum::ReadOnly(db.iterator_cf(&cf, mode)),
+            Self::ReadWrite { db, .. } => RocksDBIterEnum::ReadWrite(db.iterator_cf(cf, mode)),
+            Self::Secondary { db, .. } => RocksDBIterEnum::ReadOnly(db.iterator_cf(cf, mode)),
         }
     }
 
@@ -532,10 +533,10 @@ impl RocksDBProviderInner {
     ///
     /// Unlike [`Self::iterator_cf`], raw iterators support `seek()` for efficient
     /// repositioning without creating a new iterator.
-    fn raw_iterator_cf(&self, cf: Arc<BoundColumnFamily<'_>>) -> RocksDBRawIterEnum<'_> {
+    fn raw_iterator_cf(&self, cf: &rocksdb::ColumnFamily) -> RocksDBRawIterEnum<'_> {
         match self {
-            Self::ReadWrite { db, .. } => RocksDBRawIterEnum::ReadWrite(db.raw_iterator_cf(&cf)),
-            Self::Secondary { db, .. } => RocksDBRawIterEnum::ReadOnly(db.raw_iterator_cf(&cf)),
+            Self::ReadWrite { db, .. } => RocksDBRawIterEnum::ReadWrite(db.raw_iterator_cf(cf)),
+            Self::Secondary { db, .. } => RocksDBRawIterEnum::ReadOnly(db.raw_iterator_cf(cf)),
         }
     }
 
@@ -581,20 +582,20 @@ impl RocksDBProviderInner {
                 for cf_name in ROCKSDB_TABLES {
                     if let Some(cf) = $db.cf_handle(cf_name) {
                         let estimated_num_keys = $db
-                            .property_int_value_cf(&cf, rocksdb::properties::ESTIMATE_NUM_KEYS)
+                            .property_int_value_cf(cf, rocksdb::properties::ESTIMATE_NUM_KEYS)
                             .ok()
                             .flatten()
                             .unwrap_or(0);
 
                         // SST files size (on-disk) + memtable size (in-memory)
                         let sst_size = $db
-                            .property_int_value_cf(&cf, rocksdb::properties::LIVE_SST_FILES_SIZE)
+                            .property_int_value_cf(cf, rocksdb::properties::LIVE_SST_FILES_SIZE)
                             .ok()
                             .flatten()
                             .unwrap_or(0);
 
                         let memtable_size = $db
-                            .property_int_value_cf(&cf, rocksdb::properties::SIZE_ALL_MEM_TABLES)
+                            .property_int_value_cf(cf, rocksdb::properties::SIZE_ALL_MEM_TABLES)
                             .ok()
                             .flatten()
                             .unwrap_or(0);
@@ -603,7 +604,7 @@ impl RocksDBProviderInner {
 
                         let pending_compaction_bytes = $db
                             .property_int_value_cf(
-                                &cf,
+                                cf,
                                 rocksdb::properties::ESTIMATE_PENDING_COMPACTION_BYTES,
                             )
                             .ok()
@@ -819,7 +820,7 @@ impl RocksDBProvider {
     }
 
     /// Gets the column family handle for a table.
-    fn get_cf_handle<T: Table>(&self) -> Result<Arc<BoundColumnFamily<'_>>, DatabaseError> {
+    fn get_cf_handle<T: Table>(&self) -> Result<&rocksdb::ColumnFamily, DatabaseError> {
         self.0.cf_handle::<T>()
     }
 
@@ -1304,6 +1305,7 @@ impl RocksDBProvider {
         blocks: &[ExecutedBlock<N>],
         tx_nums: &[TxNumber],
         ctx: RocksDBWriteCtx,
+        runtime: &reth_tasks::Runtime,
     ) -> ProviderResult<()> {
         if !ctx.storage_settings.storage_v2 {
             return Ok(());
@@ -1321,7 +1323,7 @@ impl RocksDBProvider {
         // Propagate tracing context into rayon-spawned threads so that RocksDB
         // write spans appear as children of write_blocks_data in traces.
         let span = tracing::Span::current();
-        rayon::scope(|s| {
+        runtime.storage_pool().in_place_scope(|s| {
             if write_tx_hash {
                 s.spawn(|_| {
                     let _guard = span.enter();
@@ -1538,10 +1540,10 @@ enum RocksReadSnapshotInner<'db> {
 
 impl<'db> RocksReadSnapshotInner<'db> {
     /// Returns a raw iterator over a column family.
-    fn raw_iterator_cf(&self, cf: Arc<BoundColumnFamily<'_>>) -> RocksDBRawIterEnum<'_> {
+    fn raw_iterator_cf(&self, cf: &rocksdb::ColumnFamily) -> RocksDBRawIterEnum<'_> {
         match self {
-            Self::ReadWrite(snap) => RocksDBRawIterEnum::ReadWrite(snap.raw_iterator_cf(&cf)),
-            Self::Secondary(db) => RocksDBRawIterEnum::ReadOnly(db.raw_iterator_cf(&cf)),
+            Self::ReadWrite(snap) => RocksDBRawIterEnum::ReadWrite(snap.raw_iterator_cf(cf)),
+            Self::Secondary(db) => RocksDBRawIterEnum::ReadOnly(db.raw_iterator_cf(cf)),
         }
     }
 }
@@ -1556,7 +1558,7 @@ impl fmt::Debug for RocksReadSnapshot<'_> {
 
 impl<'db> RocksReadSnapshot<'db> {
     /// Gets the column family handle for a table.
-    fn cf_handle<T: Table>(&self) -> Result<Arc<BoundColumnFamily<'_>>, DatabaseError> {
+    fn cf_handle<T: Table>(&self) -> Result<&'db rocksdb::ColumnFamily, DatabaseError> {
         self.provider.get_cf_handle::<T>()
     }
 
@@ -1565,8 +1567,8 @@ impl<'db> RocksReadSnapshot<'db> {
         let encoded_key = key.encode();
         let cf = self.cf_handle::<T>()?;
         let result = match &self.inner {
-            RocksReadSnapshotInner::ReadWrite(snap) => snap.get_cf(&cf, encoded_key.as_ref()),
-            RocksReadSnapshotInner::Secondary(db) => db.get_cf(&cf, encoded_key.as_ref()),
+            RocksReadSnapshotInner::ReadWrite(snap) => snap.get_cf(cf, encoded_key.as_ref()),
+            RocksReadSnapshotInner::Secondary(db) => db.get_cf(cf, encoded_key.as_ref()),
         }
         .map_err(|e| {
             ProviderError::Database(DatabaseError::Read(DatabaseErrorInfo {
@@ -1792,9 +1794,8 @@ impl<'a> RocksDBBatch<'a> {
         key: &<T::Key as Encode>::Encoded,
         value: &T::Value,
     ) -> ProviderResult<()> {
-        let cf = self.provider.get_cf_handle::<T>()?;
         let value_bytes = compress_to_buf_or_ref!(self.buf, value).unwrap_or(&self.buf);
-        self.inner.put_cf(&cf, key, value_bytes);
+        self.inner.put_cf(self.provider.get_cf_handle::<T>()?, key, value_bytes);
         self.maybe_auto_commit()?;
         Ok(())
     }
@@ -1803,8 +1804,7 @@ impl<'a> RocksDBBatch<'a> {
     ///
     /// If auto-commit is enabled and the batch exceeds the threshold, commits and resets.
     pub fn delete<T: Table>(&mut self, key: T::Key) -> ProviderResult<()> {
-        let cf = self.provider.get_cf_handle::<T>()?;
-        self.inner.delete_cf(&cf, key.encode().as_ref());
+        self.inner.delete_cf(self.provider.get_cf_handle::<T>()?, key.encode().as_ref());
         self.maybe_auto_commit()?;
         Ok(())
     }
@@ -2507,7 +2507,7 @@ impl<'db> RocksTx<'db> {
         key: &<T::Key as Encode>::Encoded,
     ) -> ProviderResult<Option<T::Value>> {
         let cf = self.provider.get_cf_handle::<T>()?;
-        let result = self.inner.get_cf(&cf, key.as_ref()).map_err(|e| {
+        let result = self.inner.get_cf(cf, key.as_ref()).map_err(|e| {
             ProviderError::Database(DatabaseError::Read(DatabaseErrorInfo {
                 message: e.to_string().into(),
                 code: -1,
@@ -2533,7 +2533,7 @@ impl<'db> RocksTx<'db> {
         let mut buf = Vec::new();
         let value_bytes = compress_to_buf_or_ref!(buf, value).unwrap_or(&buf);
 
-        self.inner.put_cf(&cf, key.as_ref(), value_bytes).map_err(|e| {
+        self.inner.put_cf(cf, key.as_ref(), value_bytes).map_err(|e| {
             ProviderError::Database(DatabaseError::Write(Box::new(DatabaseWriteError {
                 info: DatabaseErrorInfo { message: e.to_string().into(), code: -1 },
                 operation: DatabaseWriteOperation::PutUpsert,
@@ -2546,7 +2546,7 @@ impl<'db> RocksTx<'db> {
     /// Deletes a value from the specified table.
     pub fn delete<T: Table>(&self, key: T::Key) -> ProviderResult<()> {
         let cf = self.provider.get_cf_handle::<T>()?;
-        self.inner.delete_cf(&cf, key.encode().as_ref()).map_err(|e| {
+        self.inner.delete_cf(cf, key.encode().as_ref()).map_err(|e| {
             ProviderError::Database(DatabaseError::Delete(DatabaseErrorInfo {
                 message: e.to_string().into(),
                 code: -1,
@@ -2559,7 +2559,7 @@ impl<'db> RocksTx<'db> {
     /// Returns an iterator that yields `(encoded_key, compressed_value)` pairs.
     pub fn iter<T: Table>(&self) -> ProviderResult<RocksTxIter<'_, T>> {
         let cf = self.provider.get_cf_handle::<T>()?;
-        let iter = self.inner.iterator_cf(&cf, IteratorMode::Start);
+        let iter = self.inner.iterator_cf(cf, IteratorMode::Start);
         Ok(RocksTxIter { inner: iter, _marker: std::marker::PhantomData })
     }
 
@@ -2569,7 +2569,7 @@ impl<'db> RocksTx<'db> {
         let encoded_key = key.encode();
         let iter = self
             .inner
-            .iterator_cf(&cf, IteratorMode::From(encoded_key.as_ref(), rocksdb::Direction::Forward));
+            .iterator_cf(cf, IteratorMode::From(encoded_key.as_ref(), rocksdb::Direction::Forward));
         Ok(RocksTxIter { inner: iter, _marker: std::marker::PhantomData })
     }
 

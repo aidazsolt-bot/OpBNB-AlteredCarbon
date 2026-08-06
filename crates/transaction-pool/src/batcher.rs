@@ -77,13 +77,13 @@ where
         if batch.len() == 1 {
             Self::process_request(pool, batch.into_iter().next().expect("batch is not empty"))
                 .await;
-            return;
+            return
         }
 
         // Same-origin batches can skip the per-transaction origins allocation.
         let mut batch_iter = batch.iter();
-        if let Some(origin) = batch_iter.next().map(|req| req.origin)
-            && batch_iter.all(|req| req.origin == origin)
+        if let Some(origin) = batch_iter.next().map(|req| req.origin) &&
+            batch_iter.all(|req| req.origin == origin)
         {
             let (transactions, response_txs): (Vec<_>, Vec<_>) =
                 batch.into_iter().map(|req| (req.pool_tx, req.response_tx)).unzip();
@@ -92,7 +92,7 @@ where
             for (response_tx, pool_result) in response_txs.into_iter().zip(pool_results) {
                 let _ = response_tx.send(pool_result);
             }
-            return;
+            return
         }
 
         let (transactions, response_txs): (Vec<_>, Vec<_>) =

@@ -1,15 +1,12 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display, str::FromStr};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use alloy_primitives::{address, b256, Address, B256, U256};
 use lazy_static::lazy_static;
 use reth_errors::ProviderError;
+use reth_evm::ConfigureEvm;
 use reth_primitives::{Header, TransactionSigned};
-use reth_primitives_traits::SignedTransaction;
-use reth_revm::State;
-use revm::{
-    state::{Account, EvmStorage, EvmStorageSlot, TransactionId},
-    Database,
-};
+use reth_revm::{db::states::StorageSlot, State};
+use revm::Database;
 use tracing::trace;
 
 use crate::{execute::BscEvmExecutor, BscBlockExecutionError};
@@ -661,7 +658,10 @@ lazy_static! {
         ]);
 }
 
-impl BscEvmExecutor {
+impl<EvmConfig> BscEvmExecutor<EvmConfig>
+where
+    EvmConfig: ConfigureEvm<Header = Header>,
+{
     pub(crate) fn patch_mainnet_before_tx<DB>(
         &self,
         transaction: &TransactionSigned,
@@ -669,7 +669,7 @@ impl BscEvmExecutor {
     ) where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let tx_hash = *transaction.hash();
+        let tx_hash = transaction.recalculate_hash();
         if let Some(patch) = MAINNET_PATCHES_BEFORE_TX.get(&tx_hash) {
             trace!("patch evm state for mainnet before tx {:?}", tx_hash);
 
@@ -684,7 +684,7 @@ impl BscEvmExecutor {
     ) where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let tx_hash = *transaction.hash();
+        let tx_hash = transaction.recalculate_hash();
         if let Some(patch) = CHAPEL_PATCHES_BEFORE_TX.get(&tx_hash) {
             trace!("patch evm state for chapel before tx {:?}", tx_hash);
 
@@ -699,7 +699,7 @@ impl BscEvmExecutor {
     ) where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let tx_hash = *transaction.hash();
+        let tx_hash = transaction.recalculate_hash();
         if let Some(patch) = MAINNET_PATCHES_AFTER_TX.get(&tx_hash) {
             trace!("patch evm state for mainnet after tx {:?}", tx_hash);
 
@@ -714,7 +714,7 @@ impl BscEvmExecutor {
     ) where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let tx_hash = *transaction.hash();
+        let tx_hash = transaction.recalculate_hash();
         if let Some(patch) = CHAPEL_PATCHES_AFTER_TX.get(&tx_hash) {
             trace!("patch evm state for chapel after tx {:?}", tx_hash);
 
@@ -727,19 +727,22 @@ fn apply_patch<DB>(state: &mut State<DB>, address: Address, storage: &HashMap<U2
 where
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    let mut account = state
+    let account = state
         .load_cache_account(address)
         .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: Box::new(err.into()) })
         .unwrap();
-    let mut evm_storage = EvmStorage::default();
-    for (key, value) in storage {
-        evm_storage.insert(*key, EvmStorageSlot::new_changed(U256::ZERO, *value, TransactionId::default()));
-    }
-    let account_change = account.change(Cow::Owned(
-        Account::new_not_existing(TransactionId::default())
-            .with_info(account.account_info().unwrap_or_default())
-            .with_storage(evm_storage.into_iter().map(|(key, slot)| (key, slot))),
-    ));
+    let account_change = account.change(
+        account.account_info().unwrap_or_default(),
+        storage
+            .iter()
+            .map(|(key, value)| {
+                (
+                    *key,
+                    StorageSlot { previous_or_original_value: U256::ZERO, present_value: *value },
+                )
+            })
+            .collect(),
+    );
 
     state.apply_transition(vec![(address, account_change)]);
 }

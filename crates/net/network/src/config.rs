@@ -687,13 +687,6 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
                 builder = builder.fork(network_stack_id, fork_id)
             }
 
-            // OP Stack EL and CL share discv5. Without this, SessionEstablished on CL ENRs
-            // (`opstack`, TCP ~9222) are passed to RLPx and burn outbound dial slots.
-            // `eth2` stays excluded via must_not_include_keys' default base filter.
-            if chain_spec.is_optimism() {
-                builder = builder.must_not_include_keys(&[NetworkStackId::OPSTACK]);
-            }
-
             if let Some(ip) = advertised_ip {
                 builder = builder.advertised_ip(ip);
             }
@@ -728,14 +721,6 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
             dns_networks.insert(link.parse().expect("is valid DNS link entry"));
         }
 
-        // OP Stack discv5 also surfaces CL peers and foreign EL ENRs without a usable fork
-        // id. Require EIP-868 fork id before admitting discoveries for RLPx dial so dial
-        // slots are not spent on op-node / random mesh noise.
-        let mut peers_config = peers_config.unwrap_or_default();
-        if chain_spec.is_optimism() {
-            peers_config = peers_config.with_enforce_enr_fork_id(true);
-        }
-
         NetworkConfig {
             client,
             secret_key,
@@ -745,7 +730,7 @@ impl<N: NetworkPrimitives> NetworkConfigBuilder<N> {
             discovery_v5_config: discovery_v5_builder.map(|builder| builder.build()),
             discovery_v4_addr: discovery_addr.unwrap_or(DEFAULT_DISCOVERY_ADDRESS),
             listener_addr,
-            peers_config,
+            peers_config: peers_config.unwrap_or_default(),
             sessions_config: sessions_config.unwrap_or_default(),
             chain_id,
             block_import: block_import.unwrap_or_else(|| Box::<ProofOfStakeBlockImport>::default()),

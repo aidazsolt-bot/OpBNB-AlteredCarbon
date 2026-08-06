@@ -571,10 +571,6 @@ where
             BlockId::Number(number_or_tag) => self.header_by_number_or_tag(number_or_tag),
         }
     }
-
-    fn ommers_by_id(&self, _id: BlockId) -> ProviderResult<Option<Vec<Self::Header>>> {
-        Err(ProviderError::UnsupportedProvider)
-    }
 }
 
 impl<P, Node, N> ReceiptProvider for RpcBlockchainProvider<P, Node, N>
@@ -1761,10 +1757,6 @@ where
         &self,
         _range: impl std::ops::RangeBounds<BlockNumber>,
     ) -> ProviderResult<Vec<(BlockNumber, reth_db_api::models::AccountBeforeTx)>> {
-        Err(ProviderError::UnsupportedProvider)
-    }
-
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
         Err(ProviderError::UnsupportedProvider)
     }
 }

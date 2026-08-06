@@ -274,8 +274,8 @@ where
 {
     let mut m = HashMap::new();
     for (fork, condition) in spec.forks_iter() {
-        if condition.transitions_at_block(block_number)
-            || condition.transitions_at_timestamp(block_time, parent_block_time)
+        if condition.transitions_at_block(block_number) ||
+            condition.transitions_at_timestamp(block_time, parent_block_time)
         {
             if let Ok(contracts) = get_system_contract_codes(spec, fork.name()) {
                 for (k, v) in &contracts {

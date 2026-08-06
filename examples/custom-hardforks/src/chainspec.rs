@@ -139,10 +139,6 @@ impl EthChainSpec for CustomChainSpec {
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.inner.final_paris_total_difficulty()
     }
-
-    fn is_bsc(&self) -> bool {
-        false
-    }
 }
 
 // Implement `EthereumHardforks` to support Ethereum hardfork queries.

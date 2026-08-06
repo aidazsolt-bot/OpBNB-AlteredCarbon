@@ -5,7 +5,7 @@
     html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 use std::{
@@ -17,46 +17,42 @@ use std::{
 
 use alloy_eips::BlockNumHash;
 use futures_util::FutureExt;
+use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_chainspec::{ChainSpec, MAINNET};
 use reth_consensus::test_utils::TestConsensus;
 use reth_db::{
-    test_utils::{
-        create_test_rocksdb_dir, create_test_rw_db, create_test_static_files_dir, TempDatabase,
-    },
+    test_utils::{create_test_rw_db, create_test_static_files_dir, TempDatabase},
     DatabaseEnv,
 };
 use reth_db_common::init::init_genesis;
-use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
-use reth_evm_ethereum::MockEvmConfig;
+use reth_evm::test_utils::MockExecutorProvider;
 use reth_execution_types::Chain;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification, ExExNotifications, Wal};
-use reth_network::{config::rng_secret_key, NetworkConfigBuilder, NetworkManager};
+use reth_network::{config::SecretKey, NetworkConfigBuilder, NetworkManager};
 use reth_node_api::{
-    FullNodeTypes, FullNodeTypesAdapter, NodePrimitives, NodeTypes, NodeTypesWithDBAdapter,
+    FullNodeTypes, FullNodeTypesAdapter, NodeTypes, NodeTypesWithDBAdapter, NodeTypesWithEngine,
 };
 use reth_node_builder::{
     components::{
-        BasicPayloadServiceBuilder, Components, ComponentsBuilder, ConsensusBuilder,
-        ExecutorBuilder, PoolBuilder,
+        Components, ComponentsBuilder, ConsensusBuilder, ExecutorBuilder, NodeComponentsBuilder,
+        PoolBuilder,
     },
     BuilderContext, Node, NodeAdapter, RethFullAdapter,
 };
 use reth_node_core::node_config::NodeConfig;
 use reth_node_ethereum::{
-    node::{
-        EthereumAddOns, EthereumEngineValidatorBuilder, EthereumEthApiBuilder,
-        EthereumNetworkBuilder, EthereumPayloadBuilder,
-    },
-    EthEngineTypes,
+    node::{EthereumAddOns, EthereumNetworkBuilder, EthereumParliaBuilder, EthereumPayloadBuilder},
+    EthEngineTypes, EthEvmConfig,
 };
 use reth_payload_builder::noop::NoopPayloadBuilderService;
-use reth_primitives_traits::{Block as _, RecoveredBlock};
+use reth_primitives::{Head, SealedBlockWithSenders};
 use reth_provider::{
-    providers::{BlockchainProvider, RocksDBProvider, StaticFileProvider},
-    BlockReader, EthStorage, ProviderFactory,
+    providers::{BlockchainProvider, StaticFileProvider},
+    BlockReader, ProviderFactory,
 };
-use reth_tasks::Runtime;
+use reth_tasks::TaskManager;
 use reth_transaction_pool::test_utils::{testing_pool, TestPool};
+
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver};
@@ -68,7 +64,7 @@ pub struct TestPoolBuilder;
 
 impl<Node> PoolBuilder<Node> for TestPoolBuilder
 where
-    Node: FullNodeTypes<Types: NodeTypes<Primitives: NodePrimitives<SignedTx = TransactionSigned>>>,
+    Node: FullNodeTypes,
 {
     type Pool = TestPool;
 
@@ -77,20 +73,26 @@ where
     }
 }
 
-/// A test [`ExecutorBuilder`] that builds a [`MockEvmConfig`] for testing.
+/// A test [`ExecutorBuilder`] that builds a [`MockExecutorProvider`].
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub struct TestExecutorBuilder;
 
 impl<Node> ExecutorBuilder<Node> for TestExecutorBuilder
 where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec, Primitives = EthPrimitives>>,
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
 {
-    type EVM = MockEvmConfig;
+    type EVM = EthEvmConfig;
+    type Executor = MockExecutorProvider;
 
-    async fn build_evm(self, _ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
-        let evm_config = MockEvmConfig::default();
-        Ok(evm_config)
+    async fn build_evm(
+        self,
+        ctx: &BuilderContext<Node>,
+    ) -> eyre::Result<(Self::EVM, Self::Executor)> {
+        let evm_config = EthEvmConfig::new(ctx.chain_spec());
+        let executor = MockExecutorProvider::default();
+
+        Ok((evm_config, executor))
     }
 }
 
@@ -116,35 +118,41 @@ where
 pub struct TestNode;
 
 impl NodeTypes for TestNode {
-    type Primitives = EthPrimitives;
+    type Primitives = ();
     type ChainSpec = ChainSpec;
-    type Storage = EthStorage;
-    type Payload = EthEngineTypes;
+    type StateCommitment = reth_trie_db::MerklePatriciaTrie;
+}
+
+impl NodeTypesWithEngine for TestNode {
+    type Engine = EthEngineTypes;
 }
 
 impl<N> Node<N> for TestNode
 where
-    N: FullNodeTypes<Types = Self>,
+    N: FullNodeTypes<Types: NodeTypesWithEngine<Engine = EthEngineTypes, ChainSpec = ChainSpec>>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
         TestPoolBuilder,
-        BasicPayloadServiceBuilder<EthereumPayloadBuilder>,
+        EthereumPayloadBuilder,
         EthereumNetworkBuilder,
         TestExecutorBuilder,
         TestConsensusBuilder,
+        EthereumParliaBuilder,
     >;
-    type AddOns =
-        EthereumAddOns<NodeAdapter<N>, EthereumEthApiBuilder, EthereumEngineValidatorBuilder>;
+    type AddOns = EthereumAddOns<
+        NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
+    >;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(TestPoolBuilder::default())
-            .executor(TestExecutorBuilder::default())
-            .payload(BasicPayloadServiceBuilder::default())
+            .payload(EthereumPayloadBuilder::default())
             .network(EthereumNetworkBuilder::default())
+            .executor(TestExecutorBuilder::default())
             .consensus(TestConsensusBuilder::default())
+            .parlia(EthereumParliaBuilder::default())
     }
 
     fn add_ons(&self) -> Self::AddOns {
@@ -156,7 +164,15 @@ where
 pub type TmpDB = Arc<TempDatabase<DatabaseEnv>>;
 /// The [`NodeAdapter`] for the [`TestExExContext`]. Contains type necessary to
 /// boot the testing environment
-pub type Adapter = NodeAdapter<RethFullAdapter<TmpDB, TestNode>>;
+pub type Adapter = NodeAdapter<
+    RethFullAdapter<TmpDB, TestNode>,
+    <<TestNode as Node<
+        FullNodeTypesAdapter<
+            NodeTypesWithDBAdapter<TestNode, TmpDB>,
+            BlockchainProvider<NodeTypesWithDBAdapter<TestNode, TmpDB>>,
+        >,
+    >>::ComponentsBuilder as NodeComponentsBuilder<RethFullAdapter<TmpDB, TestNode>>>::Components,
+>;
 /// An [`ExExContext`] using the [`Adapter`] type.
 pub type TestExExContext = ExExContext<Adapter>;
 
@@ -164,15 +180,15 @@ pub type TestExExContext = ExExContext<Adapter>;
 #[derive(Debug)]
 pub struct TestExExHandle {
     /// Genesis block that was inserted into the storage
-    pub genesis: RecoveredBlock<reth_ethereum_primitives::Block>,
+    pub genesis: SealedBlockWithSenders,
     /// Provider Factory for accessing the emphemeral storage of the host node
     pub provider_factory: ProviderFactory<NodeTypesWithDBAdapter<TestNode, TmpDB>>,
     /// Channel for receiving events from the Execution Extension
     pub events_rx: UnboundedReceiver<ExExEvent>,
     /// Channel for sending notifications to the Execution Extension
     pub notifications_tx: Sender<ExExNotification>,
-    /// Node task runtime
-    pub runtime: Runtime,
+    /// Node task manager
+    pub tasks: TaskManager,
     /// WAL temp directory handle
     _wal_directory: TempDir,
 }
@@ -237,43 +253,46 @@ pub async fn test_exex_context_with_chain_spec(
     chain_spec: Arc<ChainSpec>,
 ) -> eyre::Result<(ExExContext<Adapter>, TestExExHandle)> {
     let transaction_pool = testing_pool();
-    let evm_config = MockEvmConfig::default();
+    let evm_config = EthEvmConfig::new(chain_spec.clone());
+    let executor = MockExecutorProvider::default();
     let consensus = Arc::new(TestConsensus::default());
 
     let (static_dir, _) = create_test_static_files_dir();
-    let (rocksdb_dir, _) = create_test_rocksdb_dir();
     let db = create_test_rw_db();
-    let provider_factory = ProviderFactory::<NodeTypesWithDBAdapter<TestNode, _>>::new(
+    let provider_factory = ProviderFactory::new(
         db,
         chain_spec.clone(),
-        StaticFileProvider::read_write(static_dir.keep()).expect("static file provider"),
-        RocksDBProvider::builder(rocksdb_dir.keep()).build().unwrap(),
-    )?;
+        StaticFileProvider::read_write(static_dir.into_path()).expect("static file provider"),
+    );
 
     let genesis_hash = init_genesis(&provider_factory)?;
-    let provider = BlockchainProvider::new(provider_factory.clone())?;
+    let provider =
+        BlockchainProvider::new(provider_factory.clone(), Arc::new(NoopBlockchainTree::default()))?;
 
-    let runtime = Runtime::test();
     let network_manager = NetworkManager::new(
-        NetworkConfigBuilder::new(rng_secret_key(), runtime.clone())
+        NetworkConfigBuilder::new(SecretKey::new(&mut rand::thread_rng()))
             .with_unused_discovery_port()
             .with_unused_listener_port()
             .build(provider_factory.clone()),
     )
     .await?;
     let network = network_manager.handle().clone();
-    let task_executor = runtime.clone();
-    runtime.spawn(network_manager);
+    let tasks = TaskManager::current();
+    let task_executor = tasks.executor();
+    tasks.executor().spawn(network_manager);
 
-    let (_, payload_builder_handle) = NoopPayloadBuilderService::<EthEngineTypes>::new();
+    let (_, payload_builder) = NoopPayloadBuilderService::<EthEngineTypes>::new();
 
-    let components = NodeAdapter::<FullNodeTypesAdapter<_, _, _>, _> {
+    let components = NodeAdapter::<FullNodeTypesAdapter<NodeTypesWithDBAdapter<TestNode, _>, _>, _> {
         components: Components {
             transaction_pool,
             evm_config,
+            executor,
             consensus,
             network,
-            payload_builder_handle,
+            payload_builder,
+            #[cfg(feature = "bsc")]
+            parlia: Default::default(),
         },
         task_executor,
         provider,
@@ -283,9 +302,16 @@ pub async fn test_exex_context_with_chain_spec(
         .block_by_hash(genesis_hash)?
         .ok_or_else(|| eyre::eyre!("genesis block not found"))?
         .seal_slow()
-        .try_recover()?;
+        .seal_with_senders()
+        .ok_or_else(|| eyre::eyre!("failed to recover senders"))?;
 
-    let head = genesis.num_hash();
+    let head = Head {
+        number: genesis.number,
+        hash: genesis_hash,
+        difficulty: genesis.difficulty,
+        timestamp: genesis.timestamp,
+        total_difficulty: Default::default(),
+    };
 
     let wal_directory = tempfile::tempdir()?;
     let wal = Wal::new(wal_directory.path())?;
@@ -295,7 +321,7 @@ pub async fn test_exex_context_with_chain_spec(
     let notifications = ExExNotifications::new(
         head,
         components.provider.clone(),
-        components.components.evm_config.clone(),
+        components.components.executor.clone(),
         notifications_rx,
         wal.handle(),
     );
@@ -316,7 +342,7 @@ pub async fn test_exex_context_with_chain_spec(
             provider_factory,
             events_rx,
             notifications_tx,
-            runtime,
+            tasks,
             _wal_directory: wal_directory,
         },
     ))

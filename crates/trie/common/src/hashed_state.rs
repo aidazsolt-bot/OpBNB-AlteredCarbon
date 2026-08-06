@@ -15,13 +15,10 @@ use alloy_primitives::{
 use itertools::Itertools;
 #[cfg(feature = "rayon")]
 pub use rayon::*;
-#[cfg(feature = "rayon")]
-use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
 use reth_primitives_traits::Account;
 
-use alloy_consensus::constants::KECCAK_EMPTY;
-use rust_eth_triedb::TrieDBHashedPostState;
-use rust_eth_triedb_state_trie::account::StateAccount;
+#[cfg(feature = "rayon")]
+use rayon::prelude::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
 
 use revm::database::{AccountStatus, BundleAccount};
 
@@ -69,84 +66,6 @@ impl HashedPostState {
                 )
             })
             .collect()
-    }
-
-    /// Initialize [`HashedPostState`] from bundle state for unwind.
-    pub fn from_bundle_state_to_unwind<'a, KH: KeyHasher>(
-        state: impl IntoIterator<Item = (&'a Address, &'a BundleAccount)>,
-    ) -> Self {
-        let hashed = state
-            .into_iter()
-            .map(|(address, account)| {
-                let hashed_address = KH::hash_key(address);
-                let hashed_account = account.original_info.as_ref().map(Into::into);
-                let hashed_storage = match hashed_account {
-                    None => HashedStorage::new(false),
-                    Some(_) => HashedStorage::from_plain_storage(
-                        AccountStatus::Changed,
-                        account
-                            .storage
-                            .iter()
-                            .map(|(slot, value)| (slot, &value.previous_or_original_value)),
-                    ),
-                };
-                (hashed_address, (hashed_account, hashed_storage))
-            })
-            .collect::<Vec<(B256, (Option<Account>, HashedStorage))>>();
-
-        let mut accounts = HashMap::with_capacity_and_hasher(hashed.len(), Default::default());
-        let mut storages = HashMap::with_capacity_and_hasher(hashed.len(), Default::default());
-        for (address, (account, storage)) in hashed {
-            accounts.insert(address, account);
-            if !storage.is_empty() {
-                storages.insert(address, storage);
-            }
-        }
-        Self { accounts, storages }
-    }
-
-    /// Convert [`HashedPostState`] to [`TrieDBHashedPostState`].
-    pub fn to_triedb_hashed_post_state(&self) -> TrieDBHashedPostState {
-        let mut triedb_hashed_post_state = TrieDBHashedPostState::default();
-
-        for (hashed_address, account) in &self.accounts {
-            match account {
-                Some(account) => {
-                    let code_hash = account.bytecode_hash.unwrap_or(KECCAK_EMPTY);
-                    let acc = StateAccount::default()
-                        .with_nonce(account.nonce)
-                        .with_balance(account.balance)
-                        .with_code_hash(code_hash);
-                    triedb_hashed_post_state.states.insert(*hashed_address, Some(acc));
-
-                    if let Some(storages) = self.storages.get(hashed_address) &&
-                        storages.wiped
-                    {
-                        triedb_hashed_post_state.states_rebuild.insert(*hashed_address);
-                    }
-                }
-                None => {
-                    triedb_hashed_post_state.states.insert(*hashed_address, None);
-                }
-            }
-        }
-
-        for (hashed_address, storages) in &self.storages {
-            if storages.storage.is_empty() {
-                continue;
-            }
-            let mut kvs = HashMap::new();
-            for (hashed_key, value) in &storages.storage {
-                if value.is_zero() {
-                    kvs.insert(*hashed_key, None);
-                } else {
-                    kvs.insert(*hashed_key, Some(*value));
-                }
-            }
-            triedb_hashed_post_state.storage_states.insert(*hashed_address, kvs);
-        }
-
-        triedb_hashed_post_state
     }
 
     /// Construct [`HashedPostState`] from a single [`HashedStorage`].
@@ -268,10 +187,10 @@ impl HashedPostState {
                 Some(storage_in_targets) => {
                     let mut storage_not_in_targets = HashedStorage::default();
                     storage.storage.retain(|&slot, value| {
-                        if storage_in_targets.contains(&slot)
-                            && !storage_added_removed_keys.is_some_and(|k| k.is_removed(&slot))
+                        if storage_in_targets.contains(&slot) &&
+                            !storage_added_removed_keys.is_some_and(|k| k.is_removed(&slot))
                         {
-                            return true;
+                            return true
                         }
 
                         storage_not_in_targets.storage.insert(slot, *value);
@@ -306,7 +225,7 @@ impl HashedPostState {
         });
         self.accounts.retain(|&address, account| {
             if targets.contains_key(&address) {
-                return true;
+                return true
             }
 
             state_updates_not_in_targets.accounts.insert(address, *account);
@@ -325,9 +244,8 @@ impl HashedPostState {
 
     /// Returns the number of items that will be considered during chunking in `[Self::chunks]`.
     pub fn chunking_length(&self) -> usize {
-        self.accounts.len()
-            + self
-                .storages
+        self.accounts.len() +
+            self.storages
                 .values()
                 .map(|storage| if storage.wiped { 1 } else { 0 } + storage.storage.len())
                 .sum::<usize>()

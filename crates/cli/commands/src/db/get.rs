@@ -2,26 +2,15 @@ use alloy_primitives::{hex, BlockHash};
 use clap::Parser;
 use reth_db::{
     static_file::{
-        AccountChangesetMask, ColumnSelectorOne, ColumnSelectorTwo, HeaderWithHashMask,
-        ReceiptMask, SidecarMask, TransactionMask, TransactionSenderMask,
+        ColumnSelectorOne, ColumnSelectorTwo, HeaderMask, ReceiptMask, SidecarMask, TransactionMask,
     },
-    RawDupSort,
+    tables, RawKey, RawTable, Receipts, Sidecars, TableViewer, Transactions,
 };
-use reth_db_api::{
-    cursor::{DbCursorRO, DbDupCursorRO},
-    database::Database,
-    table::{Compress, Decompress, DupSort, Table},
-    tables,
-    transaction::DbTx,
-    RawKey, RawTable, Receipts, TableViewer, Transactions,
-};
+use reth_db_api::table::{Decompress, DupSort, Table};
 use reth_db_common::DbTool;
-use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_builder::NodeTypesWithDB;
-use reth_provider::{
-    providers::ProviderNodeTypes, ChangeSetReader, StaticFileProviderFactory,
-    StorageChangeSetReader,
-};
+use reth_primitives::{BlobSidecars, Header};
+use reth_provider::{providers::ProviderNodeTypes, StaticFileProviderFactory};
 use reth_static_file_types::StaticFileSegment;
 use tracing::error;
 
@@ -46,14 +35,6 @@ enum Subcommand {
         #[arg(value_parser = maybe_json_value_parser)]
         subkey: Option<String>,
 
-        /// Optional end key for range query (exclusive upper bound)
-        #[arg(value_parser = maybe_json_value_parser)]
-        end_key: Option<String>,
-
-        /// Optional end subkey for range query (exclusive upper bound)
-        #[arg(value_parser = maybe_json_value_parser)]
-        end_subkey: Option<String>,
-
         /// Output bytes instead of human-readable decoded value
         #[arg(long)]
         raw: bool,
@@ -66,10 +47,6 @@ enum Subcommand {
         #[arg(value_parser = maybe_json_value_parser)]
         key: String,
 
-        /// The subkey to get content for, for example address in changeset
-        #[arg(value_parser = maybe_json_value_parser)]
-        subkey: Option<String>,
-
         /// Output bytes instead of human-readable decoded value
         #[arg(long)]
         raw: bool,
@@ -80,86 +57,27 @@ impl Command {
     /// Execute `db get` command
     pub fn execute<N: ProviderNodeTypes>(self, tool: &DbTool<N>) -> eyre::Result<()> {
         match self.subcommand {
-            Subcommand::Mdbx { table, key, subkey, end_key, end_subkey, raw } => {
-                table.view(&GetValueViewer { tool, key, subkey, end_key, end_subkey, raw })?
+            Subcommand::Mdbx { table, key, subkey, raw } => {
+                table.view(&GetValueViewer { tool, key, subkey, raw })?
             }
-            Subcommand::StaticFile { segment, key, subkey, raw } => {
-                let (key, subkey, mask): (u64, _, _) = match segment {
-                    StaticFileSegment::Headers => (
-                        table_key::<tables::Headers>(&key)?,
-                        None,
-                        <HeaderWithHashMask<HeaderTy<N>>>::MASK,
-                    ),
+            Subcommand::StaticFile { segment, key, raw } => {
+                let (key, mask): (u64, _) = match segment {
+                    StaticFileSegment::Headers => {
+                        (table_key::<tables::Headers>(&key)?, <HeaderMask<Header, BlockHash>>::MASK)
+                    }
                     StaticFileSegment::Transactions => (
                         table_key::<tables::Transactions>(&key)?,
-                        None,
-                        <TransactionMask<TxTy<N>>>::MASK,
+                        <TransactionMask<<Transactions as Table>::Value>>::MASK,
                     ),
                     StaticFileSegment::Receipts => (
                         table_key::<tables::Receipts>(&key)?,
-                        None,
-                        <ReceiptMask<ReceiptTy<N>>>::MASK,
+                        <ReceiptMask<<Receipts as Table>::Value>>::MASK,
                     ),
-                    StaticFileSegment::TransactionSenders => (
-                        table_key::<tables::TransactionSenders>(&key)?,
-                        None,
-                        TransactionSenderMask::MASK,
-                    ),
-                    StaticFileSegment::AccountChangeSets => {
-                        let subkey =
-                            table_subkey::<tables::AccountChangeSets>(subkey.as_deref()).ok();
-                        (
-                            table_key::<tables::AccountChangeSets>(&key)?,
-                            subkey,
-                            AccountChangesetMask::MASK,
-                        )
-                    }
-                    // `StorageChangeSets` is handled separately below via
-                    // `storage_changeset`, since its database key
-                    // (`BlockNumberAddress`) is not a plain block number.
-                    StaticFileSegment::StorageChangeSets => (0, None, AccountChangesetMask::MASK),
                     StaticFileSegment::Sidecars => (
                         table_key::<tables::Sidecars>(&key)?,
-                        None,
-                        SidecarMask::<reth_primitives_traits::BlobSidecars>::MASK,
+                        <SidecarMask<BlobSidecars, BlockHash>>::MASK,
                     ),
                 };
-
-                // handle account changesets differently if a subkey is provided.
-                if let StaticFileSegment::AccountChangeSets = segment {
-                    let Some(subkey) = subkey else {
-                        // get all changesets for the block
-                        let changesets = tool
-                            .provider_factory
-                            .static_file_provider()
-                            .account_block_changeset(key)?;
-
-                        println!("{}", serde_json::to_string_pretty(&changesets)?);
-                        return Ok(())
-                    };
-
-                    let account = tool
-                        .provider_factory
-                        .static_file_provider()
-                        .get_account_before_block(key, subkey)?;
-
-                    if let Some(account) = account {
-                        println!("{}", serde_json::to_string_pretty(&account)?);
-                    } else {
-                        error!(target: "reth::cli", "No content for the given table key.");
-                    }
-
-                    return Ok(())
-                }
-
-                // handle storage changesets differently since they use a change-based row model.
-                if let StaticFileSegment::StorageChangeSets = segment {
-                    let changesets =
-                        tool.provider_factory.static_file_provider().storage_changeset(key)?;
-
-                    println!("{}", serde_json::to_string_pretty(&changesets)?);
-                    return Ok(())
-                }
 
                 let content = tool.provider_factory.static_file_provider().find_static_file(
                     segment,
@@ -180,7 +98,7 @@ impl Command {
                         } else {
                             match segment {
                                 StaticFileSegment::Headers => {
-                                    let header = HeaderTy::<N>::decompress(content[0].as_slice())?;
+                                    let header = Header::decompress(content[0].as_slice())?;
                                     let block_hash = BlockHash::decompress(content[1].as_slice())?;
                                     println!(
                                         "Header\n{}\n\nBlockHash\n{}",
@@ -200,24 +118,11 @@ impl Command {
                                     )?;
                                     println!("{}", serde_json::to_string_pretty(&receipt)?);
                                 }
-                                StaticFileSegment::TransactionSenders => {
-                                    let sender =
-                                        <<tables::TransactionSenders as Table>::Value>::decompress(
-                                            content[0].as_slice(),
-                                        )?;
-                                    println!("{}", serde_json::to_string_pretty(&sender)?);
-                                }
-                                StaticFileSegment::AccountChangeSets => {
-                                    unreachable!("account changeset static files are special cased before this match")
-                                }
-                                StaticFileSegment::StorageChangeSets => {
-                                    unreachable!("storage changeset static files are special cased before this match")
-                                }
                                 StaticFileSegment::Sidecars => {
-                                    let sidecars = <<tables::Sidecars as Table>::Value>::decompress(
+                                    let sc = <<Sidecars as Table>::Value>::decompress(
                                         content[0].as_slice(),
                                     )?;
-                                    println!("{}", serde_json::to_string_pretty(&sidecars)?);
+                                    println!("{}", serde_json::to_string_pretty(&sc)?);
                                 }
                             }
                         }
@@ -235,20 +140,18 @@ impl Command {
 
 /// Get an instance of key for given table
 pub(crate) fn table_key<T: Table>(key: &str) -> Result<T::Key, eyre::Error> {
-    serde_json::from_str(key).map_err(|e| eyre::eyre!(e))
+    serde_json::from_str::<T::Key>(key).map_err(|e| eyre::eyre!(e))
 }
 
 /// Get an instance of subkey for given dupsort table
 fn table_subkey<T: DupSort>(subkey: Option<&str>) -> Result<T::SubKey, eyre::Error> {
-    serde_json::from_str(subkey.unwrap_or_default()).map_err(|e| eyre::eyre!(e))
+    serde_json::from_str::<T::SubKey>(subkey.unwrap_or_default()).map_err(|e| eyre::eyre!(e))
 }
 
 struct GetValueViewer<'a, N: NodeTypesWithDB> {
     tool: &'a DbTool<N>,
     key: String,
     subkey: Option<String>,
-    end_key: Option<String>,
-    end_subkey: Option<String>,
     raw: bool,
 }
 
@@ -258,82 +161,41 @@ impl<N: ProviderNodeTypes> TableViewer<()> for GetValueViewer<'_, N> {
     fn view<T: Table>(&self) -> Result<(), Self::Error> {
         let key = table_key::<T>(&self.key)?;
 
-        if self.end_key.is_some() || self.end_subkey.is_some() {
-            return Err(eyre::eyre!("Only END_KEY can be given for non-DUPSORT tables"));
-        }
-
-        let end_key = self.subkey.clone();
-
-        if let Some(ref end_key_str) = end_key {
-            let end_key = table_key::<T>(end_key_str)?;
-
-            self.tool.provider_factory.db_ref().view(|tx| {
-                let mut cursor = tx.cursor_read::<T>()?;
-                let walker = cursor.walk_range(key..end_key)?;
-
-                for result in walker {
-                    let (k, v) = result?;
-                    let json_val = if self.raw {
-                        let raw_key = RawKey::from(k);
-                        serde_json::json!({
-                            "key": hex::encode_prefixed(raw_key.raw_key()),
-                            "val": hex::encode_prefixed(v.compress().as_ref()),
-                        })
-                    } else {
-                        serde_json::json!({
-                            "key": &k,
-                            "val": &v,
-                        })
-                    };
-
-                    println!("{}", serde_json::to_string_pretty(&json_val)?);
-                }
-
-                Ok::<_, eyre::Report>(())
-            })??;
+        let content = if self.raw {
+            self.tool
+                .get::<RawTable<T>>(RawKey::from(key))?
+                .map(|content| hex::encode_prefixed(content.raw_value()))
         } else {
-            let content = if self.raw {
-                self.tool
-                    .get::<RawTable<T>>(RawKey::from(key))?
-                    .map(|content| hex::encode_prefixed(content.raw_value()))
-            } else {
-                self.tool.get::<T>(key)?.as_ref().map(serde_json::to_string_pretty).transpose()?
-            };
+            self.tool.get::<T>(key)?.as_ref().map(serde_json::to_string_pretty).transpose()?
+        };
 
-            match content {
-                Some(content) => println!("{content}"),
-                None => error!(target: "reth::cli", "No content for the given table key."),
-            };
-        }
+        match content {
+            Some(content) => {
+                println!("{content}");
+            }
+            None => {
+                error!(target: "reth::cli", "No content for the given table key.");
+            }
+        };
 
         Ok(())
     }
 
     fn view_dupsort<T: DupSort>(&self) -> Result<(), Self::Error> {
-        if self.end_key.is_some() {
-            return Err(eyre::eyre!("Range queries on DUPSORT tables are not supported yet"));
-        }
-
+        // get a key for given table
         let key = table_key::<T>(&self.key)?;
+
+        // process dupsort table
         let subkey = table_subkey::<T>(self.subkey.as_deref())?;
 
-        let content = if self.raw {
-            self.tool
-                .get_dup::<RawDupSort<T>>(RawKey::from(key), RawKey::from(subkey))?
-                .map(|content| hex::encode_prefixed(content.raw_value()))
-        } else {
-            self.tool
-                .get_dup::<T>(key, subkey)?
-                .as_ref()
-                .map(serde_json::to_string_pretty)
-                .transpose()?
+        match self.tool.get_dup::<T>(key, subkey)? {
+            Some(content) => {
+                println!("{}", serde_json::to_string_pretty(&content)?);
+            }
+            None => {
+                error!(target: "reth::cli", "No content for the given table subkey.");
+            }
         };
-
-        match content {
-            Some(content) => println!("{content}"),
-            None => error!(target: "reth::cli", "No content for the given table subkey."),
-        }
-
         Ok(())
     }
 }
@@ -350,12 +212,10 @@ pub(crate) fn maybe_json_value_parser(value: &str) -> Result<String, eyre::Error
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{address, B256};
+    use alloy_primitives::{Address, B256};
     use clap::{Args, Parser};
-    use reth_db_api::{
-        models::{storage_sharded_key::StorageShardedKey, ShardedKey},
-        AccountsHistory, HashedAccounts, Headers, StageCheckpoints, StoragesHistory,
-    };
+    use reth_db::{AccountsHistory, HashedAccounts, Headers, StageCheckpoints, StoragesHistory};
+    use reth_db_api::models::{storage_sharded_key::StorageShardedKey, ShardedKey};
     use std::str::FromStr;
 
     /// A helper type to parse Args more easily
@@ -391,7 +251,7 @@ mod tests {
         assert_eq!(
             table_key::<StoragesHistory>(r#"{ "address": "0x01957911244e546ce519fbac6f798958fafadb41", "sharded_key": { "key": "0x0000000000000000000000000000000000000000000000000000000000000003", "highest_block_number": 18446744073709551615 } }"#).unwrap(),
             StorageShardedKey::new(
-                address!("0x01957911244e546ce519fbac6f798958fafadb41"),
+                Address::from_str("0x01957911244e546ce519fbac6f798958fafadb41").unwrap(),
                 B256::from_str(
                     "0x0000000000000000000000000000000000000000000000000000000000000003"
                 )
@@ -406,7 +266,7 @@ mod tests {
         assert_eq!(
             table_key::<AccountsHistory>(r#"{ "key": "0x4448e1273fd5a8bfdb9ed111e96889c960eee145", "highest_block_number": 18446744073709551615 }"#).unwrap(),
             ShardedKey::new(
-                address!("0x4448e1273fd5a8bfdb9ed111e96889c960eee145"),
+                Address::from_str("0x4448e1273fd5a8bfdb9ed111e96889c960eee145").unwrap(),
                 18446744073709551615
             )
         );

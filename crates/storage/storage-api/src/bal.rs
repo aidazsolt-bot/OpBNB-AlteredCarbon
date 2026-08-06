@@ -133,7 +133,7 @@ pub trait BalStore: Send + Sync + 'static {
             out.push(bal);
 
             if limit.exceeds(size) {
-                break;
+                break
             }
         }
         Ok(())
@@ -317,7 +317,7 @@ impl BalStore for NoopBalStore {
             out.push(None);
 
             if limit.exceeds(size) {
-                break;
+                break
             }
         }
         Ok(())

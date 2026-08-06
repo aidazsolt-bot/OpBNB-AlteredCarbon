@@ -11,6 +11,7 @@ mod builder;
 mod consensus;
 mod execute;
 mod network;
+mod parlia;
 mod payload;
 mod pool;
 
@@ -18,35 +19,44 @@ pub use builder::*;
 pub use consensus::*;
 pub use execute::*;
 pub use network::*;
+pub use parlia::*;
 pub use payload::*;
 pub use pool::*;
+#[cfg(feature = "bsc")]
+use reth_bsc_consensus::Parlia;
+use reth_consensus::Consensus;
+use reth_evm::execute::BlockExecutorProvider;
+use reth_network::NetworkHandle;
+use reth_network_api::FullNetwork;
+use reth_node_api::NodeTypesWithEngine;
+use reth_payload_builder::PayloadBuilderHandle;
+use reth_primitives::Header;
+use reth_transaction_pool::TransactionPool;
 
 use crate::{ConfigureEvm, FullNodeTypes};
-use reth_consensus::FullConsensus;
-use reth_network::types::NetPrimitivesFor;
-use reth_network_api::FullNetwork;
-use reth_node_api::{NodeTypes, PrimitivesTy, TxTy};
-use reth_payload_builder::PayloadBuilderHandle;
-use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
-use std::fmt::Debug;
 
 /// An abstraction over the components of a node, consisting of:
 ///  - evm and executor
 ///  - transaction pool
 ///  - network
 ///  - payload builder.
-pub trait NodeComponents<T: FullNodeTypes>: Clone + Debug + Unpin + Send + Sync + 'static {
+///  - engine validator.
+///  - parlia consensus if bsc is enabled.
+pub trait NodeComponents<T: FullNodeTypes>: Clone + Unpin + Send + Sync + 'static {
     /// The transaction pool of the node.
-    type Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<T::Types>>> + Unpin;
+    type Pool: TransactionPool + Unpin;
 
     /// The node's EVM configuration, defining settings for the Ethereum Virtual Machine.
-    type Evm: ConfigureEvm<Primitives = <T::Types as NodeTypes>::Primitives>;
+    type Evm: ConfigureEvm<Header = Header>;
+
+    /// The type that knows how to execute blocks.
+    type Executor: BlockExecutorProvider;
 
     /// The consensus type of the node.
-    type Consensus: FullConsensus<<T::Types as NodeTypes>::Primitives> + Clone + Unpin + 'static;
+    type Consensus: Consensus + Clone + Unpin + 'static;
 
     /// Network API.
-    type Network: FullNetwork<Primitives: NetPrimitivesFor<<T::Types as NodeTypes>::Primitives>>;
+    type Network: FullNetwork;
 
     /// Returns the transaction pool of the node.
     fn pool(&self) -> &Self::Pool;
@@ -54,54 +64,59 @@ pub trait NodeComponents<T: FullNodeTypes>: Clone + Debug + Unpin + Send + Sync 
     /// Returns the node's evm config.
     fn evm_config(&self) -> &Self::Evm;
 
+    /// Returns the node's executor type.
+    fn block_executor(&self) -> &Self::Executor;
+
     /// Returns the node's consensus type.
     fn consensus(&self) -> &Self::Consensus;
 
     /// Returns the handle to the network
     fn network(&self) -> &Self::Network;
 
-    /// Returns the handle to the payload builder service handling payload building requests from
-    /// the engine.
-    fn payload_builder_handle(&self) -> &PayloadBuilderHandle<<T::Types as NodeTypes>::Payload>;
+    /// Returns the handle to the payload builder service.
+    fn payload_builder(&self) -> &PayloadBuilderHandle<<T::Types as NodeTypesWithEngine>::Engine>;
+
+    #[cfg(feature = "bsc")]
+    /// Returns the parlia.
+    fn parlia(&self) -> &Parlia;
 }
 
 /// All the components of the node.
 ///
 /// This provides access to all the components of the node.
 #[derive(Debug)]
-pub struct Components<Node: FullNodeTypes, Network, Pool, EVM, Consensus> {
+pub struct Components<Node: FullNodeTypes, Pool, EVM, Executor, Consensus> {
     /// The transaction pool of the node.
     pub transaction_pool: Pool,
     /// The node's EVM configuration, defining settings for the Ethereum Virtual Machine.
     pub evm_config: EVM,
+    /// The node's executor type used to execute individual blocks and batches of blocks.
+    pub executor: Executor,
     /// The consensus implementation of the node.
     pub consensus: Consensus,
     /// The network implementation of the node.
-    pub network: Network,
+    pub network: NetworkHandle,
     /// The handle to the payload builder service.
-    pub payload_builder_handle: PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>,
+    pub payload_builder: PayloadBuilderHandle<<Node::Types as NodeTypesWithEngine>::Engine>,
+    #[cfg(feature = "bsc")]
+    /// The parlia consensus.
+    pub parlia: Parlia,
 }
 
-impl<Node, Pool, EVM, Cons, Network> NodeComponents<Node>
-    for Components<Node, Network, Pool, EVM, Cons>
+impl<Node, Pool, EVM, Executor, Cons> NodeComponents<Node>
+    for Components<Node, Pool, EVM, Executor, Cons>
 where
     Node: FullNodeTypes,
-    Network: FullNetwork<
-        Primitives: NetPrimitivesFor<
-            PrimitivesTy<Node::Types>,
-            PooledTransaction = PoolPooledTx<Pool>,
-        >,
-    >,
-    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
-        + Unpin
-        + 'static,
-    EVM: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + 'static,
-    Cons: FullConsensus<PrimitivesTy<Node::Types>> + Clone + Unpin + 'static,
+    Pool: TransactionPool + Unpin + 'static,
+    EVM: ConfigureEvm<Header = Header>,
+    Executor: BlockExecutorProvider,
+    Cons: Consensus + Clone + Unpin + 'static,
 {
     type Pool = Pool;
     type Evm = EVM;
+    type Executor = Executor;
     type Consensus = Cons;
-    type Network = Network;
+    type Network = NetworkHandle;
 
     fn pool(&self) -> &Self::Pool {
         &self.transaction_pool
@@ -109,6 +124,10 @@ where
 
     fn evm_config(&self) -> &Self::Evm {
         &self.evm_config
+    }
+
+    fn block_executor(&self) -> &Self::Executor {
+        &self.executor
     }
 
     fn consensus(&self) -> &Self::Consensus {
@@ -119,26 +138,36 @@ where
         &self.network
     }
 
-    fn payload_builder_handle(&self) -> &PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload> {
-        &self.payload_builder_handle
+    fn payload_builder(
+        &self,
+    ) -> &PayloadBuilderHandle<<Node::Types as NodeTypesWithEngine>::Engine> {
+        &self.payload_builder
+    }
+
+    #[cfg(feature = "bsc")]
+    fn parlia(&self) -> &Parlia {
+        &self.parlia
     }
 }
 
-impl<Node, N, Pool, EVM, Cons> Clone for Components<Node, N, Pool, EVM, Cons>
+impl<Node, Pool, EVM, Executor, Cons> Clone for Components<Node, Pool, EVM, Executor, Cons>
 where
-    N: Clone,
     Node: FullNodeTypes,
     Pool: TransactionPool,
-    EVM: ConfigureEvm,
-    Cons: Clone,
+    EVM: ConfigureEvm<Header = Header>,
+    Executor: BlockExecutorProvider,
+    Cons: Consensus + Clone,
 {
     fn clone(&self) -> Self {
         Self {
             transaction_pool: self.transaction_pool.clone(),
             evm_config: self.evm_config.clone(),
+            executor: self.executor.clone(),
             consensus: self.consensus.clone(),
             network: self.network.clone(),
-            payload_builder_handle: self.payload_builder_handle.clone(),
+            payload_builder: self.payload_builder.clone(),
+            #[cfg(feature = "bsc")]
+            parlia: self.parlia.clone(),
         }
     }
 }

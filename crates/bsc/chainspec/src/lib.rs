@@ -13,8 +13,7 @@ extern crate alloc;
 use core::fmt::Display;
 
 use alloy_genesis::Genesis;
-use alloy_evm::eth::spec::EthExecutorSpec;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use derive_more::{Constructor, Deref, Into};
 use reth_bsc_forks::BscHardforks;
 use reth_chainspec::{BaseFeeParams, ChainSpec, DepositContract, EthChainSpec};
@@ -97,12 +96,6 @@ impl EthChainSpec for BscChainSpec {
     }
 }
 
-impl EthExecutorSpec for BscChainSpec {
-    fn deposit_contract_address(&self) -> Option<Address> {
-        None
-    }
-}
-
 impl Hardforks for BscChainSpec {
     fn fork<H: reth_chainspec::Hardfork>(&self, fork: H) -> reth_chainspec::ForkCondition {
         self.inner.fork(fork)
@@ -128,10 +121,7 @@ impl Hardforks for BscChainSpec {
 }
 
 impl EthereumHardforks for BscChainSpec {
-    fn ethereum_fork_activation(
-        &self,
-        fork: reth_ethereum_forks::EthereumHardfork,
-    ) -> reth_chainspec::ForkCondition {
+    fn ethereum_fork_activation(&self, fork: reth_ethereum_forks::EthereumHardfork) -> reth_chainspec::ForkCondition {
         self.inner.ethereum_fork_activation(fork)
     }
 }

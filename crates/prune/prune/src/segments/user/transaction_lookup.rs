@@ -263,9 +263,7 @@ impl TransactionLookup {
 
         // Delete transaction hash -> number mappings from RocksDB
         let mut deleted = 0usize;
-        provider.with_rocksdb_batch(|_| {
-            let rocks = provider.rocksdb_provider();
-            let mut batch = rocks.batch();
+        provider.with_rocksdb_batch(|mut batch| {
             for (hash, _) in &hashes {
                 if limiter.is_limit_reached() {
                     break;

@@ -1,15 +1,11 @@
 //! Re-execute blocks from database in parallel.
-//!
-//! Parent state for `--from N` is loaded at block `N - 1` via
-//! [`StateProviderFactory::history_by_block_number`]. Mid-pipeline (Finish still 0, Headers ≫
-//! Execution) that resolves to [`LatestStateProvider`] when `N - 1` equals the Execution
-//! checkpoint (PlainState tip) — see `DatabaseProvider::try_into_history_at_block`.
 
 use crate::common::{
     AccessRights, CliComponentsBuilder, CliNodeComponents, CliNodeTypes, Environment,
     EnvironmentArgs,
 };
 use alloy_consensus::{transaction::TxHashRef, BlockHeader, TxReceipt};
+use alloy_primitives::{Address, B256, U256};
 use clap::Parser;
 use eyre::WrapErr;
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
@@ -17,16 +13,27 @@ use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_util::cancellation::CancellationToken;
 use reth_consensus::FullConsensus;
 use reth_evm::{execute::Executor, ConfigureEvm};
-use reth_primitives_traits::{format_gas_throughput, BlockBody, GotExpected};
+use reth_node_core::args::JitArgs;
+use reth_primitives_traits::{format_gas_throughput, Account, BlockBody, GotExpected};
 use reth_provider::{
     BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory, ReceiptProvider,
-    StageCheckpointReader, StaticFileProviderFactory, TransactionVariant,
+    StaticFileProviderFactory, TransactionVariant,
 };
-use reth_revm::database::StateProviderDatabase;
+use reth_revm::{
+    database::StateProviderDatabase,
+    db::{
+        states::reverts::{AccountInfoRevert, RevertToSlot},
+        BundleState,
+    },
+};
 use reth_stages::stages::calculate_gas_used_from_headers;
-use reth_stages_types::StageId;
+use reth_storage_api::{ChangeSetReader, DBProvider, StorageChangeSetReader};
 use std::{
-    sync::Arc,
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, task::JoinSet};
@@ -44,9 +51,7 @@ pub struct Command<C: ChainSpecParser> {
     #[arg(long, default_value = "1")]
     from: u64,
 
-    /// The height to end at (exclusive upper bound of the executed range is not used; this is the
-    /// last block number **plus one** in the half-open loop `from..to`). Defaults to the highest
-    /// available header on disk when Finish is still 0 (staged sync).
+    /// The height to end at. Defaults to the latest block.
     #[arg(long)]
     to: Option<u64>,
 
@@ -54,17 +59,16 @@ pub struct Command<C: ChainSpecParser> {
     #[arg(long)]
     num_tasks: Option<u64>,
 
+    /// Number of blocks each worker processes before grabbing the next chunk.
+    #[arg(long, default_value = "5000")]
+    blocks_per_chunk: u64,
+
     /// Continues with execution when an invalid block is encountered and collects these blocks.
     #[arg(long)]
     skip_invalid_blocks: bool,
 
-    /// On post-execution validation failure, write a JSON receipt summary for the failing block
-    /// (idx / status / gasUsed / cumulativeGasUsed / logCount / txHash) to this path.
-    ///
-    /// Intended for FLOW-X04 / PIPE-014 diffs against public `eth_getBlockReceipts`
-    /// (see `files/harness-receipt-diff-21591154/`).
-    #[arg(long, value_name = "PATH")]
-    dump_receipts_on_fail: Option<std::path::PathBuf>,
+    #[command(flatten)]
+    pub jit: JitArgs,
 }
 
 impl<C: ChainSpecParser> Command<C> {
@@ -76,166 +80,145 @@ impl<C: ChainSpecParser> Command<C> {
 
 impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>> Command<C> {
     /// Execute `re-execute` command
-    pub async fn execute<N>(self, components: impl CliComponentsBuilder<N>) -> eyre::Result<()>
+    pub async fn execute<N>(
+        mut self,
+        components: impl CliComponentsBuilder<N>,
+        runtime: reth_tasks::Runtime,
+    ) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
     {
-        let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
+        // Default to 4GB RocksDB block cache for re-execute unless explicitly set.
+        if self.env.db.rocksdb_block_cache_size.is_none() {
+            self.env.db.rocksdb_block_cache_size = Some(4 << 30);
+        }
+
+        let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO, runtime)?;
 
         let components = components(provider_factory.chain_spec());
 
         let min_block = self.from;
-        let provider_ro = DatabaseProviderFactory::database_provider_ro(&provider_factory)?;
-        // Finish checkpoint (= `best_block_number`) is 0 until the pipeline completes — do not
-        // use it as the sole `--to` cap mid-sync (would clamp to 0 and underflow the range).
-        let finish_tip = provider_ro.best_block_number()?;
-        let headers_tip = provider_ro.last_block_number()?;
-        let execution_tip = provider_ro
-            .get_stage_checkpoint(StageId::Execution)?
-            .map(|c| c.block_number)
-            .unwrap_or(0);
-        let available_tip = headers_tip.max(finish_tip).max(execution_tip);
-
-        let mut max_block = if finish_tip > 0 { finish_tip } else { available_tip };
+        let best_block = DatabaseProviderFactory::database_provider_ro(&provider_factory)?
+            .best_block_number()?;
+        let mut max_block = best_block;
         if let Some(to) = self.to {
-            if to > available_tip {
+            if to > best_block {
                 warn!(
                     requested = to,
-                    available_tip,
-                    finish_tip,
-                    headers_tip,
-                    execution_tip,
-                    "Requested --to is beyond headers/execution on disk; clamping"
+                    best_block,
+                    "Requested --to is beyond available chain head; clamping to best block"
                 );
-                max_block = available_tip;
             } else {
                 max_block = to;
             }
-        }
+        };
 
-        if max_block <= min_block {
-            eyre::bail!(
-                "invalid re-execute range: --from {min_block} --to {max_block} \
-                 (need to > from; finish_tip={finish_tip} headers_tip={headers_tip} \
-                 execution_tip={execution_tip})"
-            );
+        if min_block > max_block {
+            eyre::bail!("--from ({min_block}) is beyond --to ({max_block}), nothing to re-execute");
         }
 
         let num_tasks = self.num_tasks.unwrap_or_else(|| {
             std::thread::available_parallelism().map(|n| n.get() as u64).unwrap_or(10)
         });
 
-        let total_blocks = max_block - min_block;
         let total_gas = calculate_gas_used_from_headers(
             &provider_factory.static_file_provider(),
-            min_block..=max_block.saturating_sub(1),
+            min_block..=max_block,
         )?;
-        let num_tasks = num_tasks.min(total_blocks.max(1));
-        let blocks_per_task = total_blocks / num_tasks;
-
-        info!(
-            target: "reth::cli",
-            from = min_block,
-            to = max_block,
-            execution_tip,
-            finish_tip,
-            headers_tip,
-            num_tasks,
-            "Re-execute range (parent state at from-1; Latest if from-1 == Execution tip)"
-        );
-
-        let db_at = {
-            let provider_factory = provider_factory.clone();
-            move |block_number: u64| {
-                StateProviderDatabase(
-                    provider_factory.history_by_block_number(block_number).unwrap(),
-                )
-            }
-        };
 
         let skip_invalid_blocks = self.skip_invalid_blocks;
-        let dump_receipts_on_fail = self.dump_receipts_on_fail.clone();
+        let blocks_per_chunk = self.blocks_per_chunk;
         let (stats_tx, mut stats_rx) = mpsc::unbounded_channel();
         let (info_tx, mut info_rx) = mpsc::unbounded_channel();
         let cancellation = CancellationToken::new();
         let _guard = cancellation.drop_guard();
 
-        let mut tasks = JoinSet::new();
-        for i in 0..num_tasks {
-            let start_block = min_block + i * blocks_per_task;
-            let end_block =
-                if i == num_tasks - 1 { max_block } else { start_block + blocks_per_task };
+        // Shared counter for work stealing: workers atomically grab the next chunk of blocks.
+        let next_block = Arc::new(AtomicU64::new(min_block));
 
-            // Spawn thread executing blocks
+        let mut tasks = JoinSet::new();
+        for _ in 0..num_tasks {
             let provider_factory = provider_factory.clone();
             let evm_config = components.evm_config().clone();
             let consensus = components.consensus().clone();
-            let db_at = db_at.clone();
             let stats_tx = stats_tx.clone();
             let info_tx = info_tx.clone();
             let cancellation = cancellation.clone();
-            let dump_receipts_on_fail = dump_receipts_on_fail.clone();
+            let next_block = Arc::clone(&next_block);
             tasks.spawn_blocking(move || {
-                let mut executor = evm_config.batch_executor(db_at(start_block - 1));
-                let mut executor_created = Instant::now();
-                let executor_lifetime = Duration::from_secs(120);
+                let evm_config = evm_config.with_jit_support();
+                let executor_lifetime = Duration::from_secs(600);
+                let provider = provider_factory.database_provider_ro()?.disable_long_read_transaction_safety();
 
-                'blocks: for block in start_block..end_block {
+                let db_at = {
+                    |block_number: u64| {
+                        StateProviderDatabase(
+                            provider
+                                .history_by_block_number(block_number)
+                                .unwrap(),
+                        )
+                    }
+                };
+
+                loop {
                     if cancellation.is_cancelled() {
-                        // exit if the program is being terminated
-                        break
+                        break;
                     }
 
-                    let block = provider_factory
-                        .recovered_block(block.into(), TransactionVariant::NoHash)?
-                        .ok_or_else(|| {
-                            eyre::eyre!(
-                                "missing recovered block {block} (body/senders not in database)"
-                            )
-                        })?;
+                    // Atomically grab the next chunk of blocks.
+                    let chunk_start =
+                        next_block.fetch_add(blocks_per_chunk, Ordering::Relaxed);
+                    if chunk_start >= max_block {
+                        break;
+                    }
+                    let chunk_end = (chunk_start + blocks_per_chunk).min(max_block);
 
-                    let result = match executor.execute_one(&block) {
-                        Ok(result) => result,
-                        Err(err) => {
-                            if skip_invalid_blocks {
-                                executor = evm_config.batch_executor(db_at(block.number()));
-                                let _ = info_tx.send((block, eyre::Report::new(err)));
-                                continue
-                            }
-                            return Err(err.into())
-                        }
-                    };
+                    let mut executor = evm_config.batch_executor(db_at(chunk_start - 1));
+                    let mut executor_created = Instant::now();
 
-                    if let Err(err) = consensus
-                        .validate_block_post_execution(&block, &result, None, None)
-                        .wrap_err_with(|| {
-                            format!("Failed to validate block {} {}", block.number(), block.hash())
-                        })
-                    {
-                        if let Some(path) = dump_receipts_on_fail.as_ref() {
-                            if let Err(dump_err) =
-                                dump_executed_receipts_summary(path, &block, &result.receipts)
-                            {
-                                error!(?dump_err, path = %path.display(), "Failed to dump receipts");
-                            } else {
-                                error!(
-                                    path = %path.display(),
-                                    number = block.number(),
-                                    hash = %block.hash(),
-                                    "Dumped executed receipts for FLOW-X04 / public RPC diff"
-                                );
-                            }
+                    'blocks: for block in chunk_start..chunk_end {
+                        if cancellation.is_cancelled() {
+                            break;
                         }
 
-                        let correct_receipts =
-                            provider_factory.receipts_by_block(block.number().into())?;
+                        let block = provider_factory
+                            .recovered_block(block.into(), TransactionVariant::NoHash)?
+                            .unwrap();
 
-                        if let Some(correct_receipts) = correct_receipts {
+                        let result = match executor.execute_one(&block) {
+                            Ok(result) => result,
+                            Err(err) => {
+                                if skip_invalid_blocks {
+                                    executor =
+                                        evm_config.batch_executor(db_at(block.number()));
+                                    let _ =
+                                        info_tx.send((block, eyre::Report::new(err)));
+                                    continue
+                                }
+                                return Err(err.into())
+                            }
+                        };
+
+                        if let Err(err) = consensus
+                            .validate_block_post_execution(&block, &result, None,None)
+                            .wrap_err_with(|| {
+                                format!(
+                                    "Failed to validate block {} {}",
+                                    block.number(),
+                                    block.hash()
+                                )
+                            })
+                        {
+                            let correct_receipts = provider_factory
+                                .receipts_by_block(block.number().into())?
+                                .unwrap();
+
                             for (i, (receipt, correct_receipt)) in
                                 result.receipts.iter().zip(correct_receipts.iter()).enumerate()
                             {
                                 if receipt != correct_receipt {
-                                    let tx_hash = block.body().transactions()[i].tx_hash();
+                                    let tx_hash =
+                                        block.body().transactions()[i].tx_hash();
                                     error!(
                                         ?receipt,
                                         ?correct_receipt,
@@ -243,12 +226,14 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                                         ?tx_hash,
                                         "Invalid receipt"
                                     );
-                                    let expected_gas_used = correct_receipt.cumulative_gas_used() -
-                                        if i == 0 {
-                                            0
-                                        } else {
-                                            correct_receipts[i - 1].cumulative_gas_used()
-                                        };
+                                    let expected_gas_used =
+                                        correct_receipt.cumulative_gas_used() -
+                                            if i == 0 {
+                                                0
+                                            } else {
+                                                correct_receipts[i - 1]
+                                                    .cumulative_gas_used()
+                                            };
                                     let got_gas_used = receipt.cumulative_gas_used() -
                                         if i == 0 {
                                             0
@@ -261,14 +246,10 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                                             got: got_gas_used,
                                         };
 
-                                        error!(
-                                            number=?block.number(),
-                                            ?mismatch,
-                                            "Gas usage mismatch"
-                                        );
+                                        error!(number=?block.number(), ?mismatch, "Gas usage mismatch");
                                         if skip_invalid_blocks {
-                                            executor =
-                                                evm_config.batch_executor(db_at(block.number()));
+                                            executor = evm_config
+                                                .batch_executor(db_at(block.number()));
                                             let _ = info_tx.send((block, err));
                                             continue 'blocks;
                                         }
@@ -278,24 +259,37 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                                     continue;
                                 }
                             }
-                        } else {
-                            warn!(
-                                number = block.number(),
-                                "No local receipts to compare; use --dump-receipts-on-fail + public RPC diff"
-                            );
+
+                            return Err(err);
                         }
+                        let _ = stats_tx.send((block.number(), block.gas_used()));
 
-                        return Err(err);
+                        // Reset DB once in a while to avoid OOM or read tx timeouts
+                        if executor.size_hint() > 5_000_000 ||
+                            executor_created.elapsed() > executor_lifetime
+                        {
+                            let last_block = block.number();
+                            let old_executor = std::mem::replace(
+                                &mut executor,
+                                evm_config.batch_executor(db_at(last_block)),
+                            );
+                            let bundle = old_executor.into_state().take_bundle();
+                            verify_bundle_against_changesets(
+                                &provider,
+                                &bundle,
+                                last_block,
+                            )?;
+                            executor_created = Instant::now();
+                        }
                     }
-                    let _ = stats_tx.send(block.gas_used());
 
-                    // Reset DB once in a while to avoid OOM or read tx timeouts
-                    if executor.size_hint() > 1_000_000 ||
-                        executor_created.elapsed() > executor_lifetime
-                    {
-                        executor = evm_config.batch_executor(db_at(block.number()));
-                        executor_created = Instant::now();
-                    }
+                    // Full verification at chunk end for remaining unverified blocks
+                    let bundle = executor.into_state().take_bundle();
+                    verify_bundle_against_changesets(
+                        &provider,
+                        &bundle,
+                        chunk_end - 1,
+                    )?;
                 }
 
                 eyre::Ok(())
@@ -305,6 +299,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
         let instant = Instant::now();
         let mut total_executed_blocks = 0;
         let mut total_executed_gas = 0;
+        let mut latest_executed_block = None;
 
         let mut last_logged_gas = 0;
         let mut last_logged_blocks = 0;
@@ -315,9 +310,11 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
 
         loop {
             tokio::select! {
-                Some(gas_used) = stats_rx.recv() => {
+                Some((block_number, gas_used)) = stats_rx.recv() => {
                     total_executed_blocks += 1;
                     total_executed_gas += gas_used;
+                    latest_executed_block =
+                        Some(latest_executed_block.unwrap_or(block_number).max(block_number));
                 }
                 Some((block, err)) = info_rx.recv() => {
                     error!(?err, block=?block.num_hash(), "Invalid block");
@@ -342,6 +339,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                         info!(
                             throughput=?format_gas_throughput(gas_executed, last_logged_time.elapsed()),
                             progress=format!("{progress:.2}%"),
+                            ?latest_executed_block,
                             "Executed {blocks_executed} blocks"
                         );
                     }
@@ -358,6 +356,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                 start_block = min_block,
                 end_block = max_block,
                 %total_executed_blocks,
+                ?latest_executed_block,
                 throughput=?format_gas_throughput(total_executed_gas, instant.elapsed()),
                 "Re-executed successfully"
             );
@@ -366,6 +365,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                 start_block = min_block,
                 end_block = max_block,
                 %total_executed_blocks,
+                ?latest_executed_block,
                 invalid_block_count = invalid_blocks.len(),
                 ?invalid_blocks,
                 throughput=?format_gas_throughput(total_executed_gas, instant.elapsed()),
@@ -377,49 +377,102 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     }
 }
 
-/// Compact receipt rows for FLOW-X04 public-RPC diffs (`files/harness-receipt-diff-*/diff_receipts.py`).
-fn dump_executed_receipts_summary<B, R>(
-    path: &std::path::Path,
-    block: &reth_primitives_traits::RecoveredBlock<B>,
-    receipts: &[R],
+/// Verifies reverts against database changesets.
+///
+/// For each block, reverts must match changeset entries exactly. No extra slots/accounts
+/// in reverts for non-destroyed accounts. Destroyed accounts may have extra changeset slots
+/// (from DB storage wipe) absent from reverts.
+fn verify_bundle_against_changesets<P>(
+    provider: &P,
+    bundle: &BundleState,
+    last_block: u64,
 ) -> eyre::Result<()>
 where
-    B: reth_primitives_traits::Block,
-    R: TxReceipt,
+    P: ChangeSetReader + StorageChangeSetReader,
 {
-    use alloy_primitives::hex;
-    use std::{fs, io::Write};
+    // Verify reverts against changesets per block
+    for (i, block_reverts) in bundle.reverts.iter().rev().enumerate() {
+        let block_number = last_block - i as u64;
 
-    let mut prev_cum = 0u64;
-    let mut rows = Vec::with_capacity(receipts.len());
-    for (i, receipt) in receipts.iter().enumerate() {
-        let cum = receipt.cumulative_gas_used();
-        let gas_used = cum.saturating_sub(prev_cum);
-        prev_cum = cum;
-        let tx_hash = block.body().transactions().get(i).map(|tx| *tx.tx_hash());
-        rows.push(serde_json::json!({
-            "i": i,
-            "txHash": tx_hash.map(|h| format!("0x{}", hex::encode(h))),
-            "status": if receipt.status() { 1 } else { 0 },
-            "gasUsed": gas_used,
-            "cumulativeGasUsed": cum,
-            "logCount": receipt.logs().len(),
-        }));
+        let mut cs_accounts: HashMap<Address, Option<Account>> = provider
+            .account_block_changeset(block_number)?
+            .into_iter()
+            .map(|cs| (cs.address, cs.info))
+            .collect();
+
+        let mut cs_storage: HashMap<Address, HashMap<B256, U256>> = HashMap::new();
+        for (bna, entry) in provider.storage_changeset(block_number)? {
+            cs_storage.entry(bna.address()).or_default().insert(entry.key, entry.value);
+        }
+
+        for (addr, revert) in block_reverts {
+            // Verify account info
+            match &revert.account {
+                AccountInfoRevert::DoNothing => {
+                    eyre::ensure!(
+                        !cs_accounts.contains_key(addr),
+                        "Block {block_number}: account {addr} in changeset but revert is DoNothing",
+                    );
+                }
+                AccountInfoRevert::DeleteIt => {
+                    let cs_info = cs_accounts.remove(addr).ok_or_else(|| {
+                        eyre::eyre!("Block {block_number}: account {addr} revert is DeleteIt but not in changeset")
+                    })?;
+                    eyre::ensure!(
+                        cs_info.is_none(),
+                        "Block {block_number}: account {addr} revert is DeleteIt but changeset has {cs_info:?}",
+                    );
+                }
+                AccountInfoRevert::RevertTo(info) => {
+                    let cs_info = cs_accounts.remove(addr).ok_or_else(|| {
+                        eyre::eyre!("Block {block_number}: account {addr} revert is RevertTo but not in changeset")
+                    })?;
+                    let revert_acct = Some(Account::from(info));
+                    eyre::ensure!(
+                        revert_acct == cs_info,
+                        "Block {block_number}: account {addr} info mismatch: revert={revert_acct:?} cs={cs_info:?}",
+                    );
+                }
+            }
+
+            // Verify storage slots — remove matched changeset entries as we go
+            let mut cs_slots = cs_storage.get_mut(addr);
+            for (slot_key, revert_slot) in &revert.storage {
+                let b256_key = B256::from(*slot_key);
+                let cs_value = cs_slots.as_mut().and_then(|s| s.remove(&b256_key));
+                match (revert_slot, cs_value) {
+                    // When a contract is selfdestructed and re-created at the same address
+                    // within the same block, revm marks slots touched by the new contract
+                    // as `Destroyed` and never reads the original DB value, so
+                    // `to_previous_value()` would resolve to zero, which might be wrong.
+                    (RevertToSlot::Destroyed, _) => {}
+                    (RevertToSlot::Some(prev), Some(cs_value)) => eyre::ensure!(
+                        *prev == cs_value,
+                        "Block {block_number}: {addr} slot {b256_key} mismatch: \
+                         revert={prev} cs={cs_value}",
+                    ),
+                    (RevertToSlot::Some(_), None) => eyre::ensure!(
+                        revert.wipe_storage,
+                        "Block {block_number}: {addr} slot {b256_key} in reverts but not in changeset",
+                    ),
+                }
+            }
+
+            // Any remaining cs_storage slots for this address must be from a destroyed account
+            if let Some(remaining) = cs_slots.filter(|s| !s.is_empty()) {
+                eyre::ensure!(
+                    revert.wipe_storage,
+                    "Block {block_number}: {addr} has {} unmatched storage slots in changeset",
+                    remaining.len(),
+                );
+            }
+        }
+
+        // Any remaining cs_accounts entries had no corresponding revert
+        if let Some(addr) = cs_accounts.keys().next() {
+            eyre::bail!("Block {block_number}: account {addr} in changeset but not in reverts");
+        }
     }
 
-    let doc = serde_json::json!({
-        "source": "op-reth re-execute --dump-receipts-on-fail",
-        "blockNumber": block.number(),
-        "blockHash": format!("0x{}", hex::encode(block.hash())),
-        "receiptsRootHeader": format!("0x{}", hex::encode(block.receipts_root())),
-        "receipts": rows,
-    });
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut f = fs::File::create(path)?;
-    serde_json::to_writer_pretty(&mut f, &doc)?;
-    f.write_all(b"\n")?;
     Ok(())
 }

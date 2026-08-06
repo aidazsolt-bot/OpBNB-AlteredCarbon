@@ -2,60 +2,53 @@
 
 use std::sync::Arc;
 
-use crate::BlockTy;
 use alloy_primitives::{BlockNumber, B256};
 use reth_config::{config::StageConfig, PruneConfig};
-use reth_consensus::FullConsensus;
+use reth_consensus::Consensus;
 use reth_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder,
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
-use reth_evm::ConfigureEvm;
+use reth_evm::execute::BlockExecutorProvider;
 use reth_exex::ExExManagerHandle;
 use reth_network_p2p::{
     bodies::downloader::BodyDownloader, headers::downloader::HeaderDownloader, BlockClient,
 };
-use reth_node_api::HeaderTy;
 use reth_provider::{providers::ProviderNodeTypes, ProviderFactory};
-use reth_stages::{
-    prelude::DefaultStages,
-    stages::{EraImportSource, ExecutionStage},
-    Pipeline, StageSet,
-};
+use reth_stages::{prelude::DefaultStages, stages::ExecutionStage, Pipeline, StageSet};
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
-use reth_tracing::tracing::{debug, info};
-use rust_eth_triedb::triedb_manager::is_triedb_active;
+use reth_tracing::tracing::debug;
 use tokio::sync::watch;
 
 /// Constructs a [Pipeline] that's wired to the network
-#[expect(clippy::too_many_arguments)]
-pub fn build_networked_pipeline<N, Client, Evm>(
+#[allow(clippy::too_many_arguments)]
+pub fn build_networked_pipeline<N, Client, Executor>(
     config: &StageConfig,
     client: Client,
-    consensus: Arc<dyn FullConsensus<N::Primitives>>,
+    consensus: Arc<dyn Consensus>,
     provider_factory: ProviderFactory<N>,
     task_executor: &TaskExecutor,
     metrics_tx: reth_stages::MetricEventsSender,
-    prune_config: PruneConfig,
+    prune_config: Option<PruneConfig>,
     max_block: Option<BlockNumber>,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
-    evm_config: Evm,
-    exex_manager_handle: ExExManagerHandle<N::Primitives>,
-    era_import_source: Option<EraImportSource>,
+    executor: Executor,
+    exex_manager_handle: ExExManagerHandle,
+    skip_state_root_validation: bool,
 ) -> eyre::Result<Pipeline<N>>
 where
     N: ProviderNodeTypes,
-    Client: BlockClient<Block = BlockTy<N>> + 'static,
-    Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    Client: BlockClient + 'static,
+    Executor: BlockExecutorProvider,
 {
     // building network downloaders using the fetch client
     let header_downloader = ReverseHeadersDownloaderBuilder::new(config.headers)
-        .build(client.clone(), consensus.clone())
+        .build(client.clone(), Arc::clone(&consensus))
         .into_task_with(task_executor);
 
     let body_downloader = BodiesDownloaderBuilder::new(config.bodies)
-        .build(client, consensus.clone(), provider_factory.clone())
+        .build(client, Arc::clone(&consensus), provider_factory.clone())
         .into_task_with(task_executor);
 
     let pipeline = build_pipeline(
@@ -68,35 +61,35 @@ where
         metrics_tx,
         prune_config,
         static_file_producer,
-        evm_config,
+        executor,
         exex_manager_handle,
-        era_import_source,
+        skip_state_root_validation,
     )?;
 
     Ok(pipeline)
 }
 
 /// Builds the [Pipeline] with the given [`ProviderFactory`] and downloaders.
-#[expect(clippy::too_many_arguments)]
-pub fn build_pipeline<N, H, B, Evm>(
+#[allow(clippy::too_many_arguments)]
+pub fn build_pipeline<N, H, B, Executor>(
     provider_factory: ProviderFactory<N>,
     stage_config: &StageConfig,
     header_downloader: H,
     body_downloader: B,
-    consensus: Arc<dyn FullConsensus<N::Primitives>>,
+    consensus: Arc<dyn Consensus>,
     max_block: Option<u64>,
     metrics_tx: reth_stages::MetricEventsSender,
-    prune_config: PruneConfig,
+    prune_config: Option<PruneConfig>,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
-    evm_config: Evm,
-    exex_manager_handle: ExExManagerHandle<N::Primitives>,
-    era_import_source: Option<EraImportSource>,
+    executor: Executor,
+    exex_manager_handle: ExExManagerHandle,
+    skip_state_root_validation: bool,
 ) -> eyre::Result<Pipeline<N>>
 where
     N: ProviderNodeTypes,
-    H: HeaderDownloader<Header = HeaderTy<N>> + 'static,
-    B: BodyDownloader<Block = BlockTy<N>> + 'static,
-    Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    H: HeaderDownloader + 'static,
+    B: BodyDownloader + 'static,
+    Executor: BlockExecutorProvider,
 {
     let mut builder = Pipeline::<N>::builder();
 
@@ -107,68 +100,32 @@ where
 
     let (tip_tx, tip_rx) = watch::channel(B256::ZERO);
 
-    let prune_modes = prune_config.segments;
+    let prune_modes = prune_config.map(|prune| prune.segments).unwrap_or_default();
 
-    let pipeline = if is_triedb_active() {
-        let pipeline = builder
-            .with_tip_sender(tip_tx)
-            .with_metrics_tx(metrics_tx)
-            .add_stages(
-                DefaultStages::new(
-                    provider_factory.clone(),
-                    tip_rx,
-                    Arc::clone(&consensus),
-                    header_downloader,
-                    body_downloader,
-                    evm_config.clone(),
-                    stage_config.clone(),
-                    prune_modes,
-                    era_import_source,
-                )
-                .builder()
-                .disable(reth_stages::StageId::MerkleExecute)
-                .disable(reth_stages::StageId::MerkleUnwind)
-                .set(ExecutionStage::new(
-                    evm_config,
-                    consensus,
-                    stage_config.execution.into(),
-                    stage_config.execution_external_clean_threshold(),
-                    exex_manager_handle,
-                )),
+    let pipeline = builder
+        .with_tip_sender(tip_tx)
+        .with_metrics_tx(metrics_tx)
+        .add_stages(
+            DefaultStages::new(
+                provider_factory.clone(),
+                tip_rx,
+                Arc::clone(&consensus),
+                header_downloader,
+                body_downloader,
+                executor.clone(),
+                stage_config.clone(),
+                prune_modes.clone(),
+                skip_state_root_validation,
             )
-            .build(provider_factory, static_file_producer);
-
-        info!(
-            target: "reth::builder",
-            "Pipeline built with TrieDB, without merkle execute/unwind/changesets"
-        );
-        pipeline
-    } else {
-        builder
-            .with_tip_sender(tip_tx)
-            .with_metrics_tx(metrics_tx)
-            .add_stages(
-                DefaultStages::new(
-                    provider_factory.clone(),
-                    tip_rx,
-                    Arc::clone(&consensus),
-                    header_downloader,
-                    body_downloader,
-                    evm_config.clone(),
-                    stage_config.clone(),
-                    prune_modes,
-                    era_import_source,
-                )
-                .set(ExecutionStage::new(
-                    evm_config,
-                    consensus,
-                    stage_config.execution.into(),
-                    stage_config.execution_external_clean_threshold(),
-                    exex_manager_handle,
-                )),
-            )
-            .build(provider_factory, static_file_producer)
-    };
+            .set(ExecutionStage::new(
+                executor,
+                stage_config.execution.into(),
+                stage_config.execution_external_clean_threshold(),
+                prune_modes,
+                exex_manager_handle,
+            )),
+        )
+        .build(provider_factory, static_file_producer);
 
     Ok(pipeline)
 }

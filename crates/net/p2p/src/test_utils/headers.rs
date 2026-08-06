@@ -72,7 +72,7 @@ impl Stream for TestHeaderDownloader {
         let this = self.get_mut();
         loop {
             if this.queued_headers.len() == this.batch_size {
-                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))));
+                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))))
             }
             if this.download.is_none() {
                 this.download = Some(this.create_download());
@@ -130,9 +130,9 @@ impl Stream for TestDownload {
 
         loop {
             if let Some(header) = this.buffer.pop() {
-                return Poll::Ready(Some(Ok(header)));
+                return Poll::Ready(Some(Ok(header)))
             } else if this.done {
-                return Poll::Ready(None);
+                return Poll::Ready(None)
             }
 
             match ready!(this.get_or_init_fut().poll_unpin(cx)) {
@@ -151,7 +151,7 @@ impl Stream for TestDownload {
                     return Poll::Ready(Some(Err(match err {
                         RequestError::Timeout => DownloadError::Timeout,
                         _ => DownloadError::RequestError(err),
-                    })));
+                    })))
                 }
             }
         }
@@ -159,35 +159,17 @@ impl Stream for TestDownload {
 }
 
 /// A test client for fetching headers
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TestHeadersClient {
     responses: Arc<Mutex<Vec<Header>>>,
     error: Arc<Mutex<Option<RequestError>>>,
     request_attempts: Arc<AtomicU64>,
-    /// `u64::MAX` means unknown / no peers (see [`DownloadClient::max_peer_best_number`]).
-    max_peer_best: Arc<AtomicU64>,
-}
-
-impl Default for TestHeadersClient {
-    fn default() -> Self {
-        Self {
-            responses: Default::default(),
-            error: Default::default(),
-            request_attempts: Default::default(),
-            max_peer_best: Arc::new(AtomicU64::new(u64::MAX)),
-        }
-    }
 }
 
 impl TestHeadersClient {
     /// Return the number of times client was polled
     pub fn request_attempts(&self) -> u64 {
         self.request_attempts.load(Ordering::SeqCst)
-    }
-
-    /// Sets the advertised max peer best number used by reachable-head capping tests.
-    pub fn set_max_peer_best(&self, best: Option<u64>) {
-        self.max_peer_best.store(best.unwrap_or(u64::MAX), Ordering::SeqCst);
     }
 
     /// Adds headers to the set.
@@ -217,15 +199,6 @@ impl DownloadClient for TestHeadersClient {
     fn num_connected_peers(&self) -> usize {
         0
     }
-
-    fn max_peer_best_number(&self) -> Option<u64> {
-        let n = self.max_peer_best.load(Ordering::SeqCst);
-        if n == u64::MAX {
-            None
-        } else {
-            Some(n)
-        }
-    }
 }
 
 impl HeadersClient for TestHeadersClient {
@@ -244,7 +217,7 @@ impl HeadersClient for TestHeadersClient {
 
         Box::pin(async move {
             if let Some(err) = &mut *error.lock().await {
-                return Err(err.clone());
+                return Err(err.clone())
             }
 
             let mut lock = responses.lock().await;

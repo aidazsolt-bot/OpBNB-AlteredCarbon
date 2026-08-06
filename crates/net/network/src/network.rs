@@ -13,13 +13,12 @@ use reth_eth_wire::{
     NetworkPrimitives, NewPooledTransactionHashes, SharedTransactions,
 };
 use reth_ethereum_forks::Head;
-use reth_net_nat::NatEndpoint;
 use reth_network_api::{
-    events::{EngineMessage, NetworkPeersEvents, PeerEvent, PeerEventStream},
+    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
     test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, CellCustody, DiscoveryEvent, EngineRxProvider, NetworkError,
-    NetworkEvent, NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest,
-    Peers, PeersInfo,
+    BlockDownloaderProvider, CellCustody, DiscoveryEvent, NetworkError, NetworkEvent,
+    NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
+    PeersInfo,
 };
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
 use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
@@ -30,12 +29,12 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc, LazyLock,
+        Arc,
     },
 };
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
-    oneshot, Mutex as TokioMutex,
+    oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -67,7 +66,6 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
         discv5: Option<Discv5>,
         event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
         nat: Option<NatResolver>,
-        advertised_nat: Arc<Mutex<Option<NatEndpoint>>>,
     ) -> Self {
         let inner = NetworkInner {
             num_active_peers,
@@ -86,7 +84,6 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
             discv5,
             event_sender,
             nat,
-            advertised_nat,
         };
         Self { inner: Arc::new(inner) }
     }
@@ -103,7 +100,7 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
     /// Returns a new [`FetchClient`] that can be cloned and shared.
     ///
     /// The [`FetchClient`] is the entrypoint for sending requests to the network.
-    pub async fn fetch_client(&self) -> Result<FetchClient<N>, oneshot::error::RecvError> {
+    pub async fn fetch_client(&self) -> Result<FetchClient, oneshot::error::RecvError> {
         let (tx, rx) = oneshot::channel();
         let _ = self.manager().send(NetworkHandleMessage::FetchClient(tx));
         rx.await
@@ -263,14 +260,6 @@ impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
     }
 
     fn local_node_record(&self) -> NodeRecord {
-        if let Some(endpoint) = *self.inner.advertised_nat.lock() {
-            return NodeRecord {
-                address: endpoint.ip,
-                tcp_port: endpoint.tcp_port,
-                udp_port: endpoint.udp_port,
-                id: *self.peer_id(),
-            };
-        }
         if let Some(discv4) = &self.inner.discv4 {
             // Note: the discv4 services uses the same `nat` so we can directly return the node
             // record here
@@ -339,20 +328,6 @@ impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
         } else {
             builder.udp6(local_node_record.udp_port);
             builder.tcp6(local_node_record.tcp_port);
-
-            // add IPv4 fields from discv5 for dual-stack support
-            if let Some(discv5) = self.inner.discv5.as_ref() {
-                let discv5_enr = discv5.local_enr();
-                if let Some(ip4) = discv5_enr.ip4() {
-                    builder.ip4(ip4);
-                }
-                if let Some(udp4) = discv5_enr.udp4() {
-                    builder.udp4(udp4);
-                }
-                if let Some(tcp4) = discv5_enr.tcp4() {
-                    builder.tcp4(tcp4);
-                }
-            }
         }
 
         builder.build(&self.inner.secret_key).expect("valid enr")
@@ -506,7 +481,7 @@ impl<N: NetworkPrimitives> SyncStateProvider for NetworkHandle<N> {
     // used to guard the txpool
     fn is_initially_syncing(&self) -> bool {
         if self.inner.initial_sync_done.load(Ordering::Relaxed) {
-            return false;
+            return false
         }
         self.inner.is_syncing.load(Ordering::Relaxed)
     }
@@ -540,17 +515,6 @@ impl<N: NetworkPrimitives> BlockDownloaderProvider for NetworkHandle<N> {
         let (tx, rx) = oneshot::channel();
         let _ = self.manager().send(NetworkHandleMessage::FetchClient(tx));
         rx.await
-    }
-}
-
-impl<N: NetworkPrimitives> EngineRxProvider for NetworkHandle<N> {
-    fn get_to_engine_rx(&self) -> Arc<TokioMutex<mpsc::UnboundedReceiver<EngineMessage>>> {
-        static RX: LazyLock<Arc<TokioMutex<mpsc::UnboundedReceiver<EngineMessage>>>> =
-            LazyLock::new(|| {
-                let (_tx, rx) = mpsc::unbounded_channel();
-                Arc::new(TokioMutex::new(rx))
-            });
-        RX.clone()
     }
 }
 
@@ -588,8 +552,6 @@ struct NetworkInner<N: NetworkPrimitives = EthNetworkPrimitives> {
     event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
     /// The NAT resolver
     nat: Option<NatResolver>,
-    /// Advertised dialable endpoint after UPnP / public-IP resolution (ENR/enode source of truth).
-    advertised_nat: Arc<Mutex<Option<NatEndpoint>>>,
 }
 
 /// Provides access to modify the network's additional protocol handlers.

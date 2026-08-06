@@ -8,10 +8,8 @@ pub use recovered::RecoveredBlock;
 
 pub mod body;
 pub mod error;
-pub mod header;
 
 use alloc::{fmt, vec::Vec};
-use crate::block::header::FullBlockHeader;
 use alloy_primitives::{Address, B256};
 use alloy_rlp::{Decodable, Encodable};
 
@@ -131,7 +129,7 @@ pub trait Block:
         } else {
             // Fall back to recovery if lengths don't match
             let Ok(senders) = self.body().recover_signers_unchecked() else {
-                return Err(BlockRecoveryError::new(self));
+                return Err(BlockRecoveryError::new(self))
             };
             senders
         };
@@ -151,7 +149,7 @@ pub trait Block:
     /// Returns the block as error if a signature is invalid.
     fn try_into_recovered(self) -> Result<RecoveredBlock<Self>, BlockRecoveryError<Self>> {
         let Ok(signers) = self.body().recover_signers() else {
-            return Err(BlockRecoveryError::new(self));
+            return Err(BlockRecoveryError::new(self))
         };
         Ok(RecoveredBlock::new_unhashed(self, signers))
     }
@@ -176,17 +174,6 @@ pub trait Block:
         let (header, body) = self.split();
         alloy_consensus::Block::new(header, body.into_ethereum_body())
     }
-}
-
-/// Helper trait that unifies all behaviour required by block to support full node operations.
-pub trait FullBlock:
-    Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
-{
-}
-
-impl<T> FullBlock for T where
-    T: Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
-{
 }
 
 impl<T, H> Block for alloy_consensus::Block<T, H>
@@ -226,7 +213,7 @@ where
 ///
 /// This allows for modifying the block's header and body for testing purposes.
 #[cfg(any(test, feature = "test-utils"))]
-pub trait TestBlock: Block<Header: crate::test_utils::TestHeader> {
+pub trait TestBlock: Block {
     /// Returns mutable reference to block body.
     fn body_mut(&mut self) -> &mut Self::Body;
 
@@ -235,38 +222,13 @@ pub trait TestBlock: Block<Header: crate::test_utils::TestHeader> {
 
     /// Updates the block header.
     fn set_header(&mut self, header: Self::Header);
-
-    /// Updates the parent block hash.
-    fn set_parent_hash(&mut self, hash: alloy_primitives::BlockHash) {
-        crate::header::test_utils::TestHeader::set_parent_hash(self.header_mut(), hash);
-    }
-
-    /// Updates the block number.
-    fn set_block_number(&mut self, number: alloy_primitives::BlockNumber) {
-        crate::header::test_utils::TestHeader::set_block_number(self.header_mut(), number);
-    }
-
-    /// Updates the block timestamp.
-    fn set_timestamp(&mut self, timestamp: u64) {
-        crate::header::test_utils::TestHeader::set_timestamp(self.header_mut(), timestamp);
-    }
-
-    /// Updates the block state root.
-    fn set_state_root(&mut self, state_root: alloy_primitives::B256) {
-        crate::header::test_utils::TestHeader::set_state_root(self.header_mut(), state_root);
-    }
-
-    /// Updates the block difficulty.
-    fn set_difficulty(&mut self, difficulty: alloy_primitives::U256) {
-        crate::header::test_utils::TestHeader::set_difficulty(self.header_mut(), difficulty);
-    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 impl<T, H> TestBlock for alloy_consensus::Block<T, H>
 where
     T: SignedTransaction,
-    H: crate::test_utils::TestHeader,
+    H: BlockHeader,
 {
     fn body_mut(&mut self) -> &mut Self::Body {
         &mut self.body

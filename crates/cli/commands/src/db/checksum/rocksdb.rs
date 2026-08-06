@@ -10,7 +10,7 @@ use reth_db_common::DbTool;
 use reth_node_builder::NodeTypesWithDBAdapter;
 use reth_primitives_traits::FastInstant as Instant;
 use reth_provider::RocksDBProviderFactory;
-use std::{hash::Hasher, sync::Arc};
+use std::hash::Hasher;
 use tracing::info;
 
 /// RocksDB tables that can be checksummed.
@@ -37,24 +37,7 @@ impl RocksDbTable {
 
 /// Computes a checksum for a RocksDB table.
 pub fn checksum_rocksdb<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
-    tool: &DbTool<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
-    table: RocksDbTable,
-    limit: Option<usize>,
-) -> eyre::Result<()> {
-    #[cfg(all(unix, feature = "rocksdb"))]
-    {
-        return checksum_rocksdb_impl(tool, table, limit);
-    }
-    #[cfg(not(all(unix, feature = "rocksdb")))]
-    {
-        let _ = (tool, table, limit);
-        eyre::bail!("RocksDB checksum requires the rocksdb feature");
-    }
-}
-
-#[cfg(all(unix, feature = "rocksdb"))]
-fn checksum_rocksdb_impl<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
-    tool: &DbTool<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
+    tool: &DbTool<NodeTypesWithDBAdapter<N, DatabaseEnv>>,
     table: RocksDbTable,
     limit: Option<usize>,
 ) -> eyre::Result<()> {
@@ -94,7 +77,7 @@ fn checksum_rocksdb_impl<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
     Ok(())
 }
 
-#[cfg(all(unix, feature = "rocksdb"))]
+/// Computes checksum for a specific RocksDB table by iterating over rows.
 fn checksum_rocksdb_table<T: Table>(
     rocksdb: &reth_provider::providers::RocksDBProvider,
     limit: usize,

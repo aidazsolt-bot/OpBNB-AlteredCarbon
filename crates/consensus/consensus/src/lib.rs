@@ -39,7 +39,7 @@ use alloc::{
 };
 use alloy_consensus::Header;
 use alloy_eip7928::BlockAccessListGasError;
-use alloy_primitives::{BlockHash, BlockNumber, Bloom, B256, U256};
+use alloy_primitives::{BlockHash, BlockNumber, Bloom, B256};
 use core::{error::Error, fmt::Display};
 
 /// Pre-computed receipt root and logs bloom.
@@ -285,7 +285,7 @@ pub enum ConsensusError {
     ParentHashMismatch(GotExpectedBoxed<B256>),
 
     /// Error when the block timestamp is not expected compared to the predicted timestamp.
-    #[error("block timestamp {timestamp} is not expected compared to {predicted_timestamp}")]
+    #[display("block timestamp {timestamp} is not expected compared to {predicted_timestamp}")]
     TimestampNotExpected {
         /// The block's timestamp.
         timestamp: u64,
@@ -420,18 +420,18 @@ pub enum ConsensusError {
     BlobGasUsedDiff(GotExpected<u64>),
 
     /// Error for invalid block difficulty
-    #[error("invalid block difficulty: {difficulty}")]
+    #[display("invalid block difficulty: {difficulty}")]
     InvalidDifficulty {
         /// The block difficulty
         difficulty: U256,
     },
 
     /// Error for invalid mix hash
-    #[error("invalid mix digest")]
+    #[display("invalid mix digest")]
     InvalidMixHash,
 
     /// Error for invalid header extra
-    #[error("invalid header extra")]
+    #[display("invalid header extra")]
     InvalidHeaderExtra,
 
     /// Error for a transaction that violates consensus.

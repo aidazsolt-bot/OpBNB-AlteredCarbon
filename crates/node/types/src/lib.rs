@@ -201,20 +201,3 @@ pub type PrimitivesTy<N> = <N as NodeTypes>::Primitives;
 
 /// Helper adapter type for accessing [`PayloadTypes::PayloadAttributes`] on [`NodeTypes`].
 pub type PayloadAttrTy<N> = <<N as NodeTypes>::Payload as PayloadTypes>::PayloadAttributes;
-
-/// Legacy compatibility trait — [`NodeTypes::Payload`] replaces `Engine` in v2.4.1.
-pub trait NodeTypesWithEngine: NodeTypes
-where
-    Self::Payload: EngineTypes + PayloadTypes,
-{
-    /// Alias for [`NodeTypes::Payload`].
-    type Engine: EngineTypes + PayloadTypes;
-}
-
-impl<T> NodeTypesWithEngine for T
-where
-    T: NodeTypes,
-    T::Payload: EngineTypes + PayloadTypes,
-{
-    type Engine = T::Payload;
-}

@@ -112,8 +112,7 @@ impl<N: NodePrimitives> BlockHashReader for MemoryOverlayStateProviderRef<'_, N>
 impl<N: NodePrimitives> AccountReader for MemoryOverlayStateProviderRef<'_, N> {
     fn basic_account(&self, address: &Address) -> ProviderResult<Option<Account>> {
         for block in self.in_memory.iter() {
-            if let Some(account) = block.execution_output.state.account(address) {
-                let account = account.info.as_ref().map(Into::into);
+            if let Some(account) = block.execution_output.account(address) {
                 return Ok(account);
             }
         }
@@ -222,7 +221,7 @@ impl<N: NodePrimitives> StateProvider for MemoryOverlayStateProviderRef<'_, N> {
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>> {
         for block in self.in_memory.iter() {
-            if let Some(value) = block.execution_output.state.storage(&address, storage_key.into()) {
+            if let Some(value) = block.execution_output.storage(&address, storage_key.into()) {
                 return Ok(Some(value));
             }
         }
@@ -234,8 +233,8 @@ impl<N: NodePrimitives> StateProvider for MemoryOverlayStateProviderRef<'_, N> {
 impl<N: NodePrimitives> BytecodeReader for MemoryOverlayStateProviderRef<'_, N> {
     fn bytecode_by_hash(&self, code_hash: &B256) -> ProviderResult<Option<Bytecode>> {
         for block in self.in_memory.iter() {
-            if let Some(contract) = block.execution_output.state.bytecode(code_hash) {
-                return Ok(Some(Bytecode(contract)));
+            if let Some(contract) = block.execution_output.bytecode(code_hash) {
+                return Ok(Some(contract));
             }
         }
 

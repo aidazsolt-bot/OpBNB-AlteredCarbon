@@ -22,8 +22,6 @@ reth-metrics.workspace = true
 metrics.workspace = true
 
 # misc
-auto_impl.workspace = true
-dyn-clone.workspace = true
 dashmap.workspace = true
 parking_lot.workspace = true
 thread-priority.workspace = true

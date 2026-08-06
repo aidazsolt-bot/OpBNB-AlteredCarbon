@@ -29,12 +29,6 @@ mod tx_type;
 /// Signed transaction.
 pub use reth_ethereum_primitives::{Transaction, TransactionSigned};
 
-/// Type alias kept for backward compatibility: upstream merged the "no cached hash" storage
-/// representation into [`TransactionSigned`] itself (hash is now computed on demand rather than
-/// cached), so this BSC-fork-local alias just points at the same type.
-#[deprecated(note = "Use `TransactionSigned` instead")]
-pub type TransactionSignedNoHash = TransactionSigned;
-
 /// Type alias kept for backward compatibility.
 #[deprecated(note = "Use `Recovered` instead")]
 pub type TransactionSignedEcRecovered<T = TransactionSigned> = Recovered<T>;

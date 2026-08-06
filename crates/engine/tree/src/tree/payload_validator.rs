@@ -104,8 +104,7 @@ use crate::tree::{
     CacheWaitDurations, CachedStateProvider, EngineApiMetrics, EngineApiTreeState, ExecutionEnv,
     PayloadHandle, StateProviderBuilder, StateProviderDatabase, TreeConfig, WaitForCaches,
 };
-use alloy_consensus::crypto::RecoveryError;
-use alloy_consensus::transaction::Either;
+use alloy_consensus::transaction::{Either, TxHashRef};
 use alloy_eip7928::{bal::DecodedBal, compute_block_access_list_hash, BlockAccessList};
 use alloy_eips::{eip1898::BlockWithParent, eip4895::Withdrawal, NumHash};
 use alloy_evm::Evm;
@@ -144,7 +143,7 @@ use reth_payload_primitives::{
 };
 use reth_primitives_traits::{
     AlloyBlockHeader, BlockBody, BlockTy, FastInstant as Instant, GotExpected, NodePrimitives,
-    RecoveredBlock, SealedBlock, SealedHeader, SignedTransaction,
+    RecoveredBlock, SealedBlock, SealedHeader, SignerRecoverable,
 };
 use reth_provider::{
     providers::{OverlayBuilder, OverlayStateProviderFactory},
@@ -419,11 +418,7 @@ where
             }
             BlockOrPayload::Block(block) => {
                 let txs = block.body().clone_transactions();
-                let convert = |tx: N::SignedTx| {
-                    tx.try_into_recovered().map_err(|_| {
-                        NewPayloadError::other(RecoveryError::default())
-                    })
-                };
+                let convert = |tx: N::SignedTx| tx.try_into_recovered();
                 Either::Right((txs, convert))
             }
         })
@@ -1069,7 +1064,7 @@ where
             .in_scope(|| db.merge_transitions(BundleRetention::Reverts));
 
         let built_bal = if has_bal { db.take_built_alloy_bal() } else { None };
-        let output = BlockExecutionOutput { result, state: db.take_bundle(), snapshot: None };
+        let output = BlockExecutionOutput { result, state: db.take_bundle() };
 
         let execution_duration = execution_start.elapsed();
         self.metrics.record_block_execution(&output, execution_duration);
@@ -1207,7 +1202,7 @@ where
     where
         E: BlockExecutor<Receipt = N::Receipt, Evm: alloy_evm::Evm<DB = &'a mut State<DB>>>,
         Tx: alloy_evm::block::ExecutableTx<E> + alloy_evm::RecoveredTx<InnerTx>,
-        InnerTx: SignedTransaction,
+        InnerTx: TxHashRef,
         DB: revm::Database + 'a,
         Err: core::error::Error + Send + Sync + 'static,
     {

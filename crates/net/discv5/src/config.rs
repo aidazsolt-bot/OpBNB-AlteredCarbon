@@ -165,8 +165,8 @@ impl ConfigBuilder {
     /// Adds a comma-separated list of enodes, serialized unsigned node records, to boot nodes.
     pub fn add_serialized_unsigned_boot_nodes(mut self, enodes: &[&str]) -> Self {
         for node in enodes {
-            if let Ok(node) = node.parse()
-                && let Ok(node) = BootNode::from_unsigned(node)
+            if let Ok(node) = node.parse() &&
+                let Ok(node) = BootNode::from_unsigned(node)
             {
                 self.bootstrap_nodes.insert(node);
             }
@@ -233,13 +233,8 @@ impl ConfigBuilder {
     /// Adds keys to disallow when filtering a discovered peer, to determine whether or not it
     /// should be passed to rlpx. The discovered node record is scanned for any kv-pairs where the
     /// key matches the disallowed keys. If not explicitly set, b"eth2" key will be disallowed.
-    ///
-    /// When called for the first time, the default `eth2` disallow-list is used as the base so
-    /// callers that only add e.g. `opstack` do not accidentally clear the eth2 filter.
     pub fn must_not_include_keys(mut self, not_keys: &[&'static [u8]]) -> Self {
-        let mut filter = self
-            .discovered_peer_filter
-            .unwrap_or_else(|| MustNotIncludeKeys::new(&[NetworkStackId::ETH2]));
+        let mut filter = self.discovered_peer_filter.unwrap_or_default();
         filter.add_disallowed_keys(not_keys);
         self.discovered_peer_filter = Some(filter);
         self
@@ -363,8 +358,8 @@ impl Config {
 
     /// Returns `true` if any socket in the discv5 listen config matches the given address.
     pub fn has_matching_socket(&self, addr: SocketAddr) -> bool {
-        ipv4(&self.discv5_config.listen_config).is_some_and(|v4| SocketAddr::V4(v4) == addr)
-            || ipv6(&self.discv5_config.listen_config).is_some_and(|v6| SocketAddr::V6(v6) == addr)
+        ipv4(&self.discv5_config.listen_config).is_some_and(|v4| SocketAddr::V4(v4) == addr) ||
+            ipv6(&self.discv5_config.listen_config).is_some_and(|v6| SocketAddr::V6(v6) == addr)
     }
 
     /// Inserts a new boot node to the list of boot nodes.
@@ -415,8 +410,8 @@ impl Config {
 /// Returns the IPv4 discovery socket if one is configured.
 pub fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
     match listen_config {
-        ListenConfig::Ipv4 { ip, port }
-        | ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
+        ListenConfig::Ipv4 { ip, port } |
+        ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
             Some(SocketAddrV4::new(*ip, *port))
         }
         ListenConfig::FromSockets { ipv4: Some(s), .. } => match s.local_addr().ok()? {
@@ -430,8 +425,8 @@ pub fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
 /// Returns the IPv6 discovery socket if one is configured.
 pub fn ipv6(listen_config: &ListenConfig) -> Option<SocketAddrV6> {
     match listen_config {
-        ListenConfig::Ipv6 { ip, port }
-        | ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
+        ListenConfig::Ipv6 { ip, port } |
+        ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
             Some(SocketAddrV6::new(*ip, *port, 0, 0))
         }
         ListenConfig::FromSockets { ipv6: Some(s), .. } => match s.local_addr().ok()? {
@@ -484,8 +479,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv6 =
                 discv5_addr_ipv6.map(|ip| SocketAddrV6::new(ip, discv5_port_ipv6, 0, 0));
 
-            if let Some(discv5_addr) = discv5_addr_ipv4
-                && discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv4 &&
+                discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -503,8 +498,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv4 =
                 discv5_addr_ipv4.map(|ip| SocketAddrV4::new(ip, discv5_port_ipv4));
 
-            if let Some(discv5_addr) = discv5_addr_ipv6
-                && discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv6 &&
+                discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -584,9 +579,9 @@ mod test {
         for node in config.bootstrap_nodes {
             let BootNode::Enr(node) = node else { panic!() };
             assert!(
-                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap()
-                    || socket_2 == node.udp4_socket().unwrap()
-                        && socket_2 == node.tcp4_socket().unwrap()
+                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap() ||
+                    socket_2 == node.udp4_socket().unwrap() &&
+                        socket_2 == node.tcp4_socket().unwrap()
             );
             assert_eq!("84b4940500", hex::encode(node.get_raw_rlp("opstack").unwrap()));
         }
@@ -634,36 +629,5 @@ mod test {
         assert_eq!(*config_socket_ipv6.ip(), rlpx_addr);
         assert_eq!(config_socket_ipv6.port(), DEFAULT_DISCOVERY_V5_PORT);
         assert_eq!(ipv4(&amended_config), ipv4(&listen_config));
-    }
-
-    #[test]
-    fn must_not_include_keys_keeps_eth2_when_adding_opstack() {
-        use crate::filter::FilterOutcome;
-        use alloy_rlp::Bytes;
-        use discv5::enr::{CombinedKey, Enr};
-
-        let config = Config::builder((Ipv4Addr::UNSPECIFIED, 30303).into())
-            .must_not_include_keys(&[NetworkStackId::OPSTACK])
-            .build();
-
-        let sk = CombinedKey::generate_secp256k1();
-        let eth2 = Enr::builder()
-            .add_value_rlp(NetworkStackId::ETH2, Bytes::from("deneb"))
-            .build(&sk)
-            .unwrap();
-        assert!(matches!(
-            config.discovered_peer_filter.filter(&eth2),
-            FilterOutcome::Ignore { .. }
-        ));
-
-        let sk = CombinedKey::generate_secp256k1();
-        let opstack = Enr::builder()
-            .add_value_rlp(NetworkStackId::OPSTACK, Bytes::from("cl"))
-            .build(&sk)
-            .unwrap();
-        assert!(matches!(
-            config.discovered_peer_filter.filter(&opstack),
-            FilterOutcome::Ignore { .. }
-        ));
     }
 }

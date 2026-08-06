@@ -10,15 +10,14 @@ use reth_bsc_consensus::{
 use reth_bsc_forks::BscHardforks;
 use reth_bsc_primitives::system_contracts::SYSTEM_REWARD_CONTRACT;
 use reth_errors::{BlockExecutionError, BlockValidationError, ProviderError};
-use reth_evm::{ConfigureEvm, EvmEnv};
+use reth_evm::ConfigureEvm;
 use reth_primitives::{
     parlia::{Snapshot, VoteAddress, VoteAttestation},
     BlockWithSenders, GotExpected, Header, Receipt, TransactionSigned,
 };
-use reth_provider::{HeaderProvider, ParliaProvider};
-use reth_bsc_consensus::SYSTEM_ADDRESS;
-use revm::{database_interface::DatabaseCommitExt, primitives::hardfork::SpecId, Database, DatabaseCommit};
-use std::fmt::Debug;
+use reth_provider::ParliaProvider;
+use reth_revm::bsc::SYSTEM_ADDRESS;
+use revm::{context::EnvWithHandlerCfg, Database};
 use tracing::debug;
 
 use crate::{BscBlockExecutionError, BscBlockExecutor, SnapshotReader};
@@ -32,10 +31,11 @@ pub(crate) struct PostExecutionInput {
     pub(crate) validators_election_info: Option<Vec<ValidatorElectionInfo>>,
 }
 
-impl<DB, P> BscBlockExecutor<DB, P>
+impl<EvmConfig, DB, P> BscBlockExecutor<EvmConfig, DB, P>
 where
-    DB: Database<Error: Into<ProviderError> + Display> + DatabaseCommit + Debug,
-    P: ParliaProvider + HeaderProvider<Header = Header>,
+    EvmConfig: ConfigureEvm<Header = Header>,
+    DB: Database<Error: Into<ProviderError> + Display>,
+    P: ParliaProvider,
 {
     /// Apply post execution state changes, including system txs and other state change.
     #[allow(clippy::too_many_arguments)]
@@ -49,11 +49,11 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let number = block.number;
         let validator = block.beneficiary;
-        let header = block.header();
+        let header = &block.header;
 
         self.verify_validators(post_execution_input.current_validators, header)?;
 
@@ -119,9 +119,9 @@ where
         }
 
         // update validator set after Feynman upgrade
-        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp)
-            && is_breathe_block(parent.timestamp, header.timestamp)
-            && !self
+        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp) &&
+            is_breathe_block(parent.timestamp, header.timestamp) &&
+            !self
                 .parlia()
                 .chain_spec()
                 .is_on_feynman_at_timestamp(header.timestamp, parent.timestamp)
@@ -154,12 +154,12 @@ where
     fn verify_turn_length(
         &mut self,
         header: &Header,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
-        if header.number % self.parlia().epoch() != 0
-            || !self.chain_spec().is_bohr_active_at_timestamp(header.timestamp)
+        if header.number % self.parlia().epoch() != 0 ||
+            !self.chain_spec().is_bohr_active_at_timestamp(header.timestamp)
         {
-            return Ok(());
+            return Ok(())
         }
 
         if let Some(turn_length_from_header) =
@@ -169,7 +169,7 @@ where
         {
             let turn_length_from_contract = self.get_turn_length(header, env)?.unwrap();
             if turn_length_from_header == turn_length_from_contract {
-                return Ok(());
+                return Ok(())
             }
         }
 
@@ -179,14 +179,14 @@ where
     fn get_turn_length(
         &mut self,
         header: &Header,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<Option<u8>, BlockExecutionError> {
         if self.chain_spec().is_bohr_active_at_timestamp(header.timestamp) {
             let (to, data) = self.parlia().get_turn_length();
             let bz = self.eth_call(to, data, env)?;
 
             let turn_length = self.parlia().unpack_data_into_turn_length(bz.as_ref()).to::<u8>();
-            return Ok(Some(turn_length));
+            return Ok(Some(turn_length))
         }
 
         Ok(Some(DEFAULT_TURN_LENGTH))
@@ -199,7 +199,7 @@ where
     ) -> Result<(), BlockExecutionError> {
         let number = header.number;
         if number % self.parlia().epoch() != 0 {
-            return Ok(());
+            return Ok(())
         };
 
         let (mut validators, mut vote_addrs_map) =
@@ -242,7 +242,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let transactions = self.parlia().init_genesis_contracts();
         for tx in transactions {
@@ -265,7 +265,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let transactions = self.parlia().init_feynman_contracts();
         for tx in transactions {
@@ -289,7 +289,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         self.transact_system_tx(
             self.parlia().slash(spoiled_val),
@@ -309,7 +309,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let validator = header.beneficiary;
 
@@ -317,19 +317,17 @@ where
             BscBlockExecutionError::ProviderInnerError { error: Box::new(err.into()) }
         })?;
 
-        if system_account.account.is_none()
-            || system_account.account.as_ref().unwrap().info.balance == U256::ZERO
+        if system_account.account.is_none() ||
+            system_account.account.as_ref().unwrap().info.balance == U256::ZERO
         {
             return Ok(());
         }
 
-        let (mut block_reward, transition) = system_account.drain_balance();
-        let mut transition = transition.map_storage(|_| None);
+        let (mut block_reward, mut transition) = system_account.drain_balance();
         transition.info = None;
         self.state.apply_transition(vec![(SYSTEM_ADDRESS, transition)]);
 
-        let balance_increment =
-            [(validator, u128::try_from(block_reward).unwrap_or(u128::MAX))].into_iter();
+        let balance_increment = HashMap::from([(validator, block_reward)]);
         self.state
             .increment_balances(balance_increment)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
@@ -338,12 +336,12 @@ where
             .state
             .basic(SYSTEM_REWARD_CONTRACT.parse().unwrap())
             .map_err(|err| BscBlockExecutionError::ProviderInnerError {
-                error: Box::new(ProviderError::other(err)),
+                error: Box::new(err.into()),
             })?
             .unwrap_or_default()
             .balance;
-        if !self.chain_spec().is_kepler_active_at_timestamp(header.timestamp)
-            && system_reward_balance < U256::from(MAX_SYSTEM_REWARD)
+        if !self.chain_spec().is_kepler_active_at_timestamp(header.timestamp) &&
+            system_reward_balance < U256::from(MAX_SYSTEM_REWARD)
         {
             let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
             if reward_to_system > 0 {
@@ -379,7 +377,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         if header.number % self.parlia().epoch() != 0 {
             return Ok(());
@@ -430,7 +428,7 @@ where
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        env: EvmEnv<SpecId>,
+        env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let ElectedValidators { validators, voting_powers, vote_addrs } =
             get_top_validators_by_voting_power(validators_election_info, max_elected_validators);

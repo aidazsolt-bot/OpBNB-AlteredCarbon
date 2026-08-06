@@ -36,9 +36,7 @@ harness = true
 cargo nextest run --workspace \
   --exclude 'example-*' \
   --exclude 'exex-subscription' \
-  --exclude 'reth-bench' \
   --exclude 'ef-tests' \
-  --exclude 'op-reth' \
   --exclude 'reth' \
   -E 'binary(e2e_testsuite)'
 ```

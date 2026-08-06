@@ -34,9 +34,9 @@ pub trait BlockchainTreeEngine: BlockchainTreeViewer + Send + Sync {
         block: SealedBlock,
         validation_kind: BlockValidationKind,
     ) -> Result<InsertPayloadOk, InsertBlockError> {
-        match block.try_recover() {
+        match block.try_seal_with_senders() {
             Ok(block) => self.insert_block(block, validation_kind),
-            Err(block) => Err(InsertBlockError::sender_recovery_error(block.into_inner())),
+            Err(block) => Err(InsertBlockError::sender_recovery_error(block)),
         }
     }
 
@@ -45,9 +45,9 @@ pub trait BlockchainTreeEngine: BlockchainTreeViewer + Send + Sync {
     /// This will recover all senders of the transactions in the block first, and then try to buffer
     /// the block.
     fn buffer_block_without_senders(&self, block: SealedBlock) -> Result<(), InsertBlockError> {
-        match block.try_recover() {
+        match block.try_seal_with_senders() {
             Ok(block) => self.buffer_block(block),
-            Err(block) => Err(InsertBlockError::sender_recovery_error(block.into_inner())),
+            Err(block) => Err(InsertBlockError::sender_recovery_error(block)),
         }
     }
 

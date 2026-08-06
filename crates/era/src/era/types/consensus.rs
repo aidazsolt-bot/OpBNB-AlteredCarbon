@@ -157,8 +157,8 @@ impl CompressedSignedBeaconBlock {
 
         // Pre-merge blocks carry no execution payload. Only skip a slot once it's confirmed to be a
         // valid pre-merge block; anything else is malformed data and must error rather than skip.
-        if SignedBeaconBlockPhase0::from_ssz_bytes(&ssz).is_ok()
-            || SignedBeaconBlockAltair::from_ssz_bytes(&ssz).is_ok()
+        if SignedBeaconBlockPhase0::from_ssz_bytes(&ssz).is_ok() ||
+            SignedBeaconBlockAltair::from_ssz_bytes(&ssz).is_ok()
         {
             return Ok(None);
         }

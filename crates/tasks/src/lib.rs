@@ -13,8 +13,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use crate::shutdown::{signal, Shutdown, Signal};
-use dyn_clone::DynClone;
-use futures_util::future::BoxFuture;
 use std::{
     any::Any,
     fmt::{Display, Formatter},
@@ -29,7 +27,6 @@ use std::{
 use tokio::{
     runtime::Handle,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    task::JoinHandle,
 };
 use tracing::debug;
 
@@ -56,88 +53,8 @@ pub use lazy::LazyHandle;
 pub use runtime::RayonConfig;
 pub use runtime::{Runtime, RuntimeBuildError, RuntimeBuilder, RuntimeConfig, TokioConfig};
 
-/// A type that can spawn tasks.
-///
-/// The main purpose of this type is to abstract over [`TaskExecutor`] so it's more convenient to
-/// provide default impls for testing.
-#[auto_impl::auto_impl(&, Arc)]
-pub trait TaskSpawner: Send + Sync + Unpin + std::fmt::Debug + DynClone {
-    /// Spawns the task onto the runtime.
-    fn spawn(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()>;
-
-    /// This spawns a critical task onto the runtime.
-    fn spawn_critical(&self, name: &'static str, fut: BoxFuture<'static, ()>) -> JoinHandle<()>;
-
-    /// Spawns a blocking task.
-    fn spawn_blocking(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()>;
-
-    /// Spawns a critical blocking task.
-    fn spawn_critical_blocking(
-        &self,
-        name: &'static str,
-        fut: BoxFuture<'static, ()>,
-    ) -> JoinHandle<()>;
-}
-
-dyn_clone::clone_trait_object!(TaskSpawner);
-
-/// A [`TaskSpawner`] that uses [`tokio::task::spawn`] to execute tasks.
-#[derive(Default, Clone, Debug)]
-pub struct TokioTaskExecutor;
-
-impl TokioTaskExecutor {
-    /// Converts the instance to a boxed [`TaskSpawner`].
-    pub fn boxed(self) -> Box<dyn TaskSpawner + 'static> {
-        Box::new(self)
-    }
-}
-
-impl TaskSpawner for TokioTaskExecutor {
-    fn spawn(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        tokio::task::spawn(fut)
-    }
-
-    fn spawn_critical(&self, _name: &'static str, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        tokio::task::spawn(fut)
-    }
-
-    fn spawn_blocking(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        tokio::task::spawn_blocking(move || tokio::runtime::Handle::current().block_on(fut))
-    }
-
-    fn spawn_critical_blocking(
-        &self,
-        _name: &'static str,
-        fut: BoxFuture<'static, ()>,
-    ) -> JoinHandle<()> {
-        tokio::task::spawn_blocking(move || tokio::runtime::Handle::current().block_on(fut))
-    }
-}
-
 /// A [`TaskExecutor`] is now an alias for [`Runtime`].
 pub type TaskExecutor = Runtime;
-
-impl TaskSpawner for Runtime {
-    fn spawn(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        self.spawn_task(fut)
-    }
-
-    fn spawn_critical(&self, name: &'static str, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        self.spawn_critical_task(name, fut)
-    }
-
-    fn spawn_blocking(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
-        self.spawn_blocking_task(fut)
-    }
-
-    fn spawn_critical_blocking(
-        &self,
-        name: &'static str,
-        fut: BoxFuture<'static, ()>,
-    ) -> JoinHandle<()> {
-        self.spawn_critical_blocking_task(name, fut)
-    }
-}
 
 /// Spawns an OS thread with the current tokio runtime context propagated.
 ///

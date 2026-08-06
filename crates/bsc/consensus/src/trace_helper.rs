@@ -1,10 +1,14 @@
 use std::sync::Arc;
 
-use alloy_primitives::{address, map::AddressMap, Address, U256};
+use alloy_primitives::{address, map::HashMap, Address, U256};
 use reth_bsc_forks::BscHardforks;
 use reth_bsc_primitives::system_contracts::get_upgrade_system_contracts;
-use reth_revm::db::{Database, DatabaseCommit};
-use reth_revm::{context::BlockEnv, state::{Account, AccountStatus}};
+use reth_primitives::revm_primitives::{
+    db::{Database, DatabaseCommit},
+    state::AccountStatus,
+    BlockEnv,
+};
+use reth_revm::primitives::Account;
 
 use crate::Parlia;
 
@@ -40,7 +44,7 @@ impl BscTraceHelper {
             )
             .map_err(|_| BscTraceHelperError::GetUpgradeSystemContractsFailed)?;
 
-            let mut changeset: AddressMap<Account> = Default::default();
+            let mut changeset: HashMap<_, _> = Default::default();
             for (k, v) in contracts {
                 let mut info = db
                     .basic(k)
@@ -51,8 +55,8 @@ impl BscTraceHelper {
                 info.code_hash = v.clone().unwrap().hash_slow();
                 info.code = v;
 
-                let mut account = Account::from(info);
-                account.status = AccountStatus::Touched;
+                let account =
+                    Account { info, status: AccountStatus::Touched, ..Default::default() };
 
                 changeset.insert(k, account);
             }
@@ -74,24 +78,24 @@ impl BscTraceHelper {
             .unwrap_or_default();
         let balance = sys_info.balance;
         if balance > U256::ZERO {
-            let mut changeset: AddressMap<Account> = Default::default();
+            let mut changeset: HashMap<_, _> = Default::default();
 
             sys_info.balance = U256::ZERO;
 
-            let mut sys_account = Account::from(sys_info);
-            sys_account.status = AccountStatus::Touched;
+            let sys_account =
+                Account { info: sys_info, status: AccountStatus::Touched, ..Default::default() };
             changeset.insert(SYSTEM_ADDRESS, sys_account);
 
             let mut val_info = db
-                .basic(block_env.beneficiary)
+                .basic(block_env.coinbase)
                 .map_err(|_| BscTraceHelperError::LoadAccountFailed)?
                 .unwrap_or_default();
 
             val_info.balance += balance;
 
-            let mut val_account = Account::from(val_info);
-            val_account.status = AccountStatus::Touched;
-            changeset.insert(block_env.beneficiary, val_account);
+            let val_account =
+                Account { info: val_info, status: AccountStatus::Touched, ..Default::default() };
+            changeset.insert(block_env.coinbase, val_account);
 
             db.commit(changeset);
         }

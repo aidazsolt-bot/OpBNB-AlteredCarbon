@@ -12,6 +12,10 @@
 extern crate alloc;
 
 use alloy_consensus::BlockHeader;
+use reth_payload_primitives::{
+    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
+    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
+};
 use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock};
 use reth_storage_api::{errors::ProviderResult, StateProviderBox};
 use reth_trie_common::HashedPostState;
@@ -21,10 +25,6 @@ use serde::{de::DeserializeOwned, Serialize};
 #[cfg(feature = "std")]
 pub use reth_evm::{ConfigureEngineEvm, ConvertTx, ExecutableTxIterator, ExecutableTxTuple};
 pub use reth_payload_primitives::ExecutionPayload;
-pub use reth_payload_primitives::{
-    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
-    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
-};
 
 mod error;
 pub use error::*;
@@ -147,9 +147,6 @@ pub trait EngineApiValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static
     ) -> Result<(), EngineObjectValidationError>;
 }
 
-/// Legacy alias for [`EngineApiValidator`].
-pub use EngineApiValidator as EngineValidator;
-
 /// Type that validates an [`ExecutionPayload`].
 ///
 /// This trait handles validation at the engine API boundary — converting payloads
@@ -222,7 +219,7 @@ pub trait PayloadValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static {
     /// built if the implementation needs it (the L1 default does not).
     fn validate_block_post_execution_with_hashed_state<'a>(
         &self,
-        _state_updates: &dyn Fn() -> &'a HashedPostState,
+        _state_updates: &dyn FnOnce() -> &'a HashedPostState,
         _block: &RecoveredBlock<Self::Block>,
         _parent_state: impl FnOnce() -> ProviderResult<StateProviderBox>,
     ) -> Result<(), InsertBlockErrorKind>

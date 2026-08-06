@@ -12,25 +12,22 @@ workspace = true
 
 [dependencies]
 # reth
-reth-ethereum-payload-builder.workspace = true
-reth-primitives-traits.workspace = true
-alloy-consensus.workspace = true
 reth-chainspec.workspace = true
+reth-payload-builder.workspace = true
+reth-ethereum-engine-primitives.workspace = true
+reth-basic-payload-builder.workspace = true
+reth-ethereum-payload-builder.workspace = true
 reth-node-builder.workspace = true
 reth-tracing.workspace = true
 reth-provider.workspace = true
 reth-transaction-pool.workspace = true
 reth-network.workspace = true
 reth-primitives.workspace = true
+reth-config.workspace = true
 reth-rpc.workspace = true
 reth-node-api.workspace = true
-reth-ethereum-primitives.workspace = true
-reth-evm.workspace = true
-reth-engine-primitives.workspace = true
-reth-payload-primitives.workspace = true
-reth-rpc-eth-api.workspace = true
-reth-rpc-eth-types.workspace = true
-reth-rpc-builder.workspace = true
+reth-trie = { workspace = true, features = ["metrics"] }
+reth-trie-db = { workspace = true, features = ["metrics"] }
 
 # bsc-reth
 reth-bsc-chainspec.workspace = true
@@ -39,13 +36,9 @@ reth-bsc-evm.workspace = true
 reth-bsc-payload-builder.workspace = true
 reth-bsc-engine.workspace = true
 
-# alloy
-alloy-network.workspace = true
-alloy-rpc-types-engine.workspace = true
-
 # misc
+clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
-revm.workspace = true
 
 [dev-dependencies]
 reth.workspace = true
@@ -63,6 +56,7 @@ reth-bsc-evm.workspace = true
 
 [features]
 bsc = [
+    "reth-config/bsc",
     "reth-network/bsc",
     "reth-node-builder/bsc",
     "reth-primitives/bsc",
@@ -72,7 +66,7 @@ bsc = [
     "reth-bsc-engine/bsc",
 ]
 asm-keccak = [
-    "reth-primitives/asm-keccak",
-    "reth/asm-keccak",
-    "reth-node-core/asm-keccak"
+	"reth-primitives/asm-keccak",
+	"reth/asm-keccak",
+	"reth-node-core/asm-keccak"
 ]

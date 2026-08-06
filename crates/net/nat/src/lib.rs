@@ -1,4 +1,4 @@
-//! Helpers for resolving the external IP and optional UPnP port mapping.
+//! Helpers for resolving the external IP.
 //!
 //! ## Feature Flags
 //!
@@ -13,12 +13,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod net_if;
-pub mod upnp;
 
 pub use net_if::{NetInterfaceError, DEFAULT_NET_IF_NAME};
-pub use upnp::{
-    map_ports, map_udp_port, spawn_mapping_refresh, MappedGateway, UpnpMapError, DEFAULT_LEASE_SECS,
-};
 
 use std::{
     fmt,
@@ -29,7 +25,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use crate::net_if::resolve_net_if_ip;
 #[cfg(feature = "serde")]
@@ -41,46 +37,16 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 const EXTERNAL_IP_APIS: &[&str] =
     &["https://ipinfo.io/ip", "https://icanhazip.com", "https://ifconfig.me"];
 
-/// Dialable endpoint announced to peers after NAT resolution / UPnP mapping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NatEndpoint {
-    /// Public (or advertised) IP.
-    pub ip: IpAddr,
-    /// TCP port peers should dial (may differ from the local listen port after UPnP remap).
-    pub tcp_port: u16,
-    /// UDP discovery port peers should use.
-    pub udp_port: u16,
-    /// `true` if established via IGD port mapping.
-    pub via_upnp: bool,
-}
-
-impl NatEndpoint {
-    /// Endpoint that reuses the local listen ports with a resolved public IP (HTTP / netif /
-    /// fixed).
-    pub const fn with_listen_ports(ip: IpAddr, tcp_port: u16, udp_port: u16) -> Self {
-        Self { ip, tcp_port, udp_port, via_upnp: false }
-    }
-}
-
-impl fmt::Display for NatEndpoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} (tcp={}, udp={})", self.ip, self.tcp_port, self.udp_port)
-    }
-}
-
 /// All builtin resolvers.
 #[derive(Debug, Clone, Eq, PartialEq, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(SerializeDisplay, DeserializeFromStr))]
 pub enum NatResolver {
     /// Resolve with any available resolver.
-    ///
-    /// Prefer UPnP/IGD port mapping (geth-style); fall back to HTTP public-IP lookup without
-    /// mapping if no gateway is available.
     #[default]
     Any,
-    /// Resolve external IP via `UPnP` and map listen ports through the IGD.
+    /// Resolve external IP via `UPnP`.
     Upnp,
-    /// Resolve external IP via a network request (no port mapping).
+    /// Resolve external IP via a network request.
     PublicIp,
     /// Use the given [`IpAddr`]
     ExternalIp(IpAddr),
@@ -117,11 +83,6 @@ impl NatResolver {
                 .and_then(|mut addrs| addrs.next().map(|addr| addr.ip())),
             _ => None,
         }
-    }
-
-    /// Whether this resolver should attempt UPnP/IGD port mapping.
-    pub const fn wants_upnp_mapping(&self) -> bool {
-        matches!(self, Self::Any | Self::Upnp)
     }
 }
 
@@ -258,10 +219,6 @@ pub async fn external_ip() -> Option<IpAddr> {
 }
 
 /// Given a [`NatResolver`] attempts to produce an IP address (best effort).
-///
-/// Note: [`NatResolver::Any`] / [`NatResolver::Upnp`] use HTTP public-IP lookup here for the
-/// periodic discv4 refresh path. Full UPnP **port mapping** is handled by
-/// [`resolve_nat_endpoint`].
 pub async fn external_addr_with(resolver: NatResolver) -> Option<IpAddr> {
     match resolver {
         NatResolver::Any | NatResolver::Upnp | NatResolver::PublicIp => resolve_external_ip().await,
@@ -285,130 +242,6 @@ pub async fn external_addr_with(resolver: NatResolver) -> Option<IpAddr> {
     }
 }
 
-/// Resolve the dialable NAT endpoint for the given listen ports.
-///
-/// * [`NatResolver::Any`]: UPnP/IGD mapping first (no hijack); on failure HTTP IP + listen ports.
-/// * [`NatResolver::Upnp`]: UPnP only.
-/// * [`NatResolver::PublicIp`] / `NetIf` / `External*`: IP resolution without mapping.
-/// * [`NatResolver::None`]: `None`.
-///
-/// `listen_ip` is the RLPx bind address (`--addr`). Per FLOW-N01 / P2P-006, when a concrete
-/// family is selected (including unspecified `0.0.0.0` / `::`), the announced IP must be the
-/// **same family** — not a global HTTP preference for IPv4. Dual-stack without `--addr` is a
-/// separate bind/announce path; this filter only enforces family consistency with the listen
-/// socket that was actually opened.
-pub async fn resolve_nat_endpoint(
-    resolver: NatResolver,
-    listen_tcp_port: u16,
-    listen_udp_port: u16,
-    listen_ip: IpAddr,
-) -> Option<NatEndpoint> {
-    let preferred = listen_tcp_port;
-    let want_ipv4 = listen_ip.is_ipv4();
-
-    if resolver.wants_upnp_mapping() {
-        match map_ports(listen_tcp_port, listen_udp_port, preferred).await {
-            Ok((endpoint, mapped)) => {
-                if endpoint.ip.is_ipv4() != want_ipv4 {
-                    warn!(
-                        target: "net::nat",
-                        listen_ip = %listen_ip,
-                        mapped_ip = %endpoint.ip,
-                        "UPnP mapped IP family does not match --addr listen family; ignoring mapping"
-                    );
-                } else {
-                    // Refresh leases before they expire (geth uses ~8 min with 10 min lease).
-                    spawn_mapping_refresh(mapped, Duration::from_secs(8 * 60));
-                    return Some(endpoint);
-                }
-            }
-            Err(err) => {
-                if matches!(resolver, NatResolver::Upnp) {
-                    warn!(target: "net::nat", %err, "UPnP NAT mapping failed");
-                    return None;
-                }
-                warn!(
-                    target: "net::nat",
-                    %err,
-                    "UPnP NAT mapping failed; falling back to HTTP public IP without port mapping"
-                );
-            }
-        }
-    }
-
-    match resolver {
-        NatResolver::None => None,
-        NatResolver::Upnp => None,
-        NatResolver::Any | NatResolver::PublicIp => {
-            let ip = resolve_external_ip_matching_family(want_ipv4).await?;
-            info!(
-                target: "net::nat",
-                %ip,
-                listen_ip = %listen_ip,
-                listen_tcp_port,
-                listen_udp_port,
-                "Resolved public IP via HTTP (no UPnP port mapping)"
-            );
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
-        }
-        NatResolver::ExternalIp(ip) => {
-            if ip.is_ipv4() != want_ipv4 {
-                warn!(
-                    target: "net::nat",
-                    listen_ip = %listen_ip,
-                    %ip,
-                    "extip family does not match --addr listen family; not announcing"
-                );
-                return None;
-            }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
-        }
-        NatResolver::ExternalAddr(domain) => {
-            let ip = tokio::net::lookup_host(format!("{domain}:0"))
-                .await
-                .ok()
-                .and_then(|addrs| addrs.map(|a| a.ip()).find(|ip| ip.is_ipv4() == want_ipv4))?;
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
-        }
-        NatResolver::NetIf => {
-            let ip = resolve_net_if_ip(DEFAULT_NET_IF_NAME).ok()?;
-            if ip.is_ipv4() != want_ipv4 {
-                warn!(
-                    target: "net::nat",
-                    listen_ip = %listen_ip,
-                    %ip,
-                    "netif IP family does not match --addr listen family; not announcing"
-                );
-                return None;
-            }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
-        }
-    }
-}
-
-/// HTTP public-IP lookup that accepts only addresses matching the listen socket family.
-///
-/// This is **not** an IPv4 preference: with `--addr ::` / IPv6 listen it requires IPv6 from the
-/// APIs; with `--addr 0.0.0.0` it requires IPv4. First successful same-family response wins.
-async fn resolve_external_ip_matching_family(want_ipv4: bool) -> Option<IpAddr> {
-    let futures = EXTERNAL_IP_APIS
-        .iter()
-        .copied()
-        .map(|url| resolve_external_ip_url_res_family(url, want_ipv4))
-        .map(Box::pin);
-    futures_util::future::select_ok(futures)
-        .await
-        .inspect_err(|err| {
-            debug!(target: "net::nat",
-            ?err,
-                want_ipv4,
-                external_ip_apis=?EXTERNAL_IP_APIS,
-                "Failed to resolve same-family external IP from any API");
-        })
-        .ok()
-        .map(|(ip, _)| ip)
-}
-
 async fn resolve_external_ip() -> Option<IpAddr> {
     let futures = EXTERNAL_IP_APIS.iter().copied().map(resolve_external_ip_url_res).map(Box::pin);
     futures_util::future::select_ok(futures)
@@ -421,22 +254,6 @@ async fn resolve_external_ip() -> Option<IpAddr> {
         })
         .ok()
         .map(|(ip, _)| ip)
-}
-
-async fn resolve_external_ip_url_res_family(url: &str, want_ipv4: bool) -> Result<IpAddr, ()> {
-    let ip = resolve_external_ip_url(url).await.ok_or(())?;
-    if ip.is_ipv4() == want_ipv4 {
-        Ok(ip)
-    } else {
-        debug!(
-            target: "net::nat",
-            %url,
-            %ip,
-            want_ipv4,
-            "Ignoring HTTP public IP with family mismatch vs listen"
-        );
-        Err(())
-    }
 }
 
 async fn resolve_external_ip_url_res(url: &str) -> Result<IpAddr, ()> {
@@ -497,12 +314,5 @@ mod tests {
         let s = "extip:0.0.0.0";
         assert_eq!(ip, s.parse().unwrap());
         assert_eq!(ip.to_string(), s);
-    }
-
-    #[test]
-    fn wants_upnp() {
-        assert!(NatResolver::Any.wants_upnp_mapping());
-        assert!(NatResolver::Upnp.wants_upnp_mapping());
-        assert!(!NatResolver::PublicIp.wants_upnp_mapping());
     }
 }

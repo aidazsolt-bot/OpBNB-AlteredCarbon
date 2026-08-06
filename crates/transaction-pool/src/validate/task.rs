@@ -287,7 +287,7 @@ where
                 self.to_validation_task.lock().await.send(fut).await
             };
             if res.is_err() {
-                return validation_service_error_outcomes(hashes);
+                return validation_service_error_outcomes(hashes)
             }
         }
         match rx.await {
@@ -311,7 +311,7 @@ where
         });
 
         if self.to_validation_task.lock().await.send(fut).await.is_err() {
-            return validation_service_error_outcomes(hashes);
+            return validation_service_error_outcomes(hashes)
         }
 
         match rx.await {

@@ -4,13 +4,13 @@ use crate::{
     table::{Compress, Decode, Decompress, Encode},
     DatabaseError,
 };
-use alloy_consensus::Header;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::{bytes::BufMut, Address, Bytes, Log, B256, U256};
 use reth_codecs::{add_arbitrary_tests, Compact};
-use reth_ethereum_primitives::{Receipt, TransactionSigned, TxType};
-use reth_primitives::parlia::Snapshot;
-use reth_primitives_traits::{Account, BlobSidecar, BlobSidecars, Bytecode, StorageEntry};
+use reth_primitives::{
+    parlia::Snapshot, Account, BlobSidecar, BlobSidecars, Bytecode, Header, Receipt, StorageEntry,
+    TransactionSignedNoHash, TxType,
+};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{StoredNibbles, StoredNibblesSubKey, *};
@@ -19,17 +19,13 @@ use serde::{Deserialize, Serialize};
 pub mod accounts;
 pub mod blocks;
 pub mod integer_list;
-pub mod metadata;
-pub use integer_list::IntegerList;
 pub mod sharded_key;
 pub mod storage_sharded_key;
 
 pub use accounts::*;
 pub use blocks::*;
-pub use metadata::*;
 pub use reth_db_models::{
-    AccountBeforeTx, ClientVersion, StorageBeforeTx, StoredBlockBodyIndices,
-    StoredBlockWithdrawals,
+    AccountBeforeTx, ClientVersion, StoredBlockBodyIndices, StoredBlockWithdrawals,
 };
 pub use sharded_key::ShardedKey;
 
@@ -131,7 +127,7 @@ impl Encode for StoredNibbles {
     fn encode(self) -> Self::Encoded {
         // NOTE: This used to be `to_compact`, but all it does is append the bytes to the buffer,
         // so we can just use the implementation of `Into<Vec<u8>>` to reuse the buffer.
-        self.0.to_vec()
+        self.0.into()
     }
 }
 
@@ -153,34 +149,6 @@ impl Encode for StoredNibblesSubKey {
 }
 
 impl Decode for StoredNibblesSubKey {
-    fn decode(value: &[u8]) -> Result<Self, DatabaseError> {
-        Ok(Self::from_compact(value, value.len()).0)
-    }
-}
-
-impl Encode for PackedStoredNibbles {
-    type Encoded = [u8; 33];
-
-    fn encode(self) -> Self::Encoded {
-        self.to_compact_array()
-    }
-}
-
-impl Decode for PackedStoredNibbles {
-    fn decode(value: &[u8]) -> Result<Self, DatabaseError> {
-        Ok(Self::from_compact(value, value.len()).0)
-    }
-}
-
-impl Encode for PackedStoredNibblesSubKey {
-    type Encoded = [u8; 33];
-
-    fn encode(self) -> Self::Encoded {
-        self.to_compact_array()
-    }
-}
-
-impl Decode for PackedStoredNibblesSubKey {
     fn decode(value: &[u8]) -> Result<Self, DatabaseError> {
         Ok(Self::from_compact(value, value.len()).0)
     }
@@ -226,8 +194,8 @@ impl Compress for Snapshot {
         serde_cbor::to_vec(&self).expect("Failed to serialize Snapshot")
     }
 
-    fn compress_to_buf<B: BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-        let compressed = self.clone().compress();
+    fn compress_to_buf<B: BufMut + AsMut<[u8]>>(self, buf: &mut B) {
+        let compressed = self.compress();
         buf.put_slice(&compressed);
     }
 }
@@ -245,8 +213,8 @@ macro_rules! impl_compression_for_compact {
             impl Compress for $name {
                 type Compressed = Vec<u8>;
 
-                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-                    let _ = Compact::to_compact(self, buf);
+                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(self, buf: &mut B) {
+                    let _ = Compact::to_compact(&self, buf);
                 }
             }
 
@@ -272,17 +240,12 @@ impl_compression_for_compact!(
     StoredNibbles,
     StoredNibblesSubKey,
     StorageTrieEntry,
-    TrieChangeSetsEntry,
-    PackedStoredNibbles,
-    PackedStoredNibblesSubKey,
-    PackedStorageTrieEntry,
     StoredBlockBodyIndices,
     StoredBlockOmmers,
     StoredBlockWithdrawals,
     Bytecode,
     AccountBeforeTx,
-    StorageBeforeTx,
-    TransactionSigned,
+    TransactionSignedNoHash,
     CompactU256,
     StageCheckpoint,
     PruneCheckpoint,
@@ -292,14 +255,6 @@ impl_compression_for_compact!(
     // Non-DB
     GenesisAccount
 );
-
-#[cfg(feature = "optimism")]
-mod op {
-    use super::*;
-    use reth_optimism_primitives::{OpReceipt, OpTransactionSigned};
-
-    impl_compression_for_compact!(OpTransactionSigned, OpReceipt);
-}
 
 macro_rules! impl_compression_fixed_compact {
     ($($name:tt),+) => {
@@ -311,8 +266,8 @@ macro_rules! impl_compression_fixed_compact {
                     Some(self.as_ref())
                 }
 
-                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-                    let _  = Compact::to_compact(self, buf);
+                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(self, buf: &mut B) {
+                    let _  = Compact::to_compact(&self, buf);
                 }
             }
 
@@ -444,8 +399,8 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         let mut snap = Snapshot {
-            epoch_num: rng.random::<u64>(),
-            block_number: rng.random::<u64>(),
+            epoch_num: rng.gen::<u64>(),
+            block_number: rng.gen::<u64>(),
             block_hash: B256::random(),
             validators: vec![Address::random()],
             validators_map: HashMap::new(),
@@ -459,9 +414,9 @@ mod tests {
         );
         snap.recent_proposers.insert(1, snap.validators[0]);
         snap.vote_data = VoteData {
-            source_number: rng.random::<u64>(),
+            source_number: rng.gen::<u64>(),
             source_hash: B256::random(),
-            target_number: rng.random::<u64>(),
+            target_number: rng.gen::<u64>(),
             target_hash: B256::random(),
         };
         println!("original snapshot: {:?}", snap);

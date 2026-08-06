@@ -90,7 +90,6 @@ impl<B: Block, R> CachedTransaction<B, R> {
         N: NodePrimitives<Block = B, Receipt = R>,
         R: TxReceipt + Clone,
         C: RpcConvert<Primitives = N>,
-        <<B as Block>::Body as BlockBody>::Transaction: TxHashRef,
     {
         let receipts = self.receipts?;
         let receipt = receipts.get(self.tx_index)?;

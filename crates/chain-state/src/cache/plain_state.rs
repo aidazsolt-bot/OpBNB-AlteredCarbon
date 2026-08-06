@@ -55,7 +55,7 @@ pub(crate) fn insert_code(k: B256, v: Bytecode) {
 
 /// Write committed state to cache.
 pub(crate) fn write_plain_state(bundle: BundleState) {
-    let change_set = bundle.to_plain_state(OriginalValuesKnown::Yes);
+    let change_set = bundle.into_plain_state(OriginalValuesKnown::Yes);
 
     // Update account cache
     for (address, account_info) in &change_set.accounts {
@@ -81,7 +81,7 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     for storage in &change_set.storage {
         if storage.wipe_storage {
             should_wipe = true;
-            break;
+            break
         }
 
         for (k, v) in storage.storage.clone() {

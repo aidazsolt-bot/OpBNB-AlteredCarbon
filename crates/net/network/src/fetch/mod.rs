@@ -5,8 +5,6 @@ mod client;
 pub use client::FetchClient;
 
 use crate::{message::BlockRequest, session::BlockRangeInfo};
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::B256;
 use futures::StreamExt;
 use reth_eth_wire::{
@@ -25,7 +23,7 @@ use reth_network_p2p::{
 use reth_network_peers::PeerId;
 use reth_network_types::ReputationChangeKind;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     ops::RangeInclusive,
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -66,8 +64,6 @@ pub struct StateFetcher<N: NetworkPrimitives = EthNetworkPrimitives> {
     peers_handle: PeersHandle,
     /// Number of active peer sessions the node's currently handling.
     num_active_peers: Arc<AtomicUsize>,
-    /// Max Status/`NewBlock` best number across connected peers (for reachable-head sync).
-    max_peer_best_number: Arc<AtomicU64>,
     /// Requests queued for processing
     queued_requests: VecDeque<DownloadRequest<N>>,
     /// Receiver for new incoming download requests
@@ -90,17 +86,10 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peers: Default::default(),
             peers_handle,
             num_active_peers,
-            max_peer_best_number: Arc::new(AtomicU64::new(0)),
             queued_requests: Default::default(),
             download_requests_rx: UnboundedReceiverStream::new(download_requests_rx),
             download_requests_tx,
         }
-    }
-
-    /// Recompute [`Self::max_peer_best_number`] from the connected peer set.
-    fn refresh_max_peer_best_number(&self) {
-        let max = self.peers.values().map(|p| p.tip_number()).max().unwrap_or(0);
-        self.max_peer_best_number.store(max, Ordering::Relaxed);
     }
 
     /// Invoked when connected to a new peer.
@@ -125,10 +114,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
                 last_response_likely_bad: false,
                 range_info,
                 supports_snap,
-                header_miss: HashSet::new(),
             },
         );
-        self.refresh_max_peer_best_number();
     }
 
     /// Removes the peer from the peer list, after which it is no longer available for future
@@ -139,7 +126,6 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     /// This cancels also inflight request and sends an error to the receiver.
     pub(crate) fn on_session_closed(&mut self, peer: &PeerId) {
         self.peers.remove(peer);
-        self.refresh_max_peer_best_number();
         if let Some(req) = self.inflight_headers_requests.remove(peer) {
             let _ = req.response.send(Err(RequestError::ConnectionDropped));
         }
@@ -166,50 +152,9 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
         {
             peer.best_hash = hash;
             peer.best_number = number;
-            self.refresh_max_peer_best_number();
-            return true;
+            return true
         }
         false
-    }
-
-    /// Applies an eth/69+ [`reth_eth_wire::BlockRangeUpdate`]: sync tip metadata and available
-    /// full-block range (pruning raises `earliest`; head advances raise `latest`).
-    pub(crate) fn on_block_range_update(
-        &mut self,
-        peer_id: &PeerId,
-        earliest: u64,
-        latest: u64,
-        latest_hash: B256,
-    ) {
-        let Some(peer) = self.peers.get_mut(peer_id) else {
-            return;
-        };
-        match &peer.range_info {
-            Some(info) => info.update(earliest, latest, latest_hash),
-            None => {
-                peer.range_info =
-                    Some(crate::session::BlockRangeInfo::new(earliest, latest, latest_hash));
-            }
-        }
-        // Always sync tip from the announcement (includes reorgs that lower `latest`).
-        peer.best_hash = latest_hash;
-        peer.best_number = latest;
-        self.refresh_max_peer_best_number();
-    }
-
-    /// Marks the peer as busy with a headers request that is tracked outside the inflight map
-    /// (Status tip-number resolve). Prevents the fetcher from assigning another request.
-    pub(crate) fn mark_peer_headers_inflight(&mut self, peer_id: &PeerId) {
-        if let Some(peer) = self.peers.get_mut(peer_id) {
-            peer.state = PeerState::GetBlockHeaders;
-        }
-    }
-
-    /// Returns the peer to idle after an out-of-band headers request completes.
-    pub(crate) fn mark_peer_idle(&mut self, peer_id: &PeerId) {
-        if let Some(peer) = self.peers.get_mut(peer_id) {
-            let _ = peer.state.on_request_finished();
-        }
     }
 
     /// Invoked when an active session is about to be disconnected.
@@ -236,13 +181,13 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // replace best peer if our current best peer sent us a bad response last time
             if best_peer.1.last_response_likely_bad && !maybe_better.1.last_response_likely_bad {
                 best_peer = maybe_better;
-                continue;
+                continue
             }
 
             // replace best peer if this peer meets the requirements better
             if maybe_better.1.is_better(best_peer.1, &requirement) {
                 best_peer = maybe_better;
-                continue;
+                continue
             }
 
             // replace best peer if this peer has better rtt and both have same range quality
@@ -268,7 +213,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     fn poll_action(&mut self) -> PollAction {
         // we only check and not pop here since we don't know yet whether a peer is available.
         if self.queued_requests.is_empty() {
-            return PollAction::NoRequests;
+            return PollAction::NoRequests
         }
 
         let request = self.queued_requests.pop_front().expect("not empty");
@@ -277,18 +222,12 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // instead of waiting for future peer churn.
             if self.should_fail_fast(&request) {
                 request.send_err_response(RequestError::UnsupportedCapability);
-            } else if let Some(n) = request.headers_at_least_number() &&
-                self.no_peer_can_serve_headers_at_least(n)
-            {
-                // All idle peers have a Status head below `n` (or miss). Completing as empty
-                // unblocks the reverse headers downloader so it can cap the working tip.
-                request.send_empty_headers_response();
             } else {
                 // no peer matches this request's requirements; requeue at the back so other
                 // queued requests get a chance on the next poll instead of head-of-line blocking.
                 self.queued_requests.push_back(request);
             }
-            return PollAction::NoPeersAvailable;
+            return PollAction::NoPeersAvailable
         };
 
         let request = self.prepare_block_request(peer_id, request);
@@ -314,7 +253,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
                         // connected peer can serve them right now.
                         if self.should_fail_fast(&request) {
                             request.send_err_response(RequestError::UnsupportedCapability);
-                            continue;
+                            continue
                         }
 
                         match request.get_priority() {
@@ -341,7 +280,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             }
 
             if self.queued_requests.is_empty() || no_peers_available {
-                return Poll::Pending;
+                return Poll::Pending
             }
         }
     }
@@ -358,27 +297,6 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     fn should_fail_fast(&self, request: &DownloadRequest<N>) -> bool {
         (request.is_optional_bal() && !self.has_eth71_peer()) ||
             (request.is_snap() && !self.has_snap_peer())
-    }
-
-    /// Returns `true` when every **idle** peer cannot serve `HeadersAtLeast(number)`.
-    ///
-    /// If any peer is still busy (including Status tip-number resolve), returns `false` so the
-    /// request waits instead of fail-fast empty.
-    fn no_peer_can_serve_headers_at_least(&self, number: u64) -> bool {
-        let mut any_idle = false;
-        for peer in self.peers.values() {
-            if matches!(peer.state, PeerState::Closing) {
-                continue;
-            }
-            if !peer.state.is_idle() {
-                return false;
-            }
-            any_idle = true;
-            if peer.satisfies(&BestPeerRequirements::HeadersAtLeast(number)) {
-                return false;
-            }
-        }
-        any_idle
     }
 
     /// Handles a new request to a peer.
@@ -472,31 +390,6 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
         let is_likely_bad_response =
             resp.as_ref().is_some_and(|r| res.is_likely_bad_headers_response(&r.request));
 
-        // Empty Number-origin responses are valid ("I don't have these blocks"). Remember the
-        // origin so we ask this peer for earlier batches instead of spamming the same range
-        // (op-geth `headerPeerMiss` style). Never disconnect for this.
-        if let Some(req) = resp.as_ref() &&
-            matches!(&res, Ok(headers) if headers.is_empty()) &&
-            let BlockHashOrNumber::Number(origin) = req.request.start
-        {
-            if let Some(peer) = self.peers.get_mut(&peer_id) {
-                peer.header_miss.insert(origin);
-            }
-        }
-
-        // Learn Status head from successful replies (eth/66–68 often start with best_number=0).
-        if let Ok(headers) = &res &&
-            let Some(highest) = headers.iter().map(|h| h.number()).max() &&
-            highest > 0
-        {
-            if let Some(peer) = self.peers.get_mut(&peer_id) &&
-                highest > peer.best_number
-            {
-                peer.best_number = highest;
-                self.refresh_max_peer_best_number();
-            }
-        }
-
         if let Some(resp) = resp {
             // delegate the response
             let _ = resp.response.send(res.map(|h| (peer_id, h).into()));
@@ -509,7 +402,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // If the peer is still ready to accept new requests, we try to send a followup
             // request immediately.
             if peer.state.on_request_finished() && !is_error && !is_likely_bad_response {
-                return self.followup_request(peer_id);
+                return self.followup_request(peer_id)
             }
         }
 
@@ -535,7 +428,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id);
+                return self.followup_request(peer_id)
             }
         }
         None
@@ -556,7 +449,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id);
+                return self.followup_request(peer_id)
             }
         }
         None
@@ -580,7 +473,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id);
+                return self.followup_request(peer_id)
             }
         }
         None
@@ -601,7 +494,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id);
+                return self.followup_request(peer_id)
             }
         }
         None
@@ -613,7 +506,6 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             request_tx: self.download_requests_tx.clone(),
             peers_handle: self.peers_handle.clone(),
             num_active_peers: Arc::clone(&self.num_active_peers),
-            max_peer_best_number: Arc::clone(&self.max_peer_best_number),
         }
     }
 }
@@ -669,9 +561,6 @@ struct Peer {
     range_info: Option<BlockRangeInfo>,
     /// Whether the connection negotiated `snap/2` and can serve [`DownloadRequest::GetSnap`].
     supports_snap: bool,
-    /// Header batch origins (by number) this peer returned empty for — ask earlier ranges instead
-    /// of dropping the peer (op-geth `headerPeerMiss`).
-    header_miss: HashSet<u64>,
 }
 
 impl Peer {
@@ -679,18 +568,9 @@ impl Peer {
         self.timeout.load(Ordering::Relaxed)
     }
 
-    /// Returns the earliest full-block number available from the peer (`eth/69` range, else `0`).
+    /// Returns the earliest block number available from the peer.
     fn earliest(&self) -> u64 {
         self.range_info.as_ref().map_or(0, |info| info.earliest())
-    }
-
-    /// Tip number for header routing: max of Status/`best_number` and eth/69 `latest`.
-    ///
-    /// Per eth.md, [`BlockRangeUpdate`] covers full blocks/receipts; headers are assumed from
-    /// genesis, so header peer selection only needs the tip ceiling — not `earliest`.
-    fn tip_number(&self) -> u64 {
-        let from_range = self.range_info.as_ref().map(|info| info.latest()).unwrap_or(0);
-        self.best_number.max(from_range)
     }
 
     /// Returns true if the peer has the full history available.
@@ -707,20 +587,9 @@ impl Peer {
         match requirement {
             BestPeerRequirements::EthVersion(ver) => self.capabilities.supports_eth_at_least(ver),
             BestPeerRequirements::SupportsSnap => self.supports_snap,
-            BestPeerRequirements::HeadersAtLeast(number) => {
-                self.tip_number() >= *number && !self.header_miss.contains(number)
-            }
-            // eth/69: only peers that announced covering the range may serve bodies/receipts.
-            // eth/66–68 (no range): allow and discover gaps via empty responses + miss map.
-            BestPeerRequirements::FullBlockRange(range) => match self.range() {
-                Some(peer_range) => {
-                    peer_range.contains(range.start()) && peer_range.contains(range.end())
-                }
-                None => true,
-            },
-            // Without a concrete range hint, eth/69 peers that advertised a truncated window are
-            // still eligible — the downloader should pass `FullBlockRange` when numbers are known.
-            BestPeerRequirements::None | BestPeerRequirements::FullBlock => true,
+            BestPeerRequirements::None |
+            BestPeerRequirements::FullBlock |
+            BestPeerRequirements::FullBlockRange(_) => true,
         }
     }
 
@@ -772,7 +641,6 @@ impl Peer {
         match requirement {
             BestPeerRequirements::FullBlockRange(range) => self.has_better_range(other, range),
             BestPeerRequirements::FullBlock => self.has_full_history() && !other.has_full_history(),
-            BestPeerRequirements::HeadersAtLeast(_) => self.tip_number() > other.tip_number(),
             // Version/capability-based filtering happens in `next_best_peer`, so by the time we
             // get here both peers already satisfy the requirement.
             BestPeerRequirements::None |
@@ -817,7 +685,7 @@ impl PeerState {
     const fn on_request_finished(&mut self) -> bool {
         if !matches!(self, Self::Closing) {
             *self = Self::Idle;
-            return true;
+            return true
         }
         false
     }
@@ -922,31 +790,10 @@ impl<N: NetworkPrimitives> DownloadRequest<N> {
         };
     }
 
-    /// Completes a headers request with an empty OK response (no peer could serve the origin).
-    fn send_empty_headers_response(self) {
-        if let Self::GetBlockHeaders { response, .. } = self {
-            let _ = response.send(Ok((PeerId::default(), Vec::new()).into()));
-        }
-    }
-
-    /// Number-origin for [`BestPeerRequirements::HeadersAtLeast`], if any.
-    const fn headers_at_least_number(&self) -> Option<u64> {
-        match self {
-            Self::GetBlockHeaders { request, .. } => match request.start {
-                BlockHashOrNumber::Number(n) => Some(n),
-                BlockHashOrNumber::Hash(_) => None,
-            },
-            _ => None,
-        }
-    }
-
     /// Returns the best peer requirements for this request.
     fn best_peer_requirements(&self) -> BestPeerRequirements {
         match self {
-            Self::GetBlockHeaders { request, .. } => match request.start {
-                BlockHashOrNumber::Number(number) => BestPeerRequirements::HeadersAtLeast(number),
-                BlockHashOrNumber::Hash(_) => BestPeerRequirements::None,
-            },
+            Self::GetBlockHeaders { .. } => BestPeerRequirements::None,
             Self::GetBlockAccessLists { .. } => BestPeerRequirements::EthVersion(EthVersion::Eth71),
             Self::GetBlockBodies { range_hint, .. } => {
                 if let Some(range) = range_hint {
@@ -995,9 +842,6 @@ enum BestPeerRequirements {
     EthVersion(EthVersion),
     /// Peer must have negotiated `snap/2`.
     SupportsSnap,
-    /// Peer Status best number must cover this header origin (Falling/Rising by number), and the
-    /// origin must not be in the peer's empty-response miss set.
-    HeadersAtLeast(u64),
 }
 
 #[cfg(test)]
@@ -1224,7 +1068,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         let peer2 = Peer {
@@ -1236,7 +1079,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: None,
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // With None requirement, is_better should always return false
@@ -1256,7 +1098,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without full history (earliest = 50)
@@ -1269,7 +1110,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(50, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without range info (treated as full history)
@@ -1282,7 +1122,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: None,
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer with full history is better than peer without
@@ -1312,7 +1151,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer that doesn't cover the range (earliest too high)
@@ -1325,7 +1163,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(70, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer that covers the requested range is better than one that doesn't
@@ -1350,7 +1187,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 50, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without full history that also covers the range
@@ -1363,7 +1199,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(30, 50, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // When both cover the range, prefer none
@@ -1386,7 +1221,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 50, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without full history that also covers the range
@@ -1399,7 +1233,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(30, 50, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // When both cover the range, prefer lower start value
@@ -1422,7 +1255,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(0, 30, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without full history that also doesn't cover the range
@@ -1435,7 +1267,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(10, 30, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // When neither covers the range, prefer full history
@@ -1458,7 +1289,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(30, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without range info
@@ -1471,7 +1301,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: None,
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without range info is not better (we prefer peers with known ranges)
@@ -1498,7 +1327,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(30, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without range info (treated as full history with unknown latest)
@@ -1511,7 +1339,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: None,
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer with range that covers is better than peer without range info
@@ -1537,7 +1364,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(70, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer without range info (treated as full history)
@@ -1550,7 +1376,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: None,
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer with range that doesn't cover is not better
@@ -1577,7 +1402,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(50, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer that's one block short at the start
@@ -1590,7 +1414,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(51, 100, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Peer that's one block short at the end
@@ -1603,7 +1426,6 @@ mod tests {
             last_response_likely_bad: false,
             range_info: Some(BlockRangeInfo::new(50, 99, B256::random())),
             supports_snap: false,
-            header_miss: HashSet::new(),
         };
 
         // Exact coverage is better than short coverage
@@ -1618,227 +1440,6 @@ mod tests {
         assert!(
             !peer_short_end.is_better(&peer_exact, &BestPeerRequirements::FullBlockRange(range))
         );
-    }
-
-    #[test]
-    fn test_full_block_range_hard_filters_eth69_peers() {
-        let covering = Peer {
-            state: PeerState::Idle,
-            best_hash: B256::random(),
-            best_number: 100,
-            capabilities: Arc::new(Capabilities::new(vec![])),
-            timeout: Arc::new(AtomicU64::new(10)),
-            last_response_likely_bad: false,
-            range_info: Some(BlockRangeInfo::new(0, 100, B256::random())),
-            supports_snap: false,
-            header_miss: HashSet::new(),
-        };
-        let pruned = Peer {
-            state: PeerState::Idle,
-            best_hash: B256::random(),
-            best_number: 100,
-            capabilities: Arc::new(Capabilities::new(vec![])),
-            timeout: Arc::new(AtomicU64::new(10)),
-            last_response_likely_bad: false,
-            // Pruned: full blocks only from 80..100 — cannot serve bodies at 10..=20
-            range_info: Some(BlockRangeInfo::new(80, 100, B256::random())),
-            supports_snap: false,
-            header_miss: HashSet::new(),
-        };
-        let eth68 = Peer {
-            state: PeerState::Idle,
-            best_hash: B256::random(),
-            best_number: 100,
-            capabilities: Arc::new(Capabilities::new(vec![])),
-            timeout: Arc::new(AtomicU64::new(10)),
-            last_response_likely_bad: false,
-            range_info: None,
-            supports_snap: false,
-            header_miss: HashSet::new(),
-        };
-
-        let old = 10..=20;
-        assert!(covering.satisfies(&BestPeerRequirements::FullBlockRange(old.clone())));
-        assert!(!pruned.satisfies(&BestPeerRequirements::FullBlockRange(old.clone())));
-        // eth/68: no range advertised — still eligible (empty replies + miss map)
-        assert!(eth68.satisfies(&BestPeerRequirements::FullBlockRange(old)));
-
-        // Headers may still be requested below earliest (spec: headers from genesis).
-        assert!(pruned.satisfies(&BestPeerRequirements::HeadersAtLeast(50)));
-        assert!(!pruned.satisfies(&BestPeerRequirements::HeadersAtLeast(101)));
-
-        // Tip for HeadersAtLeast prefers max(best_number, range.latest)
-        let tip_from_range = Peer {
-            state: PeerState::Idle,
-            best_hash: B256::random(),
-            best_number: 0, // eth/68-style until resolved — but eth/69 range already has tip
-            capabilities: Arc::new(Capabilities::new(vec![])),
-            timeout: Arc::new(AtomicU64::new(10)),
-            last_response_likely_bad: false,
-            range_info: Some(BlockRangeInfo::new(0, 90, B256::random())),
-            supports_snap: false,
-            header_miss: HashSet::new(),
-        };
-        assert_eq!(tip_from_range.tip_number(), 90);
-        assert!(tip_from_range.satisfies(&BestPeerRequirements::HeadersAtLeast(90)));
-        assert!(!tip_from_range.satisfies(&BestPeerRequirements::HeadersAtLeast(91)));
-    }
-
-    #[tokio::test]
-    async fn test_block_range_update_syncs_tip_and_range() {
-        let (mut fetcher, peer_id) = fetcher_with_peer();
-        assert_eq!(fetcher.peers[&peer_id].best_number, 0);
-        assert!(fetcher.peers[&peer_id].range_info.is_none());
-
-        let tip_hash = B256::random();
-        fetcher.on_block_range_update(&peer_id, 1_000, 50_000, tip_hash);
-        assert_eq!(fetcher.peers[&peer_id].best_number, 50_000);
-        assert_eq!(fetcher.peers[&peer_id].best_hash, tip_hash);
-        assert_eq!(fetcher.peers[&peer_id].earliest(), 1_000);
-        assert_eq!(fetcher.max_peer_best_number.load(Ordering::Relaxed), 50_000);
-
-        // Prune raises earliest; tip unchanged
-        fetcher.on_block_range_update(&peer_id, 2_000, 50_000, tip_hash);
-        assert_eq!(fetcher.peers[&peer_id].earliest(), 2_000);
-        assert_eq!(fetcher.peers[&peer_id].tip_number(), 50_000);
-        assert!(!fetcher.peers[&peer_id]
-            .satisfies(&BestPeerRequirements::FullBlockRange(1_500..=1_600)));
-        assert!(
-            fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::FullBlockRange(2_000..=2_100))
-        );
-        // Header below earliest still ok
-        assert!(fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::HeadersAtLeast(1_500)));
-    }
-
-    #[tokio::test]
-    async fn test_headers_at_least_filters_by_best_number() {
-        let manager = PeersManager::new(PeersConfig::default());
-        let mut fetcher =
-            StateFetcher::<EthNetworkPrimitives>::new(manager.handle(), Default::default());
-        let caps = Arc::new(Capabilities::from(vec![]));
-
-        let lagging = B512::random();
-        let near_tip = B512::random();
-        fetcher.new_active_peer(NewPeerInfo {
-            peer_id: lagging,
-            best_hash: B256::random(),
-            best_number: 100,
-            capabilities: Arc::clone(&caps),
-            timeout: Arc::new(AtomicU64::new(10)),
-            range_info: None,
-            supports_snap: false,
-        });
-        fetcher.new_active_peer(NewPeerInfo {
-            peer_id: near_tip,
-            best_hash: B256::random(),
-            best_number: 173_000_000,
-            capabilities: caps,
-            timeout: Arc::new(AtomicU64::new(10)),
-            range_info: None,
-            supports_snap: false,
-        });
-
-        assert_eq!(
-            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)),
-            Some(near_tip)
-        );
-        assert_eq!(
-            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(50)),
-            Some(near_tip) // higher best preferred
-        );
-        // Only lagging can be forced by disconnecting near tip
-        fetcher.on_pending_disconnect(&near_tip);
-        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(50)), Some(lagging));
-        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(101)), None);
-        assert_eq!(fetcher.max_peer_best_number.load(Ordering::Relaxed), 173_000_000);
-    }
-
-    #[tokio::test]
-    async fn test_headers_at_least_requires_resolved_best_number() {
-        let manager = PeersManager::new(PeersConfig::default());
-        let mut fetcher =
-            StateFetcher::<EthNetworkPrimitives>::new(manager.handle(), Default::default());
-        let peer_id = B512::random();
-        // Before Status tip resolve completes, best_number stays 0 → cannot serve tip-range.
-        fetcher.new_active_peer(NewPeerInfo {
-            peer_id,
-            best_hash: B256::random(),
-            best_number: 0,
-            capabilities: Arc::new(Capabilities::from(vec![])),
-            timeout: Arc::new(AtomicU64::new(10)),
-            range_info: None,
-            supports_snap: false,
-        });
-        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)), None);
-
-        // After GetBlockHeaders(Status.blockhash, limit=1) resolves the number:
-        assert!(fetcher.update_peer_block(&peer_id, B256::random(), 173_274_244));
-        assert_eq!(
-            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)),
-            Some(peer_id)
-        );
-        assert_eq!(fetcher.max_peer_best_number.load(Ordering::Relaxed), 173_274_244);
-    }
-
-    #[tokio::test]
-    async fn test_headers_at_least_known_lagging_fail_fast_empty() {
-        let (mut fetcher, peer_id) = fetcher_with_peer();
-        fetcher.peers.get_mut(&peer_id).unwrap().best_number = 100;
-        fetcher.refresh_max_peer_best_number();
-
-        assert!(fetcher.no_peer_can_serve_headers_at_least(1_000_000));
-        assert!(!fetcher.no_peer_can_serve_headers_at_least(50));
-
-        // Busy peers (e.g. Status tip resolve in flight) must not fail-fast.
-        fetcher.mark_peer_headers_inflight(&peer_id);
-        assert!(!fetcher.no_peer_can_serve_headers_at_least(1_000_000));
-        fetcher.mark_peer_idle(&peer_id);
-
-        let (tx, mut rx) = oneshot::channel();
-        fetcher.queued_requests.push_back(DownloadRequest::GetBlockHeaders {
-            request: HeadersRequest::falling(1_000_000u64.into(), 1000),
-            response: tx,
-            priority: Priority::default(),
-        });
-
-        // No peer can serve → empty OK (unblocks downloader), not an infinite requeue.
-        let _ = poll_fn(|cx| {
-            let _ = fetcher.poll(cx);
-            Poll::Ready(())
-        })
-        .await;
-        let delivered = rx.try_recv().unwrap().unwrap();
-        assert!(delivered.1.is_empty());
-        assert!(fetcher.peers.contains_key(&peer_id));
-    }
-
-    #[tokio::test]
-    async fn test_empty_headers_response_records_miss_without_ban() {
-        let (mut fetcher, peer_id) = fetcher_with_peer();
-        fetcher.peers.get_mut(&peer_id).unwrap().best_number = 1_000;
-
-        let (tx, mut rx) = oneshot::channel();
-        let request = HeadersRequest::falling(500u64.into(), 1000);
-        fetcher
-            .inflight_headers_requests
-            .insert(peer_id, Request { request: request.clone(), response: tx });
-        fetcher.peers.get_mut(&peer_id).unwrap().state = PeerState::GetBlockHeaders;
-
-        let outcome = fetcher.on_block_headers_response(peer_id, Ok(vec![]));
-        // Empty is not a reputation BadResponse
-        assert!(outcome.is_none());
-        assert!(fetcher.peers[&peer_id].header_miss.contains(&500));
-        assert!(fetcher.peers[&peer_id].last_response_likely_bad);
-        // Peer stays registered
-        assert!(fetcher.peers.contains_key(&peer_id));
-        // Response delivered as empty ok
-        let delivered = rx.try_recv().unwrap().unwrap();
-        assert!(delivered.1.is_empty());
-
-        // Same origin must not be scheduled to this peer again
-        assert!(!fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::HeadersAtLeast(500)));
-        // Earlier ranges still ok
-        assert!(fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::HeadersAtLeast(100)));
     }
 
     /// Creates a `StateFetcher` with a single idle peer and returns both.

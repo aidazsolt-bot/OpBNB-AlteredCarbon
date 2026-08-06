@@ -154,7 +154,9 @@ where
             // Delete receipts, except the ones in the inclusion list
             let mut last_skipped_transaction = 0;
             let deleted;
-            (deleted, done) = provider.tx_ref().prune_table_with_range::<tables::Receipts>(
+            (deleted, done) = provider.tx_ref().prune_table_with_range::<tables::Receipts<
+                <Provider::Primitives as NodePrimitives>::Receipt,
+            >>(
                 tx_range,
                 &mut limiter,
                 |(tx_num, receipt)| {

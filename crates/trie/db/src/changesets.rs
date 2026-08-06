@@ -118,14 +118,14 @@ where
     let end_block = *range.end();
 
     if start_block > end_block {
-        return Ok(TrieUpdatesSorted::default());
+        return Ok(TrieUpdatesSorted::default())
     }
 
     if end_block > db_tip_block {
         return Err(ProviderError::InsufficientChangesets {
             requested: end_block,
             available: 0..=db_tip_block,
-        });
+        })
     }
 
     debug!(
@@ -459,7 +459,7 @@ impl ChangesetCache {
                 end_block,
                 "Empty changeset range requested"
             );
-            return Ok(Arc::new(TrieUpdatesSorted::default()));
+            return Ok(Arc::new(TrieUpdatesSorted::default()))
         }
 
         let end_block_hash = provider.block_hash(end_block)?.ok_or_else(|| {
@@ -483,7 +483,7 @@ impl ChangesetCache {
                 "Changeset cache HIT for block range"
             );
 
-            return Ok(accumulated_reverts);
+            return Ok(accumulated_reverts)
         }
 
         let mut cached_reverts =
@@ -515,7 +515,7 @@ impl ChangesetCache {
                 cached_reverts.push(changesets);
             } else {
                 all_cached = false;
-                break;
+                break
             }
         }
 
@@ -540,7 +540,7 @@ impl ChangesetCache {
             );
 
             self.inner.write().insert(range_key, Arc::clone(&accumulated_reverts));
-            return Ok(accumulated_reverts);
+            return Ok(accumulated_reverts)
         }
 
         warn!(

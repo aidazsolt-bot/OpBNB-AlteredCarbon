@@ -10,7 +10,7 @@ use reth_network_p2p::{
     BlockClient,
 };
 use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives::{Block, BlockBody, Header, SealedHeader};
+use reth_primitives::{BlockBody, Header, SealedHeader};
 use tracing::trace;
 
 use crate::Storage;
@@ -37,7 +37,7 @@ pub struct ParliaClient<Client> {
 
 impl<Client> ParliaClient<Client>
 where
-    Client: BlockClient<Block = Block> + 'static,
+    Client: BlockClient + 'static,
 {
     pub(crate) fn new(storage: Storage, fetch_client: Client) -> Self {
         let peer_id = PeerId::random();
@@ -58,8 +58,8 @@ where
                 match direction {
                     HeadersDirection::Falling => block = header.parent_hash.into(),
                     HeadersDirection::Rising => {
-                        if !headers.is_empty()
-                            && headers.last().cloned().unwrap().hash() != header.parent_hash
+                        if !headers.is_empty() &&
+                            headers.last().cloned().unwrap().hash() != header.parent_hash
                         {
                             return Err(InnerFetchError::HeaderNotFound);
                         }
@@ -76,7 +76,7 @@ where
 
         trace!(target: "consensus::parlia", ?headers, "returning headers");
 
-        Ok(headers.into_iter().map(|sealed_header| sealed_header.into_header()).collect())
+        Ok(headers.into_iter().map(|sealed_header| sealed_header.header().clone()).collect())
     }
 
     async fn fetch_bodies(&self, hashes: Vec<B256>) -> InnerFetchBodyResult {
@@ -104,10 +104,9 @@ where
 
 impl<Client> HeadersClient for ParliaClient<Client>
 where
-    Client: BlockClient<Block = Block> + 'static,
+    Client: BlockClient + 'static,
 {
-    type Header = Header;
-    type Output = HeadersFut<Header>;
+    type Output = HeadersFut;
 
     fn get_headers_with_priority(
         &self,
@@ -128,24 +127,14 @@ where
 
 impl<Client> BodiesClient for ParliaClient<Client>
 where
-    Client: BlockClient<Block = Block> + 'static,
+    Client: BlockClient + 'static,
 {
-    type Body = BlockBody;
-    type Output = BodiesFut<BlockBody>;
+    type Output = BodiesFut;
 
     fn get_block_bodies_with_priority(
         &self,
         hashes: Vec<B256>,
         priority: Priority,
-    ) -> Self::Output {
-        self.get_block_bodies_with_priority_and_range_hint(hashes, priority, None)
-    }
-
-    fn get_block_bodies_with_priority_and_range_hint(
-        &self,
-        hashes: Vec<B256>,
-        priority: Priority,
-        _range_hint: Option<std::ops::RangeInclusive<u64>>,
     ) -> Self::Output {
         let this = self.clone();
         let peer_id = self.peer_id;
@@ -154,16 +143,14 @@ where
             if let Ok(blocks) = result {
                 return Ok(WithPeerId::new(peer_id, blocks));
             }
-            this.fetch_client
-                .get_block_bodies_with_priority_and_range_hint(hashes.clone(), priority, None)
-                .await
+            this.fetch_client.get_block_bodies_with_priority(hashes.clone(), priority).await
         })
     }
 }
 
 impl<Client> DownloadClient for ParliaClient<Client>
 where
-    Client: BlockClient<Block = Block> + 'static,
+    Client: BlockClient + 'static,
 {
     fn report_bad_message(&self, peer_id: PeerId) {
         let this = self.clone();
@@ -180,11 +167,4 @@ where
         let this = self.clone();
         this.fetch_client.num_connected_peers()
     }
-}
-
-impl<Client> BlockClient for ParliaClient<Client>
-where
-    Client: BlockClient<Block = Block> + 'static,
-{
-    type Block = Block;
 }

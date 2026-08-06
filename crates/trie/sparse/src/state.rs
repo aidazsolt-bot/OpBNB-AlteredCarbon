@@ -389,12 +389,13 @@ where
 
         #[cfg(feature = "std")]
         let results: Vec<_> = {
-            use rayon::iter::{ParallelBridge, ParallelIterator};
+            use rayon::iter::ParallelIterator;
+            use reth_primitives_traits::ParallelBridgeBuffered;
 
             let parent_span = tracing::Span::current();
             targets
                 .into_iter()
-                .par_bridge()
+                .par_bridge_buffered()
                 .map(|(hashed_address, target, mut nodes)| {
                     let _span = tracing::trace_span!(
                         target: "trie::sparse",

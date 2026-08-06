@@ -271,7 +271,6 @@ impl TestHarness {
             evm_config,
             changeset_cache,
             runtime,
-            Arc::new(reth_network_p2p::headers::HeaderSeed::default()),
         );
 
         let block_builder = TestBlockBuilder::default().with_chain_spec((*chain_spec).clone());
@@ -711,9 +710,10 @@ fn process_payload_attributes_shares_sparse_trie_during_validation_fallback() {
     assert!(!test_harness.tree.state.pending_sparse_trie_prune());
 
     let command = test_harness.payload_command_rx.try_recv().unwrap();
-    let PayloadServiceCommand::BuildNewPayload(_attributes, _tx) = command else {
+    let PayloadServiceCommand::BuildNewPayload(input, _, _) = command else {
         panic!("expected build new payload command")
     };
+    assert!(input.state_root_handle.is_some());
 }
 
 #[tokio::test]

@@ -16,8 +16,8 @@ use alloy_rlp::{
 use core::{fmt::Debug, mem};
 use derive_more::{Constructor, Deref, DerefMut, From, IntoIterator};
 use reth_codecs_derive::{add_arbitrary_tests, generate_tests};
-use reth_ethereum_primitives::TransactionSigned;
 use reth_primitives_traits::BlobSidecars;
+use reth_ethereum_primitives::TransactionSigned;
 use reth_primitives_traits::{sync::OnceLock, Block, InMemorySize, SignedTransaction};
 
 /// Soft limit for the number of hashes in a
@@ -754,10 +754,10 @@ impl Decodable for NewPooledTransactionHashes68 {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let Header { list, payload_length } = Header::decode(buf)?;
         if !list {
-            return Err(alloy_rlp::Error::UnexpectedString);
+            return Err(alloy_rlp::Error::UnexpectedString)
         }
         if buf.len() < payload_length {
-            return Err(alloy_rlp::Error::InputTooShort);
+            return Err(alloy_rlp::Error::InputTooShort)
         }
 
         let (mut payload, rest) = buf.split_at(payload_length);
@@ -767,7 +767,7 @@ impl Decodable for NewPooledTransactionHashes68 {
             return Err(alloy_rlp::Error::ListLengthMismatch {
                 expected: payload_length,
                 got: payload_length - payload.len(),
-            });
+            })
         }
 
         ensure_pooled_transaction_hashes_lengths(hashes.len(), types.len(), sizes.len())?;
@@ -890,10 +890,10 @@ impl NewPooledTransactionHashes72 {
     }
 
     fn payload_length(&self) -> usize {
-        self.types.as_slice().length()
-            + self.sizes.length()
-            + self.hashes.length()
-            + self.cell_mask.as_ref().map_or(1, Encodable::length)
+        self.types.as_slice().length() +
+            self.sizes.length() +
+            self.hashes.length() +
+            self.cell_mask.as_ref().map_or(1, Encodable::length)
     }
 }
 
@@ -919,16 +919,16 @@ impl Decodable for NewPooledTransactionHashes72 {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let Header { list, payload_length } = Header::decode(buf)?;
         if !list {
-            return Err(alloy_rlp::Error::UnexpectedString);
+            return Err(alloy_rlp::Error::UnexpectedString)
         }
         if buf.len() < payload_length {
-            return Err(alloy_rlp::Error::InputTooShort);
+            return Err(alloy_rlp::Error::InputTooShort)
         }
 
         let (mut payload, rest) = buf.split_at(payload_length);
         let (types, sizes, hashes) = decode_pooled_transaction_hashes_payload(&mut payload)?;
         let Some(first_byte) = payload.first().copied() else {
-            return Err(alloy_rlp::Error::InputTooShort);
+            return Err(alloy_rlp::Error::InputTooShort)
         };
         let cell_mask = if first_byte == alloy_rlp::EMPTY_STRING_CODE {
             payload = &payload[1..];
@@ -941,7 +941,7 @@ impl Decodable for NewPooledTransactionHashes72 {
             return Err(alloy_rlp::Error::ListLengthMismatch {
                 expected: payload_length,
                 got: payload_length - payload.len(),
-            });
+            })
         }
 
         ensure_pooled_transaction_hashes_lengths(hashes.len(), types.len(), sizes.len())?;
@@ -982,10 +982,10 @@ const fn ensure_pooled_transaction_hashes_lengths(
     sizes_len: usize,
 ) -> alloy_rlp::Result<()> {
     if hashes_len != types_len {
-        return Err(alloy_rlp::Error::ListLengthMismatch { expected: hashes_len, got: types_len });
+        return Err(alloy_rlp::Error::ListLengthMismatch { expected: hashes_len, got: types_len })
     }
     if hashes_len != sizes_len {
-        return Err(alloy_rlp::Error::ListLengthMismatch { expected: hashes_len, got: sizes_len });
+        return Err(alloy_rlp::Error::ListLengthMismatch { expected: hashes_len, got: sizes_len })
     }
 
     Ok(())
@@ -1295,7 +1295,7 @@ impl RequestTxHashes {
     pub fn retain_count(&mut self, count: usize) -> Self {
         let rest_capacity = self.hashes.len().saturating_sub(count);
         if rest_capacity == 0 {
-            return Self::empty();
+            return Self::empty()
         }
         let mut rest = Self::with_capacity(rest_capacity);
 
@@ -1303,7 +1303,7 @@ impl RequestTxHashes {
         self.hashes.retain(|hash| {
             if i >= count {
                 rest.insert(*hash);
-                return false;
+                return false
             }
             i += 1;
 
@@ -1339,15 +1339,15 @@ impl InMemorySize for NewPooledTransactionHashes {
         match self {
             Self::Eth66(msg) => msg.0.len() * core::mem::size_of::<B256>(),
             Self::Eth68(msg) => {
-                msg.types.len() * core::mem::size_of::<u8>()
-                    + msg.sizes.len() * core::mem::size_of::<usize>()
-                    + msg.hashes.len() * core::mem::size_of::<B256>()
+                msg.types.len() * core::mem::size_of::<u8>() +
+                    msg.sizes.len() * core::mem::size_of::<usize>() +
+                    msg.hashes.len() * core::mem::size_of::<B256>()
             }
             Self::Eth72(msg) => {
-                msg.types.len() * core::mem::size_of::<u8>()
-                    + msg.sizes.len() * core::mem::size_of::<usize>()
-                    + msg.hashes.len() * core::mem::size_of::<B256>()
-                    + core::mem::size_of::<B128>()
+                msg.types.len() * core::mem::size_of::<u8>() +
+                    msg.sizes.len() * core::mem::size_of::<usize>() +
+                    msg.hashes.len() * core::mem::size_of::<B256>() +
+                    core::mem::size_of::<B128>()
             }
         }
     }

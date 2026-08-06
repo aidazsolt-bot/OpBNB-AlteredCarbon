@@ -1,38 +1,38 @@
-use alloy_eips::eip4844::{DATA_GAS_PER_BLOB, MAX_DATA_GAS_PER_BLOCK_DENCUN};
+use alloy_eips::eip4844::{DATA_GAS_PER_BLOB, MAX_DATA_GAS_PER_BLOCK};
 use alloy_primitives::{Bloom, B256};
-use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks, Hardforks};
+use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_consensus::ConsensusError;
 use reth_primitives::{
-    gas_spent_by_transactions, GotExpected, Header, Receipt, SealedHeader,
+    gas_spent_by_transactions, BlockWithSenders, GotExpected, Header, Receipt, SealedHeader,
 };
-use alloy_consensus::TxReceipt;
 
 /// Validate the 4844 header of BSC block.
 /// Compared to Ethereum, BSC block doesn't have `parent_beacon_block_root`.
 pub fn validate_4844_header_of_bsc(header: &SealedHeader) -> Result<(), ConsensusError> {
     let blob_gas_used = header.blob_gas_used.ok_or(ConsensusError::BlobGasUsedMissing)?;
     let excess_blob_gas = header.excess_blob_gas.ok_or(ConsensusError::ExcessBlobGasMissing)?;
-    if blob_gas_used > MAX_DATA_GAS_PER_BLOCK_DENCUN {
+
+    if blob_gas_used > MAX_DATA_GAS_PER_BLOCK {
         return Err(ConsensusError::BlobGasUsedExceedsMaxBlobGasPerBlock {
             blob_gas_used,
-            max_blob_gas_per_block: MAX_DATA_GAS_PER_BLOCK_DENCUN,
-        });
+            max_blob_gas_per_block: MAX_DATA_GAS_PER_BLOCK,
+        })
     }
 
     if blob_gas_used % DATA_GAS_PER_BLOB != 0 {
         return Err(ConsensusError::BlobGasUsedNotMultipleOfBlobGasPerBlob {
             blob_gas_used,
             blob_gas_per_blob: DATA_GAS_PER_BLOB,
-        });
+        })
     }
 
     // `excess_blob_gas` must also be a multiple of `DATA_GAS_PER_BLOB`. This will be checked later
     // (via `calculate_excess_blob_gas`), but it doesn't hurt to catch the problem sooner.
     if excess_blob_gas % DATA_GAS_PER_BLOB != 0 {
-        return Err(ConsensusError::BlobGasUsedNotMultipleOfBlobGasPerBlob {
-            blob_gas_used: excess_blob_gas,
+        return Err(ConsensusError::ExcessBlobGasNotMultipleOfBlobGasPerBlob {
+            excess_blob_gas,
             blob_gas_per_blob: DATA_GAS_PER_BLOB,
-        });
+        })
     }
 
     Ok(())
@@ -42,7 +42,7 @@ pub fn validate_4844_header_of_bsc(header: &SealedHeader) -> Result<(), Consensu
 /// Compared to Ethereum, BSC base fee is always zero.
 #[inline]
 pub fn validate_against_parent_eip1559_base_fee_of_bsc<
-    ChainSpec: EthChainSpec + EthereumHardforks + Hardforks,
+    ChainSpec: EthChainSpec + EthereumHardforks,
 >(
     header: &Header,
     _parent: &Header,
@@ -56,7 +56,7 @@ pub fn validate_against_parent_eip1559_base_fee_of_bsc<
             return Err(ConsensusError::BaseFeeDiff(GotExpected {
                 expected: expected_base_fee,
                 got: base_fee,
-            }));
+            }))
         }
     }
 
@@ -70,25 +70,26 @@ pub fn validate_against_parent_eip1559_base_fee_of_bsc<
 ///
 /// Compared to Ethereum, BSC doesn't have to check `requests_root`.
 pub fn validate_block_post_execution_of_bsc<ChainSpec: EthereumHardforks>(
-    header: &Header,
+    block: &BlockWithSenders,
     chain_spec: &ChainSpec,
     receipts: &[Receipt],
 ) -> Result<(), ConsensusError> {
+    // Check if gas used matches the value set in header.
     let cumulative_gas_used =
         receipts.last().map(|receipt| receipt.cumulative_gas_used).unwrap_or(0);
-    if header.gas_used != cumulative_gas_used {
+    if block.gas_used != cumulative_gas_used {
         return Err(ConsensusError::BlockGasUsed {
-            gas: GotExpected { got: cumulative_gas_used, expected: header.gas_used },
+            gas: GotExpected { got: cumulative_gas_used, expected: block.gas_used },
             gas_spent_by_tx: gas_spent_by_transactions(receipts),
-        });
+        })
     }
 
     // Before Byzantium, receipts contained state root that would mean that expensive
     // operation as hashing that is required for state root got calculated in every
     // transaction This was replaced with is_success flag.
     // See more about EIP here: https://eips.ethereum.org/EIPS/eip-658
-    if chain_spec.is_byzantium_active_at_block(header.number) {
-        verify_receipts(header.receipts_root, header.logs_bloom, receipts)?;
+    if chain_spec.is_byzantium_active_at_block(block.header.number) {
+        verify_receipts(block.header.receipts_root, block.header.logs_bloom, receipts)?;
     }
 
     Ok(())
@@ -101,10 +102,12 @@ fn verify_receipts(
     expected_logs_bloom: Bloom,
     receipts: &[Receipt],
 ) -> Result<(), ConsensusError> {
+    // Calculate receipts root.
     let receipts_with_bloom = receipts.iter().map(Receipt::with_bloom_ref).collect::<Vec<_>>();
     let receipts_root = reth_primitives::proofs::calculate_receipt_root(&receipts_with_bloom);
 
-    let logs_bloom = receipts_with_bloom.iter().fold(Bloom::ZERO, |bloom, r| bloom | r.bloom());
+    // Calculate header logs bloom.
+    let logs_bloom = receipts_with_bloom.iter().fold(Bloom::ZERO, |bloom, r| bloom | r.bloom);
 
     compare_receipts_root_and_logs_bloom(
         receipts_root,
@@ -127,13 +130,13 @@ fn compare_receipts_root_and_logs_bloom(
     if calculated_receipts_root != expected_receipts_root {
         return Err(ConsensusError::BodyReceiptRootDiff(
             GotExpected { got: calculated_receipts_root, expected: expected_receipts_root }.into(),
-        ));
+        ))
     }
 
     if calculated_logs_bloom != expected_logs_bloom {
         return Err(ConsensusError::BodyBloomLogDiff(
             GotExpected { got: calculated_logs_bloom, expected: expected_logs_bloom }.into(),
-        ));
+        ))
     }
 
     Ok(())

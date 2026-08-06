@@ -65,8 +65,8 @@ impl MultiProofTargetsV2 {
 
     /// Returns the number of items that will be considered during chunking.
     pub fn chunking_length(&self) -> usize {
-        self.account_targets.len()
-            + self.storage_targets.values().map(|slots| slots.len()).sum::<usize>()
+        self.account_targets.len() +
+            self.storage_targets.values().map(|slots| slots.len()).sum::<usize>()
     }
 
     /// Returns an iterator that yields chunks of the specified size.
@@ -90,7 +90,7 @@ impl MultiProofTargetsV2 {
             //
             // See: https://eips.ethereum.org/EIPS/eip-6780
             if !account.is_touched() || account.is_selfdestructed() {
-                continue;
+                continue
             }
 
             let hashed_address = keccak256(addr);
@@ -103,7 +103,7 @@ impl MultiProofTargetsV2 {
             for (key, slot) in account.storage {
                 // do nothing if unchanged
                 if !slot.is_changed() {
-                    continue;
+                    continue
                 }
 
                 let hashed_slot = keccak256(B256::new(key.to_be_bytes()));
@@ -208,8 +208,8 @@ impl Iterator for ChunkedMultiProofTargetsV2 {
         }
 
         // Process any remaining storage-only entries (accounts not in account_targets)
-        while let Some((account_addr, storage_slots)) = self.storage_targets.iter_mut().next()
-            && count < self.size
+        while let Some((account_addr, storage_slots)) = self.storage_targets.iter_mut().next() &&
+            count < self.size
         {
             let account_addr = *account_addr;
             let storage_slots = core::mem::take(storage_slots);

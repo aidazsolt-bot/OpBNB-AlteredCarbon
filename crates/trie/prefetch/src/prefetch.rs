@@ -4,7 +4,7 @@ use alloy_primitives::B256;
 use dashmap::DashMap;
 use rayon::prelude::*;
 use reth_execution_errors::StorageRootError;
-use revm::state::EvmState;
+use reth_primitives::revm_primitives::EvmState;
 use reth_provider::{
     providers::ConsistentDbView, BlockReader, DBProvider, DatabaseProviderFactory, ProviderError,
 };
@@ -18,8 +18,8 @@ use reth_trie::{
     walker::TrieWalker,
     HashedPostState, HashedStorage, StorageRoot,
 };
-use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, LegacyKeyAdapter};
-use reth_trie_parallel::StorageRootTargets;
+use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
+use reth_trie_parallel::{parallel_root::ParallelStateRootError, StorageRootTargets};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc::UnboundedReceiver, oneshot::Receiver, Mutex},
@@ -37,6 +37,7 @@ pub struct TriePrefetch {
     /// Cached storages.
     cached_storages: HashMap<B256, HashMap<B256, bool>>,
     /// State trie metrics.
+    #[cfg(feature = "metrics")]
     metrics: TrieRootMetrics,
 }
 
@@ -52,6 +53,7 @@ impl TriePrefetch {
         Self {
             cached_accounts: HashMap::new(),
             cached_storages: HashMap::new(),
+            #[cfg(feature = "metrics")]
             metrics: TrieRootMetrics::default(),
         }
     }
@@ -117,7 +119,7 @@ impl TriePrefetch {
 
     /// Deduplicate `hashed_state` based on `cached` and update `cached`.
     fn deduplicate_and_update_cached(&mut self, state: EvmState) -> HashedPostState {
-        let hashed_state = reth_trie_parallel::state_root_task::evm_state_to_hashed_post_state(state);
+        let hashed_state = HashedPostState::from_state(state);
         let mut new_hashed_state = HashedPostState::default();
 
         // deduplicate accounts if their keys are not present in storages
@@ -184,26 +186,26 @@ impl TriePrefetch {
         let hashed_state_sorted = hashed_state.into_sorted();
 
         // Solely for marking storage roots, so precise calculations are not necessary.
-        let mut storage_roots: HashMap<B256, u64> = storage_root_targets
+        let mut storage_roots = storage_root_targets
             .into_par_iter()
-            .map(|(hashed_address, _)| (hashed_address, 1u64))
-            .collect();
+            .map(|(hashed_address, _)| Ok((hashed_address, 1)))
+            .collect::<Result<HashMap<_, _>, ParallelStateRootError>>()?;
 
         trace!(target: "trie::trie_prefetch", "prefetching account tries");
         let provider_ro = consistent_view.provider_ro()?;
         let tx = provider_ro.tx_ref();
-        let trie_cursor_factory = DatabaseTrieCursorFactory::<_, LegacyKeyAdapter>::new(tx);
+        let trie_cursor_factory = DatabaseTrieCursorFactory::new(tx);
         let hashed_cursor_factory = HashedPostStateCursorFactory::new(
             DatabaseHashedCursorFactory::new(tx),
             &hashed_state_sorted,
         );
 
-        let walker: TrieWalker<_, alloy_trie::proof::AddedRemovedKeys> = TrieWalker::state_trie(
+        let walker = TrieWalker::new(
             trie_cursor_factory.account_trie_cursor().map_err(ProviderError::Database)?,
             prefix_sets.account_prefix_set,
         )
         .with_deletions_retained(false);
-        let mut account_node_iter = TrieNodeIter::state_trie(
+        let mut account_node_iter = TrieNodeIter::new(
             walker,
             hashed_cursor_factory.hashed_account_cursor().map_err(ProviderError::Database)?,
         );
@@ -224,10 +226,10 @@ impl TriePrefetch {
                                 trie_cursor_factory.clone(),
                                 hashed_cursor_factory.clone(),
                                 hashed_address,
-                                Default::default(),
+                                #[cfg(feature = "metrics")]
                                 self.metrics.clone(),
                             )
-                            .root_with_updates()
+                            .calculate(true)
                             {
                                 missing_leaves_cache
                                     .insert(hashed_address, (storage_root, updates));
@@ -243,6 +245,7 @@ impl TriePrefetch {
         prefetch_tracker.inc_branches(stats.branches_added());
         prefetch_tracker.inc_leaves(stats.leaves_added());
 
+        #[cfg(feature = "metrics")]
         self.metrics.record(stats);
 
         debug!(
@@ -276,7 +279,7 @@ impl TriePrefetch {
             .into_par_iter()
             .map(|(hashed_address, prefix_set)| {
                 let provider_ro = consistent_view.provider_ro()?;
-                let trie_cursor_factory = DatabaseTrieCursorFactory::<_, LegacyKeyAdapter>::new(provider_ro.tx_ref());
+                let trie_cursor_factory = DatabaseTrieCursorFactory::new(provider_ro.tx_ref());
                 let hashed_cursor_factory = HashedPostStateCursorFactory::new(
                     DatabaseHashedCursorFactory::new(provider_ro.tx_ref()),
                     &hashed_state_sorted,
@@ -285,14 +288,15 @@ impl TriePrefetch {
                     trie_cursor_factory,
                     hashed_cursor_factory,
                     hashed_address,
-                    prefix_set,
+                    #[cfg(feature = "metrics")]
                     self.metrics.clone(),
                 )
-                .root();
+                .with_prefix_set(prefix_set)
+                .prefetch();
 
-                Ok::<_, TriePrefetchError>(storage_root_result.map_err(TriePrefetchError::StorageRoot)?)
+                Ok((hashed_address, storage_root_result?))
             })
-            .collect::<Result<Vec<_>, TriePrefetchError>>()?;
+            .collect::<Result<HashMap<_, _>, ParallelStateRootError>>()?;
 
         Ok(())
     }
@@ -304,6 +308,9 @@ pub enum TriePrefetchError {
     /// Error while calculating storage root.
     #[error(transparent)]
     StorageRoot(#[from] StorageRootError),
+    /// Error while calculating parallel storage root.
+    #[error(transparent)]
+    ParallelStateRoot(#[from] ParallelStateRootError),
     /// Provider error.
     #[error(transparent)]
     Provider(#[from] ProviderError),
@@ -316,6 +323,7 @@ impl From<TriePrefetchError> for ProviderError {
             TriePrefetchError::StorageRoot(StorageRootError::Database(error)) => {
                 Self::Database(error)
             }
+            TriePrefetchError::ParallelStateRoot(error) => error.into(),
         }
     }
 }

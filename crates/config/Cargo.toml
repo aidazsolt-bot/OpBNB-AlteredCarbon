@@ -12,10 +12,10 @@ workspace = true
 
 [dependencies]
 # reth
-reth-network-types.workspace = true
+reth-network-types = { workspace = true, features = ["serde"] }
 reth-prune-types.workspace = true
 reth-stages-types.workspace = true
-reth-static-file-types.workspace = true
+reth-primitives = { workspace = true, optional = true }
 
 # serde
 serde = { workspace = true, optional = true }
@@ -24,26 +24,23 @@ humantime-serde = { workspace = true, optional = true }
 # toml
 toml = { workspace = true, optional = true }
 eyre.workspace = true
-
-# value objects
 url.workspace = true
-strum = { workspace = true, features = ["derive"] }
-
-[features]
-default = ["serde"]
-serde = [
-    "dep:serde",
-    "dep:toml",
-    "dep:humantime-serde",
-    "reth-network-types/serde",
-    "reth-prune-types/serde",
-    "reth-stages-types/serde",
-    "alloy-primitives/serde",
-    "url/serde",
-]
-bsc = []
 
 [dev-dependencies]
 tempfile.workspace = true
 reth-network-peers.workspace = true
-alloy-primitives = { workspace = true, features = ["getrandom"] }
+alloy-primitives.workspace = true
+
+[features]
+serde = [
+    "dep:serde",
+    "dep:toml",
+    "dep:humantime-serde",
+    "reth-prune-types/serde",
+    "reth-stages-types/serde",
+    "reth-network-types/serde",
+    "url/serde"
+]
+bsc = [
+    "reth-primitives/bsc"
+]

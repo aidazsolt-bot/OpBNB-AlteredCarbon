@@ -62,10 +62,10 @@ impl BscHardfork {
     /// Retrieves the activation block for the specified hardfork on the given chain.
     pub fn activation_block<H: Hardfork>(self, fork: H, chain: Chain) -> Option<u64> {
         if chain == Chain::bsc_mainnet() {
-            return Self::bsc_mainnet_activation_block(fork);
+            return Self::bsc_mainnet_activation_block(fork)
         }
         if chain == Chain::bsc_testnet() {
-            return Self::bsc_testnet_activation_block(fork);
+            return Self::bsc_testnet_activation_block(fork)
         }
 
         None
@@ -74,10 +74,10 @@ impl BscHardfork {
     /// Retrieves the activation timestamp for the specified hardfork on the given chain.
     pub fn activation_timestamp<H: Hardfork>(self, fork: H, chain: Chain) -> Option<u64> {
         if chain == Chain::bsc_mainnet() {
-            return Self::bsc_mainnet_activation_timestamp(fork);
+            return Self::bsc_mainnet_activation_timestamp(fork)
         }
         if chain == Chain::bsc_testnet() {
-            return Self::bsc_testnet_activation_timestamp(fork);
+            return Self::bsc_testnet_activation_timestamp(fork)
         }
 
         None
@@ -88,15 +88,15 @@ impl BscHardfork {
         match_hardfork(
             fork,
             |fork| match fork {
-                EthereumHardfork::Frontier
-                | EthereumHardfork::Homestead
-                | EthereumHardfork::Tangerine
-                | EthereumHardfork::SpuriousDragon
-                | EthereumHardfork::Byzantium
-                | EthereumHardfork::Constantinople
-                | EthereumHardfork::Petersburg
-                | EthereumHardfork::Istanbul
-                | EthereumHardfork::MuirGlacier => Some(0),
+                EthereumHardfork::Frontier |
+                EthereumHardfork::Homestead |
+                EthereumHardfork::Tangerine |
+                EthereumHardfork::SpuriousDragon |
+                EthereumHardfork::Byzantium |
+                EthereumHardfork::Constantinople |
+                EthereumHardfork::Petersburg |
+                EthereumHardfork::Istanbul |
+                EthereumHardfork::MuirGlacier => Some(0),
                 EthereumHardfork::Berlin | EthereumHardfork::London => Some(31302048),
                 _ => None,
             },
@@ -123,15 +123,15 @@ impl BscHardfork {
         match_hardfork(
             fork,
             |fork| match fork {
-                EthereumHardfork::Frontier
-                | EthereumHardfork::Homestead
-                | EthereumHardfork::Tangerine
-                | EthereumHardfork::SpuriousDragon
-                | EthereumHardfork::Byzantium
-                | EthereumHardfork::Constantinople
-                | EthereumHardfork::Petersburg
-                | EthereumHardfork::Istanbul
-                | EthereumHardfork::MuirGlacier => Some(0),
+                EthereumHardfork::Frontier |
+                EthereumHardfork::Homestead |
+                EthereumHardfork::Tangerine |
+                EthereumHardfork::SpuriousDragon |
+                EthereumHardfork::Byzantium |
+                EthereumHardfork::Constantinople |
+                EthereumHardfork::Petersburg |
+                EthereumHardfork::Istanbul |
+                EthereumHardfork::MuirGlacier => Some(0),
                 EthereumHardfork::Berlin | EthereumHardfork::London => Some(31103030),
                 _ => None,
             },
@@ -316,7 +316,7 @@ where
 {
     let fork: &dyn Any = &fork;
     if let Some(fork) = fork.downcast_ref::<EthereumHardfork>() {
-        return hardfork_fn(fork);
+        return hardfork_fn(fork)
     }
     fork.downcast_ref::<BscHardfork>().and_then(bsc_hardfork_fn)
 }

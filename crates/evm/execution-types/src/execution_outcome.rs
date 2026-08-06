@@ -151,31 +151,11 @@ impl<T> ExecutionOutcome<T> {
     pub fn single(block_number: u64, output: BlockExecutionOutput<T>) -> Self {
         Self {
             bundle: output.state,
-            receipts: vec![output.result.receipts],
+            receipts: vec![output.receipts],
             first_block: block_number,
-            requests: vec![output.result.requests],
+            requests: vec![output.requests],
             snapshots: vec![output.snapshot.unwrap_or_default()],
         }
-    }
-
-    /// Creates a new `ExecutionOutcome` from multiple [`BlockExecutionResult`]s.
-    pub fn from_blocks(
-        first_block: u64,
-        bundle: BundleState,
-        results: Vec<crate::BlockExecutionResult<T>>,
-    ) -> Self {
-        let mut value = Self {
-            bundle,
-            first_block,
-            receipts: Vec::with_capacity(results.len()),
-            requests: Vec::with_capacity(results.len()),
-            snapshots: vec![],
-        };
-        for result in results {
-            value.receipts.push(result.receipts);
-            value.requests.push(result.requests);
-        }
-        value
     }
 
     /// Return revm bundle state.
@@ -234,11 +214,11 @@ impl<T> ExecutionOutcome<T> {
     /// Transform block number to the index of block.
     pub const fn block_number_to_index(&self, block_number: BlockNumber) -> Option<usize> {
         if self.first_block > block_number {
-            return None;
+            return None
         }
         let index = block_number - self.first_block;
         if index >= self.receipts.len() as u64 {
-            return None;
+            return None
         }
         Some(index as usize)
     }
@@ -335,7 +315,7 @@ impl<T> ExecutionOutcome<T> {
         T: Clone,
     {
         if at == self.first_block {
-            return (None, self);
+            return (None, self)
         }
 
         let (mut lower_state, mut higher_state) = (self.clone(), self);
@@ -441,115 +421,6 @@ impl<T> From<(BlockExecutionOutput<T>, BlockNumber)> for ExecutionOutcome<T> {
     }
 }
 
-#[cfg(feature = "serde-bincode-compat")]
-pub(super) mod serde_bincode_compat {
-    use alloc::{borrow::Cow, vec::Vec};
-    use alloy_eips::eip7685::Requests;
-    use alloy_primitives::{BlockNumber, Bytes};
-    use reth_primitives_traits::Receipt;
-    use revm::database::BundleState;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use serde_with::{DeserializeAs, SerializeAs};
-
-    /// Bincode-compatible [`super::ExecutionOutcome`] serde implementation.
-    ///
-    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
-    /// ```rust
-    /// use reth_execution_types::{serde_bincode_compat, ExecutionOutcome};
-    /// use serde::{Deserialize, Serialize};
-    /// use serde_with::serde_as;
-    ///
-    /// #[serde_as]
-    /// #[derive(Serialize, Deserialize)]
-    /// struct Data {
-    ///     #[serde_as(as = "serde_bincode_compat::ExecutionOutcome<'_>")]
-    ///     chain: ExecutionOutcome,
-    /// }
-    /// ```
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct ExecutionOutcome<'a> {
-        bundle: Cow<'a, BundleState>,
-        receipts: Vec<Vec<Bytes>>,
-        first_block: BlockNumber,
-        #[expect(clippy::owned_cow)]
-        requests: Cow<'a, Vec<Requests>>,
-    }
-
-    impl<'a, T> From<&'a super::ExecutionOutcome<T>> for ExecutionOutcome<'a>
-    where
-        T: Receipt,
-    {
-        fn from(value: &'a super::ExecutionOutcome<T>) -> Self {
-            ExecutionOutcome {
-                bundle: Cow::Borrowed(&value.bundle),
-                receipts: value
-                    .receipts
-                    .iter()
-                    .map(|vec| {
-                        vec.iter().map(|receipt| Bytes::from(alloy_rlp::encode(receipt))).collect()
-                    })
-                    .collect(),
-                first_block: value.first_block,
-                requests: Cow::Borrowed(&value.requests),
-            }
-        }
-    }
-
-    impl<T> From<ExecutionOutcome<'_>> for super::ExecutionOutcome<T>
-    where
-        T: Receipt,
-    {
-        fn from(value: ExecutionOutcome<'_>) -> Self {
-            Self {
-                bundle: value.bundle.into_owned(),
-                receipts: value
-                    .receipts
-                    .into_iter()
-                    .map(|vec| {
-                        vec.into_iter()
-                            .map(|rlp| {
-                                T::decode(&mut rlp.as_ref())
-                                    .expect("invalid RLP for receipt in serde_bincode_compat")
-                            })
-                            .collect()
-                    })
-                    .collect(),
-                first_block: value.first_block,
-                requests: value.requests.into_owned(),
-                // Parlia/BSC-specific snapshots are not part of the wire-compatible
-                // bincode representation; default to empty on deserialize.
-                snapshots: Vec::new(),
-            }
-        }
-    }
-
-    impl<T> SerializeAs<super::ExecutionOutcome<T>> for ExecutionOutcome<'_>
-    where
-        T: Receipt,
-    {
-        fn serialize_as<S>(
-            source: &super::ExecutionOutcome<T>,
-            serializer: S,
-        ) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            ExecutionOutcome::from(source).serialize(serializer)
-        }
-    }
-
-    impl<'de, T> DeserializeAs<'de, super::ExecutionOutcome<T>> for ExecutionOutcome<'de>
-    where
-        T: Receipt,
-    {
-        fn deserialize_as<D>(deserializer: D) -> Result<super::ExecutionOutcome<T>, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            ExecutionOutcome::deserialize(deserializer).map(Into::into)
-        }
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;

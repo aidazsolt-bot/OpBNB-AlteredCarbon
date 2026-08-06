@@ -212,21 +212,21 @@ impl FromStr for AnyNode {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(rem) = s.strip_prefix("enode://") {
             if let Ok(record) = NodeRecord::from_str(s) {
-                return Ok(Self::NodeRecord(record));
+                return Ok(Self::NodeRecord(record))
             }
             // NodeRecord parsing rejects domain hosts, but trusted peers may use DNS names.
             if let Ok(trusted) = TrustedPeer::from_str(s) {
-                return Ok(Self::TrustedPeer(trusted));
+                return Ok(Self::TrustedPeer(trusted))
             }
             // incomplete enode with only a peer id
             if let Ok(peer_id) = PeerId::from_str(rem) {
-                return Ok(Self::PeerId(peer_id));
+                return Ok(Self::PeerId(peer_id))
             }
-            return Err(format!("invalid public key: {rem}"));
+            return Err(format!("invalid public key: {rem}"))
         }
         #[cfg(feature = "secp256k1")]
         if s.starts_with("enr:") {
-            return Enr::from_str(s).map(AnyNode::Enr);
+            return Enr::from_str(s).map(AnyNode::Enr)
         }
         Err("missing 'enr:' prefix for base64-encoded record".to_string())
     }

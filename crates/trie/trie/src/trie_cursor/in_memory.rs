@@ -233,7 +233,7 @@ impl<'a, C: TrieCursor> InMemoryTrieCursor<'a, C> {
                 {
                     // If overlay returns a node prior to the DB's node, or the DB is exhausted,
                     // then we return the overlay's node.
-                    return Ok(Some((mem_key, node)));
+                    return Ok(Some((mem_key, node)))
                 }
                 // All other cases:
                 // - mem_key > db_key
@@ -252,8 +252,8 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let mem_entry = self.in_memory_cursor.seek(&key);
 
-        if let Some((mem_key, entry_inner)) = mem_entry
-            && *mem_key == key
+        if let Some((mem_key, entry_inner)) = mem_entry &&
+            *mem_key == key
         {
             #[cfg(debug_assertions)]
             {
@@ -270,7 +270,7 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
 
             let entry = entry_inner.clone().map(|node| (key, node));
             self.set_last_key(&entry);
-            return Ok(entry);
+            return Ok(entry)
         }
 
         self.cursor_seek(key)?;
@@ -295,8 +295,8 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let mem_entry = self.in_memory_cursor.seek(&key);
 
-        if let Some((mem_key, Some(node))) = mem_entry
-            && *mem_key == key
+        if let Some((mem_key, Some(node))) = mem_entry &&
+            *mem_key == key
         {
             #[cfg(debug_assertions)]
             {
@@ -312,7 +312,7 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
 
             let entry = Some((key, node.clone()));
             self.set_last_key(&entry);
-            return Ok(entry);
+            return Ok(entry)
         }
 
         self.cursor_seek(key)?;
@@ -340,8 +340,8 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
 
         // If either cursor is currently pointing to the last entry which was returned then consume
         // that entry so that `choose_next_entry` is looking at the subsequent one.
-        if let Some((key, _)) = self.in_memory_cursor.current()
-            && key == &last_key
+        if let Some((key, _)) = self.in_memory_cursor.current() &&
+            key == &last_key
         {
             self.in_memory_cursor.first_after(&last_key);
         }
@@ -350,8 +350,8 @@ impl<C: TrieCursor> TrieCursor for InMemoryTrieCursor<'_, C> {
             self.cursor_seek(last_key)?;
         }
 
-        if let Some((key, _)) = self.db_cursor_state.entry()
-            && key == &last_key
+        if let Some((key, _)) = self.db_cursor_state.entry() &&
+            key == &last_key
         {
             self.cursor_next()?;
         }
@@ -418,8 +418,8 @@ mod tests {
 
         let mut results = Vec::new();
 
-        if let Some(first_expected) = test_case.expected_results.first()
-            && let Ok(Some(entry)) = cursor.seek(first_expected.0)
+        if let Some(first_expected) = test_case.expected_results.first() &&
+            let Ok(Some(entry)) = cursor.seek(first_expected.0)
         {
             results.push(entry);
         }

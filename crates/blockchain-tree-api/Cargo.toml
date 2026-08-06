@@ -14,11 +14,9 @@ workspace = true
 reth-consensus.workspace = true
 reth-execution-errors.workspace = true
 reth-primitives.workspace = true
-reth-primitives-traits.workspace = true
 reth-storage-errors.workspace = true
 
 # alloy
-alloy-consensus.workspace = true
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
 

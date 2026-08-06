@@ -6,11 +6,6 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 filter = "test(general_state_tests)"
 slow-timeout = { period = "1m", terminate-after = 10 }
 
-# BlockchainTests ValidBlocks/InvalidBlocks are large fixture suites outside GeneralStateTests.
-[[profile.default.overrides]]
-filter = "test(valid_blocks) | test(invalid_blocks)"
-slow-timeout = { period = "2m", terminate-after = 5 }
-
 [[profile.default.overrides]]
 filter = "test(eest_fixtures)"
 slow-timeout = { period = "2m", terminate-after = 10 }

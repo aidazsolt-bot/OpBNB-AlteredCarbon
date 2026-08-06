@@ -2,9 +2,8 @@
 
 use crate::{
     args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
-        NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StateDbArgs, StaticFilesArgs,
-        StorageArgs, TxPoolArgs,
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs,
+        PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     dirs::{ChainPath, DataDirPath},
     utils::get_single_header,
@@ -16,26 +15,16 @@ use reth_network_p2p::headers::client::HeadersClient;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::Path};
 
-use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{BlockNumber, B256};
-use reth_ethereum_forks::Head;
-use reth_primitives_traits::SealedHeader;
+use reth_primitives::{Head, SealedHeader};
 use reth_stages_types::StageId;
 use reth_storage_api::{
     BlockHashReader, DatabaseProviderFactory, HeaderProvider, StageCheckpointReader,
-    StorageSettings,
 };
 use reth_storage_errors::provider::ProviderResult;
-use std::{path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tracing::*;
-
-pub use reth_engine_primitives::{
-    DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
-};
-
-/// Default size of cross-block cache in megabytes.
-pub const DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB: u64 = 4 * 1024;
 
 /// This includes all necessary configuration to launch the node.
 /// The individual configuration options can be overwritten before launching the node.
@@ -95,8 +84,10 @@ pub struct NodeConfig<ChainSpec> {
     /// Possible values are either a built-in chain or the path to a chain specification file.
     pub chain: Arc<ChainSpec>,
 
-    /// Enable to configure metrics export to endpoints
-    pub metrics: MetricArgs,
+    /// Enable Prometheus metrics.
+    ///
+    /// The metrics will be served at the given interface and port.
+    pub metrics: Option<SocketAddr>,
 
     /// Add a new instance of a node.
     ///
@@ -106,14 +97,13 @@ pub struct NodeConfig<ChainSpec> {
     /// Max number of instances is 200. It is chosen in a way so that it's not possible to have
     /// port numbers that conflict with each other.
     ///
-    /// Changes to the following port numbers (only when `--instance` is set):
+    /// Changes to the following port numbers:
     /// - `DISCOVERY_PORT`: default + `instance` - 1
     /// - `DISCOVERY_V5_PORT`: default + `instance` - 1
     /// - `AUTH_PORT`: default + `instance` * 100 - 100
     /// - `HTTP_RPC_PORT`: default - `instance` + 1
     /// - `WS_RPC_PORT`: default + `instance` * 2 - 2
-    /// - `IPC_PATH`: default + `-instance`
-    pub instance: Option<u16>,
+    pub instance: u16,
 
     /// All networking related arguments
     pub network: NetworkArgs,
@@ -138,21 +128,6 @@ pub struct NodeConfig<ChainSpec> {
 
     /// All pruning related arguments
     pub pruning: PruningArgs,
-
-    /// All engine related arguments
-    pub engine: EngineArgs,
-
-    /// All ERA import related arguments with --era prefix
-    pub era: EraArgs,
-
-    /// All static files related arguments
-    pub static_files: StaticFilesArgs,
-
-    /// All storage related arguments with --storage prefix
-    pub storage: StorageArgs,
-
-    /// All state database related arguments
-    pub statedb: StateDbArgs,
 
     /// Enable prefetch when executing blocks.
     pub enable_prefetch: bool,
@@ -179,8 +154,8 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         Self {
             config: None,
             chain,
-            metrics: MetricArgs::default(),
-            instance: None,
+            metrics: None,
+            instance: 1,
             network: NetworkArgs::default(),
             rpc: RpcServerArgs::default(),
             txpool: TxPoolArgs::default(),
@@ -190,33 +165,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             dev: DevArgs::default(),
             pruning: PruningArgs::default(),
             datadir: DatadirArgs::default(),
-            engine: EngineArgs::default(),
-            era: EraArgs::default(),
-            static_files: StaticFilesArgs::default(),
-            storage: StorageArgs::default(),
-            statedb: StateDbArgs::default(),
             enable_prefetch: false,
             skip_state_root_validation: false,
             enable_execution_cache: false,
-        }
-    }
-
-    /// Set the storage args for the node
-    pub const fn with_storage(mut self, storage: StorageArgs) -> Self {
-        self.storage = storage;
-        self
-    }
-
-    /// Returns the effective storage settings for this node.
-    ///
-    /// Determined by the `--storage.v2` flag (defaults to `true`).
-    /// Existing databases retain whatever settings are persisted in their
-    /// metadata (checked during genesis init).
-    pub const fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 {
-            StorageSettings::v2()
-        } else {
-            StorageSettings::v1()
         }
     }
 
@@ -258,20 +209,15 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     }
 
     /// Set the metrics address for the node
-    pub fn with_metrics(mut self, metrics: MetricArgs) -> Self {
-        self.metrics = metrics;
+    pub const fn with_metrics(mut self, metrics: SocketAddr) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
     /// Set the instance for the node
     pub const fn with_instance(mut self, instance: u16) -> Self {
-        self.instance = Some(instance);
+        self.instance = instance;
         self
-    }
-
-    /// Returns the instance value, defaulting to 1 if not set.
-    pub fn get_instance(&self) -> u16 {
-        self.instance.unwrap_or(1)
     }
 
     /// Set the network args for the node
@@ -311,7 +257,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     }
 
     /// Set the dev args for the node
-    pub fn with_dev(mut self, dev: DevArgs) -> Self {
+    pub const fn with_dev(mut self, dev: DevArgs) -> Self {
         self.dev = dev;
         self
     }
@@ -369,6 +315,10 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             .header_by_number(head)?
             .expect("the header for the latest block is missing, database is corrupt");
 
+        let total_difficulty = provider
+            .header_td_by_number(head)?
+            .expect("the total difficulty for the latest block is missing, database is corrupt");
+
         let hash = provider
             .block_hash(head)?
             .expect("the hash for the latest block is missing, database is corrupt");
@@ -376,9 +326,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         Ok(Head {
             number: head,
             hash,
-            difficulty: header.difficulty(),
-            total_difficulty: Default::default(),
-            timestamp: header.timestamp(),
+            difficulty: header.difficulty,
+            total_difficulty,
+            timestamp: header.timestamp,
         })
     }
 
@@ -394,17 +344,17 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     ) -> ProviderResult<u64>
     where
         Provider: HeaderProvider,
-        Client: HeadersClient<Header: reth_primitives_traits::BlockHeader>,
+        Client: HeadersClient,
     {
         let header = provider.header_by_hash_or_number(tip.into())?;
 
         // try to look up the header in the database
         if let Some(header) = header {
             info!(target: "reth::cli", ?tip, "Successfully looked up tip block in the database");
-            return Ok(header.number());
+            return Ok(header.number)
         }
 
-        Ok(self.fetch_tip_from_network(client, tip.into()).await.number())
+        Ok(self.fetch_tip_from_network(client, tip.into()).await.number)
     }
 
     /// Attempt to look up the block with the given number and return the header.
@@ -414,9 +364,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         &self,
         client: Client,
         tip: BlockHashOrNumber,
-    ) -> SealedHeader<Client::Header>
+    ) -> SealedHeader
     where
-        Client: HeadersClient<Header: reth_primitives_traits::BlockHeader>,
+        Client: HeadersClient,
     {
         info!(target: "reth::cli", ?tip, "Fetching tip block from the network.");
         let mut fetch_failures = 0;
@@ -424,7 +374,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             match get_single_header(&client, tip).await {
                 Ok(tip_header) => {
                     info!(target: "reth::cli", ?tip, "Successfully fetched tip");
-                    return tip_header;
+                    return tip_header
                 }
                 Err(error) => {
                     fetch_failures += 1;
@@ -438,8 +388,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
 
     /// Change rpc port numbers based on the instance number, using the inner
     /// [`RpcServerArgs::adjust_instance_ports`] method.
-    ///
-    /// No-op when `--instance` was not provided (keeps explicit `--ipcpath` intact).
     pub fn adjust_instance_ports(&mut self) {
         self.rpc.adjust_instance_ports(self.instance);
         self.network.adjust_instance_ports(self.instance);
@@ -508,11 +456,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             db: self.db,
             dev: self.dev,
             pruning: self.pruning,
-            engine: self.engine,
-            era: self.era,
-            static_files: self.static_files,
-            storage: self.storage,
-            statedb: self.statedb,
             enable_prefetch: self.enable_prefetch,
             skip_state_root_validation: self.skip_state_root_validation,
             enable_execution_cache: self.enable_execution_cache,
@@ -531,7 +474,7 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
         Self {
             chain: self.chain.clone(),
             config: self.config.clone(),
-            metrics: self.metrics.clone(),
+            metrics: self.metrics,
             instance: self.instance,
             network: self.network.clone(),
             rpc: self.rpc.clone(),
@@ -539,17 +482,12 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             builder: self.builder.clone(),
             debug: self.debug.clone(),
             db: self.db,
-            dev: self.dev.clone(),
+            dev: self.dev,
             pruning: self.pruning.clone(),
             datadir: self.datadir.clone(),
-            engine: self.engine.clone(),
-            era: self.era.clone(),
-            static_files: self.static_files,
-            storage: self.storage,
-            statedb: self.statedb.clone(),
-            enable_prefetch: self.enable_prefetch,
-            skip_state_root_validation: self.skip_state_root_validation,
-            enable_execution_cache: self.enable_execution_cache,
+            enable_prefetch: false,
+            skip_state_root_validation: false,
+            enable_execution_cache: false,
         }
     }
 }

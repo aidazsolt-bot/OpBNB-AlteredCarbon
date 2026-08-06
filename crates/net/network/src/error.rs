@@ -72,7 +72,7 @@ impl NetworkError {
             ErrorKind::AddrInUse => Self::AddressAlreadyInUse { kind, error: err },
             _ => {
                 if let ServiceKind::Discovery(address) = kind {
-                    return Self::Discovery(address, err);
+                    return Self::Discovery(address, err)
                 }
                 Self::Io(err)
             }
@@ -181,7 +181,7 @@ impl SessionError for EthStreamError {
 
     fn should_backoff(&self) -> Option<BackoffKind> {
         if let Some(err) = self.as_io() {
-            return err.should_backoff();
+            return err.should_backoff()
         }
 
         if let Some(err) = self.as_disconnected() {
@@ -204,7 +204,7 @@ impl SessionError for EthStreamError {
                     // [`SessionError::is_fatal_protocol_error`]
                     Some(BackoffKind::High)
                 }
-            };
+            }
         }
 
         // This only checks for a subset of error variants, the counterpart of
@@ -322,22 +322,6 @@ mod tests {
         ));
 
         assert!(err.is_fatal_protocol_error());
-    }
-
-    #[test]
-    fn eth69_status_handshake_errors_are_fatal_and_ban_discovery() {
-        for err in [
-            EthStreamError::EthHandshakeError(
-                EthHandshakeError::EarliestBlockGreaterThanLatestBlock { got: 10, latest: 5 },
-            ),
-            EthStreamError::EthHandshakeError(EthHandshakeError::BlockhashZero),
-        ] {
-            assert!(err.is_fatal_protocol_error(), "{err:?}");
-            assert!(err.merits_discovery_ban(), "{err:?}");
-            let pending = PendingSessionHandshakeError::Eth(err);
-            assert!(pending.is_fatal_protocol_error());
-            assert!(pending.merits_discovery_ban());
-        }
     }
 
     #[test]

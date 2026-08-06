@@ -15,18 +15,18 @@ use reth_primitives::{
     parlia::{Snapshot, VoteAddress, MAX_ATTESTATION_EXTRA_LENGTH},
     GotExpected, Header,
 };
-use reth_provider::{HeaderProvider, ParliaProvider};
-use revm::{Database, DatabaseCommit};
-use std::fmt::Debug;
+use reth_provider::ParliaProvider;
+use revm::Database;
 
 use crate::{BscBlockExecutionError, BscBlockExecutor, SnapshotReader};
 
 const BLST_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 
-impl<DB, P> BscBlockExecutor<DB, P>
+impl<EvmConfig, DB, P> BscBlockExecutor<EvmConfig, DB, P>
 where
-    DB: Database<Error: Into<ProviderError> + Display> + DatabaseCommit + Debug,
-    P: ParliaProvider + HeaderProvider<Header = Header>,
+    EvmConfig: ConfigureEvm<Header = Header>,
+    DB: Database<Error: Into<ProviderError> + Display>,
+    P: ParliaProvider,
 {
     /// Apply settings and verify headers before a new block is executed.
     pub(crate) fn on_new_block(
@@ -37,9 +37,8 @@ where
         snap: &Snapshot,
     ) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
-        // State clear semantics are handled by the EVM journal from the active spec (post-EIP-161).
-        let _state_clear_flag =
-            self.chain_spec().is_spurious_dragon_active_at_block(header.number);
+        let state_clear_flag = self.chain_spec().is_spurious_dragon_active_at_block(header.number);
+        self.state.set_state_clear_flag(state_clear_flag);
 
         self.verify_cascading_fields(header, parent, ancestor, snap)
     }
@@ -64,11 +63,11 @@ where
         header: &Header,
         parent: &Header,
     ) -> Result<(), BlockExecutionError> {
-        if self.chain_spec().is_ramanujan_active_at_block(header.number)
-            && header.timestamp
-                < parent.timestamp
-                    + self.parlia().period()
-                    + self.parlia().back_off_time(snapshot, header)
+        if self.chain_spec().is_ramanujan_active_at_block(header.number) &&
+            header.timestamp <
+                parent.timestamp +
+                    self.parlia().period() +
+                    self.parlia().back_off_time(snapshot, header)
         {
             return Err(BscBlockExecutionError::FutureBlock {
                 block_number: header.number,
@@ -208,9 +207,7 @@ where
         }
 
         if !snap.validators.contains(&proposer) {
-            return Err(
-                BscBlockExecutionError::SignerUnauthorized { block_number, proposer }.into()
-            );
+            return Err(BscBlockExecutionError::SignerUnauthorized { block_number, proposer }.into());
         }
 
         if snap.sign_recently(proposer) {
@@ -218,13 +215,12 @@ where
         }
 
         let is_inturn = snap.is_inturn(proposer);
-        if (is_inturn && header.difficulty != DIFF_INTURN)
-            || (!is_inturn && header.difficulty != DIFF_NOTURN)
+        if (is_inturn && header.difficulty != DIFF_INTURN) ||
+            (!is_inturn && header.difficulty != DIFF_NOTURN)
         {
-            return Err(BscBlockExecutionError::InvalidDifficulty {
-                difficulty: header.difficulty,
-            }
-            .into());
+            return Err(
+                BscBlockExecutionError::InvalidDifficulty { difficulty: header.difficulty }.into()
+            );
         }
 
         Ok(())

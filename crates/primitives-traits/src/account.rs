@@ -5,7 +5,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use derive_more::Deref;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm::{bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError}, state::AccountInfo};
+use revm::{bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable}, state::AccountInfo};
 use serde::{Deserialize, Serialize};
 
 /// Identifier for legacy raw bytecode (stored without jump-table analysis).
@@ -46,9 +46,9 @@ impl Account {
     /// After `SpuriousDragon` empty account is defined as account with nonce == 0 && balance == 0
     /// && bytecode = None (or hash is [`KECCAK_EMPTY`]).
     pub fn is_empty(&self) -> bool {
-        self.nonce == 0
-            && self.balance.is_zero()
-            && self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
+        self.nonce == 0 &&
+            self.balance.is_zero() &&
+            self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
     }
 
     /// Returns an account bytecode's hash.
@@ -65,16 +65,6 @@ impl Account {
             balance,
             storage_root,
             code_hash: bytecode_hash.unwrap_or(KECCAK_EMPTY),
-        }
-    }
-}
-
-impl From<alloy_trie::TrieAccount> for Account {
-    fn from(account: alloy_trie::TrieAccount) -> Self {
-        Self {
-            nonce: account.nonce,
-            balance: account.balance,
-            bytecode_hash: (account.code_hash != KECCAK_EMPTY).then_some(account.code_hash),
         }
     }
 }
@@ -143,14 +133,8 @@ impl Compact for Bytecode {
                 unreachable!("Junk data in database: checked Bytecode variant was removed")
             }
             LEGACY_ANALYZED_BYTECODE_ID => {
-                // Consume the legacy jump-table trailer, then re-analyze from the original
-                // bytes. `to_compact` historically stores *unpadded* original bytes with the
-                // analyzed jump table; restoring via `new_analyzed` without padding violates
-                // revm 41 interpreter invariants (OOB immediates) and shows up as wrong gas
-                // in EF tests (e.g. PUSH0 fixtures). Match revm's serde Deserialize path.
-                let _original_len = buf.read_u64::<BigEndian>().unwrap() as usize;
-                let _jump_table = buf;
-                Self(RevmBytecode::new_raw(bytes))
+                let original_len = buf.read_u64::<BigEndian>().unwrap() as usize;
+                Self(unsafe { RevmBytecode::new_analyzed(bytes, original_len, JumpTable::from_slice(buf, original_len)) })
             }
             EOF_BYTECODE_ID | EIP7702_BYTECODE_ID => {
                 // EOF and EIP-7702 bytecode objects will be decoded from the raw bytecode
@@ -210,6 +194,7 @@ impl From<Account> for AccountInfo {
 mod tests {
     use super::*;
     use alloy_primitives::{hex_literal::hex, B256, U256};
+    use revm::primitives::LegacyAnalyzedBytecode;
 
     #[test]
     fn test_account() {
@@ -265,23 +250,17 @@ mod tests {
         assert_eq!(len, 7);
 
         let mut buf = vec![];
-        let bytecode = Bytecode::new_raw(Bytes::from(&hex!("ffff")));
+        let bytecode = Bytecode(RevmBytecode::LegacyAnalyzed(LegacyAnalyzedBytecode::new(
+            Bytes::from(&hex!("ffff")),
+            2,
+            JumpTable::from_slice(&[0]),
+        )));
         let len = bytecode.to_compact(&mut buf);
-        let (decoded, remainder) = Bytecode::from_compact(&buf, len);
-        assert_eq!(decoded.original_byte_slice(), bytecode.original_byte_slice());
-        assert!(remainder.is_empty());
-    }
+        assert_eq!(len, 16);
 
-    #[test]
-    fn test_bytecode_analyzed_roundtrip_reanalyzes_padding() {
-        // Compact historically persisted unpadded bytes + jump table; decode must re-analyze so
-        // revm 41 padding invariants hold (PUSH0 EF fixtures depend on this).
-        let bytecode = Bytecode::new_raw(Bytes::from(&hex!("60015f55")));
-        let mut buf = vec![];
-        let len = bytecode.to_compact(&mut buf);
         let (decoded, remainder) = Bytecode::from_compact(&buf, len);
+        assert_eq!(decoded, bytecode);
         assert!(remainder.is_empty());
-        assert_eq!(decoded.original_byte_slice(), &hex!("60015f55"));
     }
 
     #[test]

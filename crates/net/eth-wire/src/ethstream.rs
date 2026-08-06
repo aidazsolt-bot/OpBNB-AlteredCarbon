@@ -15,7 +15,7 @@ use crate::{
 #[cfg(feature = "bsc")]
 use crate::{UpgradeStatus, UpgradeStatusExtension};
 use alloy_primitives::bytes::{Bytes, BytesMut};
-use futures::{ready, Sink, SinkExt, StreamExt};
+use futures::{ready, Sink, SinkExt};
 use pin_project::pin_project;
 use reth_eth_wire_types::{EthMessageID, NetworkPrimitives, RawCapabilityMessage};
 use reth_ethereum_forks::ForkFilter;
@@ -99,7 +99,7 @@ where
             if status.version > EthVersion::Eth66 {
                 self.inner
                     .send(
-                        alloy_rlp::encode(ProtocolMessage::from(EthMessage::<N>::UpgradeStatus(
+                        alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(
                             UpgradeStatus {
                                 extension: UpgradeStatusExtension {
                                     disable_peer_tx_broadcast: false,
@@ -114,16 +114,11 @@ where
                     Some(msg) => msg,
                     None => {
                         self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                        return Err(EthStreamError::EthHandshakeError(
-                            EthHandshakeError::NoResponse,
-                        ));
+                        return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
                     }
                 }?;
 
-                let msg = match ProtocolMessage::decode_message(
-                    status.version,
-                    &mut their_msg.as_ref(),
-                ) {
+                let msg = match ProtocolMessage::decode_message(status.version, &mut their_msg.as_ref()) {
                     Ok(m) => m,
                     Err(err) => {
                         debug!("decode error in eth handshake: msg={their_msg:x}");
@@ -132,7 +127,7 @@ where
                     }
                 };
 
-                if !matches!(msg.message, EthMessage::<N>::UpgradeStatus(_)) {
+                if !matches!(msg.message, EthMessage::UpgradeStatus(_)) {
                     self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
                     return Err(EthStreamError::EthHandshakeError(
                         EthHandshakeError::NonStatusMessageInHandshake,
@@ -199,9 +194,9 @@ where
             return Err(EthStreamError::MessageTooBig(bytes.len()));
         }
 
-        if self.reject_block_announcements
-            && let Some(&id) = bytes.first()
-            && (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
+        if self.reject_block_announcements &&
+            let Some(&id) = bytes.first() &&
+            (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
         {
             return Err(EthStreamError::UnsupportedMessage { message_id: id });
         }
@@ -413,7 +408,7 @@ mod tests {
         hello::DEFAULT_TCP_PORT,
         p2pstream::UnauthedP2PStream,
         EthMessage, EthStream, EthVersion, HelloMessageWithProtocols, PassthroughCodec,
-        ProtocolVersion, Status, StatusEth69, StatusMessage,
+        ProtocolVersion, Status, StatusMessage,
     };
     use alloy_chains::NamedChain;
     use alloy_primitives::{bytes::Bytes, B256, U256};
@@ -583,112 +578,6 @@ mod tests {
         ));
 
         // await the other handshake
-        handle.await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn fail_eth69_handshake_on_earliest_gt_latest() {
-        let genesis = B256::random();
-        let fork_filter = ForkFilter::new(Head::default(), genesis, 0, Vec::new());
-
-        let status = StatusEth69 {
-            version: EthVersion::Eth69,
-            chain: NamedChain::Mainnet.into(),
-            genesis,
-            forkid: fork_filter.current(),
-            earliest: 10,
-            latest: 5,
-            blockhash: B256::random(),
-        };
-        let unified_status = UnifiedStatus::from_message(StatusMessage::Eth69(status));
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let local_addr = listener.local_addr().unwrap();
-
-        let status_clone = unified_status;
-        let fork_filter_clone = fork_filter.clone();
-        let handle = tokio::spawn(async move {
-            let (incoming, _) = listener.accept().await.unwrap();
-            let stream = PassthroughCodec::default().framed(incoming);
-            let handshake_res = UnauthedEthStream::new(stream)
-                .handshake::<EthNetworkPrimitives>(status_clone, fork_filter_clone)
-                .await;
-
-            assert!(matches!(
-                handshake_res,
-                Err(EthStreamError::EthHandshakeError(
-                    EthHandshakeError::EarliestBlockGreaterThanLatestBlock {
-                        got: 10,
-                        latest: 5
-                    }
-                ))
-            ));
-        });
-
-        let outgoing = TcpStream::connect(local_addr).await.unwrap();
-        let sink = PassthroughCodec::default().framed(outgoing);
-        let handshake_res = UnauthedEthStream::new(sink)
-            .handshake::<EthNetworkPrimitives>(unified_status, fork_filter)
-            .await;
-
-        assert!(matches!(
-            handshake_res,
-            Err(EthStreamError::EthHandshakeError(
-                EthHandshakeError::EarliestBlockGreaterThanLatestBlock {
-                    got: 10,
-                    latest: 5
-                }
-            ))
-        ));
-
-        handle.await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn fail_eth69_handshake_on_zero_blockhash() {
-        let genesis = B256::random();
-        let fork_filter = ForkFilter::new(Head::default(), genesis, 0, Vec::new());
-
-        let status = StatusEth69 {
-            version: EthVersion::Eth69,
-            chain: NamedChain::Mainnet.into(),
-            genesis,
-            forkid: fork_filter.current(),
-            earliest: 0,
-            latest: 1,
-            blockhash: B256::ZERO,
-        };
-        let unified_status = UnifiedStatus::from_message(StatusMessage::Eth69(status));
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let local_addr = listener.local_addr().unwrap();
-
-        let status_clone = unified_status;
-        let fork_filter_clone = fork_filter.clone();
-        let handle = tokio::spawn(async move {
-            let (incoming, _) = listener.accept().await.unwrap();
-            let stream = PassthroughCodec::default().framed(incoming);
-            let handshake_res = UnauthedEthStream::new(stream)
-                .handshake::<EthNetworkPrimitives>(status_clone, fork_filter_clone)
-                .await;
-
-            assert!(matches!(
-                handshake_res,
-                Err(EthStreamError::EthHandshakeError(EthHandshakeError::BlockhashZero))
-            ));
-        });
-
-        let outgoing = TcpStream::connect(local_addr).await.unwrap();
-        let sink = PassthroughCodec::default().framed(outgoing);
-        let handshake_res = UnauthedEthStream::new(sink)
-            .handshake::<EthNetworkPrimitives>(unified_status, fork_filter)
-            .await;
-
-        assert!(matches!(
-            handshake_res,
-            Err(EthStreamError::EthHandshakeError(EthHandshakeError::BlockhashZero))
-        ));
-
         handle.await.unwrap();
     }
 

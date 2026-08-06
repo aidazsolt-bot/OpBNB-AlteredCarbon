@@ -6,71 +6,15 @@ use clap::{builder::RangedU64ValueParser, Args};
 use reth_chainspec::EthChainSpec;
 use reth_config::config::PruneConfig;
 use reth_prune_types::{PruneMode, PruneModes, ReceiptsLogPruneConfig, MINIMUM_PRUNING_DISTANCE};
-use std::{collections::BTreeMap, sync::OnceLock};
-
-/// Global static pruning defaults
-static PRUNING_DEFAULTS: OnceLock<DefaultPruningValues> = OnceLock::new();
-
-/// Default values for pruning that can be customized for downstream binaries.
-#[derive(Debug, Clone)]
-pub struct DefaultPruningValues {
-    /// Default prune modes for full node configuration.
-    pub full_prune_modes: PruneModes,
-    /// Whether full node bodies history should prune before merge.
-    pub full_bodies_history_use_pre_merge: bool,
-}
-
-impl DefaultPruningValues {
-    /// Initialize the global pruning defaults with this configuration.
-    pub fn try_init(self) -> Result<(), Self> {
-        PRUNING_DEFAULTS.set(self)
-    }
-
-    /// Get a reference to the global pruning defaults.
-    pub fn get_global() -> &'static Self {
-        PRUNING_DEFAULTS.get_or_init(Self::default)
-    }
-}
-
-impl Default for DefaultPruningValues {
-    fn default() -> Self {
-        Self {
-            full_prune_modes: PruneModes {
-                sender_recovery: Some(PruneMode::Full),
-                transaction_lookup: None,
-                receipts: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
-                account_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
-                storage_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
-                bodies_history: None,
-                receipts_log_filter: Default::default(),
-            },
-            full_bodies_history_use_pre_merge: true,
-        }
-    }
-}
-
-/// Pruning configuration kind selector.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PruneConfigKind {
-    /// Full node pruning
-    Full,
-    /// Archive node (no pruning)
-    Archive,
-    /// Custom pruning
-    Custom,
-}
+use std::collections::BTreeMap;
 
 /// Parameters for pruning and full node
 #[derive(Debug, Clone, Args, PartialEq, Eq, Default)]
 #[command(next_help_heading = "Pruning")]
 pub struct PruningArgs {
     /// Run full node. Only the most recent [`MINIMUM_PRUNING_DISTANCE`] block states are stored.
-    #[arg(long, default_value_t = false, conflicts_with = "minimal")]
+    #[arg(long, default_value_t = false)]
     pub full: bool,
-
-    /// Run minimal storage mode with maximum pruning and smaller static files.
-    #[arg(long, default_value_t = false, conflicts_with = "full")]
-    pub minimal: bool,
 
     /// Minimum pruning interval measured in blocks.
     #[arg(long, value_parser = RangedU64ValueParser::<u64>::new().range(1..),)]
@@ -138,17 +82,6 @@ pub struct PruningArgs {
     #[arg(long = "prune.storagehistory.before", value_name = "BLOCK_NUMBER", conflicts_with_all = &["storage_history_full", "storage_history_distance"])]
     pub storage_history_before: Option<BlockNumber>,
 
-    // Bodies
-    /// Prune bodies before the merge block.
-    #[arg(long = "prune.bodies.pre-merge", value_name = "BLOCKS", conflicts_with_all = &["bodies_distance", "bodies_before"])]
-    pub bodies_pre_merge: bool,
-    /// Prune bodies before the `head-N` block number. In other words, keep last N + 1 blocks.
-    #[arg(long = "prune.bodies.distance", value_name = "BLOCKS", conflicts_with_all = &["bodies_pre_merge", "bodies_before"])]
-    pub bodies_distance: Option<u64>,
-    /// Prune bodies before the specified block number. The specified block number is not pruned.
-    #[arg(long = "prune.bodies.before", value_name = "BLOCK_NUMBER", conflicts_with_all = &["bodies_distance", "bodies_pre_merge"])]
-    pub bodies_before: Option<BlockNumber>,
-
     // Receipts Log Filter
     /// Configure receipts log filter. Format:
     /// <`address`>:<`prune_mode`>[,<`address`>:<`prune_mode`>...] Where <`prune_mode`> can be
@@ -167,6 +100,7 @@ impl PruningArgs {
         if self.full {
             config = PruneConfig {
                 block_interval: config.block_interval,
+                recent_sidecars_kept_blocks: 0,
                 segments: PruneModes {
                     sender_recovery: Some(PruneMode::Full),
                     transaction_lookup: None,
@@ -178,7 +112,6 @@ impl PruningArgs {
                         .or(Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE))),
                     account_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
                     storage_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
-                    bodies_history: None,
                     receipts_log_filter: ReceiptsLogPruneConfig(
                         chain_spec
                             .deposit_contract()
@@ -186,22 +119,6 @@ impl PruningArgs {
                             .into_iter()
                             .collect(),
                     ),
-                },
-            }
-        }
-
-        // If --minimal is set, use minimal storage mode with aggressive pruning.
-        if self.minimal {
-            config = PruneConfig {
-                block_interval: config.block_interval,
-                segments: PruneModes {
-                    sender_recovery: Some(PruneMode::Full),
-                    transaction_lookup: Some(PruneMode::Full),
-                    receipts: Some(PruneMode::Full),
-                    account_history: Some(PruneMode::Distance(10064)),
-                    storage_history: Some(PruneMode::Distance(10064)),
-                    bodies_history: Some(PruneMode::Distance(10064)),
-                    receipts_log_filter: Default::default(),
                 },
             }
         }
@@ -224,11 +141,6 @@ impl PruningArgs {
         }
         if let Some(mode) = self.storage_history_prune_mode() {
             config.segments.storage_history = Some(mode);
-        }
-        if let Some(distance) = self.bodies_distance {
-            config.segments.bodies_history = Some(PruneMode::Distance(distance));
-        } else if let Some(block_number) = self.bodies_before {
-            config.segments.bodies_history = Some(PruneMode::Before(block_number));
         }
 
         Some(config)
