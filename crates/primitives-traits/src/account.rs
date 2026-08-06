@@ -5,7 +5,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use derive_more::Deref;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm_primitives::{AccountInfo, Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable};
+use revm::primitives::{AccountInfo, Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable};
 use serde::{Deserialize, Serialize};
 
 /// Identifier for [`LegacyRaw`](RevmBytecode::LegacyRaw).
@@ -75,7 +75,7 @@ impl Bytecode {
         Self(RevmBytecode::new_raw(bytes))
     }
 
-    /// Creates a new raw [`revm_primitives::Bytecode`].
+    /// Creates a new raw [`revm::primitives::Bytecode`].
     ///
     /// Returns an error on incorrect Bytecode format.
     #[inline]
@@ -188,7 +188,7 @@ impl From<Account> for AccountInfo {
 mod tests {
     use super::*;
     use alloy_primitives::{hex_literal::hex, B256, U256};
-    use revm_primitives::LegacyAnalyzedBytecode;
+    use revm::primitives::LegacyAnalyzedBytecode;
 
     #[test]
     fn test_account() {

@@ -20,6 +20,7 @@ reth-execution-types.workspace = true
 reth-metrics.workspace = true
 reth-ethereum-primitives = { workspace = true, features = ["rpc"] }
 reth-primitives-traits = { workspace = true, features = ["rpc-compat"] }
+reth-primitives = { workspace = true, optional = true }
 reth-storage-api.workspace = true
 reth-revm.workspace = true
 reth-rpc-server-types.workspace = true

@@ -20,7 +20,7 @@ alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
 
-revm-primitives = { workspace = true, features = ["serde"] }
+revm = { workspace = true, features = ["serde"] }
 
 # misc
 byteorder = "1"
@@ -58,7 +58,7 @@ std = [
 	"alloy-eips/std",
 	"alloy-genesis/std",
 	"alloy-primitives/std",
-	"revm-primitives/std",
+	"revm/std",
 	"serde/std"
 ]
 test-utils = [
@@ -73,7 +73,7 @@ arbitrary = [
 	"dep:proptest",
 	"dep:proptest-arbitrary-interop",
 	"alloy-eips/arbitrary",
-	"revm-primitives/arbitrary",
+	"revm/arbitrary",
 	"reth-codecs/arbitrary"
 ]
 serde-bincode-compat = [

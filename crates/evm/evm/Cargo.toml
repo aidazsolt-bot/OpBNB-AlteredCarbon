@@ -25,7 +25,6 @@ reth-revm.workspace = true
 reth-storage-errors.workspace = true
 
 revm.workspace = true
-revm-primitives.workspace = true
 
 # alloy
 alloy-primitives.workspace = true
@@ -54,7 +53,7 @@ std = [
     "alloy-eips/std",
     "alloy-primitives/std",
     "alloy-consensus/std",
-    "revm-primitives/std",
+    "revm/std",
     "revm/std",
 ]
 test-utils = [
