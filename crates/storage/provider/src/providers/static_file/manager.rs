@@ -16,7 +16,7 @@ use reth_chainspec::{ChainInfo, ChainSpecProvider};
 use reth_db::{
     lockfile::StorageLock,
     static_file::{
-        iter_static_files, HeaderMask, ReceiptMask, SidecarMask, StaticFileCursor, TransactionMask,
+        iter_static_files, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask, SidecarWithHashMask, StaticFileCursor, TDWithHashMask, TransactionMask,
     },
     tables,
 };
@@ -1259,7 +1259,7 @@ impl HeaderProvider for StaticFileProvider {
         self.find_static_file(StaticFileSegment::Headers, |jar_provider| {
             Ok(jar_provider
                 .cursor()?
-                .get_two::<HeaderMask<Header, BlockHash>>(block_hash.into())?
+                .get_two::<HeaderWithHashMask<Header>>(block_hash.into())?
                 .and_then(|(header, hash)| {
                     if &hash == block_hash {
                         return Some(header)
@@ -1285,7 +1285,7 @@ impl HeaderProvider for StaticFileProvider {
         self.find_static_file(StaticFileSegment::Headers, |jar_provider| {
             Ok(jar_provider
                 .cursor()?
-                .get_two::<HeaderMask<CompactU256, BlockHash>>(block_hash.into())?
+                .get_two::<TDWithHashMask>(block_hash.into())?
                 .and_then(|(td, hash)| (&hash == block_hash).then_some(td.0)))
         })
     }
@@ -1333,7 +1333,7 @@ impl HeaderProvider for StaticFileProvider {
             to_range(range),
             |cursor, number| {
                 Ok(cursor
-                    .get_two::<HeaderMask<Header, BlockHash>>(number.into())?
+                    .get_two::<HeaderWithHashMask<Header>>(number.into())?
                     .map(|(header, hash)| SealedHeader::new(header, hash)))
             },
             predicate,
@@ -1354,7 +1354,7 @@ impl BlockHashReader for StaticFileProvider {
         self.fetch_range_with_predicate(
             StaticFileSegment::Headers,
             start..end,
-            |cursor, number| cursor.get_one::<HeaderMask<BlockHash>>(number.into()),
+            |cursor, number| cursor.get_one::<BlockHashMask>(number.into()),
             |_| true,
         )
     }
@@ -1691,7 +1691,7 @@ impl SidecarsProvider for StaticFileProvider {
         self.find_static_file(StaticFileSegment::Sidecars, |jar_provider| {
             Ok(jar_provider
                 .cursor()?
-                .get_two::<SidecarMask<BlobSidecars, BlockHash>>(block_hash.into())?
+                .get_two::<SidecarWithHashMask<BlobSidecars>>(block_hash.into())?
                 .and_then(|(sc, hash)| {
                     if &hash == block_hash {
                         return Some(sc)

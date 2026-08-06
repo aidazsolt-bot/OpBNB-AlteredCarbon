@@ -2,7 +2,8 @@ use alloy_primitives::{hex, BlockHash};
 use clap::Parser;
 use reth_db::{
     static_file::{
-        ColumnSelectorOne, ColumnSelectorTwo, HeaderMask, ReceiptMask, SidecarMask, TransactionMask,
+        ColumnSelectorOne, ColumnSelectorTwo, HeaderWithHashMask, ReceiptMask, SidecarWithHashMask,
+        TransactionMask,
     },
     tables, RawKey, RawTable, Receipts, Sidecars, TableViewer, Transactions,
 };
@@ -63,7 +64,7 @@ impl Command {
             Subcommand::StaticFile { segment, key, raw } => {
                 let (key, mask): (u64, _) = match segment {
                     StaticFileSegment::Headers => {
-                        (table_key::<tables::Headers>(&key)?, <HeaderMask<Header, BlockHash>>::MASK)
+                        (table_key::<tables::Headers>(&key)?, <HeaderWithHashMask<Header>>::MASK)
                     }
                     StaticFileSegment::Transactions => (
                         table_key::<tables::Transactions>(&key)?,
@@ -75,7 +76,7 @@ impl Command {
                     ),
                     StaticFileSegment::Sidecars => (
                         table_key::<tables::Sidecars>(&key)?,
-                        <SidecarMask<BlobSidecars, BlockHash>>::MASK,
+                        <SidecarWithHashMask<BlobSidecars>>::MASK,
                     ),
                 };
 
