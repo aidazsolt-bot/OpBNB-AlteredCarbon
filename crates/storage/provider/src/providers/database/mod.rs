@@ -66,7 +66,7 @@ pub struct ProviderFactory<N: NodeTypesWithDB> {
     /// Chain spec
     chain_spec: Arc<N::ChainSpec>,
     /// Static File Provider
-    static_file_provider: StaticFileProvider,
+    static_file_provider: StaticFileProvider<N::Primitives>,
     /// Optional pruning configuration
     prune_modes: PruneModes,
     /// The node storage handler.
@@ -91,7 +91,7 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
     pub fn new(
         db: N::DB,
         chain_spec: Arc<N::ChainSpec>,
-        static_file_provider: StaticFileProvider,
+        static_file_provider: StaticFileProvider<N::Primitives>,
         rocksdb_provider: RocksDBProvider,
     ) -> ProviderResult<Self> {
         // Load storage settings from database at init time. Creates a temporary provider
@@ -165,8 +165,9 @@ impl<N: NodeTypesWithDB> RocksDBProviderFactory for ProviderFactory<N> {
         self.rocksdb_provider.clone()
     }
 
-    fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
-        Ok(())
+    #[cfg(all(unix, feature = "rocksdb"))]
+    fn set_pending_rocksdb_batch(&self, _batch: rocksdb::WriteBatchWithTransaction<true>) {
+        unimplemented!("ProviderFactory is a factory, not a provider - use DatabaseProvider::set_pending_rocksdb_batch instead")
     }
 }
 
@@ -177,7 +178,7 @@ impl<N: ProviderNodeTypes<DB = Arc<DatabaseEnv>>> ProviderFactory<N> {
         path: P,
         chain_spec: Arc<N::ChainSpec>,
         args: DatabaseArguments,
-        static_file_provider: StaticFileProvider,
+        static_file_provider: StaticFileProvider<N::Primitives>,
         rocksdb_provider: RocksDBProvider,
     ) -> RethResult<Self> {
         Self::new(
@@ -288,7 +289,7 @@ impl<N: NodeTypesWithDB> StaticFileProviderFactory for ProviderFactory<N> {
         &self,
         block: BlockNumber,
         segment: StaticFileSegment,
-    ) -> ProviderResult<StaticFileProviderRWRefMut<'_>> {
+    ) -> ProviderResult<StaticFileProviderRWRefMut<'_, Self::Primitives>> {
         self.static_file_provider.get_writer(block, segment)
     }
 }
@@ -317,6 +318,14 @@ impl<N: ProviderNodeTypes> HeaderProvider for ProviderFactory<N> {
             |static_file| static_file.header_by_number(num),
             || self.provider()?.header_by_number(num),
         )
+    }
+
+    fn header_td(&self, hash: &BlockHash) -> ProviderResult<Option<U256>> {
+        self.provider()?.header_td(hash)
+    }
+
+    fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
+        self.provider()?.header_td_by_number(number)
     }
 
     fn headers_range(
