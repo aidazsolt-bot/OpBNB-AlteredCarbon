@@ -28,7 +28,7 @@ pub mod transaction;
 pub use transaction::{
     execute::FillTxEnv, signed::{FullSignedTx, SignedTransaction}, FullTransaction, Transaction,
 };
-pub use alloy_consensus::transaction::Recovered;
+pub use alloy_consensus::transaction::{Recovered, SignerRecoverable, TransactionMeta, TxHashRef};
 
 pub mod crypto;
 pub mod proofs;
@@ -73,7 +73,7 @@ pub use blob_sidecar::{BlobSidecar, BlobSidecars};
 
 #[cfg(any(test, feature = "arbitrary", feature = "test-utils"))]
 pub use header::test_utils;
-pub use header::{BlockHeader, Header, HeaderError, SealedHeader};
+pub use header::{BlockHeader, Header, HeaderError, SealedHeader, SealedHeaderFor};
 
 /// Fast monotonic clock used in hot metrics paths.
 #[cfg(feature = "std")]

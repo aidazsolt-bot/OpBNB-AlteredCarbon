@@ -11,6 +11,10 @@ use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
 use crate::sync::OnceLock;
+use crate::NodePrimitives;
+
+/// Sealed header type for a [`NodePrimitives`] implementation.
+pub type SealedHeaderFor<N> = SealedHeader<<N as NodePrimitives>::BlockHeader>;
 
 /// A [`Header`] that is sealed at a precalculated hash, use [`SealedHeader::unseal()`] if you want
 /// to modify header.
@@ -112,6 +116,13 @@ impl<H: Sealable> core::hash::Hash for SealedHeader<H> {
 impl<H: Default + Sealable> Default for SealedHeader<H> {
     fn default() -> Self {
         Self::seal_slow(H::default())
+    }
+}
+
+impl<H: Sealable> From<SealedHeader<H>> for alloy_consensus::Sealed<H> {
+    fn from(value: SealedHeader<H>) -> Self {
+        let (header, hash) = value.split();
+        Self::new_unchecked(header, hash)
     }
 }
 
