@@ -220,8 +220,12 @@ where
         Vec::new(),
     );
 
-    let mut storage_writer = UnifiedStorageWriter::from_database(&provider);
-    storage_writer.write_to_storage(execution_outcome, OriginalValuesKnown::Yes)?;
+    let storage_writer = UnifiedStorageWriter::from_database(&provider);
+    storage_writer.write_state(
+        &execution_outcome,
+        OriginalValuesKnown::Yes,
+        reth_provider::StateWriteConfig::default(),
+    )?;
 
     trace!(target: "reth::cli", "Inserted state");
 
