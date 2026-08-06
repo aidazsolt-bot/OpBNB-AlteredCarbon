@@ -207,6 +207,19 @@ pub trait BlockBody:
     }
 }
 
+/// Helper trait that unifies all behaviour required by transaction to support full node
+/// operations.
+pub trait FullBlockBody:
+    BlockBody<Transaction: crate::transaction::signed::FullSignedTx> + crate::MaybeSerdeBincodeCompat
+{
+}
+
+impl<T> FullBlockBody for T where
+    T: BlockBody<Transaction: crate::transaction::signed::FullSignedTx>
+        + crate::MaybeSerdeBincodeCompat
+{
+}
+
 impl<T, H> BlockBody for alloy_consensus::BlockBody<T, H>
 where
     T: SignedTransaction + 'static,

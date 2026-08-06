@@ -30,6 +30,7 @@ pub trait SignedTransaction:
     + alloy_rlp::Decodable
     + Encodable2718
     + Decodable2718
+    + Transaction
 {
     /// Transaction type that is signed.
     type Transaction: Transaction;
@@ -88,6 +89,27 @@ pub trait SignedTransaction:
     {
         super::Recovered::new_unchecked(self, signer)
     }
+
+    /// Tries to recover signer and return [`super::Recovered`].
+    ///
+    /// Returns `Err(Self)` if the transaction's signature is invalid.
+    fn try_into_recovered(self) -> Result<super::Recovered<Self>, Self>
+    where
+        Self: Sized,
+    {
+        match self.recover_signer() {
+            Some(signer) => Ok(super::Recovered::new_unchecked(self, signer)),
+            None => Err(self),
+        }
+    }
+}
+
+/// Helper trait that unifies all behaviour required by transaction to support full node
+/// operations.
+pub trait FullSignedTx: SignedTransaction + crate::MaybeCompact + crate::MaybeSerdeBincodeCompat {}
+impl<T> FullSignedTx for T where
+    T: SignedTransaction + crate::MaybeCompact + crate::MaybeSerdeBincodeCompat
+{
 }
 
 impl<T> SignedTransaction for alloy_consensus::EthereumTxEnvelope<T>
