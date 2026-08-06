@@ -140,7 +140,7 @@ impl<'a> EitherWriter<'a, (), ()> {
         if EitherWriterDestination::senders(provider).is_static_file() {
             Ok(EitherWriter::StaticFile(
                 provider
-                    .get_static_file_writer(block_number, StaticFileSegment::TransactionSenders)?,
+                    .get_static_file_writer(block_number, StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */)?,
             ))
         } else {
             Ok(EitherWriter::Database(
@@ -159,10 +159,10 @@ impl<'a> EitherWriter<'a, (), ()> {
         P: DBProvider + NodePrimitivesProvider + StorageSettingsCache + StaticFileProviderFactory,
         P::Tx: DbTxMut,
     {
-        if provider.cached_storage_settings().account_changesets_in_static_files {
+        if provider.cached_storage_settings().storage_v2 {
             Ok(EitherWriter::StaticFile(
                 provider
-                    .get_static_file_writer(block_number, StaticFileSegment::AccountChangeSets)?,
+                    .get_static_file_writer(block_number, StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)?,
             ))
         } else {
             Ok(EitherWriter::Database(
@@ -182,7 +182,7 @@ impl<'a> EitherWriter<'a, (), ()> {
     pub fn receipts_destination<P: DBProvider + StorageSettingsCache>(
         provider: &P,
     ) -> EitherWriterDestination {
-        let receipts_in_static_files = provider.cached_storage_settings().receipts_in_static_files;
+        let receipts_in_static_files = provider.cached_storage_settings().receipts_in_static_files();
         let prune_modes = provider.prune_modes_ref();
 
         if !receipts_in_static_files && prune_modes.has_receipts_pruning() ||
@@ -201,7 +201,7 @@ impl<'a> EitherWriter<'a, (), ()> {
     pub fn account_changesets_destination<P: DBProvider + StorageSettingsCache>(
         provider: &P,
     ) -> EitherWriterDestination {
-        if provider.cached_storage_settings().account_changesets_in_static_files {
+        if provider.cached_storage_settings().storage_v2 {
             EitherWriterDestination::StaticFile
         } else {
             EitherWriterDestination::Database
@@ -218,7 +218,7 @@ impl<'a> EitherWriter<'a, (), ()> {
         P::Tx: DbTxMut,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().storages_history_in_rocksdb {
+        if provider.cached_storage_settings().storages_history_in_rocksdb() {
             return Ok(EitherWriter::RocksDB(_rocksdb_batch));
         }
 
@@ -235,7 +235,7 @@ impl<'a> EitherWriter<'a, (), ()> {
         P::Tx: DbTxMut,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb {
+        if provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb() {
             return Ok(EitherWriter::RocksDB(_rocksdb_batch));
         }
 
@@ -254,7 +254,7 @@ impl<'a> EitherWriter<'a, (), ()> {
         P::Tx: DbTxMut,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().account_history_in_rocksdb {
+        if provider.cached_storage_settings().account_history_in_rocksdb() {
             return Ok(EitherWriter::RocksDB(_rocksdb_batch));
         }
 
@@ -384,7 +384,7 @@ where
             Self::StaticFile(writer) => {
                 let static_file_transaction_sender_num = writer
                     .reader()
-                    .get_highest_static_file_tx(StaticFileSegment::TransactionSenders);
+                    .get_highest_static_file_tx(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
 
                 let to_delete = static_file_transaction_sender_num
                     .map(|static_num| (static_num + 1).saturating_sub(unwind_tx_from))
@@ -620,7 +620,7 @@ impl<'a> EitherReader<'a, (), ()> {
         P::Tx: DbTx,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().storages_history_in_rocksdb {
+        if provider.cached_storage_settings().storages_history_in_rocksdb() {
             return Ok(EitherReader::RocksDB(_rocksdb_tx));
         }
 
@@ -640,7 +640,7 @@ impl<'a> EitherReader<'a, (), ()> {
         P::Tx: DbTx,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb {
+        if provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb() {
             return Ok(EitherReader::RocksDB(_rocksdb_tx));
         }
 
@@ -660,7 +660,7 @@ impl<'a> EitherReader<'a, (), ()> {
         P::Tx: DbTx,
     {
         #[cfg(all(unix, feature = "rocksdb"))]
-        if provider.cached_storage_settings().account_history_in_rocksdb {
+        if provider.cached_storage_settings().account_history_in_rocksdb() {
             return Ok(EitherReader::RocksDB(_rocksdb_tx));
         }
 
@@ -706,7 +706,7 @@ where
             Self::StaticFile(provider, _) => range
                 .clone()
                 .zip(provider.fetch_range_iter(
-                    StaticFileSegment::TransactionSenders,
+                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                     range,
                     |cursor, number| cursor.get_one::<TransactionMask>(number.into()),
                 )?)
@@ -843,11 +843,11 @@ where
         match self {
             Self::StaticFile(provider, _) => {
                 let highest_static_block =
-                    provider.get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
+                    provider.get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
 
                 let Some(highest) = highest_static_block else {
                     return Err(ProviderError::MissingHighestStaticFileBlock(
-                        StaticFileSegment::AccountChangeSets,
+                        StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
                     ))
                 };
 
@@ -896,7 +896,7 @@ impl EitherWriterDestination {
         P: StorageSettingsCache,
     {
         // Write senders to static files only if they're explicitly enabled
-        if provider.cached_storage_settings().transaction_senders_in_static_files {
+        if provider.cached_storage_settings().transaction_senders_in_static_files() {
             Self::StaticFile
         } else {
             Self::Database
@@ -909,7 +909,7 @@ impl EitherWriterDestination {
         P: StorageSettingsCache,
     {
         // Write account changesets to static files only if they're explicitly enabled
-        if provider.cached_storage_settings().account_changesets_in_static_files {
+        if provider.cached_storage_settings().storage_v2 {
             Self::StaticFile
         } else {
             Self::Database
