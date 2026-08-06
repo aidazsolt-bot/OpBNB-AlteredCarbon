@@ -674,6 +674,8 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         N::BlockHeader: Value,
         N::Receipt: Compact,
+        N::BlockHeader: Compact,
+        N::SignedTx: Compact,
     {
         if blocks.is_empty() {
             return Ok(());

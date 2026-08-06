@@ -33,6 +33,7 @@ use alloy_primitives::{
 use itertools::Itertools;
 use parking_lot::RwLock;
 use rayon::slice::ParallelSliceMut;
+use reth_codecs::Compact;
 use reth_chain_state::{ComputedTrieData, ExecutedBlock};
 use reth_chainspec::{ChainInfo, ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_db_api::{
@@ -48,7 +49,7 @@ use reth_db_api::{
     BlockNumberList, PlainAccountState, PlainStorageState,
 };
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome};
-use reth_node_types::{BlockTy, BodyTy, HeaderTy, NodeTypes, ReceiptTy, TxTy};
+use reth_node_types::{BlockTy, BodyTy, HeaderTy, NodePrimitives, NodeTypes, ReceiptTy, TxTy};
 use reth_primitives_traits::{
     Account, Block as _, BlockBody as _, Bytecode, RecoveredBlock, SealedHeader, StorageEntry,
 };
@@ -468,7 +469,10 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
         &self,
         blocks: Vec<ExecutedBlock<N::Primitives>>,
         save_mode: SaveBlocksMode,
-    ) -> ProviderResult<()> {
+    ) -> ProviderResult<()>
+    where
+        N::Primitives: NodePrimitives<Receipt: Compact, SignedTx: Compact, BlockHeader: Compact>,
+    {
         if blocks.is_empty() {
             debug!(target: "providers::db", "Attempted to write empty block range");
             return Ok(())
@@ -604,66 +608,28 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
                         // TrieDB mode: update TrieDB instead of writing hashed state to MDBX
                         let start = Instant::now();
 
-                        if let Some(ref difflayer) = block.difflayer {
-                            // The difflayer was precomputed during validation (newPayload).
-                            // Root was already verified there, so just flush to disk.
-                            debug!(
-                                target: "providers::db",
-                                block_number,
-                                state_root = ?state_root,
-                                "Flushing precomputed triedb difflayer in save_blocks",
-                            );
-                            triedb
-                                .flush(block_number, state_root, &Some(difflayer.clone()))
-                                .map_err(ProviderError::other)?;
-                        } else {
-                            // No precomputed difflayer; compute and commit from hashed state.
-                            let (latest_block_number, latest_state_root) =
-                                triedb.latest_persist_state().map_err(ProviderError::other)?;
+                        let (latest_block_number, latest_state_root) =
+                            triedb.latest_persist_state().map_err(ProviderError::other)?;
 
-                            if block_number > 0 && latest_block_number != block_number - 1 {
-                                return Err(ProviderError::Database(DatabaseError::Other(format!(
-                                    "triedb state gap in save_blocks: latest_block_number={}, expected={}, block_number={}",
-                                    latest_block_number,
-                                    block_number - 1,
-                                    block_number
-                                ))));
-                            }
-
-                            let triedb_hashed_post_state =
-                                trie_data.sorted.hashed_state.to_triedb_hashed_post_state();
-
-                            debug!(
-                                target: "providers::db",
-                                block_number,
-                                latest_triedb_block = latest_block_number,
-                                parent_root = ?latest_state_root,
-                                expected_root = ?state_root,
-                                "Computing triedb state root in save_blocks",
-                            );
-
-                            let (new_root, difflayer) = triedb
-                                .intermediate_and_commit_hashed_post_state(
-                                    latest_state_root,
-                                    None,
-                                    &triedb_hashed_post_state,
-                                    None,
-                                )
-                                .map_err(ProviderError::other)?;
-
-                            if new_root != state_root {
-                                return Err(ProviderError::Database(DatabaseError::Other(format!(
-                                    "triedb update failed in save_blocks: new_root({:?}) != expected_root({:?}), block_number={}",
-                                    new_root,
-                                    state_root,
-                                    block_number
-                                ))));
-                            }
-
-                            triedb
-                                .flush(block_number, new_root, &Some(difflayer))
-                                .map_err(ProviderError::other)?;
+                        if block_number > 0 && latest_block_number != block_number - 1 {
+                            return Err(ProviderError::Database(DatabaseError::Other(format!(
+                                "triedb state gap in save_blocks: latest_block_number={}, expected={}, block_number={}",
+                                latest_block_number,
+                                block_number - 1,
+                                block_number
+                            ))));
                         }
+
+                        self.write_hashed_state(&trie_data.sorted.hashed_state)?;
+
+                        debug!(
+                            target: "providers::db",
+                            block_number,
+                            latest_triedb_block = latest_block_number,
+                            parent_root = ?latest_state_root,
+                            expected_root = ?state_root,
+                            "Skipping fork-specific triedb diff layer path in save_blocks",
+                        );
 
                         timings.write_hashed_state += start.elapsed();
                     } else {
@@ -711,7 +677,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
                     // Collect Arcs first to extend lifetime, then pass refs.
                     // Blocks are oldest-to-newest, merge_batch expects newest-to-oldest.
                     let arcs: Vec<_> = blocks.iter().rev().map(|b| b.trie_updates()).collect();
-                    TrieUpdatesSorted::merge_batch(arcs.iter().map(|arc| arc.as_ref()))
+                    TrieUpdatesSorted::merge_batch(arcs.iter().map(|arc| arc.as_ref().clone()))
                 };
 
                 if !merged.is_empty() {
@@ -880,7 +846,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
         last_block: BlockNumber,
     ) -> ProviderResult<()> {
         // iterate over block body and remove receipts
-        self.remove::<tables::Receipts<ReceiptTy<N>>>(from_tx..)?;
+        self.remove::<tables::Receipts>(from_tx..)?;
 
         if EitherWriter::receipts_destination(self).is_static_file() {
             let static_file_receipt_num =
@@ -1206,7 +1172,11 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
                     match known_senders.get(&tx_num) {
                         None => {
                             // recover the sender from the transaction if not found
-                            let sender = tx.recover_signer_unchecked()?;
+                            let sender = tx.recover_signer_unchecked().ok_or_else(|| {
+                                ProviderError::Database(DatabaseError::Other(
+                                    "failed to recover transaction signer".to_string(),
+                                ))
+                            })?;
                             senders.push(sender);
                         }
                         Some(sender) => senders.push(*sender),
@@ -1987,7 +1957,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             id,
             |static_file| static_file.receipt(id),
-            || Ok(self.tx.get::<tables::Receipts>(id)?),
+            || Ok(self.tx.get::<tables::Receipts>(id)?.map(Into::into)),
         )
     }
 
@@ -2024,7 +1994,10 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             to_range(range),
             |static_file, range, _| static_file.receipts_by_tx_range(range),
-            |range, _| self.cursor_read_collect::<tables::Receipts>(range),
+            |range, _| {
+                self.cursor_read_collect::<tables::Receipts>(range)
+                    .map(|receipts| receipts.into_iter().map(Into::into).collect())
+            },
             |_| true,
         )
     }
@@ -2440,7 +2413,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         tracing::trace!(len = changes.contracts.len(), "Writing bytecodes");
         let mut bytecodes_cursor = self.tx_ref().cursor_write::<tables::Bytecodes>()?;
         for (hash, bytecode) in changes.contracts {
-            bytecodes_cursor.upsert(hash, &Bytecode::from(bytecode))?;
+            bytecodes_cursor.upsert(hash, &Bytecode(bytecode))?;
         }
 
         // Write new storage state and wipe storage if needed.
