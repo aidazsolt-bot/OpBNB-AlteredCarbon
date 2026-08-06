@@ -5,7 +5,10 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use derive_more::Deref;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm::{bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable}, state::AccountInfo};
+use revm::{
+    bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable},
+    state::AccountInfo,
+};
 use serde::{Deserialize, Serialize};
 
 /// Identifier for legacy raw bytecode (stored without jump-table analysis).
@@ -46,9 +49,9 @@ impl Account {
     /// After `SpuriousDragon` empty account is defined as account with nonce == 0 && balance == 0
     /// && bytecode = None (or hash is [`KECCAK_EMPTY`]).
     pub fn is_empty(&self) -> bool {
-        self.nonce == 0 &&
-            self.balance.is_zero() &&
-            self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
+        self.nonce == 0
+            && self.balance.is_zero()
+            && self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
     }
 
     /// Returns an account bytecode's hash.
@@ -134,7 +137,13 @@ impl Compact for Bytecode {
             }
             LEGACY_ANALYZED_BYTECODE_ID => {
                 let original_len = buf.read_u64::<BigEndian>().unwrap() as usize;
-                Self(unsafe { RevmBytecode::new_analyzed(bytes, original_len, JumpTable::from_slice(buf, original_len)) })
+                Self(unsafe {
+                    RevmBytecode::new_analyzed(
+                        bytes,
+                        original_len,
+                        JumpTable::from_slice(buf, original_len),
+                    )
+                })
             }
             EOF_BYTECODE_ID | EIP7702_BYTECODE_ID => {
                 // EOF and EIP-7702 bytecode objects will be decoded from the raw bytecode

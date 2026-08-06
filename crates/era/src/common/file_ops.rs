@@ -248,8 +248,8 @@ impl EraFileType {
     pub fn from_dir(dir: impl AsRef<Path>) -> io::Result<Option<Self>> {
         let mut found: Option<Self> = None;
         for entry in std::fs::read_dir(dir)? {
-            if let Some(name) = entry?.file_name().to_str() &&
-                let Some(era_type) = Self::from_filename(name)
+            if let Some(name) = entry?.file_name().to_str()
+                && let Some(era_type) = Self::from_filename(name)
             {
                 match found {
                     Some(existing) if existing != era_type => {

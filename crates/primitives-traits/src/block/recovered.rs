@@ -2,7 +2,10 @@
 
 use crate::{
     block::{error::SealedBlockRecoveryError, SealedBlock},
-    transaction::{signed::{RecoveryError, SignedTransaction}, Recovered},
+    transaction::{
+        signed::{RecoveryError, SignedTransaction},
+        Recovered,
+    },
     Block, BlockBody, InMemorySize, SealedHeader,
 };
 use alloc::vec::Vec;
@@ -389,12 +392,8 @@ where
         let header = block.header;
 
         // Split the recovered transactions into transactions and senders
-        let (transactions, senders): (Vec<T>, Vec<Address>) = block
-            .body
-            .transactions
-            .into_iter()
-            .map(|recovered| recovered.into_parts())
-            .unzip();
+        let (transactions, senders): (Vec<T>, Vec<Address>) =
+            block.body.transactions.into_iter().map(|recovered| recovered.into_parts()).unzip();
 
         // Reconstruct the block with regular transactions
         let body = alloy_consensus::BlockBody {

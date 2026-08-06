@@ -85,12 +85,12 @@ impl<N: Network, ExecutionData> RpcBlockProvider<N, ExecutionData> {
     /// `eth_getBlockAccessListByHash`, so failed or missing responses fall back to empty extras.
     async fn payload_extras(&self, header: &N::HeaderResponse) -> PayloadExtras {
         if !self.fetch_block_access_list {
-            return PayloadExtras::default()
+            return PayloadExtras::default();
         }
 
         let block_hash = header.hash();
         if header.block_access_list_hash().is_none() {
-            return PayloadExtras::default()
+            return PayloadExtras::default();
         };
 
         let block_access_list = self
@@ -135,7 +135,7 @@ where
                     return;
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                continue
+                continue;
             };
 
             while let Some(res) = stream.next().await {

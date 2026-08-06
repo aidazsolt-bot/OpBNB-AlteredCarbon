@@ -161,7 +161,7 @@ impl<B: FullBlock> FileClient<B> {
     /// Returns true if all blocks are canonical (no gaps)
     pub fn has_canonical_blocks(&self) -> bool {
         if self.headers.is_empty() {
-            return true
+            return true;
         }
         let (min, max) = self.headers.keys().minmax().into_option().expect("not empty");
         // Contiguous range from min to max means no gaps
@@ -266,7 +266,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                             "partial block returned from decoding chunk"
                         );
                         remaining_bytes = bytes;
-                        break
+                        break;
                     }
                     Err(err) => return Err(err),
                 };
@@ -287,7 +287,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                     });
                 if let Err(err) = validation {
                     if !self.skip_invalid_blocks {
-                        return Err(err.into())
+                        return Err(err.into());
                     }
                     warn!(target: "downloaders::file",
                         block_number = block.number(),
@@ -295,7 +295,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                         %err,
                         "skipping invalid block while decoding file"
                     );
-                    continue
+                    continue;
                 }
                 if parent_header.is_some() {
                     parent_header = Some(block.sealed_header().clone());
@@ -354,7 +354,7 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(num) => *num,
                 None => {
                     warn!(%hash, "Could not find starting block number for requested header hash");
-                    return Box::pin(async move { Err(RequestError::BadResponse) })
+                    return Box::pin(async move { Err(RequestError::BadResponse) });
                 }
             },
             BlockHashOrNumber::Number(num) => num,
@@ -378,7 +378,7 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(header) => headers.push(header),
                 None => {
                     warn!(number=%block_number, "Could not find header");
-                    return Box::pin(async move { Err(RequestError::BadResponse) })
+                    return Box::pin(async move { Err(RequestError::BadResponse) });
                 }
             }
         }
@@ -481,7 +481,7 @@ impl FileReader {
 
         if *remaining_bytes == 0 && chunk.is_empty() {
             // eof
-            return Ok(None)
+            return Ok(None);
         }
 
         let chunk_target_len = chunk_byte_len.min(*remaining_bytes + chunk.len() as u64);
@@ -524,14 +524,14 @@ impl FileReader {
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
             if chunk.len() >= chunk_byte_len as usize {
-                return Ok(true)
+                return Ok(true);
             }
 
             match self.read(&mut buffer).await {
                 Ok(0) => {
                     let Self::Gzip { eof, .. } = self else { unreachable!() };
                     *eof = true;
-                    return Ok(!chunk.is_empty())
+                    return Ok(!chunk.is_empty());
                 }
                 Ok(n) => {
                     chunk.extend_from_slice(&buffer[..n]);
@@ -628,7 +628,7 @@ impl ChunkedFileReader {
                 .await?;
 
         if self.file.is_eof() && !remaining_bytes.is_empty() {
-            return Err(FileClientError::Rlp(alloy_rlp::Error::InputTooShort, remaining_bytes))
+            return Err(FileClientError::Rlp(alloy_rlp::Error::InputTooShort, remaining_bytes));
         }
 
         // save left over bytes
@@ -649,7 +649,7 @@ impl ChunkedFileReader {
             })
         })?
         else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // make new file client from chunk

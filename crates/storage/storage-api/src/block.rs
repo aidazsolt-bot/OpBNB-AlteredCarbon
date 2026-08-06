@@ -337,10 +337,9 @@ pub trait BlockReaderIdExt: BlockReader + ReceiptProviderIdExt {
     ) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
         match id {
             BlockId::Hash(hash) => self.recovered_block(hash.block_hash.into(), transaction_kind),
-            BlockId::Number(num) => self.convert_block_number(num)?.map_or_else(
-                || Ok(None),
-                |num| self.recovered_block(num.into(), transaction_kind),
-            ),
+            BlockId::Number(num) => self
+                .convert_block_number(num)?
+                .map_or_else(|| Ok(None), |num| self.recovered_block(num.into(), transaction_kind)),
         }
     }
 
@@ -377,7 +376,10 @@ pub trait BlockReaderIdExt: BlockReader + ReceiptProviderIdExt {
     /// Returns the sealed header with the matching `BlockId` from the database.
     ///
     /// Returns `None` if header is not found.
-    fn sealed_header_by_id(&self, id: BlockId) -> ProviderResult<Option<SealedHeader<Self::Header>>>;
+    fn sealed_header_by_id(
+        &self,
+        id: BlockId,
+    ) -> ProviderResult<Option<SealedHeader<Self::Header>>>;
 
     /// Returns the header with the matching `BlockId` from the database.
     ///

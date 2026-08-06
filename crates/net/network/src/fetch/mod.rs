@@ -147,12 +147,12 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     ///
     /// Returns `true` if this a newer block
     pub(crate) fn update_peer_block(&mut self, peer_id: &PeerId, hash: B256, number: u64) -> bool {
-        if let Some(peer) = self.peers.get_mut(peer_id) &&
-            number > peer.best_number
+        if let Some(peer) = self.peers.get_mut(peer_id)
+            && number > peer.best_number
         {
             peer.best_hash = hash;
             peer.best_number = number;
-            return true
+            return true;
         }
         false
     }
@@ -181,18 +181,18 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // replace best peer if our current best peer sent us a bad response last time
             if best_peer.1.last_response_likely_bad && !maybe_better.1.last_response_likely_bad {
                 best_peer = maybe_better;
-                continue
+                continue;
             }
 
             // replace best peer if this peer meets the requirements better
             if maybe_better.1.is_better(best_peer.1, &requirement) {
                 best_peer = maybe_better;
-                continue
+                continue;
             }
 
             // replace best peer if this peer has better rtt and both have same range quality
-            if maybe_better.1.timeout() < best_peer.1.timeout() &&
-                !maybe_better.1.last_response_likely_bad
+            if maybe_better.1.timeout() < best_peer.1.timeout()
+                && !maybe_better.1.last_response_likely_bad
             {
                 best_peer = maybe_better;
             }
@@ -204,8 +204,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     /// Returns whether any connected peer can serve BAL requests.
     fn has_eth71_peer(&self) -> bool {
         self.peers.values().any(|peer| {
-            !matches!(peer.state, PeerState::Closing) &&
-                peer.capabilities.supports_eth_at_least(&EthVersion::Eth71)
+            !matches!(peer.state, PeerState::Closing)
+                && peer.capabilities.supports_eth_at_least(&EthVersion::Eth71)
         })
     }
 
@@ -213,7 +213,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     fn poll_action(&mut self) -> PollAction {
         // we only check and not pop here since we don't know yet whether a peer is available.
         if self.queued_requests.is_empty() {
-            return PollAction::NoRequests
+            return PollAction::NoRequests;
         }
 
         let request = self.queued_requests.pop_front().expect("not empty");
@@ -227,7 +227,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
                 // queued requests get a chance on the next poll instead of head-of-line blocking.
                 self.queued_requests.push_back(request);
             }
-            return PollAction::NoPeersAvailable
+            return PollAction::NoPeersAvailable;
         };
 
         let request = self.prepare_block_request(peer_id, request);
@@ -253,7 +253,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
                         // connected peer can serve them right now.
                         if self.should_fail_fast(&request) {
                             request.send_err_response(RequestError::UnsupportedCapability);
-                            continue
+                            continue;
                         }
 
                         match request.get_priority() {
@@ -280,7 +280,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             }
 
             if self.queued_requests.is_empty() || no_peers_available {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -295,8 +295,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     /// Returns `true` if `request` cannot be served by any currently connected peer and should
     /// fail immediately instead of waiting for future peer churn.
     fn should_fail_fast(&self, request: &DownloadRequest<N>) -> bool {
-        (request.is_optional_bal() && !self.has_eth71_peer()) ||
-            (request.is_snap() && !self.has_snap_peer())
+        (request.is_optional_bal() && !self.has_eth71_peer())
+            || (request.is_snap() && !self.has_snap_peer())
     }
 
     /// Handles a new request to a peer.
@@ -402,7 +402,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // If the peer is still ready to accept new requests, we try to send a followup
             // request immediately.
             if peer.state.on_request_finished() && !is_error && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
 
@@ -428,7 +428,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
         None
@@ -449,7 +449,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
         None
@@ -473,7 +473,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
         None
@@ -494,7 +494,7 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             peer.last_response_likely_bad = is_likely_bad_response;
 
             if peer.state.on_request_finished() && !is_likely_bad_response {
-                return self.followup_request(peer_id)
+                return self.followup_request(peer_id);
             }
         }
         None
@@ -587,9 +587,9 @@ impl Peer {
         match requirement {
             BestPeerRequirements::EthVersion(ver) => self.capabilities.supports_eth_at_least(ver),
             BestPeerRequirements::SupportsSnap => self.supports_snap,
-            BestPeerRequirements::None |
-            BestPeerRequirements::FullBlock |
-            BestPeerRequirements::FullBlockRange(_) => true,
+            BestPeerRequirements::None
+            | BestPeerRequirements::FullBlock
+            | BestPeerRequirements::FullBlockRange(_) => true,
         }
     }
 
@@ -643,9 +643,9 @@ impl Peer {
             BestPeerRequirements::FullBlock => self.has_full_history() && !other.has_full_history(),
             // Version/capability-based filtering happens in `next_best_peer`, so by the time we
             // get here both peers already satisfy the requirement.
-            BestPeerRequirements::None |
-            BestPeerRequirements::EthVersion(_) |
-            BestPeerRequirements::SupportsSnap => false,
+            BestPeerRequirements::None
+            | BestPeerRequirements::EthVersion(_)
+            | BestPeerRequirements::SupportsSnap => false,
         }
     }
 }
@@ -685,7 +685,7 @@ impl PeerState {
     const fn on_request_finished(&mut self) -> bool {
         if !matches!(self, Self::Closing) {
             *self = Self::Idle;
-            return true
+            return true;
         }
         false
     }
@@ -756,11 +756,11 @@ impl<N: NetworkPrimitives> DownloadRequest<N> {
     /// Returns the requested priority of this request
     const fn get_priority(&self) -> &Priority {
         match self {
-            Self::GetBlockHeaders { priority, .. } |
-            Self::GetBlockBodies { priority, .. } |
-            Self::GetBlockAccessLists { priority, .. } |
-            Self::GetReceipts { priority, .. } |
-            Self::GetSnap { priority, .. } => priority,
+            Self::GetBlockHeaders { priority, .. }
+            | Self::GetBlockBodies { priority, .. }
+            | Self::GetBlockAccessLists { priority, .. }
+            | Self::GetReceipts { priority, .. }
+            | Self::GetSnap { priority, .. } => priority,
         }
     }
 

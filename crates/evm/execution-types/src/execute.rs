@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::{map::HashMap, B256, U256};
 use reth_primitives::parlia::Snapshot;

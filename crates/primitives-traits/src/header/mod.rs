@@ -46,4 +46,3 @@ pub trait BlockHeader:
 }
 
 impl BlockHeader for Header {}
-

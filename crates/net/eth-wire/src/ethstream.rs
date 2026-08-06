@@ -114,11 +114,16 @@ where
                     Some(msg) => msg,
                     None => {
                         self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                        return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
+                        return Err(EthStreamError::EthHandshakeError(
+                            EthHandshakeError::NoResponse,
+                        ));
                     }
                 }?;
 
-                let msg = match ProtocolMessage::decode_message(status.version, &mut their_msg.as_ref()) {
+                let msg = match ProtocolMessage::decode_message(
+                    status.version,
+                    &mut their_msg.as_ref(),
+                ) {
                     Ok(m) => m,
                     Err(err) => {
                         debug!("decode error in eth handshake: msg={their_msg:x}");
@@ -194,9 +199,9 @@ where
             return Err(EthStreamError::MessageTooBig(bytes.len()));
         }
 
-        if self.reject_block_announcements &&
-            let Some(&id) = bytes.first() &&
-            (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
+        if self.reject_block_announcements
+            && let Some(&id) = bytes.first()
+            && (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
         {
             return Err(EthStreamError::UnsupportedMessage { message_id: id });
         }

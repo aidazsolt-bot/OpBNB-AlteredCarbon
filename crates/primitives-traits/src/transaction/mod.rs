@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 
 pub mod signed;
 
-pub mod recover;
 pub mod error;
 pub mod execute;
+pub mod recover;
 
 pub use alloy_consensus::transaction::Recovered;
 pub use execute::FillTxEnv;
