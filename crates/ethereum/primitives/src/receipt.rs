@@ -2,7 +2,7 @@ use alloy_consensus::TxType;
 pub use alloy_consensus::{EthereumReceipt, TxTy};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::B256;
-use reth_primitives_traits::proofs::ordered_trie_root_with_encoder;
+use reth_trie_common::root::ordered_trie_root_with_encoder;
 
 /// Raw ethereum receipt.
 pub type Receipt<T = TxType> = EthereumReceipt<T>;
@@ -31,7 +31,7 @@ mod tests {
     };
     use alloy_rlp::{Decodable, Encodable};
     use reth_codecs::Compact;
-    use reth_primitives_traits::proofs::{
+    use reth_primitives::proofs::{
         calculate_receipt_root, calculate_transaction_root, calculate_withdrawals_root,
     };
 
