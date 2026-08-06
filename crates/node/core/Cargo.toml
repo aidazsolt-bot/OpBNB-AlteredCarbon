@@ -101,4 +101,5 @@ tracy = ["reth-tracing/tracy"]
 trie-debug = []
 
 [build-dependencies]
-vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }
+vergen = { workspace = true, features = ["build", "cargo", "emit_and_set"] }
+vergen-git2.workspace = true
