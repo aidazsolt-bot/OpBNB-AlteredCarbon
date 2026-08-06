@@ -1,5 +1,5 @@
 use crate::{
-    either_writer::{RawRocksDBBatch, RocksBatchArg, RocksDBRefArg},
+    either_writer::{RawRocksDBBatch, RocksBatchArg, RocksTxRefArg},
     providers::RocksDBProvider,
 };
 use reth_storage_api::StorageSettingsCache;
@@ -41,7 +41,7 @@ pub trait RocksDBProviderFactory {
     fn with_rocksdb_snapshot<F, R>(&self, f: F) -> ProviderResult<R>
     where
         Self: StorageSettingsCache,
-        F: FnOnce(RocksDBRefArg<'_>) -> ProviderResult<R>,
+        F: FnOnce(RocksTxRefArg<'_>) -> ProviderResult<R>,
     {
         if self.cached_storage_settings().storage_v2 {
             let rocksdb = self.rocksdb_provider();

@@ -2,7 +2,6 @@ use crate::{
     ChainSpecProvider, DBProvider, EitherWriter, HistoryWriter, NodePrimitivesProvider,
     ProviderResult, RocksDBProviderFactory, StorageSettingsCache,
 };
-use alloy_consensus::BlockHeader;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::Address;
 use reth_chainspec::EthChainSpec;

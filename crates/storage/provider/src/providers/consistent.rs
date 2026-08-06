@@ -675,58 +675,6 @@ impl<N: ProviderNodeTypes> HeaderProvider for ConsistentProvider<N> {
         )
     }
 
-    fn header_td(&self, hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        if let Some(num) = self.block_number(*hash)? {
-            self.header_td_by_number(num)
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
-        // BSC TD calculation logic
-        if self.chain_spec.final_paris_total_difficulty().is_none() {
-            let latest_block_number = self.last_block_number()?;
-            if number <= latest_block_number {
-                return self.storage_provider.header_td_by_number(number);
-            }
-            // found head in memory, calculate td by adding in-memory canonical tds
-            let mut td = self
-                .storage_provider
-                .header_td_by_number(latest_block_number)?
-                .ok_or(ProviderError::HeaderNotFound(latest_block_number.into()))?;
-            for num in latest_block_number + 1..=number {
-                let header =
-                    self.header_by_number(num)?.ok_or(ProviderError::HeaderNotFound(num.into()))?;
-                td = td.wrapping_add(header.difficulty());
-            }
-            return Ok(Some(td));
-        }
-
-        // ETH TD calculation logic
-        let number =
-            if self.head_block.as_ref().and_then(|b| b.block_on_chain(number.into())).is_some() {
-                // If the block exists in memory, we should return a TD for it.
-                //
-                // The canonical in memory state should only store post-merge blocks. Post-merge
-                // blocks have zero difficulty. This means we can use the total
-                // difficulty for the last finalized block number if present (so
-                // that we are not affected by reorgs), if not the last number in
-                // the database will be used.
-                if let Some(last_finalized_num_hash) =
-                    self.canonical_in_memory_state.get_finalized_num_hash()
-                {
-                    last_finalized_num_hash.number
-                } else {
-                    self.last_block_number()?
-                }
-            } else {
-                // Otherwise, return what we have on disk for the input block
-                number
-            };
-        self.storage_provider.header_td_by_number(number)
-    }
-
     fn headers_range(
         &self,
         range: impl RangeBounds<BlockNumber>,
@@ -1558,28 +1506,6 @@ impl<N: ProviderNodeTypes> ChangeSetReader for ConsistentProvider<N> {
         Ok(changesets)
     }
 
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
-        // Count changesets from in-memory state
-        let mut count = 0;
-        if let Some(head_block) = &self.head_block {
-            for state in head_block.chain() {
-                count += state
-                    .block_ref()
-                    .execution_output
-                    .state
-                    .reverts
-                    .clone()
-                    .to_plain_state_reverts()
-                    .accounts
-                    .len();
-            }
-        }
-
-        // Add changesets from storage provider
-        count += self.storage_provider.account_changeset_count()?;
-
-        Ok(count)
-    }
 }
 
 impl<N: ProviderNodeTypes> AccountReader for ConsistentProvider<N> {
