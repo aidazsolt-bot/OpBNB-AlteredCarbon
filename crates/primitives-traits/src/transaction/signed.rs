@@ -94,7 +94,6 @@ where
     T: alloy_consensus::transaction::RlpEcdsaEncodableTx
         + alloy_consensus::transaction::RlpEcdsaDecodableTx
         + alloy_consensus::SignableTransaction<Signature>
-        + AsRef<alloy_consensus::TxEip4844>
         + Unpin
         + Clone
         + PartialEq
@@ -135,9 +134,5 @@ where
     fn from_transaction_and_signature(transaction: Self::Transaction, signature: Signature) -> Self {
         let _ = signature;
         transaction
-    }
-
-    fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address) {
-        *tx_env = alloy_evm::FromRecoveredTx::from_recovered_tx(self, sender);
     }
 }

@@ -8,6 +8,7 @@ use core::fmt::{Debug, Display};
 use reth_ethereum_forks::EthereumHardforks;
 use reth_network_peers::NodeRecord;
 use reth_primitives_traits::BlockHeader;
+use alloy_consensus::BlockHeader as _;
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]

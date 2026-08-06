@@ -30,7 +30,11 @@ use derive_more::Deref;
 /// sender. A [`SealedBlock`] can be upgraded to a [`RecoveredBlock`] using the
 /// [`RecoveredBlock::try_recover`] or [`SealedBlock::try_recover`] method.
 #[derive(Debug, Clone, Deref)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "B: serde::Serialize + serde::de::DeserializeOwned")
+)]
 pub struct RecoveredBlock<B: Block> {
     /// Block
     #[deref]
