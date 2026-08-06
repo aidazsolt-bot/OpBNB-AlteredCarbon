@@ -25,7 +25,7 @@ pub trait NodePrimitives:
         + Send
         + Sync;
     /// Block body primitive.
-    type BlockBody: BlockBody;
+    type BlockBody: BlockBody<Transaction = Self::SignedTx>;
     /// Signed version of the transaction type.
     ///
     /// This represents the transaction as it exists in the blockchain - the consensus

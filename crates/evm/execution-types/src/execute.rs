@@ -1,7 +1,7 @@
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::{map::HashMap, B256, U256};
 use reth_primitives::parlia::Snapshot;
-use revm::db::BundleState;
+use revm::database::BundleState;
 
 /// A helper type for ethereum block inputs that consists of a block and the total difficulty.
 #[derive(Debug)]
