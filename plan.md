@@ -409,3 +409,92 @@ werden — dieser Plan.md-Log ist die Rohdaten-Quelle dafür.
 3. Iterieren bis `reth-bsc-evm` grün (Phase-3-Meilenstein), danach `reth-bsc-node`, dann
    breitere Workspace-Prüfung (`cargo check --workspace`).
 4. `plan.md` nach jedem Meilenstein weiter aktualisieren.
+
+## Session-Fortsetzung: reth-bsc-node-Blocker (nach reth-bsc-evm-Meilenstein)
+
+**Stand:** `reth-bsc-evm` erreicht grünen Zustand (Phase-3-Meilenstein, beide Feature-
+Varianten). Fortsetzung mit `reth-bsc-node` als nächstem Meilenstein.
+
+**Behobene Blocker-Kette (chronologisch):**
+1. `reth-primitives-traits` fehlte komplett das `serde_bincode_compat`-Modul (Datei nie
+   nach dem Merge wiederhergestellt) — neu erstellt in
+   `crates/primitives-traits/src/serde_bincode_compat.rs` nach Vorbild `bnb-chain_reth.git`.
+2. `reth-config`: serde/toml/humantime-serde waren optional+feature-gated, `config.rs`
+   nutzt sie aber unconditional — als Pflicht-Deps gemacht statt `config.rs` komplett
+   umzubauen.
+3. `reth-node-core`/`build.rs`: **Lektion gelernt** — Workspace pinnt vergen/vergen-git2
+   auf **10.0.1** (ältere API: `Build::builder()...build()` ohne `?`), NICHT auf 9.1.0 wie
+   `bnb-chain_reth.git` (neuere API: `BuildBuilder`-Suffix, `.build()?`). Erst fälschlich
+   auf die neuere API "gefixt", dann korrekt zurückgerollt. Immer die tatsächlich gepinnte
+   Version prüfen, nicht vom Referenz-Repo übernehmen!
+4. `reth-node-metrics`: `jsonrpsee::server::serve_with_graceful_shutdown` → korrekt
+   `jsonrpsee_server::serve_with_graceful_shutdown` (Crate-Pfad-Fix).
+5. `reth-execution-types`: `execution_outcome.rs` fehlte das ganze
+   `serde_bincode_compat`-Submodul; `chain.rs`s Bincode-`Chain`-Struct hatte kaputten Typ
+   `ExecutionOutcome<'a>` (fehlender Generic-Parameter). Erst mit einem custom
+   `RlpBincode`-Trait-Ansatz gefixt (erforderte `N::Receipt: SerdeBincodeCompat`), später
+   **vereinfacht** auf Upstream-Design zurückgebaut: Receipts werden direkt via
+   `T: Receipt`-Bound (der bereits `Encodable`/`Decodable` erfordert) zu rohen RLP-`Bytes`
+   serialisiert — kein zusätzlicher `SerdeBincodeCompat`-Bound auf `N::Receipt` mehr nötig.
+   Das behebt gleichzeitig `reth-exex-types`, das `Chain<N>` generisch über JEDE
+   `NodePrimitives`-Impl instanziiert (inkl. BSCs Receipt-Typ, der nie `RlpBincode`
+   implementierte).
+6. `reth-ethereum-primitives`: Orphan-Rule-Falle — `impl RlpBincode for
+   alloy_consensus::EthereumReceipt<T>` geht nur in `primitives-traits` (Trait-Eigentümer),
+   nicht in `reth-ethereum-primitives` (Alias-Nutzer). Mittlerweile durch Punkt 5 überholt
+   (kein `RlpBincode` mehr für Receipts nötig).
+7. **`reth-rpc-traits`-Duplikat-Problem gelöst:** Diese Crate war als externe
+   crates.io-Dependency gepinnt (`version = "0.5.0"`, exakt wie Upstream-v2.4.1s eigener
+   Pin — verifiziert, kein Fork-Fehler). Problem: die publizierte `reth-rpc-traits-0.5.2`
+   hängt an ihrer EIGENEN crates.io-`reth-primitives-traits` (0.5.2), einem strukturell
+   identischen aber DISTINKTEN Typ zu unserem lokalen `crates/primitives-traits`
+   (2.4.1-Pfad-Member) → `SealedHeader<T>`-Typkonflikte überall wo `reth-rpc-traits`-
+   Methoden auf unsere eigenen Typen treffen. Ein `[patch.crates-io]`-Override griff NICHT
+   (publizierte `reth-rpc-traits` verlangt `^0.5`, inkompatibel mit unserer `2.4.1`).
+   **Lösung:** `reth-rpc-traits` als lokalen Workspace-Member vendort
+   (`crates/rpc/rpc-traits/`, Quellcode 1:1 aus der publizierten 0.5.2 kopiert, nur
+   Cargo.toml auf Workspace-lokale Deps umgeschrieben).
+8. Fehlende Re-Exports aus `reth-primitives-traits` wiederhergestellt: `SealedHeaderFor<N>`
+   (Type-Alias, neu in `header/sealed.rs`), `TransactionMeta`/`SignerRecoverable`/
+   `TxHashRef` (Re-Export von `alloy_consensus::transaction`, sowohl im
+   `transaction`-Modul als auch im Root-`lib.rs`). Fehlender
+   `impl From<SealedHeader<H>> for alloy_consensus::Sealed<H>` ergänzt (benötigt von
+   `reth-rpc-traits::FromConsensusHeader`).
+9. `SignedTransaction::try_recover()`-Default-Methode ergänzt (Trait-Definition +
+   `EthereumTxEnvelope`-Blanket-Impl) — war komplett verschwunden, Upstream hat sie als
+   fehlerbehaftete Variante von `recover_signer` (nicht zu verwechseln mit
+   `alloy_consensus`s eigenem `SignerRecoverable`, das dieser Alloy-Consensus-Pin gar nicht
+   anbietet).
+10. `reth-chain-state`: `rayon`-Feature-Flag deklariert (leer, keine echte Dependency) um
+    `unexpected-cfg`-Warnungen für bestehende `#[cfg(feature = "rayon")]`-Gates in
+    `state_trie_overlay.rs` stumm zu schalten; `serde`-Dependency optional ergänzt +
+    `dep:serde`-Wiring (war referenziert aber nie deklariert → E0433 in
+    `notifications.rs`).
+
+**Commit:** `b8891d6da` "fix(primitives-traits,rpc-traits,execution-types): unify
+reth-rpc-traits dependency, restore missing exports, simplify bincode-compat" — deckt
+Punkte 5, 7, 8, 9, 10 ab (Punkte 1-4, 6 waren bereits in früheren Commits dieser Sitzung).
+
+**Verifiziert grün:** `reth-rpc-convert`, `reth-evm-ethereum`, `reth-chain-state`,
+`reth-execution-types` (beide Feature-Varianten), `reth-exex-types` (beide
+Feature-Varianten), `reth-rpc-traits` (neu vendort).
+
+**Nächster Blocker-Cluster (an Background-Agent `fix-static-file-prune-cluster`
+delegiert):** `reth-static-file`, `reth-prune`, `reth-db-common`, `reth-trie-parallel` —
+gemeinsamer Nenner: `StaticFileProvider` hat jetzt einen Generic-Parameter `N`
+(`StaticFileProvider<N>`), `Segment::copy_to_static_files`-Trait-Signatur hat sich
+geändert (3 statt 4 Parameter erwartet), fehlende Re-Exports aus `reth_prune_types`
+(`MINIMUM_UNWIND_SAFE_DISTANCE`, `PruneLimiter`), Receipt-Typ-Borrow-Trait-Mismatch in
+`append_receipts`. Agent hat Auftrag: alle 4 Crates einzeln grün bekommen, dann
+`reth-bsc-node` erneut prüfen und nächsten Blocker NUR berichten (nicht selbst fixen),
+eigenen Commit erstellen.
+
+**Nächste Schritte:**
+1. Warten auf `fix-static-file-prune-cluster`-Agent-Ergebnis, verifizieren, ggf.
+   nachbessern.
+2. Nächsten von Agent gemeldeten Blocker angehen (selbst oder erneut delegieren, je nach
+   Umfang).
+3. Iterieren bis `reth-bsc-node --no-default-features` grün ist (nächster großer
+   Meilenstein nach `reth-bsc-evm`).
+4. Danach breitere Workspace-Prüfung (`cargo check --workspace --no-default-features`),
+   dann mit Default-Features, dann `crates/optimism/*` (opBNB) analog zu BSC.
