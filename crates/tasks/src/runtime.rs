@@ -585,7 +585,7 @@ impl Runtime {
             })
             .is_some()
         {
-            return true
+            return true;
         }
 
         if let Some(func) = func.lock().take() {

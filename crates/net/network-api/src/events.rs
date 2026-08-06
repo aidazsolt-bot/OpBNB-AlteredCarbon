@@ -436,6 +436,32 @@ impl<R> fmt::Debug for PeerRequestSender<R> {
     }
 }
 
+/// All message variants that can be sent to `TaskEngine`.
+#[derive(Debug)]
+pub enum EngineMessage<N: NetworkPrimitives = EthNetworkPrimitives> {
+    /// Announce new block hashes
+    NewBlockHashes(BlockHashesEvent),
+    /// Broadcast new block.
+    NewBlock(BlockEvent<N>),
+}
+
+/// internal message to engine task
+#[derive(Debug, Clone)]
+pub struct BlockHashesEvent {
+    /// New block hashes and the block number for each blockhash.
+    /// Clients should request blocks using a [`GetBlockBodies`] message.
+    pub hashes: Vec<reth_eth_wire_types::BlockHashNumber>,
+}
+
+/// internal message to engine task
+#[derive(Debug)]
+pub struct BlockEvent<N: NetworkPrimitives = EthNetworkPrimitives> {
+    /// Hash of the block
+    pub hash: alloy_primitives::B256,
+    /// Raw received message
+    pub block: std::sync::Arc<reth_eth_wire_types::NewBlock<N::Block>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

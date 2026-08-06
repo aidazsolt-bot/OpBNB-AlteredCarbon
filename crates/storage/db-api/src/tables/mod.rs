@@ -29,14 +29,17 @@ use crate::{
         AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
         StoredBlockBodyIndices, StoredBlockWithdrawals,
     },
-    table::{Decode, DupSort, Encode, Table},
+    table::{Decode, DupSort, Encode, Table, TableInfo, TableSet},
 };
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_primitives::parlia::Snapshot;
 use reth_primitives_traits::{Account, BlobSidecars, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
-use reth_trie_common::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
+use reth_trie_common::{
+    BranchNodeCompact, PackedStorageTrieEntry, PackedStoredNibbles, PackedStoredNibblesSubKey,
+    StorageTrieEntry, StoredNibbles, StoredNibblesSubKey,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -232,6 +235,22 @@ macro_rules! tables {
             }
         }
 
+        impl TableInfo for Tables {
+            fn name(&self) -> &'static str {
+                self.name()
+            }
+
+            fn is_dupsort(&self) -> bool {
+                self.is_dupsort()
+            }
+        }
+
+        impl TableSet for Tables {
+            fn tables() -> Box<dyn Iterator<Item = Box<dyn TableInfo>>> {
+                Box::new(Self::ALL.iter().map(|table| Box::new(*table) as Box<dyn TableInfo>))
+            }
+        }
+
         // Need constants to match on in the `FromStr` implementation.
         #[allow(non_upper_case_globals)]
         mod table_names {
@@ -413,6 +432,38 @@ tables! {
 
     /// Stores the parlia snapshot data by block hash.
     table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
+}
+
+/// Packed-encoding view of the [`AccountsTrie`] table.
+///
+/// Uses [`PackedStoredNibbles`] (33-byte) keys instead of [`StoredNibbles`] (65-byte).
+/// Shares the same underlying MDBX table — this is a type-level view for storage v2.
+#[derive(Debug)]
+pub struct PackedAccountsTrie;
+
+impl Table for PackedAccountsTrie {
+    const NAME: &'static str = <AccountsTrie as Table>::NAME;
+    const DUPSORT: bool = false;
+    type Key = PackedStoredNibbles;
+    type Value = BranchNodeCompact;
+}
+
+/// Packed-encoding view of the [`StoragesTrie`] table.
+///
+/// Uses [`PackedStoredNibblesSubKey`] (33-byte) subkeys instead of [`StoredNibblesSubKey`]
+/// (65-byte). Shares the same underlying MDBX table — this is a type-level view for storage v2.
+#[derive(Debug)]
+pub struct PackedStoragesTrie;
+
+impl Table for PackedStoragesTrie {
+    const NAME: &'static str = <StoragesTrie as Table>::NAME;
+    const DUPSORT: bool = true;
+    type Key = B256;
+    type Value = PackedStorageTrieEntry;
+}
+
+impl DupSort for PackedStoragesTrie {
+    type SubKey = PackedStoredNibblesSubKey;
 }
 
 /// Keys for the `ChainState` table.

@@ -283,7 +283,7 @@ where
                 {
                     // If overlay returns a value prior to the DB's value, or the DB is exhausted,
                     // then we return the overlay's value.
-                    return Ok(Some((mem_key, value)))
+                    return Ok(Some((mem_key, value)));
                 }
                 // All other cases:
                 // - mem_key > db_key
@@ -314,8 +314,8 @@ where
         let post_state_entry =
             self.post_state_cursor.seek(&key).copied().map(|(k, v)| (k, v.into_option()));
 
-        if let Some((mem_key, Some(value))) = post_state_entry &&
-            mem_key == key
+        if let Some((mem_key, Some(value))) = post_state_entry
+            && mem_key == key
         {
             #[cfg(debug_assertions)]
             {
@@ -331,7 +331,7 @@ where
 
             let entry = Some((key, value));
             self.set_last_key(&entry);
-            return Ok(entry)
+            return Ok(entry);
         }
 
         self.cursor_seek(key)?;
@@ -365,8 +365,8 @@ where
 
         // If either cursor is currently pointing to the last entry which was returned then consume
         // that entry so that `choose_next_entry` is looking at the subsequent one.
-        if let Some((key, _)) = self.post_state_cursor.current() &&
-            key == &last_key
+        if let Some((key, _)) = self.post_state_cursor.current()
+            && key == &last_key
         {
             self.post_state_cursor.first_after(&last_key);
         }
@@ -375,8 +375,8 @@ where
             self.cursor_seek(last_key)?;
         }
 
-        if let Some((key, _)) = self.db_cursor_state.entry() &&
-            key == &last_key
+        if let Some((key, _)) = self.db_cursor_state.entry()
+            && key == &last_key
         {
             self.cursor_next()?;
         }

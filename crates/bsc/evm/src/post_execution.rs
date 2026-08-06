@@ -119,9 +119,9 @@ where
         }
 
         // update validator set after Feynman upgrade
-        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp) &&
-            is_breathe_block(parent.timestamp, header.timestamp) &&
-            !self
+        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp)
+            && is_breathe_block(parent.timestamp, header.timestamp)
+            && !self
                 .parlia()
                 .chain_spec()
                 .is_on_feynman_at_timestamp(header.timestamp, parent.timestamp)
@@ -156,10 +156,10 @@ where
         header: &Header,
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
-        if header.number % self.parlia().epoch() != 0 ||
-            !self.chain_spec().is_bohr_active_at_timestamp(header.timestamp)
+        if header.number % self.parlia().epoch() != 0
+            || !self.chain_spec().is_bohr_active_at_timestamp(header.timestamp)
         {
-            return Ok(())
+            return Ok(());
         }
 
         if let Some(turn_length_from_header) =
@@ -169,7 +169,7 @@ where
         {
             let turn_length_from_contract = self.get_turn_length(header, env)?.unwrap();
             if turn_length_from_header == turn_length_from_contract {
-                return Ok(())
+                return Ok(());
             }
         }
 
@@ -186,7 +186,7 @@ where
             let bz = self.eth_call(to, data, env)?;
 
             let turn_length = self.parlia().unpack_data_into_turn_length(bz.as_ref()).to::<u8>();
-            return Ok(Some(turn_length))
+            return Ok(Some(turn_length));
         }
 
         Ok(Some(DEFAULT_TURN_LENGTH))
@@ -199,7 +199,7 @@ where
     ) -> Result<(), BlockExecutionError> {
         let number = header.number;
         if number % self.parlia().epoch() != 0 {
-            return Ok(())
+            return Ok(());
         };
 
         let (mut validators, mut vote_addrs_map) =
@@ -317,8 +317,8 @@ where
             BscBlockExecutionError::ProviderInnerError { error: Box::new(err.into()) }
         })?;
 
-        if system_account.account.is_none() ||
-            system_account.account.as_ref().unwrap().info.balance == U256::ZERO
+        if system_account.account.is_none()
+            || system_account.account.as_ref().unwrap().info.balance == U256::ZERO
         {
             return Ok(());
         }
@@ -340,8 +340,8 @@ where
             })?
             .unwrap_or_default()
             .balance;
-        if !self.chain_spec().is_kepler_active_at_timestamp(header.timestamp) &&
-            system_reward_balance < U256::from(MAX_SYSTEM_REWARD)
+        if !self.chain_spec().is_kepler_active_at_timestamp(header.timestamp)
+            && system_reward_balance < U256::from(MAX_SYSTEM_REWARD)
         {
             let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
             if reward_to_system > 0 {

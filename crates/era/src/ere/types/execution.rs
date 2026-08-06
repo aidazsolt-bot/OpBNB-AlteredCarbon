@@ -581,9 +581,9 @@ impl BlockTuple {
     /// Number of index components this block contributes: the mandatory header and body plus each
     /// optional component present. Always in the range 2-5, matching the file's `component-count`.
     pub const fn component_count(&self) -> u64 {
-        2 + self.receipts.is_some() as u64 +
-            self.total_difficulty.is_some() as u64 +
-            self.proof.is_some() as u64
+        2 + self.receipts.is_some() as u64
+            + self.total_difficulty.is_some() as u64
+            + self.proof.is_some() as u64
     }
 
     /// Convert to an `alloy_consensus::Block`

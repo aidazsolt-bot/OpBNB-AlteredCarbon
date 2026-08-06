@@ -132,7 +132,7 @@ pub trait LoadPendingBlock:
                         .receipts_by_block(block.hash().into())
                         .map_err(Self::Error::from_eth_err)?
                     {
-                        return Ok(Some((block, receipts)))
+                        return Ok(Some((block, receipts)));
                     }
                 }
             }
@@ -145,9 +145,9 @@ pub trait LoadPendingBlock:
             // check if the block is still good
             if let Some(pending_block) = lock.as_ref() {
                 // this is guaranteed to be the `latest` header
-                if pending.block_env.number.to::<u64>() == pending_block.block.number &&
-                    pending.origin.header().hash() == pending_block.block.parent_hash &&
-                    now <= pending_block.expires_at
+                if pending.block_env.number.to::<u64>() == pending_block.block.number
+                    && pending.origin.header().hash() == pending_block.block.parent_hash
+                    && now <= pending_block.expires_at
                 {
                     return Ok(Some((pending_block.block.clone(), pending_block.receipts.clone())));
                 }
@@ -164,7 +164,7 @@ pub trait LoadPendingBlock:
                 Ok(block) => block,
                 Err(err) => {
                     debug!(target: "rpc", "Failed to build pending block: {:?}", err);
-                    return Ok(None)
+                    return Ok(None);
                 }
             };
 
@@ -284,7 +284,7 @@ pub trait LoadPendingBlock:
                 // which also removes all dependent transaction from the iterator before we can
                 // continue
                 best_txs.mark_invalid(&pool_tx);
-                continue
+                continue;
             }
 
             if pool_tx.origin.is_private() {
@@ -292,7 +292,7 @@ pub trait LoadPendingBlock:
                 // them as invalid here which removes all dependent transactions from the iterator
                 // before we can continue
                 best_txs.mark_invalid(&pool_tx);
-                continue
+                continue;
             }
 
             // convert tx to a signed transaction
@@ -308,7 +308,7 @@ pub trait LoadPendingBlock:
                     // the iterator. This is similar to the gas limit condition
                     // for regular transactions above.
                     best_txs.mark_invalid(&pool_tx);
-                    continue
+                    continue;
                 }
             }
 
@@ -333,11 +333,11 @@ pub trait LoadPendingBlock:
                                 // descendants
                                 best_txs.mark_invalid(&pool_tx);
                             }
-                            continue
+                            continue;
                         }
                         err => {
                             // this is an error that we should treat as fatal for this attempt
-                            return Err(Self::Error::from_evm_err(err))
+                            return Err(Self::Error::from_evm_err(err));
                         }
                     }
                 }

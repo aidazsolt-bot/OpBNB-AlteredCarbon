@@ -83,7 +83,7 @@ impl<St> RlpxProtocolMultiplexer<St> {
     {
         let Ok(shared_cap) = self.shared_capabilities().ensure_matching_capability(cap).cloned()
         else {
-            return Err(P2PStreamError::CapabilityNotShared)
+            return Err(P2PStreamError::CapabilityNotShared);
         };
 
         let (to_primary, from_wire) = mpsc::unbounded_channel();
@@ -152,7 +152,7 @@ impl<St> RlpxProtocolMultiplexer<St> {
     {
         let Ok(shared_cap) = self.shared_capabilities().ensure_matching_capability(cap).cloned()
         else {
-            return Err(P2PStreamError::CapabilityNotShared.into())
+            return Err(P2PStreamError::CapabilityNotShared.into());
         };
 
         let (to_primary, from_wire) = mpsc::unbounded_channel();
@@ -269,7 +269,7 @@ impl<St> MultiplexInner<St> {
         for proto in &self.protocols {
             if proto.shared_cap == *cap {
                 proto.send_raw(msg);
-                return true
+                return true;
             }
         }
         false
@@ -325,7 +325,7 @@ impl ProtocolProxy {
     fn try_send(&self, msg: Bytes) -> Result<(), io::Error> {
         if msg.is_empty() {
             // message must not be empty
-            return Err(io::ErrorKind::InvalidInput.into())
+            return Err(io::ErrorKind::InvalidInput.into());
         }
         self.to_wire.send(self.mask_msg_id(msg)?).map_err(|_| io::ErrorKind::BrokenPipe.into())
     }
@@ -335,7 +335,7 @@ impl ProtocolProxy {
     fn mask_msg_id(&self, msg: Bytes) -> Result<Bytes, io::Error> {
         if msg.is_empty() {
             // message must not be empty
-            return Err(io::ErrorKind::InvalidInput.into())
+            return Err(io::ErrorKind::InvalidInput.into());
         }
 
         let offset = self.shared_cap.relative_message_id_offset();
@@ -353,7 +353,7 @@ impl ProtocolProxy {
     fn unmask_id(&self, mut msg: BytesMut) -> Result<BytesMut, io::Error> {
         if msg.is_empty() {
             // message must not be empty
-            return Err(io::ErrorKind::InvalidInput.into())
+            return Err(io::ErrorKind::InvalidInput.into());
         }
         msg[0] = msg[0]
             .checked_sub(self.shared_cap.relative_message_id_offset())
@@ -535,7 +535,7 @@ impl<St, Primary> RlpxSatelliteStream<St, Primary> {
 
         while pending < producers {
             if self.inner.out_buffer.is_full() {
-                return Ok(ProducerPoll::Full)
+                return Ok(ProducerPoll::Full);
             }
 
             if self.next_outbound >= producers {
@@ -551,7 +551,7 @@ impl<St, Primary> RlpxSatelliteStream<St, Primary> {
                     Poll::Ready(None) => return Ok(ProducerPoll::Closed),
                     Poll::Pending => {
                         pending += 1;
-                        continue
+                        continue;
                     }
                 }
             } else {
@@ -565,7 +565,7 @@ impl<St, Primary> RlpxSatelliteStream<St, Primary> {
                     Poll::Ready(None) => return Ok(ProducerPoll::Closed),
                     Poll::Pending => {
                         pending += 1;
-                        continue
+                        continue;
                     }
                 }
             };
@@ -592,7 +592,7 @@ where
         loop {
             // first drain the primary stream
             if let Poll::Ready(Some(msg)) = this.primary.st.try_poll_next_unpin(cx) {
-                return Poll::Ready(Some(msg))
+                return Poll::Ready(Some(msg));
             }
 
             let mut conn_ready = true;
@@ -601,23 +601,23 @@ where
                     Poll::Ready(Ok(())) => {
                         if let Some(msg) = this.inner.out_buffer.pop_front() {
                             if let Err(err) = this.inner.conn.start_send_unpin(msg) {
-                                return Poll::Ready(Some(Err(err.into())))
+                                return Poll::Ready(Some(Err(err.into())));
                             }
                         } else {
-                            break
+                            break;
                         }
                     }
                     Poll::Ready(Err(err)) => {
                         if let Err(disconnect_err) =
                             this.inner.conn.start_disconnect(DisconnectReason::DisconnectRequested)
                         {
-                            return Poll::Ready(Some(Err(disconnect_err.into())))
+                            return Poll::Ready(Some(Err(disconnect_err.into())));
                         }
-                        return Poll::Ready(Some(Err(err.into())))
+                        return Poll::Ready(Some(Err(err.into())));
                     }
                     Poll::Pending => {
                         conn_ready = false;
-                        break
+                        break;
                     }
                 }
             }
@@ -648,7 +648,7 @@ where
                         let Some(offset) = msg.first().copied() else {
                             return Poll::Ready(Some(Err(
                                 P2PStreamError::EmptyProtocolMessage.into()
-                            )))
+                            )));
                         };
                         // delegate the multiplexed message to the correct protocol
                         if let Some(cap) =
@@ -662,28 +662,27 @@ where
                                 for proto in &this.inner.protocols {
                                     if proto.shared_cap == *cap {
                                         proto.send_raw(msg);
-                                        break
+                                        break;
                                     }
                                 }
                             }
                         } else {
-                            return Poll::Ready(Some(Err(P2PStreamError::UnknownReservedMessageId(
-                                offset,
-                            )
-                            .into())))
+                            return Poll::Ready(Some(Err(
+                                P2PStreamError::UnknownReservedMessageId(offset).into(),
+                            )));
                         }
                     }
                     Poll::Ready(Some(Err(err))) => return Poll::Ready(Some(Err(err.into()))),
                     Poll::Ready(None) => {
                         // connection closed
-                        return Poll::Ready(None)
+                        return Poll::Ready(None);
                     }
                     Poll::Pending => break,
                 }
             }
 
             if !conn_ready || (!delegated && this.inner.out_buffer.is_empty()) {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -700,10 +699,10 @@ where
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
         if let Err(err) = ready!(this.inner.conn.poll_ready_unpin(cx)) {
-            return Poll::Ready(Err(err.into()))
+            return Poll::Ready(Err(err.into()));
         }
         if let Err(err) = ready!(this.primary.st.poll_ready_unpin(cx)) {
-            return Poll::Ready(Err(err))
+            return Poll::Ready(Err(err));
         }
         Poll::Ready(Ok(()))
     }
@@ -735,7 +734,7 @@ impl ProtocolStream {
     fn mask_msg_id(&self, mut msg: BytesMut) -> Result<Bytes, io::Error> {
         if msg.is_empty() {
             // message must not be empty
-            return Err(io::ErrorKind::InvalidInput.into())
+            return Err(io::ErrorKind::InvalidInput.into());
         }
         msg[0] = msg[0]
             .checked_add(self.shared_cap.relative_message_id_offset())
@@ -748,7 +747,7 @@ impl ProtocolStream {
     fn unmask_id(&self, mut msg: BytesMut) -> Result<BytesMut, io::Error> {
         if msg.is_empty() {
             // message must not be empty
-            return Err(io::ErrorKind::InvalidInput.into())
+            return Err(io::ErrorKind::InvalidInput.into());
         }
         msg[0] = msg[0]
             .checked_sub(self.shared_cap.relative_message_id_offset())
@@ -799,7 +798,7 @@ impl<'a> Future for ProtocolsPoller<'a> {
             match proto.poll_next_unpin(cx) {
                 Poll::Ready(Some(Err(err))) => {
                     self.protocols.push_back(proto);
-                    return Poll::Ready(Err(P2PStreamError::from(err)))
+                    return Poll::Ready(Err(P2PStreamError::from(err)));
                 }
                 Poll::Ready(Some(Ok(msg))) => {
                     // Got a message, put protocol back and return the message

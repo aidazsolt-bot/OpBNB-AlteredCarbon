@@ -121,7 +121,10 @@ impl Hardforks for BscChainSpec {
 }
 
 impl EthereumHardforks for BscChainSpec {
-    fn ethereum_fork_activation(&self, fork: reth_ethereum_forks::EthereumHardfork) -> reth_chainspec::ForkCondition {
+    fn ethereum_fork_activation(
+        &self,
+        fork: reth_ethereum_forks::EthereumHardfork,
+    ) -> reth_chainspec::ForkCondition {
         self.inner.ethereum_fork_activation(fork)
     }
 }

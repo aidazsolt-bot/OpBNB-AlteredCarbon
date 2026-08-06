@@ -58,8 +58,8 @@ where
                 match direction {
                     HeadersDirection::Falling => block = header.parent_hash.into(),
                     HeadersDirection::Rising => {
-                        if !headers.is_empty() &&
-                            headers.last().cloned().unwrap().hash() != header.parent_hash
+                        if !headers.is_empty()
+                            && headers.last().cloned().unwrap().hash() != header.parent_hash
                         {
                             return Err(InnerFetchError::HeaderNotFound);
                         }

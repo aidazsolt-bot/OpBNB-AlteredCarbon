@@ -63,11 +63,11 @@ where
         header: &Header,
         parent: &Header,
     ) -> Result<(), BlockExecutionError> {
-        if self.chain_spec().is_ramanujan_active_at_block(header.number) &&
-            header.timestamp <
-                parent.timestamp +
-                    self.parlia().period() +
-                    self.parlia().back_off_time(snapshot, header)
+        if self.chain_spec().is_ramanujan_active_at_block(header.number)
+            && header.timestamp
+                < parent.timestamp
+                    + self.parlia().period()
+                    + self.parlia().back_off_time(snapshot, header)
         {
             return Err(BscBlockExecutionError::FutureBlock {
                 block_number: header.number,
@@ -207,7 +207,9 @@ where
         }
 
         if !snap.validators.contains(&proposer) {
-            return Err(BscBlockExecutionError::SignerUnauthorized { block_number, proposer }.into());
+            return Err(
+                BscBlockExecutionError::SignerUnauthorized { block_number, proposer }.into()
+            );
         }
 
         if snap.sign_recently(proposer) {
@@ -215,12 +217,13 @@ where
         }
 
         let is_inturn = snap.is_inturn(proposer);
-        if (is_inturn && header.difficulty != DIFF_INTURN) ||
-            (!is_inturn && header.difficulty != DIFF_NOTURN)
+        if (is_inturn && header.difficulty != DIFF_INTURN)
+            || (!is_inturn && header.difficulty != DIFF_NOTURN)
         {
-            return Err(
-                BscBlockExecutionError::InvalidDifficulty { difficulty: header.difficulty }.into()
-            );
+            return Err(BscBlockExecutionError::InvalidDifficulty {
+                difficulty: header.difficulty,
+            }
+            .into());
         }
 
         Ok(())

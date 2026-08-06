@@ -319,7 +319,7 @@ pub trait Trace: LoadState<Evm: ConfigureEvm<Header = Header>> {
         async move {
             let block = async {
                 if block.is_some() {
-                    return Ok(block)
+                    return Ok(block);
                 }
                 self.block_with_senders(block_id).await
             };
@@ -331,7 +331,7 @@ pub trait Trace: LoadState<Evm: ConfigureEvm<Header = Header>> {
 
             if block.body.transactions.is_empty() {
                 // nothing to trace
-                return Ok(Some(Vec::new()))
+                return Ok(Some(Vec::new()));
             }
 
             // replay all transactions of the block

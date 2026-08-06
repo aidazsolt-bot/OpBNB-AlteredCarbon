@@ -686,8 +686,8 @@ impl Discv4Service {
     /// [`NatResolver::ExternalAddr`]. In the case of [`NatResolver::ExternalAddr`], it will return
     /// the first IP address found for the domain associated with the discv4 UDP port.
     fn resolve_external_ip(&mut self) {
-        if let Some(r) = &self.resolve_external_ip_interval &&
-            let Some(external_ip) =
+        if let Some(r) = &self.resolve_external_ip_interval
+            && let Some(external_ip) =
                 r.resolver().clone().as_external_ip(self.local_node_record.udp_port)
         {
             self.set_external_ip_addr(external_ip);
@@ -838,8 +838,8 @@ impl Discv4Service {
             self.kbuckets
                 .closest_values(&target_key)
                 .filter(|node| {
-                    node.value.has_endpoint_proof &&
-                        !self.pending_find_nodes.contains_key(&node.key.preimage().0)
+                    node.value.has_endpoint_proof
+                        && !self.pending_find_nodes.contains_key(&node.key.preimage().0)
                 })
                 .take(MAX_NODES_PER_BUCKET)
                 .map(|n| (target_key.distance(&n.key), n.value.record)),
@@ -855,7 +855,7 @@ impl Discv4Service {
             // (e.g. connectivity problems over a long period of time, or issues during initial
             // bootstrapping) so we attempt to bootstrap again
             self.bootstrap();
-            return
+            return;
         }
 
         trace!(target: "discv4", ?target, num = closest.len(), "Start lookup closest nodes");
@@ -952,7 +952,7 @@ impl Discv4Service {
         let Some(bucket) = self.kbuckets.get_bucket(&key) else { return false };
         if bucket.num_entries() < MAX_NODES_PER_BUCKET / 2 {
             // skip half empty bucket
-            return false
+            return false;
         }
         self.remove_key(node_id, key)
     }
@@ -973,10 +973,10 @@ impl Discv4Service {
 
     /// Check if the peer has an active bond.
     fn has_bond(&self, remote_id: PeerId, remote_ip: IpAddr) -> bool {
-        if let Some(timestamp) = self.received_pongs.last_pong(remote_id, remote_ip) &&
-            timestamp.elapsed() < self.config.bond_expiration
+        if let Some(timestamp) = self.received_pongs.last_pong(remote_id, remote_ip)
+            && timestamp.elapsed() < self.config.bond_expiration
         {
-            return true
+            return true;
         }
         false
     }
@@ -1002,7 +1002,7 @@ impl Discv4Service {
     /// a followup request to retrieve the updated ENR
     fn update_on_reping(&mut self, record: NodeRecord, mut last_enr_seq: Option<u64>) {
         if record.id == self.local_node_record.id {
-            return
+            return;
         }
 
         // If EIP868 extension is disabled then we want to ignore this
@@ -1037,7 +1037,7 @@ impl Discv4Service {
     /// Callback invoked when we receive a pong from the peer.
     fn update_on_pong(&mut self, record: NodeRecord, mut last_enr_seq: Option<u64>) {
         if record.id == *self.local_peer_id() {
-            return
+            return;
         }
 
         // If EIP868 extension is disabled then we want to ignore this
@@ -1159,7 +1159,7 @@ impl Discv4Service {
     fn on_ping(&mut self, ping: Ping, remote_addr: SocketAddr, remote_id: PeerId, hash: B256) {
         if self.is_expired(ping.expire) {
             // ping's expiration timestamp is in the past
-            return
+            return;
         }
 
         // create the record
@@ -1289,17 +1289,17 @@ impl Discv4Service {
     fn try_ping(&mut self, node: NodeRecord, reason: PingReason) {
         if node.id == *self.local_peer_id() {
             // don't ping ourselves
-            return
+            return;
         }
 
-        if self.pending_pings.contains_key(&node.id) ||
-            self.pending_find_nodes.contains_key(&node.id)
+        if self.pending_pings.contains_key(&node.id)
+            || self.pending_find_nodes.contains_key(&node.id)
         {
-            return
+            return;
         }
 
         if self.queued_pings.iter().any(|(n, _)| n.id == node.id) {
-            return
+            return;
         }
 
         if self.pending_pings.len() < MAX_NODES_PING {
@@ -1334,7 +1334,7 @@ impl Discv4Service {
     /// Returns the echo hash of the ping message.
     pub(crate) fn send_enr_request(&mut self, node: NodeRecord) {
         if !self.config.enable_eip868 {
-            return
+            return;
         }
         let remote_addr = node.udp_addr();
         let enr_request = EnrRequest { expire: self.enr_request_expiration() };
@@ -1349,7 +1349,7 @@ impl Discv4Service {
     /// Message handler for an incoming `Pong`.
     fn on_pong(&mut self, pong: Pong, remote_addr: SocketAddr, remote_id: PeerId) {
         if self.is_expired(pong.expire) {
-            return
+            return;
         }
 
         let PingRequest { node, reason, .. } = match self.pending_pings.entry(remote_id) {
@@ -1358,7 +1358,7 @@ impl Discv4Service {
                     let request = entry.get();
                     if request.echo_hash != pong.echo {
                         trace!(target: "discv4", from=?remote_addr, expected=?request.echo_hash, echo_hash=?pong.echo,"Got unexpected Pong");
-                        return
+                        return;
                     }
                 }
                 entry.remove()
@@ -1401,11 +1401,11 @@ impl Discv4Service {
     fn on_find_node(&mut self, msg: FindNode, remote_addr: SocketAddr, node_id: PeerId) {
         if self.is_expired(msg.expire) {
             // expiration timestamp is in the past
-            return
+            return;
         }
         if node_id == *self.local_peer_id() {
             // ignore find node requests to ourselves
-            return
+            return;
         }
 
         if self.has_bond(node_id, remote_addr.ip()) {
@@ -1420,7 +1420,7 @@ impl Discv4Service {
             // ensure the ENR's public key matches the expected node id
             let enr_id = pk2id(&msg.enr.public_key());
             if id != enr_id {
-                return
+                return;
             }
 
             if resp.echo_hash == msg.request_hash {
@@ -1457,7 +1457,7 @@ impl Discv4Service {
         request_hash: B256,
     ) {
         if !self.config.enable_eip868 || self.is_expired(msg.expire) {
-            return
+            return;
         }
 
         if self.has_bond(id, remote_addr.ip()) {
@@ -1476,7 +1476,7 @@ impl Discv4Service {
     fn on_neighbours(&mut self, msg: Neighbours, remote_addr: SocketAddr, node_id: PeerId) {
         if self.is_expired(msg.expire) {
             // response is expired
-            return
+            return;
         }
         // check if this request was expected
         let ctx = match self.pending_find_nodes.entry(node_id) {
@@ -1492,7 +1492,7 @@ impl Discv4Service {
                         request.response_count = total;
                     } else {
                         trace!(target: "discv4", total, from=?remote_addr, "Received neighbors packet entries exceeds max nodes per bucket");
-                        return
+                        return;
                     }
                 };
 
@@ -1508,7 +1508,7 @@ impl Discv4Service {
             Entry::Vacant(_) => {
                 // received neighbours response without requesting it
                 trace!(target: "discv4", from=?remote_addr, "Received unsolicited Neighbours");
-                return
+                return;
             }
         };
 
@@ -1528,7 +1528,7 @@ impl Discv4Service {
             // prevent banned peers from being added to the context
             if self.config.ban_list.is_banned(&node.id, &node.address) {
                 trace!(target: "discv4", peer_id=?node.id, ip=?node.address, "ignoring banned record");
-                continue
+                continue;
             }
 
             ctx.add_node(node);
@@ -1638,7 +1638,7 @@ impl Discv4Service {
         self.pending_pings.retain(|node_id, ping_request| {
             if now.duration_since(ping_request.sent_at) > self.config.ping_expiration {
                 failed_pings.push(*node_id);
-                return false
+                return false;
             }
             true
         });
@@ -1655,7 +1655,7 @@ impl Discv4Service {
         self.pending_lookup.retain(|node_id, (lookup_sent_at, _)| {
             if now.duration_since(*lookup_sent_at) > self.config.request_timeout {
                 failed_lookups.push(*node_id);
-                return false
+                return false;
             }
             true
         });
@@ -1681,13 +1681,13 @@ impl Discv4Service {
                     // treat this as an hard error since it responded.
                     failed_find_nodes.push(*node_id);
                 }
-                return false
+                return false;
             }
             true
         });
 
         if failed_find_nodes.is_empty() {
-            return
+            return;
         }
 
         trace!(target: "discv4", num=%failed_find_nodes.len(), "processing failed find nodes");
@@ -1754,7 +1754,7 @@ impl Discv4Service {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         if self.config.enforce_expiration_timestamps && timestamp < now {
             trace!(target: "discv4", "Expired packet");
-            return Err(())
+            return Err(());
         }
         Ok(())
     }
@@ -1798,7 +1798,7 @@ impl Discv4Service {
         loop {
             // drain buffered events first
             if let Some(event) = self.queued_events.pop_front() {
-                return Poll::Ready(event)
+                return Poll::Ready(event);
             }
 
             // trigger self lookup
@@ -1926,7 +1926,7 @@ impl Discv4Service {
                         // this will make sure we're woken up again
                         cx.waker().wake_by_ref();
                     }
-                    break
+                    break;
                 }
             }
 
@@ -1944,7 +1944,7 @@ impl Discv4Service {
             }
 
             if self.queued_events.is_empty() {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -2083,19 +2083,19 @@ impl IngressHandler {
         // rate limit incoming packets by IP
         if self.cache.inc_ip(src.ip()) > MAX_INCOMING_PACKETS_PER_MINUTE_BY_IP {
             trace!(target: "discv4", ?src, "Too many incoming packets from IP.");
-            return
+            return;
         }
 
         let event = match Message::decode(data) {
             Ok(packet) => {
                 if packet.node_id == self.local_id {
                     debug!(target: "discv4", ?src, "Received own packet.");
-                    return
+                    return;
                 }
 
                 if self.cache.contains_packet(packet.hash) {
                     debug!(target: "discv4", ?src, "Received duplicate packet.");
-                    return
+                    return;
                 }
 
                 IngressEvent::Packet(src, packet)
@@ -2236,7 +2236,7 @@ impl LookupTargetRotator {
         self.counter += 1;
         self.counter %= self.interval;
         if self.counter == 0 {
-            return *local
+            return *local;
         }
         PeerId::random()
     }
@@ -2426,9 +2426,9 @@ impl CachedFindNode {
         secret_key: &secp256k1::SecretKey,
         expire: u64,
     ) -> (Bytes, B256) {
-        if let Some(c) = cache.as_ref() &&
-            c.target == target &&
-            c.cached_at.elapsed() < ttl
+        if let Some(c) = cache.as_ref()
+            && c.target == target
+            && c.cached_at.elapsed() < ttl
         {
             return (c.payload.clone(), c.hash);
         }
@@ -2645,7 +2645,7 @@ mod tests {
                 assert!(service.pending_pings.contains_key(&node.id));
                 assert_eq!(service.pending_pings.len(), num_inserted);
                 if num_inserted == MAX_NODES_PING {
-                    break
+                    break;
                 }
             }
         }
@@ -2825,8 +2825,8 @@ mod tests {
         })
         .await;
 
-        let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() +
-            10000000000000;
+        let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+            + 10000000000000;
         let msg = Neighbours { nodes: vec![service2.local_node_record], expire: expiry };
         service.on_neighbours(msg, record.tcp_addr(), id);
         // wait for the processed ping

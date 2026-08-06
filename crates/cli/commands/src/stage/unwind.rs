@@ -102,8 +102,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
             let last_saved_finalized_block_number = provider.last_finalized_block_number()?;
             let range_min =
                 range.clone().min().ok_or(eyre::eyre!("Could not fetch lower range end"))?;
-            if last_saved_finalized_block_number.is_none() ||
-                Some(range_min) < last_saved_finalized_block_number
+            if last_saved_finalized_block_number.is_none()
+                || Some(range_min) < last_saved_finalized_block_number
             {
                 provider.save_finalized_block_number(BlockNumber::from(range_min))?;
             }

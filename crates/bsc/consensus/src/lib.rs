@@ -172,7 +172,7 @@ impl Parlia {
             return Err(ParliaConsensusError::InvalidHeaderExtraValidatorBytesLen {
                 is_epoch: true,
                 validator_bytes_len: 0,
-            })
+            });
         }
 
         if self.chain_spec.is_luban_active_at_block(header.number) {
@@ -186,8 +186,8 @@ impl Parlia {
         &self,
         header: &Header,
     ) -> Result<Option<u8>, ParliaConsensusError> {
-        if header.number % self.epoch != 0 ||
-            !self.chain_spec.is_bohr_active_at_timestamp(header.timestamp)
+        if header.number % self.epoch != 0
+            || !self.chain_spec.is_bohr_active_at_timestamp(header.timestamp)
         {
             return Ok(None);
         }
@@ -236,7 +236,7 @@ impl Parlia {
             }
             let end = extra_len - EXTRA_SEAL_LEN;
             if end <= start {
-                return Ok(None)
+                return Ok(None);
             }
             &header.extra_data[start..end]
         };
@@ -274,14 +274,14 @@ impl Parlia {
                 extra_min_len += TURN_LEN;
             }
             if count == 0 || extra_len < extra_min_len {
-                return None
+                return None;
             }
             Some(header.extra_data[start..end].to_vec())
         } else {
-            if is_epoch &&
-                (extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN) %
-                    EXTRA_VALIDATOR_LEN_BEFORE_LUBAN !=
-                    0
+            if is_epoch
+                && (extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN)
+                    % EXTRA_VALIDATOR_LEN_BEFORE_LUBAN
+                    != 0
             {
                 return None;
             }
@@ -317,9 +317,9 @@ impl Parlia {
 
             // Exclude the recently signed validators and inturn validator
             validators.retain(|addr| {
-                !(snap.sign_recently_by_counts(*addr, &counts) ||
-                    self.chain_spec.is_bohr_active_at_timestamp(header.timestamp) &&
-                        *addr == inturn_addr)
+                !(snap.sign_recently_by_counts(*addr, &counts)
+                    || self.chain_spec.is_bohr_active_at_timestamp(header.timestamp)
+                        && *addr == inturn_addr)
             });
         }
 
@@ -336,7 +336,7 @@ impl Parlia {
         // get the index of the current validator and its shuffled backoff time.
         for (idx, val) in validators.iter().enumerate() {
             if *val == validator {
-                return delay + back_off_steps[idx] * BACKOFF_TIME_OF_WIGGLE
+                return delay + back_off_steps[idx] * BACKOFF_TIME_OF_WIGGLE;
             }
         }
 
@@ -409,8 +409,8 @@ impl Parlia {
             }
         } else {
             let validator_bytes_len = extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN;
-            if validator_bytes_len / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN == 0 ||
-                validator_bytes_len % EXTRA_VALIDATOR_LEN_BEFORE_LUBAN != 0
+            if validator_bytes_len / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN == 0
+                || validator_bytes_len % EXTRA_VALIDATOR_LEN_BEFORE_LUBAN != 0
             {
                 return Err(ParliaConsensusError::InvalidHeaderExtraLen {
                     header_extra_len: extra_len as u64,
@@ -514,19 +514,19 @@ impl Parlia {
         if self.chain_spec.is_cancun_active_at_timestamp(header.timestamp) {
             validate_4844_header_of_bsc(header)?;
         } else if header.blob_gas_used.is_some() {
-            return Err(ConsensusError::BlobGasUsedUnexpected)
+            return Err(ConsensusError::BlobGasUsedUnexpected);
         } else if header.excess_blob_gas.is_some() {
-            return Err(ConsensusError::ExcessBlobGasUnexpected)
+            return Err(ConsensusError::ExcessBlobGasUnexpected);
         }
 
         if self.chain_spec.is_bohr_active_at_timestamp(header.timestamp) {
-            if header.parent_beacon_block_root.is_none() ||
-                header.parent_beacon_block_root.unwrap() != B256::default()
+            if header.parent_beacon_block_root.is_none()
+                || header.parent_beacon_block_root.unwrap() != B256::default()
             {
-                return Err(ConsensusError::ParentBeaconBlockRootUnexpected)
+                return Err(ConsensusError::ParentBeaconBlockRootUnexpected);
             }
         } else if header.parent_beacon_block_root.is_some() {
-            return Err(ConsensusError::ParentBeaconBlockRootUnexpected)
+            return Err(ConsensusError::ParentBeaconBlockRootUnexpected);
         }
 
         Ok(())

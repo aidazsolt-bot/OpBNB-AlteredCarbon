@@ -178,8 +178,8 @@ impl Command {
                 // discv4 (it binds only the `--addr` family): advertise it via discv5 only, and
                 // use `None` rather than `Any` so discv4 doesn't silently auto-resolve an address
                 // the operator never provided.
-                if let [ip] = single.advertised_ips[..] &&
-                    ip.is_ipv4() != self.addr.is_ipv4()
+                if let [ip] = single.advertised_ips[..]
+                    && ip.is_ipv4() != self.addr.is_ipv4()
                 {
                     single.resolver = NatResolver::None;
                 }

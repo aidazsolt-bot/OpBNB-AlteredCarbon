@@ -85,9 +85,9 @@ impl<T: TxEip4844Sidecar> InMemorySize for TxEip4844WithSidecar<T> {
 impl InMemorySize for alloy_consensus::Receipt {
     fn size(&self) -> usize {
         let Self { status, cumulative_gas_used, logs } = self;
-        core::mem::size_of_val(status) +
-            core::mem::size_of_val(cumulative_gas_used) +
-            logs.iter().map(|log| log.size()).sum::<usize>()
+        core::mem::size_of_val(status)
+            + core::mem::size_of_val(cumulative_gas_used)
+            + logs.iter().map(|log| log.size()).sum::<usize>()
     }
 }
 
@@ -119,9 +119,10 @@ impl<T: InMemorySize, H: InMemorySize> InMemorySize for alloy_consensus::BlockBo
     /// Calculates a heuristic for the in-memory size of the block body
     #[inline]
     fn size(&self) -> usize {
-        self.transactions.iter().map(T::size).sum::<usize>() +
-            self.ommers.iter().map(H::size).sum::<usize>() +
-            self.withdrawals
+        self.transactions.iter().map(T::size).sum::<usize>()
+            + self.ommers.iter().map(H::size).sum::<usize>()
+            + self
+                .withdrawals
                 .as_ref()
                 .map_or(core::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size)
     }

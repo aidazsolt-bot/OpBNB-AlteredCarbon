@@ -101,7 +101,7 @@ pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {
             if let Some(tx) =
                 self.pool().get_pooled_transaction_element(hash).map(|tx| tx.encoded_2718().into())
             {
-                return Ok(Some(tx))
+                return Ok(Some(tx));
             }
 
             self.spawn_blocking_io(move |ref this| {
@@ -209,7 +209,7 @@ pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {
                         tx.clone().with_signer(*signer),
                         tx_info,
                         self.tx_resp_builder(),
-                    )))
+                    )));
                 }
             }
 
@@ -311,7 +311,7 @@ pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {
         async move {
             if let Some(block) = self.block_with_senders(block_id).await? {
                 if let Some(tx) = block.transactions().nth(index) {
-                    return Ok(Some(tx.encoded_2718().into()))
+                    return Ok(Some(tx.encoded_2718().into()));
                 }
             }
 
@@ -358,7 +358,7 @@ pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {
             };
 
             if self.find_signer(&from).is_err() {
-                return Err(SignError::NoAccount.into_eth_err())
+                return Err(SignError::NoAccount.into_eth_err());
             }
 
             // set nonce if not already set before
@@ -407,7 +407,7 @@ pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {
                     return match signer.sign_transaction(txn, from).await {
                         Ok(tx) => Ok(tx),
                         Err(e) => Err(e.into_eth_err()),
-                    }
+                    };
                 }
             }
             Err(EthApiError::InvalidTransactionSignature.into())

@@ -13,8 +13,9 @@ use revm::context::TxEnv;
 pub use alloy_consensus::crypto::RecoveryError;
 
 /// A signed transaction.
-pub trait SignedTransaction: 'static +
-    fmt::Debug
+pub trait SignedTransaction:
+    'static
+    + fmt::Debug
     + Clone
     + PartialEq
     + Eq
@@ -131,7 +132,10 @@ where
             .ok()
     }
 
-    fn from_transaction_and_signature(transaction: Self::Transaction, signature: Signature) -> Self {
+    fn from_transaction_and_signature(
+        transaction: Self::Transaction,
+        signature: Signature,
+    ) -> Self {
         let _ = signature;
         transaction
     }

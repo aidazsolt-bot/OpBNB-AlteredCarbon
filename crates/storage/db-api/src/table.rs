@@ -138,6 +138,13 @@ pub trait TableInfo: Send + Sync + Debug + 'static {
     fn is_dupsort(&self) -> bool;
 }
 
+/// General trait for defining the set of tables
+/// Used to initialize database
+pub trait TableSet {
+    /// Returns an iterator over the tables
+    fn tables() -> Box<dyn Iterator<Item = Box<dyn TableInfo>>>;
+}
+
 /// Tuple with `T::Key` and `T::Value`.
 pub type TableRow<T> = (<T as Table>::Key, <T as Table>::Value);
 

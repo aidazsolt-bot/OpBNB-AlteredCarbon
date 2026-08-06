@@ -49,8 +49,8 @@ pub fn encode_header_with_chain_id(header: &Header, out: &mut dyn BufMut, chain_
     Encodable::encode(&header.mix_hash, out);
     Encodable::encode(&header.nonce, out);
 
-    if header.parent_beacon_block_root.is_some() &&
-        header.parent_beacon_block_root.unwrap() == B256::default()
+    if header.parent_beacon_block_root.is_some()
+        && header.parent_beacon_block_root.unwrap() == B256::default()
     {
         Encodable::encode(&U256::from(header.base_fee_per_gas.unwrap()), out);
         Encodable::encode(&header.withdrawals_root.unwrap(), out);
@@ -82,8 +82,8 @@ fn rlp_header(header: &Header, chain_id: u64) -> alloy_rlp::Header {
     rlp_head.payload_length += header.mix_hash.length(); // mix_hash
     rlp_head.payload_length += header.nonce.length(); // nonce
 
-    if header.parent_beacon_block_root.is_some() &&
-        header.parent_beacon_block_root.unwrap() == B256::default()
+    if header.parent_beacon_block_root.is_some()
+        && header.parent_beacon_block_root.unwrap() == B256::default()
     {
         rlp_head.payload_length += U256::from(header.base_fee_per_gas.unwrap()).length();
         rlp_head.payload_length += header.withdrawals_root.unwrap().length();

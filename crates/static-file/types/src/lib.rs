@@ -15,6 +15,9 @@ use alloy_primitives::BlockNumber;
 pub use compression::Compression;
 pub use segment::{SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
 
+/// Map keyed by [`StaticFileSegment`].
+pub type StaticFileMap<T> = std::collections::HashMap<StaticFileSegment, T>;
+
 /// Default static file block count.
 pub const DEFAULT_BLOCKS_PER_STATIC_FILE: u64 = 500_000;
 

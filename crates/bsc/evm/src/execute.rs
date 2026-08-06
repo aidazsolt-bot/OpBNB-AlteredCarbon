@@ -210,8 +210,8 @@ where
                 continue;
             }
             // systemTxs should be always at the end of block.
-            if self.chain_spec.is_cancun_active_at_timestamp(block.timestamp) &&
-                !system_txs.is_empty()
+            if self.chain_spec.is_cancun_active_at_timestamp(block.timestamp)
+                && !system_txs.is_empty()
             {
                 return Err(BscBlockExecutionError::UnexpectedNormalTx.into());
             }
@@ -603,10 +603,10 @@ where
         if system_txs.is_empty() || hash != system_txs[0].signature_hash() {
             // slash tx could fail and not in the block
             if let Some(to) = transaction.to() {
-                if to == SLASH_CONTRACT.parse::<Address>().unwrap() &&
-                    (system_txs.is_empty() ||
-                        system_txs[0].to().unwrap_or_default() !=
-                            SLASH_CONTRACT.parse::<Address>().unwrap())
+                if to == SLASH_CONTRACT.parse::<Address>().unwrap()
+                    && (system_txs.is_empty()
+                        || system_txs[0].to().unwrap_or_default()
+                            != SLASH_CONTRACT.parse::<Address>().unwrap())
                 {
                     warn!("slash validator failed");
                     return Ok(());
@@ -708,9 +708,9 @@ where
         };
 
         // 2. get election info
-        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp) &&
-            is_breathe_block(parent.timestamp, header.timestamp) &&
-            !self.chain_spec().is_on_feynman_at_timestamp(header.timestamp, parent.timestamp)
+        if self.chain_spec().is_feynman_active_at_timestamp(header.timestamp)
+            && is_breathe_block(parent.timestamp, header.timestamp)
+            && !self.chain_spec().is_on_feynman_at_timestamp(header.timestamp, parent.timestamp)
         {
             let (to, data) = self.parlia().get_max_elected_validators();
             let bz = self.eth_call(to, data, env.clone())?;
@@ -724,9 +724,9 @@ where
                 self.parlia().unpack_data_into_validator_election_info(bz.as_ref());
 
             let total_length = total_length.to::<u64>() as usize;
-            if validators.len() != total_length ||
-                voting_powers.len() != total_length ||
-                vote_addrs.len() != total_length
+            if validators.len() != total_length
+                || voting_powers.len() != total_length
+                || vote_addrs.len() != total_length
             {
                 return Err(BscBlockExecutionError::GetTopValidatorsFailed.into());
             }
@@ -1006,9 +1006,10 @@ where
                 block_hash = header.parent_hash;
                 header = h;
             } else {
-                return Err(
-                    BscBlockExecutionError::UnknownHeader { block_hash: header.parent_hash }.into()
-                )
+                return Err(BscBlockExecutionError::UnknownHeader {
+                    block_hash: header.parent_hash,
+                }
+                .into());
             }
         }
 
@@ -1023,8 +1024,8 @@ where
         // apply skip headers
         skip_headers.reverse();
         for header in &skip_headers {
-            let (ValidatorsInfo { consensus_addrs, vote_addrs }, turn_length) = if header.number > 0 &&
-                header.number % self.parlia.epoch() == snap.miner_history_check_len()
+            let (ValidatorsInfo { consensus_addrs, vote_addrs }, turn_length) = if header.number > 0
+                && header.number % self.parlia.epoch() == snap.miner_history_check_len()
             {
                 // change validator set
                 let checkpoint_header =

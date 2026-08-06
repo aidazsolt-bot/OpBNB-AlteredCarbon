@@ -74,7 +74,7 @@ pub trait EthCall: Call + LoadPendingBlock {
     {
         async move {
             if payload.block_state_calls.len() > self.max_simulate_blocks() as usize {
-                return Err(EthApiError::InvalidParams("too many blocks.".to_string()).into())
+                return Err(EthApiError::InvalidParams("too many blocks.".to_string()).into());
             }
 
             let SimulatePayload {
@@ -85,7 +85,7 @@ pub trait EthCall: Call + LoadPendingBlock {
             } = payload;
 
             if block_state_calls.is_empty() {
-                return Err(EthApiError::InvalidParams(String::from("calls are empty.")).into())
+                return Err(EthApiError::InvalidParams(String::from("calls are empty.")).into());
             }
 
             // Build cfg and block env, we'll reuse those.
@@ -152,9 +152,10 @@ pub trait EthCall: Call + LoadPendingBlock {
                     }
 
                     if (total_gas_limit - gas_used) < block_env.gas_limit.to() {
-                        return Err(
-                            EthApiError::Other(Box::new(EthSimulateError::GasLimitReached)).into()
-                        )
+                        return Err(EthApiError::Other(Box::new(
+                            EthSimulateError::GasLimitReached,
+                        ))
+                        .into());
                     }
 
                     // Resolve transactions, populate missing fields and enforce calls correctness.
@@ -247,7 +248,7 @@ pub trait EthCall: Call + LoadPendingBlock {
             if transactions.is_empty() {
                 return Err(
                     EthApiError::InvalidParams(String::from("transactions are empty.")).into()
-                )
+                );
             }
 
             let StateContext { transaction_index, block_number } =
@@ -424,11 +425,11 @@ pub trait EthCall: Call + LoadPendingBlock {
             ExecutionResult::Halt { reason, gas_used } => {
                 let error =
                     Some(RpcInvalidTransactionError::halt(reason, env.tx.gas_limit).to_string());
-                return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error })
+                return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error });
             }
             ExecutionResult::Revert { output, gas_used } => {
                 let error = Some(RevertError::new(output).to_string());
-                return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error })
+                return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error });
             }
             ExecutionResult::Success { .. } => {}
         };
@@ -687,7 +688,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
         for (sender, tx) in transactions {
             if tx.hash() == target_tx_hash {
                 // reached the target transaction
-                break
+                break;
             }
 
             self.evm_config().fill_tx_env(evm.tx_mut(), tx, *sender);
@@ -788,7 +789,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
                         env.tx.gas_limit = MIN_TRANSACTION_GAS;
                         if let Ok((res, _)) = self.transact(&mut db, env) {
                             if res.result.is_success() {
-                                return Ok(U256::from(MIN_TRANSACTION_GAS))
+                                return Ok(U256::from(MIN_TRANSACTION_GAS));
                             }
                         }
                     }
@@ -822,8 +823,8 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
             // with the block's gas limit to determine if the failure was due to
             // insufficient gas.
             Err(err)
-                if err.is_gas_too_high() &&
-                    (tx_request_gas_limit.is_some() || tx_request_gas_price.is_some()) =>
+                if err.is_gas_too_high()
+                    && (tx_request_gas_limit.is_some() || tx_request_gas_price.is_some()) =>
             {
                 return Err(self.map_out_of_gas_err(block_env_gas_limit, env, &mut db))
             }
@@ -836,7 +837,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
             ExecutionResult::Halt { reason, gas_used } => {
                 // here we don't check for invalid opcode because already executed with highest gas
                 // limit
-                return Err(RpcInvalidTransactionError::halt(reason, gas_used).into_eth_err())
+                return Err(RpcInvalidTransactionError::halt(reason, gas_used).into_eth_err());
             }
             ExecutionResult::Revert { output, .. } => {
                 // if price or limit was included in the request then we can execute the request
@@ -846,7 +847,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
                 } else {
                     // the transaction did revert
                     Err(RpcInvalidTransactionError::Revert(RevertError::new(output)).into_eth_err())
-                }
+                };
             }
         };
 
@@ -901,10 +902,10 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
             // An estimation error is allowed once the current gas limit range used in the binary
             // search is small enough (less than 1.5% of the highest gas limit)
             // <https://github.com/ethereum/go-ethereum/blob/a5a4fa7032bb248f5a7c40f4e8df2b131c4186a4/eth/gasestimator/gasestimator.go#L152
-            if (highest_gas_limit - lowest_gas_limit) as f64 / (highest_gas_limit as f64) <
-                ESTIMATE_GAS_ERROR_RATIO
+            if (highest_gas_limit - lowest_gas_limit) as f64 / (highest_gas_limit as f64)
+                < ESTIMATE_GAS_ERROR_RATIO
             {
-                break
+                break;
             };
 
             env.tx.gas_limit = mid_gas_limit;
@@ -986,7 +987,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
     ) -> Result<TxEnv, Self::Error> {
         // Ensure that if versioned hashes are set, they're not empty
         if request.blob_versioned_hashes.as_ref().map_or(false, |hashes| hashes.is_empty()) {
-            return Err(RpcInvalidTransactionError::BlobTransactionMissingBlobHashes.into_eth_err())
+            return Err(RpcInvalidTransactionError::BlobTransactionMissingBlobHashes.into_eth_err());
         }
 
         let TransactionRequest {
@@ -1097,7 +1098,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
             // configured gas exceeds limit
             return Err(
                 EthApiError::InvalidTransaction(RpcInvalidTransactionError::GasTooHigh).into()
-            )
+            );
         }
 
         // apply configured gas cap
@@ -1179,7 +1180,7 @@ fn update_estimated_gas_range(
                     // These cases should be unreachable because we know the transaction
                     // succeeds, but if they occur, treat them as an
                     // error.
-                    return Err(RpcInvalidTransactionError::EvmHalt(err).into_eth_err())
+                    return Err(RpcInvalidTransactionError::EvmHalt(err).into_eth_err());
                 }
             }
         }

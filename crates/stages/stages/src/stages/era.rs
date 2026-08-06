@@ -71,8 +71,8 @@ where
             Self::Path(path) => {
                 // Consensus `.era` files are slot-indexed and ship no `checksums.txt`, so they use
                 // a different directory reader than the block-indexed `.era1`/`.ere` files.
-                if EraFileType::from_dir(&path).map_err(|e| StageError::Fatal(e.into()))? ==
-                    Some(EraFileType::Era)
+                if EraFileType::from_dir(&path).map_err(|e| StageError::Fatal(e.into()))?
+                    == Some(EraFileType::Era)
                 {
                     Self::convert(read_era_dir(path).map_err(|e| StageError::Fatal(e.into()))?)
                 } else {
@@ -117,29 +117,28 @@ impl EraImportSource {
                 // The reader is selected per file from its extension: consensus `.era` (beacon
                 // blocks with an embedded execution payload), `.ere`/`.erae`, or `.era1`.
                 let file = reth_fs_util::open(meta.path())?;
-                let iter = match meta
-                    .path()
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .and_then(EraFileType::from_filename)
-                {
-                    Some(EraFileType::Era) => {
-                        // `.era` blocks decode to an `Option` (pre-merge slots carry no payload and
-                        // are skipped); `buf` is scratch space reused for the RLP re-encode.
-                        let mut buf = Vec::new();
-                        Box::new(
-                            EraReader::new(file).iter().filter_map(move |block| {
+                let iter =
+                    match meta
+                        .path()
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .and_then(EraFileType::from_filename)
+                    {
+                        Some(EraFileType::Era) => {
+                            // `.era` blocks decode to an `Option` (pre-merge slots carry no payload and
+                            // are skipped); `buf` is scratch space reused for the RLP re-encode.
+                            let mut buf = Vec::new();
+                            Box::new(EraReader::new(file).iter().filter_map(move |block| {
                                 era::Era::decode(block, &mut buf).transpose()
-                            }),
-                        ) as Item<Header, Body>
-                    }
-                    Some(EraFileType::Ere) => {
-                        Box::new(EreReader::new(file).iter().map(era::Ere::decode))
-                            as Item<Header, Body>
-                    }
-                    _ => Box::new(Era1Reader::new(file).iter().map(era::decode))
-                        as Item<Header, Body>,
-                };
+                            })) as Item<Header, Body>
+                        }
+                        Some(EraFileType::Ere) => {
+                            Box::new(EreReader::new(file).iter().map(era::Ere::decode))
+                                as Item<Header, Body>
+                        }
+                        _ => Box::new(Era1Reader::new(file).iter().map(era::decode))
+                            as Item<Header, Body>,
+                    };
 
                 let iter = iter.chain(
                     iter::once_with(move || match meta.mark_as_processed() {
@@ -201,13 +200,13 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        if self.stream.is_none() &&
-            let Some(source) = self.source.clone()
+        if self.stream.is_none()
+            && let Some(source) = self.source.clone()
         {
             self.stream.replace(source.create(input)?);
         }
-        if let Some(stream) = &mut self.stream &&
-            let Some(next) = ready!(stream.poll_next_unpin(cx))
+        if let Some(stream) = &mut self.stream
+            && let Some(next) = ready!(stream.poll_next_unpin(cx))
                 .transpose()
                 .map_err(|e| StageError::Fatal(e.into()))?
         {
@@ -597,8 +596,8 @@ mod tests {
                     Some(output) if output.checkpoint.block_number > initial_checkpoint => {
                         let provider = self.db.factory.provider()?;
 
-                        for block_num in initial_checkpoint..
-                            output
+                        for block_num in initial_checkpoint
+                            ..output
                                 .checkpoint
                                 .block_number
                                 .min(self.responses.as_ref().map(|v| v.len()).unwrap_or_default()

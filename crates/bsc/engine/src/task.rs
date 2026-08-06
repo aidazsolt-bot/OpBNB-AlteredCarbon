@@ -235,18 +235,18 @@ impl<
                         Ok(result) => result,
                         Err(_) => {
                             trace!(target: "consensus::parlia", "Fetch header timeout");
-                            continue
+                            continue;
                         }
                     };
                     if fetch_header_result.is_err() {
                         trace!(target: "consensus::parlia", "Failed to fetch header");
-                        continue
+                        continue;
                     }
 
                     header_option = fetch_header_result.unwrap().into_data();
                     if header_option.is_none() {
                         trace!(target: "consensus::parlia", "Failed to unwrap header");
-                        continue
+                        continue;
                     }
                 }
                 let latest_header = header_option.unwrap();
@@ -273,8 +273,8 @@ impl<
                 let mut trusted_header = latest_unsafe_header.clone();
                 // if parent hash is not equal to latest unsafe hash
                 // may be a fork chain detected, we need to trust the finalized header
-                if latest_header.number - 1 == latest_unsafe_header.number &&
-                    latest_header.parent_hash != latest_unsafe_header.hash()
+                if latest_header.number - 1 == latest_unsafe_header.number
+                    && latest_header.parent_hash != latest_unsafe_header.hash()
                 {
                     trusted_header = finalized_header.clone();
                 }
@@ -284,8 +284,8 @@ impl<
                 // the difference between the latest header number and the trusted
                 // header number the timestamp of latest header should be bigger
                 // than the predicted timestamp and less than the current timestamp.
-                let predicted_timestamp = trusted_header.timestamp +
-                    block_interval * (latest_header.number - 1 - trusted_header.number);
+                let predicted_timestamp = trusted_header.timestamp
+                    + block_interval * (latest_header.number - 1 - trusted_header.number);
                 let sealed = latest_header.clone().seal_slow();
                 let (header, seal) = sealed.into_parts();
                 let mut sealed_header = SealedHeader::new(header, seal);
@@ -300,7 +300,7 @@ impl<
                 };
                 trace!(target: "consensus::parlia", sealed_header = ?sealed_header, is_valid_header = ?is_valid_header, "Fetch a sealed header");
                 if !is_valid_header {
-                    continue
+                    continue;
                 };
                 // check if the header is the same as the block hash
                 // that probably means the block is not sealed yet
@@ -335,17 +335,17 @@ impl<
                         Ok(result) => result,
                         Err(_) => {
                             trace!(target: "consensus::parlia", "Fetch header timeout");
-                            continue
+                            continue;
                         }
                     };
                     if fetch_headers_result.is_err() {
                         trace!(target: "consensus::parlia", "Failed to fetch header");
-                        continue
+                        continue;
                     }
 
                     let headers = fetch_headers_result.unwrap().into_data();
                     if headers.is_empty() {
-                        continue
+                        continue;
                     }
                     let mut parent_hash = sealed_header.parent_hash;
                     for (i, _) in headers.iter().enumerate() {
@@ -366,8 +366,8 @@ impl<
                     }
 
                     // check last header.parent_hash is match the trusted header
-                    if !disconnected_headers.is_empty() &&
-                        disconnected_headers.last().unwrap().parent_hash != trusted_header.hash()
+                    if !disconnected_headers.is_empty()
+                        && disconnected_headers.last().unwrap().parent_hash != trusted_header.hash()
                     {
                         continue;
                     }
@@ -375,10 +375,10 @@ impl<
 
                 // if the target header is not far enough from the trusted header, make sure not to
                 // rebuild the merkle tree
-                if pipeline_sync &&
-                    (sealed_header.number - trusted_header.number > merkle_clean_threshold &&
-                        sealed_header.number - trusted_header.number <
-                            MIN_BLOCKS_FOR_MERKLE_REBUILD)
+                if pipeline_sync
+                    && (sealed_header.number - trusted_header.number > merkle_clean_threshold
+                        && sealed_header.number - trusted_header.number
+                            < MIN_BLOCKS_FOR_MERKLE_REBUILD)
                 {
                     let fetch_headers_result = match timeout(
                         fetch_header_timeout_duration,
@@ -393,17 +393,17 @@ impl<
                         Ok(result) => result,
                         Err(_) => {
                             trace!(target: "consensus::parlia", "Fetch header timeout");
-                            continue
+                            continue;
                         }
                     };
                     if fetch_headers_result.is_err() {
                         trace!(target: "consensus::parlia", "Failed to fetch header");
-                        continue
+                        continue;
                     }
 
                     let headers = fetch_headers_result.unwrap().into_data();
                     if headers.is_empty() {
-                        continue
+                        continue;
                     }
 
                     let sealed = headers[0].clone().seal_slow();

@@ -508,7 +508,7 @@ where
         transactions: Vec<Self::Transaction>,
     ) -> Vec<PoolResult<AddedTransactionOutcome>> {
         if transactions.is_empty() {
-            return Vec::new()
+            return Vec::new();
         }
         let validated =
             self.pool.validator().validate_transactions_with_origin(origin, transactions).await;
@@ -520,7 +520,7 @@ where
         transactions: Vec<(TransactionOrigin, Self::Transaction)>,
     ) -> Vec<PoolResult<AddedTransactionOutcome>> {
         if transactions.is_empty() {
-            return Vec::new()
+            return Vec::new();
         }
         let origins: Vec<_> = transactions.iter().map(|(origin, _)| *origin).collect();
         let validated = self.pool.validator().validate_transactions(transactions).await;
