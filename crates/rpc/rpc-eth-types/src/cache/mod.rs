@@ -105,6 +105,7 @@ impl<N: NodePrimitives> EthStateCache<N> {
     pub fn spawn<Provider>(provider: Provider, config: EthStateCacheConfig) -> Self
     where
         Provider: BlockReader<Block = N::Block, Receipt = N::Receipt> + Clone + Unpin + 'static,
+        N::Receipt: InMemorySize,
     {
         Self::spawn_with(provider, config, TokioTaskExecutor::default())
     }
@@ -120,6 +121,7 @@ impl<N: NodePrimitives> EthStateCache<N> {
     ) -> Self
     where
         Provider: BlockReader<Block = N::Block, Receipt = N::Receipt> + Clone + Unpin + 'static,
+        N::Receipt: InMemorySize,
         Tasks: TaskSpawner + Clone + 'static,
     {
         let EthStateCacheConfig {
@@ -326,6 +328,7 @@ where
     Provider::Receipt: InMemorySize,
     Tasks: TaskSpawner + Clone + 'static,
 {
+    fn on_new_block(
         &mut self,
         block_hash: B256,
         res: ProviderResult<Option<Arc<RecoveredBlock<Provider::Block>>>>,
