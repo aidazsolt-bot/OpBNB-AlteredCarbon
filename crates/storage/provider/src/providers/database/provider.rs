@@ -329,6 +329,17 @@ impl<TX, N: NodeTypes> RocksDBProviderFactory for DatabaseProvider<TX, N> {
     fn set_pending_rocksdb_batch(&self, batch: rocksdb::WriteBatchWithTransaction<true>) {
         self.pending_rocksdb_batches.lock().push(batch);
     }
+
+    fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            let batches = std::mem::take(&mut *self.pending_rocksdb_batches.lock());
+            for batch in batches {
+                self.rocksdb_provider.write(batch)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<TX: Debug + Send, N: NodeTypes<ChainSpec: EthChainSpec + 'static>> ChainSpecProvider
@@ -1417,6 +1428,31 @@ impl<TX: DbTx, N: NodeTypes> StorageChangeSetReader for DatabaseProvider<TX, N> 
         self.tx
             .cursor_dup_read::<tables::StorageChangeSets>()?
             .walk_range(storage_range)?
+            .map(|result| -> ProviderResult<_> { Ok(result?) })
+            .collect()
+    }
+
+    fn get_storage_before_block(
+        &self,
+        block_number: BlockNumber,
+        address: Address,
+        storage_key: B256,
+    ) -> ProviderResult<Option<StorageEntry>> {
+        let storage_id = BlockNumberAddress((block_number, address));
+        Ok(self
+            .tx
+            .cursor_dup_read::<tables::StorageChangeSets>()?
+            .seek_by_key_subkey(storage_id, storage_key)?
+            .filter(|entry| entry.key == storage_key))
+    }
+
+    fn storage_changesets_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        self.tx
+            .cursor_dup_read::<tables::StorageChangeSets>()?
+            .walk_range(BlockNumberAddress::range(range))?
             .map(|result| -> ProviderResult<_> { Ok(result?) })
             .collect()
     }
@@ -2758,15 +2794,6 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> TrieWriter for DatabaseProvider
 
         Ok(num_entries)
     }
-
-    /// Records the current values of all trie nodes which will be updated using the `TrieUpdates`
-    /// into the trie changesets tables.
-    ///
-    /// The intended usage of this method is to call it _prior_ to calling `write_trie_updates` with
-    /// the same `TrieUpdates`.
-    ///
-    /// Returns the number of keys written.
-    #[instrument(level = "debug", target = "providers::db", skip_all)]
 }
 
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseProvider<TX, N> {
@@ -2800,14 +2827,6 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseP
 
         Ok(num_entries)
     }
-
-    /// Records the current values of all trie nodes which will be updated using the
-    /// `StorageTrieUpdates` into the storage trie changesets table.
-    ///
-    /// The intended usage of this method is to call it _prior_ to calling
-    /// `write_storage_trie_updates` with the same set of `StorageTrieUpdates`.
-    ///
-    /// Returns the number of keys written.
 }
 
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvider<TX, N> {
@@ -2871,7 +2890,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
     fn unwind_storage_hashing(
         &self,
         changesets: impl Iterator<Item = (BlockNumberAddress, StorageEntry)>,
-    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>>> {
+    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
         // Aggregate all block changesets and make list of accounts that have been changed.
         let mut hashed_storages = changesets
             .into_iter()
@@ -2882,7 +2901,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
         hashed_storages.sort_by_key(|(ha, hk, _)| (*ha, *hk));
 
         // Apply values to HashedState, and remove the account if it's None.
-        let mut hashed_storage_keys: HashMap<B256, BTreeSet<B256>> =
+        let mut hashed_storage_keys: HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>> =
             HashMap::with_capacity_and_hasher(hashed_storages.len(), Default::default());
         let mut hashed_storage = self.tx.cursor_dup_write::<tables::HashedStorages>()?;
         for (hashed_address, key, value) in hashed_storages.into_iter().rev() {
@@ -2906,7 +2925,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
     fn unwind_storage_hashing_range(
         &self,
         range: impl RangeBounds<BlockNumberAddress>,
-    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>>> {
+    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
@@ -2918,7 +2937,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
     fn insert_storage_for_hashing(
         &self,
         storages: impl IntoIterator<Item = (Address, impl IntoIterator<Item = StorageEntry>)>,
-    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>>> {
+    ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
         // hash values
         let hashed_storages =
             storages.into_iter().fold(BTreeMap::new(), |mut map, (address, storage)| {

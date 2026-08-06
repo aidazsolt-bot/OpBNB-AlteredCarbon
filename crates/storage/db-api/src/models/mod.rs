@@ -271,6 +271,7 @@ impl_compression_for_compact!(
     StoredNibbles,
     StoredNibblesSubKey,
     StorageTrieEntry,
+    TrieChangeSetsEntry,
     PackedStoredNibbles,
     PackedStoredNibblesSubKey,
     PackedStorageTrieEntry,

@@ -23,7 +23,7 @@ use alloy_consensus::Header;
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
 use crate::{
     models::{
-        accounts::BlockNumberAddress,
+        accounts::{BlockNumberAddress, BlockNumberHashedAddress},
         blocks::{HeaderHash, StoredBlockOmmers},
         storage_sharded_key::StorageShardedKey,
         AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
@@ -38,7 +38,7 @@ use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{
     BranchNodeCompact, PackedStorageTrieEntry, PackedStoredNibbles, PackedStoredNibblesSubKey,
-    StorageTrieEntry, StoredNibbles, StoredNibblesSubKey,
+    StorageTrieEntry, StoredNibbles, StoredNibblesSubKey, TrieChangeSetsEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -410,6 +410,12 @@ tables! {
     /// From HashedAddress => NibblesSubKey => Intermediate value
     table StoragesTrie<Key = B256, Value = StorageTrieEntry, SubKey = StoredNibblesSubKey>;
 
+    /// Stores the state of a node in the accounts trie prior to a particular block being executed.
+    table AccountsTrieChangeSets<Key = BlockNumber, Value = TrieChangeSetsEntry, SubKey = StoredNibblesSubKey>;
+
+    /// Stores the state of a node in a storage trie prior to a particular block being executed.
+    table StoragesTrieChangeSets<Key = BlockNumberHashedAddress, Value = TrieChangeSetsEntry, SubKey = StoredNibblesSubKey>;
+
     /// Stores the transaction sender for each canonical transaction.
     /// It is needed to speed up execution stage and allows fetching signer without doing
     /// transaction signed recovery
@@ -432,6 +438,10 @@ tables! {
 
     /// Stores the parlia snapshot data by block hash.
     table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
+
+    /// Stores generic node metadata as key-value pairs.
+    /// Can store feature flags, configuration markers, and other node-specific data.
+    table Metadata<Key = String, Value = Vec<u8>>;
 }
 
 /// Packed-encoding view of the [`AccountsTrie`] table.

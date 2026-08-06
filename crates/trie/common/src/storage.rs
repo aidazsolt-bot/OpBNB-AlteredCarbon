@@ -43,6 +43,58 @@ impl reth_codecs::Compact for StorageTrieEntry {
     }
 }
 
+/// Trie changeset entry representing the state of a trie node before a block.
+///
+/// `nibbles` is the subkey when used as a value in the changeset tables.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize, serde::Deserialize))]
+pub struct TrieChangeSetsEntry {
+    /// The nibbles of the intermediate node
+    pub nibbles: StoredNibblesSubKey,
+    /// Node value prior to the block being processed, None indicating it didn't exist.
+    pub node: Option<BranchNodeCompact>,
+}
+
+impl ValueWithSubKey for TrieChangeSetsEntry {
+    type SubKey = StoredNibblesSubKey;
+
+    fn get_subkey(&self) -> Self::SubKey {
+        self.nibbles.clone()
+    }
+}
+
+#[cfg(any(test, feature = "reth-codec"))]
+impl reth_codecs::Compact for TrieChangeSetsEntry {
+    fn to_compact<B>(&self, buf: &mut B) -> usize
+    where
+        B: bytes::BufMut + AsMut<[u8]>,
+    {
+        let nibbles_len = self.nibbles.to_compact(buf);
+        let node_len = self.node.as_ref().map(|node| node.to_compact(buf)).unwrap_or(0);
+        nibbles_len + node_len
+    }
+
+    fn from_compact(buf: &[u8], len: usize) -> (Self, &[u8]) {
+        if len == 0 {
+            // Return an empty entry without trying to parse anything
+            return (
+                Self { nibbles: StoredNibblesSubKey::from(super::Nibbles::default()), node: None },
+                buf,
+            )
+        }
+
+        let (nibbles, buf) = StoredNibblesSubKey::from_compact(buf, 65);
+
+        if len <= 65 {
+            return (Self { nibbles, node: None }, buf)
+        }
+
+        let (node, buf) = BranchNodeCompact::from_compact(buf, len - 65);
+        (Self { nibbles, node: Some(node) }, buf)
+    }
+}
+
+
 #[cfg(any(test, feature = "reth-codec"))]
 reth_codecs::impl_compression_for_compact!(StorageTrieEntry);
 
