@@ -2,6 +2,7 @@
 
 use crate::NewBlockPayload;
 use alloy_consensus::{RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt};
+use alloy_eips::eip2718::IsTyped2718;
 use alloy_rlp::{Decodable, Encodable};
 use core::fmt::Debug;
 use reth_ethereum_primitives::{EthPrimitives, PooledTransactionVariant};
@@ -46,14 +47,17 @@ pub trait NetworkPrimitives: Send + Sync + Unpin + Clone + Debug + 'static {
     /// explicitly requested from peers. This is because blob transactions can be quite
     /// large and broadcasting them to all peers would cause
     /// significant bandwidth usage.
-    type BroadcastedTransaction: SignedTransaction + 'static;
+    type BroadcastedTransaction: SignedTransaction
+        + alloy_consensus::transaction::TxHashRef
+        + IsTyped2718
+        + 'static;
 
     /// The transaction type which peers return in `PooledTransactions` messages.
     ///
     /// For EIP-4844 blob transactions, this includes the full blob sidecar with
     /// KZG commitments and proofs that are needed for validation but are not
     /// included in the consensus block format.
-    type PooledTransaction: SignedTransaction + TryFrom<Self::BroadcastedTransaction> + 'static;
+    type PooledTransaction: SignedTransaction + TryFrom<Self::BroadcastedTransaction> + IsTyped2718 + 'static;
 
     /// The transaction type which peers return in `GetReceipts` messages.
     type Receipt: TxReceipt
@@ -102,7 +106,8 @@ pub struct BasicNetworkPrimitives<N: NodePrimitives, Pooled, NewBlock = crate::N
 impl<N, Pooled, NewBlock> NetworkPrimitives for BasicNetworkPrimitives<N, Pooled, NewBlock>
 where
     N: NodePrimitives,
-    Pooled: SignedTransaction + TryFrom<N::SignedTx> + 'static,
+    N::SignedTx: alloy_consensus::transaction::TxHashRef + IsTyped2718,
+    Pooled: SignedTransaction + TryFrom<N::SignedTx> + IsTyped2718 + 'static,
     NewBlock: NewBlockPayload<Block = N::Block>,
 {
     type BlockHeader = N::BlockHeader;

@@ -44,6 +44,16 @@ pub trait SignedTransaction:
     /// Returns reference to signature.
     fn signature(&self) -> &Signature;
 
+    /// Returns whether this transaction type can be __broadcasted__ as full transaction over the
+    /// network.
+    ///
+    /// Some transactions are not broadcastable as objects and only allowed to be broadcasted as
+    /// hashes, e.g. because they are missing context (e.g. blob sidecar).
+    fn is_broadcastable_in_full(&self) -> bool {
+        // EIP-4844 transactions are not broadcastable in full, only hashes are allowed.
+        !self.is_eip4844()
+    }
+
     /// Recover signer from signature and hash.
     ///
     /// Returns `None` if the transaction's signature is invalid following [EIP-2](https://eips.ethereum.org/EIPS/eip-2), see also `reth_primitives::transaction::recover_signer`.
