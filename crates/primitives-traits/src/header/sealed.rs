@@ -1,4 +1,4 @@
-use super::Header;
+use super::{BlockHeader, Header};
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
@@ -9,14 +9,17 @@ use core::mem;
 use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 /// A [`Header`] that is sealed at a precalculated hash, use [`SealedHeader::unseal()`] if you want
 /// to modify header.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, AsRef, Deref, Serialize, Deserialize)]
+#[derive(Debug, Clone, AsRef, Deref, Serialize, Deserialize)]
 #[add_arbitrary_tests(rlp)]
 pub struct SealedHeader<H = Header> {
-    /// Locked Header hash.
-    hash: BlockHash,
+    /// Locked Header hash, lazily computed if the header was created via
+    /// [`SealedHeader::new_unhashed`].
+    #[serde(skip)]
+    hash: OnceLock<BlockHash>,
     /// Locked Header fields.
     #[as_ref]
     #[deref]
@@ -26,39 +29,64 @@ pub struct SealedHeader<H = Header> {
 impl<H> SealedHeader<H> {
     /// Creates the sealed header with the corresponding block hash.
     #[inline]
-    pub const fn new(header: H, hash: BlockHash) -> Self {
-        Self { header, hash }
+    pub fn new(header: H, hash: BlockHash) -> Self {
+        Self { header, hash: OnceLock::from(hash) }
+    }
+
+    /// Creates a sealed header without hashing the header up front. The hash will be computed
+    /// lazily the first time it's requested.
+    #[inline]
+    pub fn new_unhashed(header: H) -> Self {
+        Self { header, hash: OnceLock::new() }
+    }
+
+    /// Returns the sealed header fields.
+    #[inline]
+    pub const fn header(&self) -> &H {
+        &self.header
+    }
+
+    /// Consumes the type and returns the wrapped header.
+    #[inline]
+    pub fn into_header(self) -> H {
+        self.header
+    }
+
+    /// Extract raw header that can be modified.
+    #[inline]
+    pub fn unseal(self) -> H {
+        self.header
+    }
+}
+
+impl<H: Sealable> SealedHeader<H> {
+    /// Hashes the header and creates a sealed header from it and its hash.
+    pub fn seal_slow(header: H) -> Self {
+        let hash = header.hash_slow();
+        Self::new(header, hash)
+    }
+
+    /// Returns the block hash, computing and caching it if not already available.
+    #[inline]
+    pub fn hash(&self) -> BlockHash {
+        *self.hash.get_or_init(|| self.header.hash_slow())
+    }
+
+    /// This is the inverse of [`SealedHeader::seal_slow`] which returns the raw header and hash.
+    pub fn split(self) -> (H, BlockHash) {
+        let hash = self.hash();
+        (self.header, hash)
+    }
+}
+
+impl<H: BlockHeader + Sealable> SealedHeader<H> {
+    /// Return the number hash tuple.
+    pub fn num_hash(&self) -> BlockNumHash {
+        BlockNumHash::new(self.header.number(), self.hash())
     }
 }
 
 impl SealedHeader {
-    /// Returns the sealed Header fields.
-    #[inline]
-    pub const fn header(&self) -> &Header {
-        &self.header
-    }
-
-    /// Returns header/block hash.
-    #[inline]
-    pub const fn hash(&self) -> BlockHash {
-        self.hash
-    }
-
-    /// Extract raw header that can be modified.
-    pub fn unseal(self) -> Header {
-        self.header
-    }
-
-    /// This is the inverse of [`Header::seal_slow`] which returns the raw header and hash.
-    pub fn split(self) -> (Header, BlockHash) {
-        (self.header, self.hash)
-    }
-
-    /// Return the number hash tuple.
-    pub fn num_hash(&self) -> BlockNumHash {
-        BlockNumHash::new(self.number, self.hash)
-    }
-
     /// Calculates a heuristic for the in-memory size of the [`SealedHeader`].
     #[inline]
     pub fn size(&self) -> usize {
@@ -66,11 +94,23 @@ impl SealedHeader {
     }
 }
 
-impl Default for SealedHeader {
+impl<H: Sealable> PartialEq for SealedHeader<H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
+}
+
+impl<H: Sealable> Eq for SealedHeader<H> {}
+
+impl<H: Sealable> core::hash::Hash for SealedHeader<H> {
+    fn hash<Ha: core::hash::Hasher>(&self, state: &mut Ha) {
+        self.hash().hash(state)
+    }
+}
+
+impl<H: Default + Sealable> Default for SealedHeader<H> {
     fn default() -> Self {
-        let sealed = Header::default().seal_slow();
-        let (header, hash) = sealed.into_parts();
-        Self { header, hash }
+        Self::seal_slow(H::default())
     }
 }
 
@@ -95,7 +135,7 @@ impl Decodable for SealedHeader {
         // update original buffer
         *buf = *b;
 
-        Ok(Self { header, hash })
+        Ok(Self::new(header, hash))
     }
 }
 
@@ -108,7 +148,7 @@ impl SealedHeader {
 
     /// Updates the block hash.
     pub fn set_hash(&mut self, hash: BlockHash) {
-        self.hash = hash
+        self.hash = OnceLock::from(hash)
     }
 
     /// Updates the parent block hash.
@@ -174,13 +214,13 @@ pub(super) mod serde_bincode_compat {
 
     impl<'a> From<&'a super::SealedHeader> for SealedHeader<'a> {
         fn from(value: &'a super::SealedHeader) -> Self {
-            Self { hash: value.hash, header: Header::from(&value.header) }
+            Self { hash: value.hash(), header: Header::from(&value.header) }
         }
     }
 
     impl<'a> From<SealedHeader<'a>> for super::SealedHeader {
         fn from(value: SealedHeader<'a>) -> Self {
-            Self { hash: value.hash, header: value.header.into() }
+            super::SealedHeader::new(value.header.into(), value.hash)
         }
     }
 

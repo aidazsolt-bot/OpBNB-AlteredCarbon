@@ -31,7 +31,7 @@ use alloy_eips::{
     eip7892::BlobScheduleBlobParams, eip7928::EMPTY_BLOCK_ACCESS_LIST_HASH,
 };
 use alloy_genesis::{ChainConfig, Genesis};
-use alloy_primitives::{address, b256, Address, BlockNumber, B256, U256};
+use alloy_primitives::{address, b256, Address, BlockNumber, Sealable, B256, U256};
 use alloy_trie::root::state_root_ref_unhashed;
 use core::fmt::Debug;
 use derive_more::From;
@@ -416,7 +416,7 @@ impl<H: BlockHeader> core::ops::Deref for ChainSpec<H> {
 /// - Meta-information about the chain (the chain ID)
 /// - The genesis block of the chain ([`Genesis`])
 /// - What hardforks are activated, and under which conditions
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct ChainSpec<H: BlockHeader = Header> {
     /// The chain ID
     pub chain: Chain,
@@ -447,7 +447,39 @@ pub struct ChainSpec<H: BlockHeader = Header> {
     pub blob_params: BlobScheduleBlobParams,
 }
 
-impl<H: BlockHeader> Default for ChainSpec<H> {
+impl<H: BlockHeader + Sealable> PartialEq for ChainSpec<H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.chain == other.chain
+            && self.genesis == other.genesis
+            && self.genesis_header == other.genesis_header
+            && self.paris_block_and_final_difficulty == other.paris_block_and_final_difficulty
+            && self.hardforks == other.hardforks
+            && self.deposit_contract == other.deposit_contract
+            && self.base_fee_params == other.base_fee_params
+            && self.prune_delete_limit == other.prune_delete_limit
+            && self.blob_params == other.blob_params
+    }
+}
+
+impl<H: BlockHeader + Sealable> Eq for ChainSpec<H> {}
+
+impl<H: BlockHeader + Clone> Clone for ChainSpec<H> {
+    fn clone(&self) -> Self {
+        Self {
+            chain: self.chain,
+            genesis: self.genesis.clone(),
+            genesis_header: self.genesis_header.clone(),
+            paris_block_and_final_difficulty: self.paris_block_and_final_difficulty,
+            hardforks: self.hardforks.clone(),
+            deposit_contract: self.deposit_contract,
+            base_fee_params: self.base_fee_params.clone(),
+            prune_delete_limit: self.prune_delete_limit,
+            blob_params: self.blob_params.clone(),
+        }
+    }
+}
+
+impl<H: BlockHeader + Default + Sealable> Default for ChainSpec<H> {
     fn default() -> Self {
         Self {
             chain: Default::default(),
@@ -487,7 +519,7 @@ impl ChainSpec {
     }
 }
 
-impl<H: BlockHeader> ChainSpec<H> {
+impl<H: BlockHeader + Sealable> ChainSpec<H> {
     /// Get information about the chain itself
     pub const fn chain(&self) -> Chain {
         self.chain
@@ -553,7 +585,10 @@ impl<H: BlockHeader> ChainSpec<H> {
     }
 
     /// Get the sealed header for the genesis block.
-    pub fn sealed_genesis_header(&self) -> SealedHeader<H> {
+    pub fn sealed_genesis_header(&self) -> SealedHeader<H>
+    where
+        H: Clone,
+    {
         SealedHeader::new(self.genesis_header().clone(), self.genesis_hash())
     }
 
@@ -587,7 +622,10 @@ impl<H: BlockHeader> ChainSpec<H> {
     }
 
     /// Get the hash of the genesis block.
-    pub fn genesis_hash(&self) -> B256 {
+    pub fn genesis_hash(&self) -> B256
+    where
+        H: Sealable,
+    {
         self.genesis_header.hash()
     }
 
@@ -610,7 +648,10 @@ impl<H: BlockHeader> ChainSpec<H> {
     }
 
     /// Returns the hardfork display helper.
-    pub fn display_hardforks(&self) -> DisplayHardforks {
+    pub fn display_hardforks(&self) -> DisplayHardforks
+    where
+        H: std::fmt::Debug + Send + Sync + Unpin,
+    {
         // Create an iterator with hardfork, condition, and optional blob metadata
         let hardforks_with_meta = self.hardforks.forks_iter().map(|(fork, condition)| {
             // Generate blob metadata for timestamp-based hardforks that have blob params
@@ -993,7 +1034,7 @@ impl From<Genesis> for ChainSpec {
     }
 }
 
-impl<H: BlockHeader> Hardforks for ChainSpec<H> {
+impl<H: BlockHeader + Clone + Sealable> Hardforks for ChainSpec<H> {
     fn fork<HF: Hardfork>(&self, fork: HF) -> ForkCondition {
         self.hardforks.fork(fork)
     }
@@ -1003,15 +1044,15 @@ impl<H: BlockHeader> Hardforks for ChainSpec<H> {
     }
 
     fn fork_id(&self, head: &Head) -> ForkId {
-        self.fork_id(head)
+        ChainSpec::fork_id(self, head)
     }
 
     fn latest_fork_id(&self) -> ForkId {
-        self.latest_fork_id()
+        ChainSpec::latest_fork_id(self)
     }
 
     fn fork_filter(&self, head: Head) -> ForkFilter {
-        self.fork_filter(head)
+        ChainSpec::fork_filter(self, head)
     }
 }
 
