@@ -114,7 +114,7 @@ impl MetricServer {
                 let mut shutdown = signal.clone().ignore_guard();
                 tokio::task::spawn(async move {
                     if let Err(error) =
-                        jsonrpsee::server::serve_with_graceful_shutdown(io, service, &mut shutdown)
+                        jsonrpsee_server::serve_with_graceful_shutdown(io, service, &mut shutdown)
                             .await
                     {
                         tracing::debug!(%error, "failed to serve request")

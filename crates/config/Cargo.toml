@@ -13,16 +13,16 @@ workspace = true
 [dependencies]
 # reth
 reth-network-types = { workspace = true, features = ["serde"] }
-reth-prune-types.workspace = true
-reth-stages-types.workspace = true
+reth-prune-types = { workspace = true, features = ["serde"] }
+reth-stages-types = { workspace = true, features = ["serde"] }
 reth-primitives = { workspace = true, optional = true }
 
 # serde
-serde = { workspace = true, optional = true }
-humantime-serde = { workspace = true, optional = true }
+serde.workspace = true
+humantime-serde.workspace = true
 
 # toml
-toml = { workspace = true, optional = true }
+toml.workspace = true
 eyre.workspace = true
 url.workspace = true
 
@@ -33,13 +33,7 @@ alloy-primitives.workspace = true
 
 [features]
 serde = [
-    "dep:serde",
-    "dep:toml",
-    "dep:humantime-serde",
-    "reth-prune-types/serde",
-    "reth-stages-types/serde",
-    "reth-network-types/serde",
-    "url/serde"
+	"url/serde"
 ]
 bsc = [
     "reth-primitives/bsc"
