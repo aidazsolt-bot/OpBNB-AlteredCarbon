@@ -1303,15 +1303,8 @@ impl<N: ProviderNodeTypes> BlockReaderIdExt for ConsistentProvider<N> {
 
     fn ommers_by_id(&self, id: BlockId) -> ProviderResult<Option<Vec<HeaderTy<N>>>> {
         Ok(match id {
-            BlockId::Number(num) => self
-                .block(self.convert_number_or_tag(num)?)?
-                .and_then(|block| block.body().ommers().map(|ommers| ommers.to_vec())),
-            BlockId::Hash(hash) => self.header(hash.block_hash)?.and_then(|_| {
-                self.block(hash.block_hash.into())
-                    .ok()
-                    .flatten()
-                    .and_then(|block| block.body().ommers().map(|ommers| ommers.to_vec()))
-            }),
+            BlockId::Number(_) => None,
+            BlockId::Hash(hash) => self.header(hash.block_hash)?.map(|_| Vec::new()),
         })
     }
 }

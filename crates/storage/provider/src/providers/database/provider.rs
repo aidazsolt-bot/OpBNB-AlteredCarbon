@@ -1046,6 +1046,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         construct_block: BF,
     ) -> ProviderResult<Option<B>>
     where
+        H: AsRef<HeaderTy<N>>,
         HF: FnOnce(BlockNumber) -> ProviderResult<Option<H>>,
         BF: FnOnce(H, BodyTy<N>, Vec<Address>) -> ProviderResult<Option<B>>,
     {
@@ -1071,7 +1072,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         let body = self
             .storage
             .reader()
-            .read_block_bodies(self, vec![(header.clone().into(), transactions)])?
+            .read_block_bodies(self, vec![(header.as_ref(), transactions)])?
             .pop()
             .ok_or(ProviderError::InvalidStorageOutput)?;
 
@@ -1094,7 +1095,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         mut assemble_block: F,
     ) -> ProviderResult<Vec<R>>
     where
-        H: Clone + Into<HeaderTy<N>>,
+        H: AsRef<HeaderTy<N>>,
         HF: FnOnce(RangeInclusive<BlockNumber>) -> ProviderResult<Vec<H>>,
         F: FnMut(H, BodyTy<N>, Range<TxNumber>) -> ProviderResult<R>,
     {
@@ -1127,7 +1128,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
                 self.transactions_by_tx_range(tx_range.clone())?
             };
 
-            inputs.push((header.clone().into(), transactions));
+            inputs.push((header.as_ref(), transactions));
         }
 
         let bodies = self.storage.reader().read_block_bodies(self, inputs)?;
@@ -1577,7 +1578,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderProvider for DatabasePro
             StaticFileSegment::Headers,
             num,
             |static_file| static_file.header_by_number(num),
-            || Ok(self.tx.get::<tables::Headers>(num)?),
+            || Ok(self.tx.get::<tables::Headers>(num)?.map(SealedHeader::seal_slow)),
         )
     }
 
@@ -1827,7 +1828,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> TransactionsProvider for Datab
     type Transaction = TxTy<N>;
 
     fn transaction_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
-        self.with_rocksdb_tx(|tx_ref| {
+        self.with_rocksdb_snapshot(|tx_ref| {
             let mut reader = EitherReader::new_transaction_hash_numbers(self, tx_ref)?;
             reader.get_transaction_hash_number(tx_hash)
         })
@@ -1957,7 +1958,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             id,
             |static_file| static_file.receipt(id),
-            || Ok(self.tx.get::<tables::Receipts>(id)?.map(Into::into)),
+            || Ok(self.tx.get::<tables::Receipts>(id)?),
         )
     }
 
@@ -1996,7 +1997,6 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             |static_file, range, _| static_file.receipts_by_tx_range(range),
             |range, _| {
                 self.cursor_read_collect::<tables::Receipts>(range)
-                    .map(|receipts| receipts.into_iter().map(Into::into).collect())
             },
             |_| true,
         )
@@ -2787,6 +2787,30 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> TrieWriter for DatabaseProvider
     }
 }
 
+impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> DatabaseProvider<TX, N> {
+    fn clear_trie_changesets_from(&self, from: BlockNumber) -> ProviderResult<()> {
+        let tx = self.tx_ref();
+        {
+            let mut cursor = tx.cursor_dup_write::<tables::AccountsTrieChangeSets>()?;
+            let mut walker = cursor.walk_range(from..)?;
+            while walker.next().transpose()?.is_some() {
+                walker.delete_current()?;
+            }
+        }
+
+        {
+            let range: RangeFrom<BlockNumberHashedAddress> = (from, B256::ZERO).into()..;
+            let mut cursor = tx.cursor_dup_write::<tables::StoragesTrieChangeSets>()?;
+            let mut walker = cursor.walk_range(range)?;
+            while walker.next().transpose()?.is_some() {
+                walker.delete_current()?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseProvider<TX, N> {
     /// Writes storage trie updates from the given storage trie map with already sorted updates.
     ///
@@ -3166,13 +3190,11 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> BlockWriter
         let executed_block = ExecutedBlock::new(
             Arc::new(block.clone()),
             Arc::new(BlockExecutionOutput {
-                result: BlockExecutionResult {
-                    receipts: Default::default(),
-                    requests: Default::default(),
-                    gas_used: 0,
-                    blob_gas_used: 0,
-                },
                 state: Default::default(),
+                receipts: Default::default(),
+                requests: Default::default(),
+                gas_used: 0,
+                snapshot: Default::default(),
             }),
             ComputedTrieData::default(),
         );
