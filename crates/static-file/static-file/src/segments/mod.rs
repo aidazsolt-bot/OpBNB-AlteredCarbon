@@ -3,9 +3,6 @@
 mod receipts;
 pub use receipts::Receipts;
 
-mod sidecars;
-pub use sidecars::Sidecars;
-
 use alloy_primitives::BlockNumber;
 use reth_provider::StaticFileProviderFactory;
 use reth_static_file_types::StaticFileSegment;
