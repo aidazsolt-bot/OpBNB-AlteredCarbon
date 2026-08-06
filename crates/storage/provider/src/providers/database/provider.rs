@@ -50,8 +50,10 @@ use reth_db_api::{
 };
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome};
 use reth_node_types::{BlockTy, BodyTy, HeaderTy, NodePrimitives, NodeTypes, ReceiptTy, TxTy};
+use reth_ethereum_primitives::Receipt as EthereumReceipt;
 use reth_primitives_traits::{
-    Account, Block as _, BlockBody as _, Bytecode, RecoveredBlock, SealedHeader, StorageEntry,
+    Account, Block as _, BlockBody as _, Bytecode, RecoveredBlock, SealedHeader,
+    SignedTransaction, StorageEntry,
 };
 use reth_prune_types::{
     PruneCheckpoint, PruneMode, PruneModes, PruneSegment, MINIMUM_PRUNING_DISTANCE,
@@ -73,7 +75,7 @@ use reth_trie::{
     updates::{StorageTrieUpdatesSorted, TrieUpdatesSorted},
     HashedPostStateSorted, StoredNibbles, StoredNibblesSubKey, TrieChangeSetsEntry,
 };
-use reth_trie_db::{ChangesetCache, DatabaseAccountTrieCursor, DatabaseStorageTrieCursor};
+use reth_trie_db::{ChangesetCache, DatabaseAccountTrieCursor, DatabaseStorageTrieCursor, TrieTableAdapter};
 use revm::database::states::{
     PlainStateReverts, PlainStorageChangeset, PlainStorageRevert, StateChangeset,
 };
@@ -1436,6 +1438,8 @@ impl<TX: DbTx, N: NodeTypes> StorageChangeSetReader for DatabaseProvider<TX, N> 
         &self,
         range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        let r = to_range(range);
+        let range = r.start..=r.end.saturating_sub(1);
         self.tx
             .cursor_dup_read::<tables::StorageChangeSets>()?
             .walk_range(BlockNumberAddress::range(range))?
@@ -1578,7 +1582,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderProvider for DatabasePro
             StaticFileSegment::Headers,
             num,
             |static_file| static_file.header_by_number(num),
-            || Ok(self.tx.get::<tables::Headers>(num)?.map(Into::into)),
+            || Ok(self.tx.get::<tables::Headers>(num)?.map(crate::compact_convert)),
         )
     }
 
@@ -1958,7 +1962,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             id,
             |static_file| static_file.receipt(id),
-            || Ok(self.tx.get::<tables::Receipts>(id)?),
+            || Ok(self.tx.get::<tables::Receipts>(id)?.map(crate::compact_convert)),
         )
     }
 
@@ -1997,6 +2001,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             |static_file, range, _| static_file.receipts_by_tx_range(range),
             |range, _| {
                 self.cursor_read_collect::<tables::Receipts>(range)
+                    .map(|v: Vec<EthereumReceipt>| v.into_iter().map(crate::compact_convert).collect())
             },
             |_| true,
         )
@@ -2706,7 +2711,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
                     self.tx
                         .cursor_read::<tables::Receipts>()?
                         .walk_range(range)?
-                        .map(|r| r.map_err(Into::into))
+                        .map(|r| r.map(|(n, receipt)| (n, crate::compact_convert(receipt))).map_err(Into::into))
                         .collect()
                 },
                 |_| true,
@@ -2831,14 +2836,16 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseP
         let mut num_entries = 0;
         let mut storage_tries = storage_tries.collect::<Vec<_>>();
         storage_tries.sort_unstable_by(|a, b| a.0.cmp(b.0));
-        let mut cursor = self.tx_ref().cursor_dup_write::<tables::StoragesTrie>()?;
-        for (hashed_address, storage_trie_updates) in storage_tries {
-            let mut db_storage_trie_cursor: DatabaseStorageTrieCursor<_, _> =
-                DatabaseStorageTrieCursor::new(cursor, *hashed_address);
-            num_entries +=
-                db_storage_trie_cursor.write_storage_trie_updates_sorted(storage_trie_updates)?;
-            cursor = db_storage_trie_cursor.cursor;
-        }
+        reth_trie_db::with_adapter!(self, |A| {
+            let mut cursor = self.tx_ref().cursor_dup_write::<<A as TrieTableAdapter>::StorageTrieTable>()?;
+            for (hashed_address, storage_trie_updates) in &storage_tries {
+                let mut db_storage_trie_cursor =
+                    DatabaseStorageTrieCursor::<_, A>::new(cursor, **hashed_address);
+                num_entries += db_storage_trie_cursor
+                    .write_storage_trie_updates_sorted(storage_trie_updates)?;
+                cursor = db_storage_trie_cursor.cursor;
+            }
+        });
 
         Ok(num_entries)
     }
@@ -2941,6 +2948,8 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
         &self,
         range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
+        let r = to_range(range);
+        let range = r.start..=r.end.saturating_sub(1);
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
@@ -3090,6 +3099,8 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HistoryWriter for DatabaseProvi
         &self,
         range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<usize> {
+        let r = to_range(range);
+        let range = r.start..=r.end.saturating_sub(1);
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?

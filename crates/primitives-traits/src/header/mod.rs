@@ -41,6 +41,7 @@ pub trait BlockHeader:
     + InMemorySize
     + serde::Serialize
     + for<'a> serde::Deserialize<'a>
+    + AsRef<Self>
     + 'static
 {
 }
