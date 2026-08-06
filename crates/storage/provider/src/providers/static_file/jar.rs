@@ -107,18 +107,6 @@ impl<N: NodePrimitives<BlockHeader: Value>> HeaderProvider for StaticFileJarProv
         self.cursor()?.get_one::<HeaderMask<Self::Header>>(num.into())
     }
 
-    fn header_td(&self, block_hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        Ok(self
-            .cursor()?
-            .get_two::<TDWithHashMask>(block_hash.into())?
-            .filter(|(_, hash)| hash == block_hash)
-            .map(|(td, _)| td.into()))
-    }
-
-    fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
-        Ok(self.cursor()?.get_one::<TotalDifficultyMask>(num.into())?.map(Into::into))
-    }
-
     fn headers_range(
         &self,
         range: impl RangeBounds<BlockNumber>,

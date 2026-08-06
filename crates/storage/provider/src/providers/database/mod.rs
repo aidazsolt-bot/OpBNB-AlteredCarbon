@@ -320,14 +320,6 @@ impl<N: ProviderNodeTypes> HeaderProvider for ProviderFactory<N> {
         )
     }
 
-    fn header_td(&self, hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        self.provider()?.header_td(hash)
-    }
-
-    fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
-        self.provider()?.header_td_by_number(number)
-    }
-
     fn headers_range(
         &self,
         range: impl RangeBounds<BlockNumber>,

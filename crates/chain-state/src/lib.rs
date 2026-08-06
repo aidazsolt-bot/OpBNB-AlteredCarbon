@@ -47,3 +47,5 @@ pub mod test_utils;
 
 // todo: remove when generic data prim integration complete
 pub use reth_ethereum_primitives::EthPrimitives;
+
+pub use reth_trie::ComputedTrieData;

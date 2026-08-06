@@ -8,7 +8,7 @@ use crate::providers::{StaticFileProvider, StaticFileProviderRWRefMut};
 /// Static file provider factory.
 pub trait StaticFileProviderFactory: NodePrimitivesProvider {
     /// Create new instance of static file provider.
-    fn static_file_provider(&self) -> StaticFileProvider;
+    fn static_file_provider(&self) -> StaticFileProvider<Self::Primitives>;
 
     /// Returns a mutable reference to a
     /// [`StaticFileProviderRW`](`crate::providers::StaticFileProviderRW`) of a
@@ -17,5 +17,5 @@ pub trait StaticFileProviderFactory: NodePrimitivesProvider {
         &self,
         block: BlockNumber,
         segment: StaticFileSegment,
-    ) -> ProviderResult<StaticFileProviderRWRefMut<'_>>;
+    ) -> ProviderResult<StaticFileProviderRWRefMut<'_, Self::Primitives>>;
 }
