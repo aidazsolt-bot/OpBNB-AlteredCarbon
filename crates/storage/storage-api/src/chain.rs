@@ -1,6 +1,6 @@
 use crate::DBProvider;
 use alloc::{vec, vec::Vec};
-use alloy_consensus::Header;
+use alloy_consensus::{Header, Header as AlloyHeader};
 use alloy_primitives::BlockNumber;
 use core::marker::PhantomData;
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
@@ -97,14 +97,14 @@ impl<Provider, T, H> BlockBodyWriter<Provider, alloy_consensus::BlockBody<T, H>>
 where
     Provider: DBProvider<Tx: DbTxMut>,
     T: SignedTransaction,
-    H: FullBlockHeader,
+    H: FullBlockHeader + Into<AlloyHeader> + From<AlloyHeader>,
 {
     fn write_block_bodies(
         &self,
         provider: &Provider,
         bodies: Vec<(u64, Option<&alloy_consensus::BlockBody<T, H>>)>,
     ) -> ProviderResult<()> {
-        let mut ommers_cursor = provider.tx_ref().cursor_write::<tables::BlockOmmers<H>>()?;
+        let mut ommers_cursor = provider.tx_ref().cursor_write::<tables::BlockOmmers>()?;
         let mut withdrawals_cursor =
             provider.tx_ref().cursor_write::<tables::BlockWithdrawals>()?;
 
@@ -114,12 +114,22 @@ where
             // Write ommers if any
             if !body.ommers.is_empty() {
                 ommers_cursor
-                    .append(block_number, &StoredBlockOmmers { ommers: body.ommers.clone() })?;
+                    .append(
+                        block_number,
+                        &StoredBlockOmmers {
+                            ommers: body
+                                .ommers
+                                .iter()
+                                .cloned()
+                                .map(Into::<AlloyHeader>::into)
+                                .collect(),
+                        },
+                    )?;
             }
 
             // Write withdrawals if any
-            if let Some(withdrawals) = body.withdrawals.clone() &&
-                !withdrawals.is_empty()
+            if let Some(withdrawals) = body.withdrawals.clone()
+                && !withdrawals.is_empty()
             {
                 withdrawals_cursor.append(block_number, &StoredBlockWithdrawals { withdrawals })?;
             }
@@ -134,7 +144,7 @@ where
         block: BlockNumber,
     ) -> ProviderResult<()> {
         provider.tx_ref().unwind_table_by_num::<tables::BlockWithdrawals>(block)?;
-        provider.tx_ref().unwind_table_by_num::<tables::BlockOmmers<H>>(block)?;
+        provider.tx_ref().unwind_table_by_num::<tables::BlockOmmers>(block)?;
 
         Ok(())
     }
@@ -144,7 +154,7 @@ impl<Provider, T, H> BlockBodyReader<Provider> for EthStorage<T, H>
 where
     Provider: DBProvider + ChainSpecProvider<ChainSpec: EthereumHardforks>,
     T: SignedTransaction,
-    H: FullBlockHeader,
+    H: FullBlockHeader + Into<AlloyHeader> + From<AlloyHeader>,
 {
     type Block = alloy_consensus::Block<T, H>;
 
@@ -178,9 +188,15 @@ where
                 // Pre-merge: fetch ommers from database using direct database access
                 provider
                     .tx_ref()
-                    .cursor_read::<tables::BlockOmmers<H>>()?
+                    .cursor_read::<tables::BlockOmmers>()?
                     .seek_exact(header.number())?
-                    .map(|(_, stored_ommers)| stored_ommers.ommers)
+                    .map(|(_, stored_ommers)| {
+                        stored_ommers
+                            .ommers
+                            .into_iter()
+                            .map(Into::<H>::into)
+                            .collect()
+                    })
                     .unwrap_or_default()
             };
             bodies.push(alloy_consensus::BlockBody { transactions, ommers, withdrawals });
