@@ -4,7 +4,7 @@ use crate::{
         database::{chain::ChainStorage, metrics},
         rocksdb::{PendingRocksDBBatches, RocksDBProvider, RocksDBWriteCtx},
         static_file::{StaticFileWriteCtx, StaticFileWriter},
-        NodeTypesForProvider, StaticFileProvider,
+        NodeTypesForProvider, PipelineConsistency, StaticFileProvider,
     },
     to_range,
     traits::{
@@ -3422,7 +3422,18 @@ impl<TX: DbTx + 'static, N: NodeTypes> PruneCheckpointReader for DatabaseProvide
     }
 
     fn get_prune_checkpoints(&self) -> ProviderResult<Vec<(PruneSegment, PruneCheckpoint)>> {
-        Ok(PruneSegment::variants()
+        Ok([
+            PruneSegment::SenderRecovery,
+            PruneSegment::TransactionLookup,
+            PruneSegment::Receipts,
+            PruneSegment::ContractLogs,
+            PruneSegment::AccountHistory,
+            PruneSegment::StorageHistory,
+            PruneSegment::Headers,
+            PruneSegment::Transactions,
+            PruneSegment::Sidecars,
+        ]
+        .into_iter()
             .filter_map(|segment| {
                 self.tx
                     .get::<tables::PruneCheckpoints>(segment)
