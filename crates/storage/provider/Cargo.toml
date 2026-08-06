@@ -42,6 +42,8 @@ alloy-eips.workspace = true
 alloy-primitives.workspace = true
 alloy-rpc-types-engine.workspace = true
 revm.workspace = true
+revm-database = { version = "10.0.0", default-features = false }
+rust-eth-triedb = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", tag = "v0.0.2" }
 rocksdb = { workspace = true, optional = true }
 
 # optimism
