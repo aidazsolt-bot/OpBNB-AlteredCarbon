@@ -1593,7 +1593,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderProvider for DatabasePro
             StaticFileSegment::Headers,
             num,
             |static_file| static_file.header_by_number(num),
-            || Ok(self.tx.get::<tables::Headers<Self::Header>>(num)?),
+            || Ok(self.tx.get::<tables::Headers>(num)?),
         )
     }
 
@@ -1973,7 +1973,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             id,
             |static_file| static_file.receipt(id),
-            || Ok(self.tx.get::<tables::Receipts<Self::Receipt>>(id)?),
+            || Ok(self.tx.get::<tables::Receipts>(id)?),
         )
     }
 
@@ -2010,7 +2010,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> ReceiptProvider for DatabasePr
             StaticFileSegment::Receipts,
             to_range(range),
             |static_file, range, _| static_file.receipts_by_tx_range(range),
-            |range, _| self.cursor_read_collect::<tables::Receipts<Self::Receipt>>(range),
+            |range, _| self.cursor_read_collect::<tables::Receipts>(range),
             |_| true,
         )
     }
@@ -2387,7 +2387,10 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
             let block_number = first_block + block_index as BlockNumber;
             let changeset = account_block_reverts
                 .into_iter()
-                .map(|(address, info)| AccountBeforeTx { address, info: info.map(Into::into) })
+                .map(|(address, info)| AccountBeforeTx {
+                    address,
+                    info: info.as_ref().map(reth_primitives_traits::Account::from),
+                })
                 .collect::<Vec<_>>();
             let mut account_changesets_writer =
                 EitherWriter::new_account_changesets(self, block_number)?;
@@ -2412,7 +2415,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         for (address, account) in changes.accounts {
             if let Some(account) = account {
                 tracing::trace!(?address, "Updating plain state account");
-                accounts_cursor.upsert(address, &account.into())?;
+                accounts_cursor.upsert(address, &reth_primitives_traits::Account::from(&account))?;
             } else if accounts_cursor.seek_exact(address)?.is_some() {
                 tracing::trace!(?address, "Deleting plain state account");
                 accounts_cursor.delete_current()?;
@@ -2423,7 +2426,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         tracing::trace!(len = changes.contracts.len(), "Writing bytecodes");
         let mut bytecodes_cursor = self.tx_ref().cursor_write::<tables::Bytecodes>()?;
         for (hash, bytecode) in changes.contracts {
-            bytecodes_cursor.upsert(hash, &Bytecode(bytecode))?;
+            bytecodes_cursor.upsert(hash, &Bytecode::from(bytecode))?;
         }
 
         // Write new storage state and wipe storage if needed.
@@ -2714,7 +2717,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
                 },
                 |range, _| {
                     self.tx
-                        .cursor_read::<tables::Receipts<Self::Receipt>>()?
+                        .cursor_read::<tables::Receipts>()?
                         .walk_range(range)?
                         .map(|r| r.map_err(Into::into))
                         .collect()
