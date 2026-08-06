@@ -16,7 +16,11 @@ pub trait RocksDBProviderFactory {
     ///
     /// This allows deferring `RocksDB` commits to happen at the same time as MDBX and static file
     /// commits, ensuring atomicity across all storage backends.
+    #[cfg(all(unix, feature = "rocksdb"))]
     fn set_pending_rocksdb_batch(&self, batch: rocksdb::WriteBatchWithTransaction<true>);
+
+    #[cfg(not(all(unix, feature = "rocksdb")))]
+    fn set_pending_rocksdb_batch(&self, _batch: RawRocksDBBatch) {}
 
     /// Takes all pending `RocksDB` batches and commits them.
     ///
