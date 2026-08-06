@@ -1,74 +1,22 @@
 //! Helper function for calculating Merkle proofs and hashes.
 
-use crate::{Header, Receipt, ReceiptWithBloom, ReceiptWithBloomRef, TransactionSigned};
-use alloc::vec::Vec;
-use alloy_consensus::EMPTY_OMMER_ROOT_HASH;
-use alloy_eips::{eip2718::Encodable2718, eip4895::Withdrawal};
-use alloy_primitives::{keccak256, B256};
-use reth_trie_common::root::{ordered_trie_root, ordered_trie_root_with_encoder};
-
-/// Calculate a transaction root.
-///
-/// `(rlp(index), encoded(tx))` pairs.
-pub fn calculate_transaction_root<T>(transactions: &[T]) -> B256
-where
-    T: AsRef<TransactionSigned>,
-{
-    ordered_trie_root_with_encoder(transactions, |tx: &T, buf| tx.as_ref().encode_2718(buf))
-}
-
-/// Calculates the root hash of the withdrawals.
-pub fn calculate_withdrawals_root(withdrawals: &[Withdrawal]) -> B256 {
-    ordered_trie_root(withdrawals)
-}
-
-/// Calculates the receipt root for a header.
-pub fn calculate_receipt_root(receipts: &[ReceiptWithBloom]) -> B256 {
-    ordered_trie_root_with_encoder(receipts, |r, buf| r.encode_inner(buf, false))
-}
-
-/// Calculates the receipt root for a header.
-pub fn calculate_receipt_root_ref(receipts: &[ReceiptWithBloomRef<'_>]) -> B256 {
-    ordered_trie_root_with_encoder(receipts, |r, buf| r.encode_inner(buf, false))
-}
-
-/// Calculates the receipt root for a header for the reference type of [Receipt].
-///
-/// NOTE: Prefer [`calculate_receipt_root`] if you have log blooms memoized.
-pub fn calculate_receipt_root_no_memo(receipts: &[&Receipt]) -> B256 {
-    ordered_trie_root_with_encoder(receipts, |r, buf| {
-        ReceiptWithBloomRef::from(*r).encode_inner(buf, false)
-    })
-}
-
-/// Calculates the root hash for ommer/uncle headers.
-pub fn calculate_ommers_root(ommers: &[Header]) -> B256 {
-    // Check if `ommers` list is empty
-    if ommers.is_empty() {
-        return EMPTY_OMMER_ROOT_HASH
-    }
-    // RLP Encode
-    let mut ommers_rlp = Vec::new();
-    alloy_rlp::encode_list(ommers, &mut ommers_rlp);
-    keccak256(ommers_rlp)
-}
+pub use reth_primitives_traits::proofs::{
+    calculate_ommers_root, calculate_receipt_root, calculate_transaction_root,
+    calculate_withdrawals_root,
+};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::Block;
     use alloy_consensus::EMPTY_ROOT_HASH;
     use alloy_genesis::GenesisAccount;
-    use alloy_primitives::{b256, hex_literal::hex, Address, U256};
+    use alloy_primitives::{b256, hex_literal::hex, Address, B256, U256};
     use alloy_rlp::Decodable;
+    use alloy_trie::root::{state_root_ref_unhashed, state_root_unhashed};
     use reth_chainspec::{HOLESKY, MAINNET, SEPOLIA};
-    use reth_trie_common::root::{state_root_ref_unhashed, state_root_unhashed};
     use std::collections::HashMap;
 
-    #[cfg(not(feature = "optimism"))]
-    use crate::TxType;
-    #[cfg(not(feature = "optimism"))]
-    use alloy_primitives::{bloom, Log, LogData};
+    use super::{calculate_transaction_root, calculate_withdrawals_root};
 
     #[test]
     fn check_transaction_root() {
@@ -77,52 +25,19 @@ mod tests {
         let block: Block = Block::decode(block_rlp).unwrap();
 
         let tx_root = calculate_transaction_root(&block.body.transactions);
-        assert_eq!(block.transactions_root, tx_root, "Must be the same");
-    }
-
-    #[cfg(not(feature = "optimism"))]
-    #[test]
-    fn check_receipt_root_optimism() {
-        let logs = vec![Log {
-            address: Address::ZERO,
-            data: LogData::new_unchecked(vec![], Default::default()),
-        }];
-        let bloom = bloom!("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
-        let receipt = ReceiptWithBloom {
-            receipt: Receipt {
-                tx_type: TxType::Eip2930,
-                success: true,
-                cumulative_gas_used: 102068,
-                logs,
-            },
-            bloom,
-        };
-        let receipt = vec![receipt];
-        let root = calculate_receipt_root(&receipt);
-        assert_eq!(root, b256!("fe70ae4a136d98944951b2123859698d59ad251a381abc9960fa81cae3d0d4a0"));
+        assert_eq!(block.header.transactions_root, tx_root, "Must be the same");
     }
 
     #[test]
     fn check_withdrawals_root() {
         // Single withdrawal, amount 0
-        // https://github.com/ethereum/tests/blob/9760400e667eba241265016b02644ef62ab55de2/BlockchainTests/EIPTests/bc4895-withdrawals/amountIs0.json
         let data = &hex!("f90238f90219a0151934ad9b654c50197f37018ee5ee9bb922dec0a1b5e24a6d679cb111cdb107a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa0046119afb1ab36aaa8f66088677ed96cd62762f6d3e65642898e189fbe702d51a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008001887fffffffffffffff8082079e42a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b42188000000000000000009a048a703da164234812273ea083e4ec3d09d028300cd325b46a6a75402e5a7ab95c0c0d9d8808094c94f5374fce5edbc8e2a8697c15331677e6ebf0b80");
         let block: Block = Block::decode(&mut data.as_slice()).unwrap();
         assert!(block.body.withdrawals.is_some());
         let withdrawals = block.body.withdrawals.as_ref().unwrap();
         assert_eq!(withdrawals.len(), 1);
         let withdrawals_root = calculate_withdrawals_root(withdrawals);
-        assert_eq!(block.withdrawals_root, Some(withdrawals_root));
-
-        // 4 withdrawals, identical indices
-        // https://github.com/ethereum/tests/blob/9760400e667eba241265016b02644ef62ab55de2/BlockchainTests/EIPTests/bc4895-withdrawals/twoIdenticalIndex.json
-        let data = &hex!("f9028cf90219a0151934ad9b654c50197f37018ee5ee9bb922dec0a1b5e24a6d679cb111cdb107a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa0ccf7b62d616c2ad7af862d67b9dcd2119a90cebbff8c3cd1e5d7fc99f8755774a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008001887fffffffffffffff8082079e42a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b42188000000000000000009a0a95b9a7b58a6b3cb4001eb0be67951c5517141cb0183a255b5cae027a7b10b36c0c0f86cda808094c94f5374fce5edbc8e2a8697c15331677e6ebf0b822710da028094c94f5374fce5edbc8e2a8697c15331677e6ebf0b822710da018094c94f5374fce5edbc8e2a8697c15331677e6ebf0b822710da028094c94f5374fce5edbc8e2a8697c15331677e6ebf0b822710");
-        let block: Block = Block::decode(&mut data.as_slice()).unwrap();
-        assert!(block.body.withdrawals.is_some());
-        let withdrawals = block.body.withdrawals.as_ref().unwrap();
-        assert_eq!(withdrawals.len(), 4);
-        let withdrawals_root = calculate_withdrawals_root(withdrawals);
-        assert_eq!(block.withdrawals_root, Some(withdrawals_root));
+        assert_eq!(block.header.withdrawals_root, Some(withdrawals_root));
     }
 
     #[test]
@@ -134,10 +49,6 @@ mod tests {
 
     #[test]
     fn test_simple_account_state_root() {
-        // each fixture specifies an address and expected root hash - the address is initialized
-        // with a maximum balance, and is the only account in the state.
-        // these test cases are generated by using geth with a custom genesis.json (with a single
-        // account that has max balance)
         let fixtures: Vec<(Address, B256)> = vec![
             (
                 hex!("9fe4abd71ad081f091bd06dd1c16f7e92927561e").into(),

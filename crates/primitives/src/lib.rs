@@ -4,7 +4,6 @@
 //!
 //! ## Feature Flags
 //!
-//! - `alloy-compat`: Adds compatibility conversions for certain alloy types.
 //! - `arbitrary`: Adds `proptest` and `arbitrary` support for primitive types.
 //! - `test-utils`: Export utilities for testing
 //! - `reth-codec`: Enables db codec support for reth types including zstd compression for certain
@@ -19,13 +18,11 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate alloc;
+// to make lint happy
+use alloy_eips as _;
+use alloy_trie as _;
 
-#[cfg(feature = "alloy-compat")]
-mod alloy_compat;
 mod block;
-#[cfg(feature = "reth-codec")]
-mod compression;
 pub mod constants;
 pub mod proofs;
 mod receipt;
@@ -34,33 +31,37 @@ pub mod parlia;
 pub mod transaction;
 #[cfg(any(test, feature = "arbitrary"))]
 pub use block::{generate_valid_header, valid_header_strategy};
-pub use block::{Block, BlockBody, BlockWithSenders, SealedBlock, SealedBlockWithSenders};
-#[cfg(feature = "reth-codec")]
-pub use compression::*;
+pub use block::{Block, BlockBody, SealedBlock};
+#[expect(deprecated)]
+pub use block::{BlockWithSenders, SealedBlockFor, SealedBlockWithSenders};
 pub use constants::HOLESKY_GENESIS_HASH;
-pub use receipt::{
-    gas_spent_by_transactions, Receipt, ReceiptWithBloom, ReceiptWithBloomRef, Receipts,
-};
+
+pub use receipt::{gas_spent_by_transactions, Receipt};
 pub use reth_primitives_traits::{
-    logs_bloom, Account, BlobSidecar, BlobSidecars, Bytecode, GotExpected, GotExpectedBoxed,
-    Header, HeaderError, Log, LogData, SealedHeader, StorageEntry, Withdrawals,
+    logs_bloom, Account, BlockTy, BodyTy, Bytecode, GotExpected, GotExpectedBoxed, Header,
+    HeaderTy, Log, LogData, NodePrimitives, ReceiptTy, RecoveredBlock, SealedHeader, StorageEntry,
+    TxTy,
 };
 pub use static_file::StaticFileSegment;
 
-pub use transaction::{
-    BlobTransaction, BlobTransactionSidecar, PooledTransactionsElement,
-    PooledTransactionsElementEcRecovered,
+pub use alloy_consensus::{
+    transaction::{PooledTransaction, Recovered, TransactionMeta},
+    ReceiptWithBloom,
 };
+
+/// Recovered transaction
+#[deprecated(note = "use `Recovered` instead")]
+pub type RecoveredTx<T> = Recovered<T>;
 
 pub use transaction::{
     util::secp256k1::{public_key_to_address, recover_signer_unchecked, sign_message},
-    InvalidTransactionError, Transaction, TransactionMeta, TransactionSigned,
-    TransactionSignedEcRecovered, TransactionSignedNoHash, TxHashOrNumber, TxType,
+    InvalidTransactionError, Transaction, TransactionSigned, TxType,
 };
+#[expect(deprecated)]
+pub use transaction::{PooledTransactionsElementEcRecovered, TransactionSignedEcRecovered};
 
 // Re-exports
 pub use reth_ethereum_forks::*;
-pub use revm::primitives::{self, JumpTable};
 
 #[cfg(any(test, feature = "arbitrary"))]
 pub use arbitrary;
@@ -77,12 +78,12 @@ pub use c_kzg as kzg;
 /// Read more: <https://github.com/bincode-org/bincode/issues/326>
 #[cfg(feature = "serde-bincode-compat")]
 pub mod serde_bincode_compat {
-    pub use super::{
-        block::serde_bincode_compat::*,
-        transaction::{serde_bincode_compat as transaction, serde_bincode_compat::*},
-    };
+    pub use reth_primitives_traits::serde_bincode_compat::*;
 }
 
+// Re-export of `EthPrimitives`
+pub use reth_ethereum_primitives::EthPrimitives;
+
 // to make lint happy
-#[cfg(any(feature = "bsc", feature = "opbnb"))]
+#[cfg(feature = "revm")]
 use revm as _;

@@ -25,7 +25,11 @@ pub mod receipt;
 pub use receipt::Receipt;
 
 pub mod transaction;
-pub use transaction::{signed::SignedTransaction, FullTransaction, Transaction};
+pub use transaction::{execute::FillTxEnv, signed::SignedTransaction, FullTransaction, Transaction};
+
+pub mod crypto;
+pub mod proofs;
+pub use alloy_eips::eip2718::WithEncoded;
 
 mod integer_list;
 pub use integer_list::{IntegerList, IntegerListError};
