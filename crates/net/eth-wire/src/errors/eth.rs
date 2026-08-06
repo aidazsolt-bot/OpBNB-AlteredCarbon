@@ -3,10 +3,11 @@
 use crate::{
     errors::P2PStreamError, message::MessageError, version::ParseVersionError, DisconnectReason,
 };
+use alloy_chains::Chain;
 use alloy_primitives::B256;
-use reth_chainspec::Chain;
-use reth_eth_wire_types::EthVersion;
-use reth_primitives::{GotExpected, GotExpectedBoxed, ValidationError};
+use reth_eth_wire_types::{snap::SnapProtocolError, EthVersion};
+use reth_ethereum_forks::ValidationError;
+use reth_primitives_traits::{GotExpected, GotExpectedBoxed};
 use std::io;
 
 /// Errors when sending/receiving messages
@@ -21,13 +22,18 @@ pub enum EthStreamError {
     #[error(transparent)]
     /// Failed Ethereum handshake.
     EthHandshakeError(#[from] EthHandshakeError),
-    /// Thrown when decoding a message message failed.
+    /// Thrown when decoding a message failed.
     #[error(transparent)]
     InvalidMessage(#[from] MessageError),
+    /// Thrown when decoding an inbound `snap` protocol message failed.
+    #[error(transparent)]
+    InvalidSnapMessage(#[from] SnapProtocolError),
     #[error("message size ({0}) exceeds max length (10MB)")]
     /// Received a message whose size exceeds the standard limit.
     MessageTooBig(usize),
-    #[error("TransactionHashes invalid len of fields: hashes_len={hashes_len} types_len={types_len} sizes_len={sizes_len}")]
+    #[error(
+        "TransactionHashes invalid len of fields: hashes_len={hashes_len} types_len={types_len} sizes_len={sizes_len}"
+    )]
     /// Received malformed transaction hashes message with discrepancies in field lengths.
     TransactionHashesInvalidLenOfFields {
         /// The number of transaction hashes.
@@ -40,6 +46,12 @@ pub enum EthStreamError {
     /// Error when data is not received from peer for a prolonged period.
     #[error("never received data from remote peer")]
     StreamTimeout,
+    /// Error triggered when an unknown or unsupported Ethereum message ID is received.
+    #[error("Received unknown ETH message ID: 0x{message_id:X}")]
+    UnsupportedMessage {
+        /// The identifier of the unknown Ethereum message.
+        message_id: u8,
+    },
 }
 
 // === impl EthStreamError ===
@@ -52,6 +64,29 @@ impl EthStreamError {
         } else {
             None
         }
+    }
+
+    /// Returns whether this error indicates a protocol breach on the receive side.
+    ///
+    /// These are errors caused by the remote peer sending invalid or malformed data
+    /// that warrant disconnecting with [`DisconnectReason::ProtocolBreach`].
+    pub const fn is_protocol_breach(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidMessage(_) |
+                Self::InvalidSnapMessage(_) |
+                Self::MessageTooBig(_) |
+                Self::TransactionHashesInvalidLenOfFields { .. } |
+                Self::UnsupportedMessage { .. } |
+                Self::P2PStreamError(
+                    P2PStreamError::Rlp(_) |
+                        P2PStreamError::Snap(_) |
+                        P2PStreamError::MessageTooBig { .. } |
+                        P2PStreamError::UnknownReservedMessageId(_) |
+                        P2PStreamError::EmptyProtocolMessage |
+                        P2PStreamError::UnknownDisconnectReason(_)
+                )
+        )
     }
 
     /// Returns the [`io::Error`] if it was caused by IO
@@ -101,4 +136,15 @@ pub enum EthHandshakeError {
         /// The maximum allowed bit length for the total difficulty.
         maximum: usize,
     },
+    #[error("earliest block > latest block: got {got}, latest {latest}")]
+    /// Earliest block > latest block.
+    EarliestBlockGreaterThanLatestBlock {
+        /// The earliest block.
+        got: u64,
+        /// The latest block.
+        latest: u64,
+    },
+    #[error("blockhash is zero")]
+    /// Blockhash is zero.
+    BlockhashZero,
 }

@@ -1,95 +1,21 @@
 use crate::{
+    block_access_lists::client::{BalRequirement, BlockAccessListsClient},
     bodies::client::BodiesClient,
     download::DownloadClient,
     error::PeerRequestResult,
     headers::client::{HeadersClient, HeadersRequest},
     priority::Priority,
+    BlockClient,
 };
+use alloy_consensus::Header;
 use alloy_eips::{BlockHashOrNumber, BlockNumHash};
-use alloy_primitives::B256;
+use alloy_primitives::{map::B256Map, Bytes, B256};
 use parking_lot::Mutex;
-use reth_eth_wire_types::HeadersDirection;
+use reth_eth_wire_types::{BlockAccessLists, HeadersDirection};
+use reth_ethereum_primitives::{Block, BlockBody};
 use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives::{BlockBody, Header, SealedBlock, SealedHeader};
-use std::{collections::HashMap, sync::Arc};
-
-/// A headers+bodies client implementation that does nothing.
-#[derive(Debug, Default, Clone)]
-#[non_exhaustive]
-pub struct NoopFullBlockClient;
-
-/// Implements the `DownloadClient` trait for the `NoopFullBlockClient` struct.
-impl DownloadClient for NoopFullBlockClient {
-    /// Reports a bad message received from a peer.
-    ///
-    /// # Arguments
-    ///
-    /// * `_peer_id` - Identifier for the peer sending the bad message (unused in this
-    ///   implementation).
-    fn report_bad_message(&self, _peer_id: PeerId) {}
-
-    /// Retrieves the number of connected peers.
-    ///
-    /// # Returns
-    ///
-    /// The number of connected peers, which is always zero in this implementation.
-    fn num_connected_peers(&self) -> usize {
-        0
-    }
-}
-
-/// Implements the `BodiesClient` trait for the `NoopFullBlockClient` struct.
-impl BodiesClient for NoopFullBlockClient {
-    /// Defines the output type of the function.
-    type Output = futures::future::Ready<PeerRequestResult<Vec<BlockBody>>>;
-
-    /// Retrieves block bodies based on provided hashes and priority.
-    ///
-    /// # Arguments
-    ///
-    /// * `_hashes` - A vector of block hashes (unused in this implementation).
-    /// * `_priority` - Priority level for block body retrieval (unused in this implementation).
-    ///
-    /// # Returns
-    ///
-    /// A future containing an empty vector of block bodies and a randomly generated `PeerId`.
-    fn get_block_bodies_with_priority(
-        &self,
-        _hashes: Vec<B256>,
-        _priority: Priority,
-    ) -> Self::Output {
-        // Create a future that immediately returns an empty vector of block bodies and a random
-        // PeerId.
-        futures::future::ready(Ok(WithPeerId::new(PeerId::random(), vec![])))
-    }
-}
-
-impl HeadersClient for NoopFullBlockClient {
-    /// The output type representing a future containing a peer request result with a vector of
-    /// headers.
-    type Output = futures::future::Ready<PeerRequestResult<Vec<Header>>>;
-
-    /// Retrieves headers with a specified priority level.
-    ///
-    /// This implementation does nothing and returns an empty vector of headers.
-    ///
-    /// # Arguments
-    ///
-    /// * `_request` - A request for headers (unused in this implementation).
-    /// * `_priority` - The priority level for the headers request (unused in this implementation).
-    ///
-    /// # Returns
-    ///
-    /// Always returns a ready future with an empty vector of headers wrapped in a
-    /// `PeerRequestResult`.
-    fn get_headers_with_priority(
-        &self,
-        _request: HeadersRequest,
-        _priority: Priority,
-    ) -> Self::Output {
-        futures::future::ready(Ok(WithPeerId::new(PeerId::random(), vec![])))
-    }
-}
+use reth_primitives_traits::{SealedBlock, SealedHeader};
+use std::{ops::RangeInclusive, sync::Arc};
 
 /// A headers+bodies client that stores the headers and bodies in memory, with an artificial soft
 /// bodies response limit that is set to 20 by default.
@@ -97,8 +23,9 @@ impl HeadersClient for NoopFullBlockClient {
 /// This full block client can be [Clone]d and shared between multiple tasks.
 #[derive(Clone, Debug)]
 pub struct TestFullBlockClient {
-    headers: Arc<Mutex<HashMap<B256, Header>>>,
-    bodies: Arc<Mutex<HashMap<B256, BlockBody>>>,
+    headers: Arc<Mutex<B256Map<Header>>>,
+    bodies: Arc<Mutex<B256Map<BlockBody>>>,
+    access_lists: Arc<Mutex<B256Map<Bytes>>>,
     // soft response limit, max number of bodies to respond with
     soft_limit: usize,
 }
@@ -106,8 +33,9 @@ pub struct TestFullBlockClient {
 impl Default for TestFullBlockClient {
     fn default() -> Self {
         Self {
-            headers: Arc::new(Mutex::new(HashMap::default())),
-            bodies: Arc::new(Mutex::new(HashMap::default())),
+            headers: Arc::new(Mutex::new(B256Map::default())),
+            bodies: Arc::new(Mutex::new(B256Map::default())),
+            access_lists: Arc::new(Mutex::new(B256Map::default())),
             soft_limit: 20,
         }
     }
@@ -121,17 +49,22 @@ impl TestFullBlockClient {
         self.bodies.lock().insert(hash, body);
     }
 
+    /// Insert a raw block access list served for the given block hash.
+    pub fn insert_access_list(&self, hash: B256, access_list: Bytes) {
+        self.access_lists.lock().insert(hash, access_list);
+    }
+
     /// Set the soft response limit.
-    pub fn set_soft_limit(&mut self, limit: usize) {
+    pub const fn set_soft_limit(&mut self, limit: usize) {
         self.soft_limit = limit;
     }
 
     /// Get the block with the highest block number.
-    pub fn highest_block(&self) -> Option<SealedBlock> {
+    pub fn highest_block(&self) -> Option<SealedBlock<Block>> {
         self.headers.lock().iter().max_by_key(|(_, header)| header.number).and_then(
             |(hash, header)| {
                 self.bodies.lock().get(hash).map(|body| {
-                    SealedBlock::new(SealedHeader::new(header.clone(), *hash), body.clone())
+                    SealedBlock::from_parts_unchecked(header.clone(), body.clone(), *hash)
                 })
             },
         )
@@ -152,6 +85,7 @@ impl DownloadClient for TestFullBlockClient {
 
 /// Implements the `HeadersClient` trait for the `TestFullBlockClient` struct.
 impl HeadersClient for TestFullBlockClient {
+    type Header = Header;
     /// Specifies the associated output type.
     type Output = futures::future::Ready<PeerRequestResult<Vec<Header>>>;
 
@@ -205,6 +139,7 @@ impl HeadersClient for TestFullBlockClient {
 
 /// Implements the `BodiesClient` trait for the `TestFullBlockClient` struct.
 impl BodiesClient for TestFullBlockClient {
+    type Body = BlockBody;
     /// Defines the output type of the function.
     type Output = futures::future::Ready<PeerRequestResult<Vec<BlockBody>>>;
 
@@ -218,10 +153,11 @@ impl BodiesClient for TestFullBlockClient {
     /// # Returns
     ///
     /// A future containing the result of the block body retrieval operation.
-    fn get_block_bodies_with_priority(
+    fn get_block_bodies_with_priority_and_range_hint(
         &self,
         hashes: Vec<B256>,
         _priority: Priority,
+        _range_hint: Option<RangeInclusive<u64>>,
     ) -> Self::Output {
         // Acquire a lock on the bodies.
         let bodies = self.bodies.lock();
@@ -235,6 +171,27 @@ impl BodiesClient for TestFullBlockClient {
                 .filter_map(|hash| bodies.get(hash).cloned())
                 .take(self.soft_limit)
                 .collect(),
+        )))
+    }
+}
+
+impl BlockClient for TestFullBlockClient {
+    type Block = reth_ethereum_primitives::Block;
+}
+
+impl BlockAccessListsClient for TestFullBlockClient {
+    type Output = futures::future::Ready<PeerRequestResult<BlockAccessLists>>;
+
+    fn get_block_access_lists_with_priority_and_requirement(
+        &self,
+        hashes: Vec<B256>,
+        _priority: Priority,
+        _requirement: BalRequirement,
+    ) -> Self::Output {
+        let access_lists = self.access_lists.lock();
+        futures::future::ready(Ok(WithPeerId::new(
+            PeerId::random(),
+            BlockAccessLists(hashes.iter().map(|hash| access_lists.get(hash).cloned()).collect()),
         )))
     }
 }

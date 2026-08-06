@@ -5,37 +5,13 @@ use crate::{
     p2pstream::MAX_RESERVED_MESSAGE_ID,
     protocol::{ProtoVersion, Protocol},
     version::ParseVersionError,
-    Capability, EthMessage, EthMessageID, EthVersion,
+    Capability, EthMessageID, EthVersion,
 };
-use alloy_primitives::bytes::Bytes;
 use derive_more::{Deref, DerefMut};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{BTreeSet, HashMap},
 };
-
-/// A Capability message consisting of the message-id and the payload
-#[derive(Debug, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RawCapabilityMessage {
-    /// Identifier of the message.
-    pub id: usize,
-    /// Actual payload
-    pub payload: Bytes,
-}
-
-/// Various protocol related event types bubbled up from a session that need to be handled by the
-/// network.
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum CapabilityMessage {
-    /// Eth sub-protocol message.
-    Eth(EthMessage),
-    /// Any other capability message.
-    Other(RawCapabilityMessage),
-}
 
 /// This represents a shared capability, its version, and its message id offset.
 ///
@@ -158,7 +134,7 @@ impl SharedCapability {
     /// Returns the number of protocol messages supported by this capability.
     pub const fn num_messages(&self) -> u8 {
         match self {
-            Self::Eth { version: _version, .. } => EthMessageID::max() + 1,
+            Self::Eth { version, .. } => EthMessageID::message_count(*version),
             Self::UnknownCapability { messages, .. } => *messages,
         }
     }
@@ -200,6 +176,13 @@ impl SharedCapabilities {
             .ok_or(P2PStreamError::CapabilityNotShared)
     }
 
+    /// Returns `true` if the shared capabilities are exactly `eth` and `snap/2` (EIP-8189), the
+    /// layout handled by the dedicated [`EthSnapStream`](crate::EthSnapStream).
+    #[inline]
+    pub fn is_exact_eth_snap_v2(&self) -> bool {
+        self.len() == 2 && self.ensure_matching_capability(&Capability::snap_2()).is_ok()
+    }
+
     /// Returns true if the shared capabilities contain the given capability.
     #[inline]
     pub fn contains(&self, cap: &Capability) -> bool {
@@ -210,6 +193,34 @@ impl SharedCapabilities {
     #[inline]
     pub fn find(&self, cap: &Capability) -> Option<&SharedCapability> {
         self.0.iter().find(|c| c.version() == cap.version as u8 && c.name() == cap.name)
+    }
+
+    /// Converts a capability-local message ID into the relative `RLPx` message ID used by
+    /// [`P2PStream`](crate::P2PStream).
+    ///
+    /// `P2PStream` strips the reserved p2p message ID range before yielding subprotocol messages,
+    /// so the returned ID is relative to the first shared capability, not the absolute wire ID.
+    #[inline]
+    pub fn relative_message_id(&self, cap: &Capability, message_id: u8) -> Option<u8> {
+        let shared = self.find(cap)?;
+        if message_id >= shared.num_messages() {
+            return None
+        }
+
+        shared.relative_message_id_offset().checked_add(message_id)
+    }
+
+    /// Converts a relative `RLPx` message ID back into the message ID local to `cap`.
+    ///
+    /// Returns `None` if `cap` is not shared, if the relative ID belongs to a different
+    /// capability, or if it is outside the capability's negotiated message range.
+    #[inline]
+    pub fn capability_message_id(&self, cap: &Capability, relative_message_id: u8) -> Option<u8> {
+        let shared = self.find(cap)?;
+        let start = shared.relative_message_id_offset();
+        let end = start.checked_add(shared.num_messages())?;
+
+        (start..end).contains(&relative_message_id).then(|| relative_message_id - start)
     }
 
     /// Returns the matching shared capability for the given capability offset.
@@ -262,13 +273,13 @@ impl SharedCapabilities {
 
     /// Returns the number of shared capabilities.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
     /// Returns true if there are no shared capabilities.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
@@ -314,7 +325,7 @@ pub fn shared_capability_offsets(
             // highest wins, others are ignored
             if shared_capabilities
                 .get(&peer_capability.name)
-                .map_or(true, |v| peer_capability.version > v.version)
+                .is_none_or(|v| peer_capability.version > v.version)
             {
                 shared_capabilities.insert(
                     peer_capability.name.clone(),
@@ -376,10 +387,20 @@ pub struct UnsupportedCapabilityError {
     capability: Capability,
 }
 
+impl UnsupportedCapabilityError {
+    /// Creates a new error with the given capability
+    pub const fn new(capability: Capability) -> Self {
+        Self { capability }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Capabilities, Capability};
+    use crate::{Capabilities, Capability, SnapVersion};
+    use alloy_primitives::bytes::Bytes;
+    use alloy_rlp::{Decodable, Encodable};
+    use reth_eth_wire_types::RawCapabilityMessage;
 
     #[test]
     fn from_eth_68() {
@@ -432,6 +453,8 @@ mod tests {
             Capability::new_static("eth", 66),
             Capability::new_static("eth", 67),
             Capability::new_static("eth", 68),
+            Capability::new_static("eth", 69),
+            Capability::new_static("eth", 70),
         ]
         .into();
 
@@ -439,6 +462,8 @@ mod tests {
         assert!(capabilities.supports_eth_v66());
         assert!(capabilities.supports_eth_v67());
         assert!(capabilities.supports_eth_v68());
+        assert!(capabilities.supports_eth_v69());
+        assert!(capabilities.supports_eth_v70());
     }
 
     #[test]
@@ -538,5 +563,98 @@ mod tests {
         // the 6th shared message is the first message of the eth capability
         let shared_eth = shared.find_by_relative_offset(1 + proto.messages()).unwrap();
         assert_eq!(shared_eth.name(), "eth");
+    }
+
+    #[test]
+    fn relative_message_id_accounts_for_intermediate_capabilities() {
+        let intermediate_cap = Capability::new_static("foo", 1);
+        let intermediate = Protocol::new(intermediate_cap.clone(), 3);
+        let snap = Capability::snap(SnapVersion::V2);
+        let eth = Capability::eth(EthVersion::Eth69);
+        let local_capabilities =
+            vec![EthVersion::Eth69.into(), intermediate, Protocol::snap(SnapVersion::V2)];
+        let peer_capabilities = vec![eth, intermediate_cap, snap.clone()];
+
+        let shared = SharedCapabilities::try_new(local_capabilities, peer_capabilities).unwrap();
+        let snap_id = shared.relative_message_id(&snap, 2).unwrap();
+
+        assert_eq!(snap_id, EthMessageID::message_count(EthVersion::Eth69) + 3 + 2);
+        assert_eq!(shared.capability_message_id(&snap, snap_id), Some(2));
+    }
+
+    #[test]
+    fn capability_message_id_rejects_other_capability_range() {
+        let intermediate_cap = Capability::new_static("foo", 1);
+        let intermediate = Protocol::new(intermediate_cap.clone(), 3);
+        let snap = Capability::snap(SnapVersion::V2);
+        let local_capabilities =
+            vec![EthVersion::Eth69.into(), intermediate, Protocol::snap(SnapVersion::V2)];
+        let peer_capabilities =
+            vec![Capability::eth(EthVersion::Eth69), intermediate_cap.clone(), snap.clone()];
+
+        let shared = SharedCapabilities::try_new(local_capabilities, peer_capabilities).unwrap();
+        let intermediate_id = shared.relative_message_id(&intermediate_cap, 1).unwrap();
+
+        assert_eq!(shared.capability_message_id(&snap, intermediate_id), None);
+        assert_eq!(shared.relative_message_id(&snap, SnapVersion::V2.message_count()), None);
+    }
+
+    #[test]
+    fn test_raw_capability_rlp() {
+        let msg = RawCapabilityMessage { id: 1, payload: Bytes::from(vec![0x01, 0x02, 0x03]) };
+
+        // Encode the message into bytes
+        let mut encoded = Vec::new();
+        msg.encode(&mut encoded);
+
+        // Decode the bytes back into RawCapabilityMessage
+        let decoded = RawCapabilityMessage::decode(&mut &encoded[..]).unwrap();
+
+        // Verify that the decoded message matches the original
+        assert_eq!(msg, decoded);
+    }
+
+    #[test]
+    fn is_exact_eth_snap_v2_accepts_eth_and_snap() {
+        let shared = SharedCapabilities::try_new(
+            vec![EthVersion::Eth68.into(), Protocol::snap_2()],
+            vec![EthVersion::Eth68.into(), Capability::snap_2()],
+        )
+        .unwrap();
+        assert!(shared.is_exact_eth_snap_v2());
+    }
+
+    #[test]
+    fn is_exact_eth_snap_v2_rejects_eth_only() {
+        let shared = SharedCapabilities::try_new(
+            vec![EthVersion::Eth68.into()],
+            vec![EthVersion::Eth68.into()],
+        )
+        .unwrap();
+        assert!(!shared.is_exact_eth_snap_v2());
+    }
+
+    #[test]
+    fn is_exact_eth_snap_v2_rejects_eth_without_snap() {
+        // eth + a non-snap capability is not the dedicated layout.
+        let cap = Capability::new_static("les", 1);
+        let shared = SharedCapabilities::try_new(
+            vec![EthVersion::Eth68.into(), Protocol::new(cap.clone(), 5)],
+            vec![EthVersion::Eth68.into(), cap],
+        )
+        .unwrap();
+        assert!(!shared.is_exact_eth_snap_v2());
+    }
+
+    #[test]
+    fn is_exact_eth_snap_v2_rejects_eth_snap_plus_extra() {
+        // eth + snap/2 + another capability belongs on the general satellite multiplexer.
+        let cap = Capability::new_static("les", 1);
+        let shared = SharedCapabilities::try_new(
+            vec![EthVersion::Eth68.into(), Protocol::snap_2(), Protocol::new(cap.clone(), 5)],
+            vec![EthVersion::Eth68.into(), Capability::snap_2(), cap],
+        )
+        .unwrap();
+        assert!(!shared.is_exact_eth_snap_v2());
     }
 }

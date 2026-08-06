@@ -1,9 +1,10 @@
 //! Support for representing the version of the `eth`
 
-use std::{fmt, str::FromStr};
-
+use crate::alloc::string::ToString;
+use alloc::string::String;
 use alloy_rlp::{Decodable, Encodable, Error as RlpError};
 use bytes::BufMut;
+use core::{fmt, str::FromStr};
 use derive_more::Display;
 use reth_codecs_derive::add_arbitrary_tests;
 
@@ -26,24 +27,30 @@ pub enum EthVersion {
     Eth68 = 68,
     /// The `eth` protocol version 69.
     Eth69 = 69,
+    /// The `eth` protocol version 70.
+    ///
+    /// [EIP-7975](https://eips.ethereum.org/EIPS/eip-7975) adds partial block receipt
+    /// lists by extending `GetReceipts` and `Receipts` with pagination fields.
+    Eth70 = 70,
+    /// The `eth` protocol version 71.
+    ///
+    /// [EIP-8159](https://eips.ethereum.org/EIPS/eip-8159) adds block access list
+    /// exchange with `GetBlockAccessLists` and `BlockAccessLists`.
+    Eth71 = 71,
+    /// The `eth` protocol version 72.
+    ///
+    /// [EIP-8070](https://eips.ethereum.org/EIPS/eip-8070) adds sparse blobpool
+    /// support by extending `NewPooledTransactionHashes` with `cell_mask` and adding
+    /// `GetCells` and `Cells`.
+    Eth72 = 72,
 }
 
 impl EthVersion {
     /// The latest known eth version
-    pub const LATEST: Self = Self::Eth68;
+    pub const LATEST: Self = Self::Eth69;
 
-    /// Returns the total number of messages the protocol version supports.
-    pub const fn total_messages(&self) -> u8 {
-        match self {
-            Self::Eth66 => 15,
-            Self::Eth67 | Self::Eth68 => {
-                // eth/67,68 are eth/66 minus GetNodeData and NodeData messages
-                13
-            }
-            // eth69 is both eth67 and eth68 minus NewBlockHashes and NewBlock
-            Self::Eth69 => 11,
-        }
-    }
+    /// All known eth versions
+    pub const ALL_VERSIONS: &'static [Self] = &[Self::Eth69, Self::Eth68, Self::Eth67, Self::Eth66];
 
     /// Returns true if the version is eth/66
     pub const fn is_eth66(&self) -> bool {
@@ -60,13 +67,38 @@ impl EthVersion {
         matches!(self, Self::Eth68)
     }
 
+    /// Returns true if the version carries eth/68 transaction announcement metadata.
+    pub const fn has_eth68_metadata(&self) -> bool {
+        matches!(self, Self::Eth68 | Self::Eth69 | Self::Eth70 | Self::Eth71 | Self::Eth72)
+    }
+
     /// Returns true if the version is eth/69
     pub const fn is_eth69(&self) -> bool {
         matches!(self, Self::Eth69)
     }
+
+    /// Returns true if the version is eth/70
+    pub const fn is_eth70(&self) -> bool {
+        matches!(self, Self::Eth70)
+    }
+
+    /// Returns true if the version is eth/71
+    pub const fn is_eth71(&self) -> bool {
+        matches!(self, Self::Eth71)
+    }
+
+    /// Returns true if the version is eth/72
+    pub const fn is_eth72(&self) -> bool {
+        matches!(self, Self::Eth72)
+    }
+
+    /// Returns true if the version is eth/69 or newer.
+    pub const fn is_eth69_or_newer(&self) -> bool {
+        matches!(self, Self::Eth69 | Self::Eth70 | Self::Eth71 | Self::Eth72)
+    }
 }
 
-/// RLP encodes `EthVersion` as a single byte (66-69).
+/// RLP encodes `EthVersion` as a single byte (66-72).
 impl Encodable for EthVersion {
     fn encode(&self, out: &mut dyn BufMut) {
         (*self as u8).encode(out)
@@ -78,7 +110,7 @@ impl Encodable for EthVersion {
 }
 
 /// RLP decodes a single byte into `EthVersion`.
-/// Returns error if byte is not a valid version (66-69).
+/// Returns error if byte is not a valid version (66-72).
 impl Decodable for EthVersion {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let version = u8::decode(buf)?;
@@ -105,6 +137,9 @@ impl TryFrom<&str> for EthVersion {
             "67" => Ok(Self::Eth67),
             "68" => Ok(Self::Eth68),
             "69" => Ok(Self::Eth69),
+            "70" => Ok(Self::Eth70),
+            "71" => Ok(Self::Eth71),
+            "72" => Ok(Self::Eth72),
             _ => Err(ParseVersionError(s.to_string())),
         }
     }
@@ -129,6 +164,9 @@ impl TryFrom<u8> for EthVersion {
             67 => Ok(Self::Eth67),
             68 => Ok(Self::Eth68),
             69 => Ok(Self::Eth69),
+            70 => Ok(Self::Eth70),
+            71 => Ok(Self::Eth71),
+            72 => Ok(Self::Eth72),
             _ => Err(ParseVersionError(u.to_string())),
         }
     }
@@ -158,11 +196,14 @@ impl From<EthVersion> for &'static str {
             EthVersion::Eth67 => "67",
             EthVersion::Eth68 => "68",
             EthVersion::Eth69 => "69",
+            EthVersion::Eth70 => "70",
+            EthVersion::Eth71 => "71",
+            EthVersion::Eth72 => "72",
         }
     }
 }
 
-/// RLPx `p2p` protocol version
+/// `RLPx` `p2p` protocol version
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
@@ -204,7 +245,7 @@ impl Decodable for ProtocolVersion {
 
 #[cfg(test)]
 mod tests {
-    use super::{EthVersion, ParseVersionError};
+    use super::EthVersion;
     use alloy_rlp::{Decodable, Encodable, Error as RlpError};
     use bytes::BytesMut;
 
@@ -214,7 +255,9 @@ mod tests {
         assert_eq!(EthVersion::Eth67, EthVersion::try_from("67").unwrap());
         assert_eq!(EthVersion::Eth68, EthVersion::try_from("68").unwrap());
         assert_eq!(EthVersion::Eth69, EthVersion::try_from("69").unwrap());
-        assert_eq!(Err(ParseVersionError("70".to_string())), EthVersion::try_from("70"));
+        assert_eq!(EthVersion::Eth70, EthVersion::try_from("70").unwrap());
+        assert_eq!(EthVersion::Eth71, EthVersion::try_from("71").unwrap());
+        assert_eq!(EthVersion::Eth72, EthVersion::try_from("72").unwrap());
     }
 
     #[test]
@@ -223,12 +266,33 @@ mod tests {
         assert_eq!(EthVersion::Eth67, "67".parse().unwrap());
         assert_eq!(EthVersion::Eth68, "68".parse().unwrap());
         assert_eq!(EthVersion::Eth69, "69".parse().unwrap());
-        assert_eq!(Err(ParseVersionError("70".to_string())), "70".parse::<EthVersion>());
+        assert_eq!(EthVersion::Eth70, "70".parse().unwrap());
+        assert_eq!(EthVersion::Eth71, "71".parse().unwrap());
+        assert_eq!(EthVersion::Eth72, "72".parse().unwrap());
+    }
+
+    #[test]
+    fn test_has_eth68_metadata() {
+        assert!(!EthVersion::Eth66.has_eth68_metadata());
+        assert!(!EthVersion::Eth67.has_eth68_metadata());
+        assert!(EthVersion::Eth68.has_eth68_metadata());
+        assert!(EthVersion::Eth69.has_eth68_metadata());
+        assert!(EthVersion::Eth70.has_eth68_metadata());
+        assert!(EthVersion::Eth71.has_eth68_metadata());
+        assert!(EthVersion::Eth72.has_eth68_metadata());
     }
 
     #[test]
     fn test_eth_version_rlp_encode() {
-        let versions = [EthVersion::Eth66, EthVersion::Eth67, EthVersion::Eth68, EthVersion::Eth69];
+        let versions = [
+            EthVersion::Eth66,
+            EthVersion::Eth67,
+            EthVersion::Eth68,
+            EthVersion::Eth69,
+            EthVersion::Eth70,
+            EthVersion::Eth71,
+            EthVersion::Eth72,
+        ];
 
         for version in versions {
             let mut encoded = BytesMut::new();
@@ -245,7 +309,9 @@ mod tests {
             (67_u8, Ok(EthVersion::Eth67)),
             (68_u8, Ok(EthVersion::Eth68)),
             (69_u8, Ok(EthVersion::Eth69)),
-            (70_u8, Err(RlpError::Custom("invalid eth version"))),
+            (70_u8, Ok(EthVersion::Eth70)),
+            (71_u8, Ok(EthVersion::Eth71)),
+            (72_u8, Ok(EthVersion::Eth72)),
             (65_u8, Err(RlpError::Custom("invalid eth version"))),
         ];
 
@@ -257,13 +323,5 @@ mod tests {
             let result = EthVersion::decode(&mut slice);
             assert_eq!(result, expected);
         }
-    }
-
-    #[test]
-    fn test_eth_version_total_messages() {
-        assert_eq!(EthVersion::Eth66.total_messages(), 15);
-        assert_eq!(EthVersion::Eth67.total_messages(), 13);
-        assert_eq!(EthVersion::Eth68.total_messages(), 13);
-        assert_eq!(EthVersion::Eth69.total_messages(), 11);
     }
 }

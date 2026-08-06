@@ -1,12 +1,6 @@
 /* ==================== BROADCAST ==================== */
 
-/// Soft limit for the number of hashes in a
-/// [`NewPooledTransactionHashes`](reth_eth_wire::NewPooledTransactionHashes) broadcast message.
-///
-/// Spec'd at 4096 hashes.
-///
-/// <https://github.com/ethereum/devp2p/blob/master/caps/eth.md#newpooledtransactionhashes-0x08>
-pub const SOFT_LIMIT_COUNT_HASHES_IN_NEW_POOLED_TRANSACTIONS_BROADCAST_MESSAGE: usize = 4096;
+pub use reth_eth_wire_types::SOFT_LIMIT_COUNT_HASHES_IN_NEW_POOLED_TRANSACTIONS_BROADCAST_MESSAGE;
 
 /// Default soft limit for the byte size of a [`Transactions`](reth_eth_wire::Transactions)
 /// broadcast message.
@@ -53,11 +47,19 @@ pub mod tx_manager {
     ///
     /// Default is 100 KiB, i.e. 3 200 transaction hashes.
     pub const DEFAULT_MAX_COUNT_BAD_IMPORTS: u32 = 100 * 1024 / 32;
+
+    /// Default memory limit (in bytes) for the channel between
+    /// [`NetworkManager`](crate::NetworkManager) and
+    /// [`TransactionsManager`](crate::transactions::TransactionsManager).
+    ///
+    /// Caps the total in-flight bytes of `NetworkTransactionEvent`s buffered between the two
+    /// tasks. When the budget is exhausted, new events are dropped (see metric
+    /// `total_dropped_tx_events_at_full_capacity`).
+    pub const DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES: usize = 1024 * 1024 * 1024;
 }
 
 /// Constants used by [`TransactionFetcher`](super::TransactionFetcher).
 pub mod tx_fetcher {
-    use crate::transactions::fetcher::TransactionFetcherInfo;
     use reth_network_types::peers::config::{
         DEFAULT_MAX_COUNT_PEERS_INBOUND, DEFAULT_MAX_COUNT_PEERS_OUTBOUND,
     };
@@ -202,14 +204,16 @@ pub mod tx_fetcher {
 
     /// Default divisor of the max inflight request when calculating search breadth of the search
     /// for any idle peer to which to send a request filled with hashes pending fetch. The max
-    /// inflight requests is configured in [`TransactionFetcherInfo`].
+    /// inflight requests is configured in
+    /// [`TransactionFetcherInfo`](crate::transactions::fetcher::TransactionFetcherInfo).
     ///
     /// Default is 3 requests.
     pub const DEFAULT_DIVISOR_MAX_COUNT_INFLIGHT_REQUESTS_ON_FIND_IDLE_PEER: usize = 3;
 
     /// Default divisor of the max inflight request when calculating search breadth of the search
     /// for the intersection of hashes announced by a peer and hashes pending fetch. The max
-    /// inflight requests is configured in [`TransactionFetcherInfo`].
+    /// inflight requests is configured in
+    /// [`TransactionFetcherInfo`](crate::transactions::fetcher::TransactionFetcherInfo).
     ///
     /// Default is 3 requests.
     pub const DEFAULT_DIVISOR_MAX_COUNT_INFLIGHT_REQUESTS_ON_FIND_INTERSECTION: usize = 3;
@@ -256,26 +260,4 @@ pub mod tx_fetcher {
     ///
     /// Default is 8 hashes.
     pub const DEFAULT_MARGINAL_COUNT_HASHES_GET_POOLED_TRANSACTIONS_REQUEST: usize = 8;
-
-    /// Returns the approx number of transaction hashes that a
-    /// [`GetPooledTransactions`](reth_eth_wire::GetPooledTransactions) request will have capacity
-    /// for w.r.t. the [`Eth68`](reth_eth_wire::EthVersion::Eth68) protocol version. This is useful
-    /// for preallocating memory.
-    pub const fn approx_capacity_get_pooled_transactions_req_eth68(
-        info: &TransactionFetcherInfo,
-    ) -> usize {
-        let max_size_expected_response =
-            info.soft_limit_byte_size_pooled_transactions_response_on_pack_request;
-
-        max_size_expected_response / MEDIAN_BYTE_SIZE_SMALL_LEGACY_TX_ENCODED +
-            DEFAULT_MARGINAL_COUNT_HASHES_GET_POOLED_TRANSACTIONS_REQUEST
-    }
-
-    /// Returns the approx number of transactions that a
-    /// [`GetPooledTransactions`](reth_eth_wire::GetPooledTransactions) request will
-    /// have capacity for w.r.t. the [`Eth66`](reth_eth_wire::EthVersion::Eth66) protocol version.
-    /// This is useful for preallocating memory.
-    pub const fn approx_capacity_get_pooled_transactions_req_eth66() -> usize {
-        SOFT_LIMIT_COUNT_HASHES_IN_GET_POOLED_TRANSACTIONS_REQUEST
-    }
 }
