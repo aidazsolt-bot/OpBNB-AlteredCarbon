@@ -319,7 +319,7 @@ impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N> {
 
 impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N>
 where
-    N::Receipt: Value + Into<<tables::Receipts as reth_db_api::table::Table>::Value> + Clone,
+    N::Receipt: Value + Clone,
     CURSOR: DbCursorRW<tables::Receipts>,
 {
     /// Append a transaction receipt.
@@ -328,7 +328,11 @@ where
         N::Receipt: Compact,
     {
         match self {
-            Self::Database(cursor) => Ok(cursor.append(tx_num, &receipt.clone().into())?),
+            Self::Database(cursor) => {
+                let converted: <tables::Receipts as reth_db_api::table::Table>::Value =
+                    crate::compact_convert(receipt.clone());
+                Ok(cursor.append(tx_num, &converted)?)
+            }
             Self::StaticFile(writer) => writer.append_receipt(tx_num, receipt),
             #[cfg(all(unix, feature = "rocksdb"))]
             Self::RocksDB(_) => Err(ProviderError::UnsupportedProvider),
