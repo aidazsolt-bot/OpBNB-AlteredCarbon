@@ -396,7 +396,7 @@ impl Default for PruneConfig {
         Self {
             block_interval: DEFAULT_BLOCK_INTERVAL,
             recent_sidecars_kept_blocks: 0,
-            segments: PruneModes::none(),
+            segments: PruneModes::default(),
         }
     }
 }
@@ -422,6 +422,7 @@ impl PruneConfig {
                     account_history,
                     storage_history,
                     receipts_log_filter,
+                    ..
                 },
         } = other;
 
