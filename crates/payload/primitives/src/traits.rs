@@ -1,138 +1,113 @@
-use crate::{PayloadEvents, PayloadKind, PayloadTypes};
-use alloy_eips::eip7685::Requests;
-use alloy_primitives::{Address, B256, U256};
-use alloy_rpc_types::{
-    engine::{PayloadAttributes as EthPayloadAttributes, PayloadId},
-    Withdrawal,
-};
-use op_alloy_rpc_types_engine::OpPayloadAttributes;
-use reth_chain_state::ExecutedBlock;
-use reth_primitives::{SealedBlock, Withdrawals};
-use tokio::sync::oneshot;
+//! Core traits for working with execution payloads.
 
-/// A type that can request, subscribe to and resolve payloads.
-#[async_trait::async_trait]
-pub trait PayloadBuilder: Send + Unpin {
-    /// The Payload type for the builder.
-    type PayloadType: PayloadTypes;
-    /// The error type returned by the builder.
-    type Error;
+use crate::PayloadBuilderError;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloy_eips::{eip4895::Withdrawal, eip7685::Requests};
+use alloy_primitives::{Bytes, B256, U256};
+use alloy_rlp::Encodable;
+use alloy_rpc_types_engine::{PayloadAttributes as EthPayloadAttributes, PayloadId};
+use core::fmt;
+use either::Either;
+use reth_execution_types::BlockExecutionOutput;
+use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader};
+use reth_trie_common::{prefix_set::TriePrefixSetsMut, updates::TrieUpdates, HashedPostState};
 
-    /// Sends a message to the service to start building a new payload for the given payload.
-    ///
-    /// Returns a receiver that will receive the payload id.
-    fn send_new_payload(
-        &self,
-        attr: <Self::PayloadType as PayloadTypes>::PayloadBuilderAttributes,
-    ) -> oneshot::Receiver<Result<PayloadId, Self::Error>>;
-
-    /// Returns the best payload for the given identifier.
-    async fn best_payload(
-        &self,
-        id: PayloadId,
-    ) -> Option<Result<<Self::PayloadType as PayloadTypes>::BuiltPayload, Self::Error>>;
-
-    /// Resolves the payload job and returns the best payload that has been built so far.
-    async fn resolve_kind(
-        &self,
-        id: PayloadId,
-        kind: PayloadKind,
-    ) -> Option<Result<<Self::PayloadType as PayloadTypes>::BuiltPayload, Self::Error>>;
-
-    /// Resolves the payload job as fast and possible and returns the best payload that has been
-    /// built so far.
-    async fn resolve(
-        &self,
-        id: PayloadId,
-    ) -> Option<Result<<Self::PayloadType as PayloadTypes>::BuiltPayload, Self::Error>> {
-        self.resolve_kind(id, PayloadKind::Earliest).await
-    }
-
-    /// Sends a message to the service to subscribe to payload events.
-    /// Returns a receiver that will receive them.
-    async fn subscribe(&self) -> Result<PayloadEvents<Self::PayloadType>, Self::Error>;
+/// Represents an executed block for payload building purposes.
+///
+/// This type captures the complete execution state of a built block,
+/// including the recovered block, execution outcome, hashed state, and trie updates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltPayloadExecutedBlock<N: NodePrimitives> {
+    /// Recovered Block
+    pub recovered_block: Arc<RecoveredBlock<N::Block>>,
+    /// Block's execution outcome.
+    pub execution_output: Arc<BlockExecutionOutput<N::Receipt>>,
+    /// Block's hashed state (unsorted).
+    pub hashed_state: Arc<HashedPostState>,
+    /// Trie updates that result from calculating the state root for the block (unsorted).
+    pub trie_updates: Arc<TrieUpdates>,
+    /// Changed trie node base paths, if known.
+    pub changed_paths: Option<Arc<TriePrefixSetsMut>>,
 }
 
-/// Represents a built payload type that contains a built [`SealedBlock`] and can be converted into
-/// engine API execution payloads.
-pub trait BuiltPayload: Send + Sync + std::fmt::Debug {
-    /// Returns the built block (sealed)
-    fn block(&self) -> &SealedBlock;
+/// Represents a successfully built execution payload (block).
+///
+/// Provides access to the underlying block data, execution results, and associated metadata
+/// for payloads ready for execution or propagation.
+#[auto_impl::auto_impl(&, Arc)]
+pub trait BuiltPayload: Send + Sync + fmt::Debug {
+    /// The node's primitive types
+    type Primitives: NodePrimitives;
 
-    /// Returns the fees collected for the built block
+    /// Returns the built block in its sealed (hash-verified) form.
+    fn block(&self) -> &SealedBlock<<Self::Primitives as NodePrimitives>::Block>;
+
+    /// Returns the total fees collected from all transactions in this block.
     fn fees(&self) -> U256;
 
-    /// Returns the entire execution data for the built block, if available.
-    fn executed_block(&self) -> Option<ExecutedBlock> {
+    /// Returns the EIP-7928 block access list included in this payload.
+    ///
+    /// Returns `None` for payloads that do not carry a block access list.
+    fn block_access_list(&self) -> Option<&Bytes> {
         None
     }
 
-    /// Returns the EIP-7865 requests for the payload if any.
+    /// Returns the complete execution result including state updates.
+    ///
+    /// Returns `None` if execution data is not available or not tracked.
+    fn executed_block(&self) -> Option<BuiltPayloadExecutedBlock<Self::Primitives>> {
+        None
+    }
+
+    /// Returns the EIP-7685 execution layer requests included in this block.
+    ///
+    /// These are requests generated by the execution layer that need to be
+    /// processed by the consensus layer (e.g., validator deposits, withdrawals).
     fn requests(&self) -> Option<Requests>;
 }
 
-/// This can be implemented by types that describe a currently running payload job.
+/// Basic attributes required to initiate payload construction.
 ///
-/// This is used as a conversion type, transforming a payload attributes type that the engine API
-/// receives, into a type that the payload builder can use.
-pub trait PayloadBuilderAttributes: Send + Sync + std::fmt::Debug {
-    /// The payload attributes that can be used to construct this type. Used as the argument in
-    /// [`PayloadBuilderAttributes::try_new`].
-    type RpcPayloadAttributes;
-    /// The error type used in [`PayloadBuilderAttributes::try_new`].
-    type Error: core::error::Error;
-
-    /// Creates a new payload builder for the given parent block and the attributes.
-    ///
-    /// Derives the unique [`PayloadId`] for the given parent, attributes and version.
-    fn try_new(
-        parent: B256,
-        rpc_payload_attributes: Self::RpcPayloadAttributes,
-        version: u8,
-    ) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-
-    /// Returns the [`PayloadId`] for the running payload job.
-    fn payload_id(&self) -> PayloadId;
-
-    /// Returns the parent block hash for the running payload job.
-    fn parent(&self) -> B256;
-
-    /// Returns the timestamp for the running payload job.
-    fn timestamp(&self) -> u64;
-
-    /// Returns the parent beacon block root for the running payload job, if it exists.
-    fn parent_beacon_block_root(&self) -> Option<B256>;
-
-    /// Returns the suggested fee recipient for the running payload job.
-    fn suggested_fee_recipient(&self) -> Address;
-
-    /// Returns the prevrandao field for the running payload job.
-    fn prev_randao(&self) -> B256;
-
-    /// Returns the withdrawals for the running payload job.
-    fn withdrawals(&self) -> &Withdrawals;
-}
-
-/// The execution payload attribute type the CL node emits via the engine API.
-/// This trait should be implemented by types that could be used to spawn a payload job.
-///
-/// This type is emitted as part of the forkchoiceUpdated call
+/// Defines minimal parameters needed to build a new execution payload.
+/// Implementations must be serializable for transmission.
 pub trait PayloadAttributes:
-    serde::de::DeserializeOwned + serde::Serialize + std::fmt::Debug + Clone + Send + Sync + 'static
+    serde::de::DeserializeOwned + serde::Serialize + fmt::Debug + Clone + Send + Sync + 'static
 {
-    /// Returns the timestamp to be used in the payload job.
+    /// Computes the unique identifier for this payload build job.
+    fn payload_id(&self, parent_hash: &B256) -> PayloadId;
+
+    /// Returns the timestamp for the new payload.
     fn timestamp(&self) -> u64;
 
-    /// Returns the withdrawals for the given payload attributes.
+    /// Returns the withdrawals to be included in the payload.
+    ///
+    /// `Some` for post-Shanghai blocks, `None` for earlier blocks.
     fn withdrawals(&self) -> Option<&Vec<Withdrawal>>;
 
-    /// Return the parent beacon block root for the payload attributes.
+    /// Returns the parent beacon block root.
+    ///
+    /// `Some` for post-merge blocks, `None` for pre-merge blocks.
     fn parent_beacon_block_root(&self) -> Option<B256>;
+
+    /// Returns the slot number for the new payload.
+    ///
+    /// `Some` for post-Amsterdam blocks, `None` for earlier blocks.
+    fn slot_number(&self) -> Option<u64>;
+
+    /// Returns the target gas limit for the new payload.
+    ///
+    /// `Some` for payload attributes that specify the desired gas limit, `None` if the builder
+    /// should use its configured target.
+    fn target_gas_limit(&self) -> Option<u64> {
+        None
+    }
 }
 
 impl PayloadAttributes for EthPayloadAttributes {
+    fn payload_id(&self, parent_hash: &B256) -> PayloadId {
+        payload_id(parent_hash, self)
+    }
+
     fn timestamp(&self) -> u64 {
         self.timestamp
     }
@@ -144,24 +119,270 @@ impl PayloadAttributes for EthPayloadAttributes {
     fn parent_beacon_block_root(&self) -> Option<B256> {
         self.parent_beacon_block_root
     }
-}
 
-impl PayloadAttributes for OpPayloadAttributes {
-    fn timestamp(&self) -> u64 {
-        self.payload_attributes.timestamp
+    fn slot_number(&self) -> Option<u64> {
+        self.slot_number
     }
 
-    fn withdrawals(&self) -> Option<&Vec<Withdrawal>> {
-        self.payload_attributes.withdrawals.as_ref()
-    }
-
-    fn parent_beacon_block_root(&self) -> Option<B256> {
-        self.payload_attributes.parent_beacon_block_root
+    fn target_gas_limit(&self) -> Option<u64> {
+        self.target_gas_limit
     }
 }
 
-/// A builder that can return the current payload attribute.
-pub trait PayloadAttributesBuilder<Attributes>: Send + Sync + 'static {
-    /// Return a new payload attribute from the builder.
-    fn build(&self, timestamp: u64) -> Attributes;
+/// Factory trait for creating payload attributes.
+///
+/// Enables different strategies for generating payload attributes based on
+/// contextual information. Useful for testing and specialized building.
+pub trait PayloadAttributesBuilder<Attributes, Header = alloy_consensus::Header>:
+    Send + Sync + 'static
+{
+    /// Constructs new payload attributes for the given timestamp.
+    fn build(&self, parent: &SealedHeader<Header>) -> Attributes;
+}
+
+impl<Attributes, Header, F> PayloadAttributesBuilder<Attributes, Header> for F
+where
+    Header: Clone,
+    F: Fn(SealedHeader<Header>) -> Attributes + Send + Sync + 'static,
+{
+    fn build(&self, parent: &SealedHeader<Header>) -> Attributes {
+        self(parent.clone())
+    }
+}
+
+impl<Attributes, Header, L, R> PayloadAttributesBuilder<Attributes, Header> for Either<L, R>
+where
+    L: PayloadAttributesBuilder<Attributes, Header>,
+    R: PayloadAttributesBuilder<Attributes, Header>,
+{
+    fn build(&self, parent: &SealedHeader<Header>) -> Attributes {
+        match self {
+            Self::Left(l) => l.build(parent),
+            Self::Right(r) => r.build(parent),
+        }
+    }
+}
+
+impl<Attributes, Header> PayloadAttributesBuilder<Attributes, Header>
+    for Box<dyn PayloadAttributesBuilder<Attributes, Header>>
+where
+    Header: 'static,
+    Attributes: 'static,
+{
+    fn build(&self, parent: &SealedHeader<Header>) -> Attributes {
+        self.as_ref().build(parent)
+    }
+}
+
+/// Trait to build the EVM environment for the next block from the given payload attributes.
+///
+/// Accepts payload attributes from CL, parent header and additional payload builder context.
+pub trait BuildNextEnv<Attributes, Header, Ctx>: Sized {
+    /// Builds the EVM environment for the next block from the given payload attributes.
+    fn build_next_env(
+        attributes: &Attributes,
+        parent: &SealedHeader<Header>,
+        ctx: &Ctx,
+    ) -> Result<Self, PayloadBuilderError>;
+}
+
+/// Generates the payload id for the configured payload from the [`PayloadAttributes`].
+///
+/// Returns an 8-byte identifier by hashing the payload components with sha256 hash.
+pub fn payload_id(
+    parent: &B256,
+    attributes: &alloy_rpc_types_engine::PayloadAttributes,
+) -> PayloadId {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(parent.as_slice());
+    hasher.update(&attributes.timestamp.to_be_bytes()[..]);
+    hasher.update(attributes.prev_randao.as_slice());
+    hasher.update(attributes.suggested_fee_recipient.as_slice());
+    if let Some(withdrawals) = &attributes.withdrawals {
+        let mut buf = Vec::new();
+        withdrawals.encode(&mut buf);
+        hasher.update(buf);
+    }
+
+    if let Some(parent_beacon_block) = attributes.parent_beacon_block_root {
+        hasher.update(parent_beacon_block);
+    }
+
+    if let Some(slot_number) = attributes.slot_number {
+        hasher.update(slot_number.to_be_bytes());
+    }
+
+    if let Some(target_gas_limit) = attributes.target_gas_limit {
+        hasher.update(target_gas_limit.to_be_bytes());
+    }
+
+    let out = hasher.finalize();
+
+    #[allow(deprecated)] // generic-array 0.14 deprecated
+    PayloadId::new(out.as_slice()[..8].try_into().expect("sufficient length"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_eips::eip4895::Withdrawal;
+    use alloy_primitives::{Address, B64};
+    use core::str::FromStr;
+
+    #[test]
+    fn attributes_serde() {
+        let attributes = r#"{"timestamp":"0x1235","prevRandao":"0xf343b00e02dc34ec0124241f74f32191be28fb370bb48060f5fa4df99bda774c","suggestedFeeRecipient":"0x0000000000000000000000000000000000000000","withdrawals":null,"parentBeaconBlockRoot":null}"#;
+        let _attributes: EthPayloadAttributes = serde_json::from_str(attributes).unwrap();
+    }
+
+    #[test]
+    fn test_payload_id_basic() {
+        // Create a parent block and payload attributes
+        let parent =
+            B256::from_str("0x3b8fb240d288781d4aac94d3fd16809ee413bc99294a085798a589dae51ddd4a")
+                .unwrap();
+        let attributes = EthPayloadAttributes {
+            timestamp: 0x5,
+            prev_randao: B256::from_str(
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            suggested_fee_recipient: Address::from_str(
+                "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            )
+            .unwrap(),
+            withdrawals: None,
+            parent_beacon_block_root: None,
+            slot_number: None,
+            target_gas_limit: None,
+        };
+
+        // Verify that the generated payload ID matches the expected value
+        assert_eq!(
+            payload_id(&parent, &attributes),
+            PayloadId(B64::from_str("0xa247243752eb10b4").unwrap())
+        );
+    }
+
+    #[test]
+    fn test_payload_id_with_withdrawals() {
+        // Set up the parent and attributes with withdrawals
+        let parent =
+            B256::from_str("0x9876543210abcdef9876543210abcdef9876543210abcdef9876543210abcdef")
+                .unwrap();
+        let attributes = EthPayloadAttributes {
+            timestamp: 1622553200,
+            prev_randao: B256::from_slice(&[1; 32]),
+            suggested_fee_recipient: Address::from_str(
+                "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            )
+            .unwrap(),
+            withdrawals: Some(vec![
+                Withdrawal {
+                    index: 1,
+                    validator_index: 123,
+                    address: Address::from([0xAA; 20]),
+                    amount: 10,
+                },
+                Withdrawal {
+                    index: 2,
+                    validator_index: 456,
+                    address: Address::from([0xBB; 20]),
+                    amount: 20,
+                },
+            ]),
+            parent_beacon_block_root: None,
+            slot_number: None,
+            target_gas_limit: None,
+        };
+
+        // Verify that the generated payload ID matches the expected value
+        assert_eq!(
+            payload_id(&parent, &attributes),
+            PayloadId(B64::from_str("0xedddc2f84ba59865").unwrap())
+        );
+    }
+
+    #[test]
+    fn test_payload_id_with_parent_beacon_block_root() {
+        // Set up the parent and attributes with a parent beacon block root
+        let parent =
+            B256::from_str("0x9876543210abcdef9876543210abcdef9876543210abcdef9876543210abcdef")
+                .unwrap();
+        let attributes = EthPayloadAttributes {
+            timestamp: 1622553200,
+            prev_randao: B256::from_str(
+                "0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef1234",
+            )
+            .unwrap(),
+            suggested_fee_recipient: Address::from_str(
+                "0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            )
+            .unwrap(),
+            withdrawals: None,
+            parent_beacon_block_root: Some(
+                B256::from_str(
+                    "0x2222222222222222222222222222222222222222222222222222222222222222",
+                )
+                .unwrap(),
+            ),
+            slot_number: None,
+            target_gas_limit: None,
+        };
+
+        // Verify that the generated payload ID matches the expected value
+        assert_eq!(
+            payload_id(&parent, &attributes),
+            PayloadId(B64::from_str("0x0fc49cd532094cce").unwrap())
+        );
+    }
+
+    #[test]
+    fn test_payload_id_with_slot_number() {
+        let parent =
+            B256::from_str("0x9876543210abcdef9876543210abcdef9876543210abcdef9876543210abcdef")
+                .unwrap();
+        let mut attributes = EthPayloadAttributes {
+            timestamp: 1622553200,
+            prev_randao: B256::from_slice(&[1; 32]),
+            suggested_fee_recipient: Address::from_str(
+                "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            )
+            .unwrap(),
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::from_slice(&[2; 32])),
+            slot_number: Some(1),
+            target_gas_limit: None,
+        };
+
+        let first = payload_id(&parent, &attributes);
+        attributes.slot_number = Some(2);
+
+        assert_ne!(first, payload_id(&parent, &attributes));
+    }
+
+    #[test]
+    fn test_payload_id_with_target_gas_limit() {
+        let parent =
+            B256::from_str("0x9876543210abcdef9876543210abcdef9876543210abcdef9876543210abcdef")
+                .unwrap();
+        let mut attributes = EthPayloadAttributes {
+            timestamp: 1622553200,
+            prev_randao: B256::from_slice(&[1; 32]),
+            suggested_fee_recipient: Address::from_str(
+                "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            )
+            .unwrap(),
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::from_slice(&[2; 32])),
+            slot_number: Some(1),
+            target_gas_limit: Some(30_000_000),
+        };
+
+        let first = payload_id(&parent, &attributes);
+        attributes.target_gas_limit = Some(60_000_000);
+
+        assert_ne!(first, payload_id(&parent, &attributes));
+    }
 }

@@ -6,31 +6,37 @@
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
 
 mod checkpoint;
-mod limiter;
+mod event;
 mod mode;
 mod pruner;
 mod segment;
 mod target;
 
+use alloc::{collections::BTreeMap, vec::Vec};
+use alloy_primitives::{Address, BlockNumber};
+use core::ops::Deref;
+
 pub use checkpoint::PruneCheckpoint;
-pub use limiter::PruneLimiter;
+pub use event::PrunerEvent;
 pub use mode::PruneMode;
 pub use pruner::{
-    PruneInterruptReason, PruneProgress, PrunerOutput, SegmentOutput, SegmentOutputCheckpoint,
+    PruneInterruptReason, PruneProgress, PrunedSegmentInfo, PrunerOutput, SegmentOutput,
+    SegmentOutputCheckpoint,
 };
 pub use segment::{PrunePurpose, PruneSegment, PruneSegmentError};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-pub use target::{PruneModes, MINIMUM_PRUNING_DISTANCE};
-
-use alloy_primitives::{Address, BlockNumber};
-use std::ops::Deref;
+pub use target::{
+    PruneModes, UnwindTargetPrunedError, MINIMUM_DISTANCE, MINIMUM_UNWIND_SAFE_DISTANCE,
+};
 
 /// Configuration for pruning receipts not associated with logs emitted by the specified contracts.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize, serde::Deserialize))]
 pub struct ReceiptsLogPruneConfig(pub BTreeMap<Address, PruneMode>);
 
 impl ReceiptsLogPruneConfig {
@@ -92,12 +98,11 @@ impl ReceiptsLogPruneConfig {
         let mut lowest = None;
 
         for mode in self.values() {
-            if mode.is_distance() {
-                if let Some((block, _)) =
+            if mode.is_distance() &&
+                let Some((block, _)) =
                     mode.prune_target_block(tip, PruneSegment::ContractLogs, PrunePurpose::User)?
-                {
-                    lowest = Some(lowest.unwrap_or(u64::MAX).min(block));
-                }
+            {
+                lowest = Some(lowest.unwrap_or(u64::MAX).min(block));
             }
         }
 

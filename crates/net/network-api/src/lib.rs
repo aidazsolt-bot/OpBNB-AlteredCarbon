@@ -11,62 +11,75 @@
     html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
+/// Shared blob cell custody state.
+pub mod custody;
 pub mod downloaders;
 /// Network Error
 pub mod error;
 pub mod events;
 /// Implementation of network traits for that does nothing.
 pub mod noop;
+
 pub mod test_utils;
+use test_utils::PeersHandleProvider;
 
 pub use alloy_rpc_types_admin::EthProtocolInfo;
-use reth_network_p2p::sync::NetworkSyncUpdater;
-pub use reth_network_p2p::BlockClient;
+pub use reth_network_p2p::{BlockClient, HeadersClient};
 pub use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
 
+pub use custody::CellCustody;
 pub use downloaders::BlockDownloaderProvider;
 pub use error::NetworkError;
 pub use events::{
     DiscoveredEvent, DiscoveryEvent, NetworkEvent, NetworkEventListenerProvider, PeerRequest,
-    PeerRequestSender,
+    PeerRequestSender, RequestMessage,
 };
 
-use std::{future::Future, net::SocketAddr, sync::Arc, time::Instant};
-
-use reth_eth_wire_types::{capability::Capabilities, DisconnectReason, EthVersion, Status};
+use reth_eth_wire_types::{
+    capability::Capabilities, Capability, DisconnectReason, EthVersion, NetworkPrimitives,
+    UnifiedStatus,
+};
+use reth_network_p2p::sync::NetworkSyncUpdater;
 use reth_network_peers::NodeRecord;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::events::EngineMessage;
+use std::{future::Future, net::SocketAddr, sync::Arc, time::Instant};
 
 /// The `PeerId` type.
 pub type PeerId = alloy_primitives::B512;
 
 /// Helper trait that unifies network API needed to launch node.
 pub trait FullNetwork:
-    BlockDownloaderProvider
-    + NetworkSyncUpdater
+    BlockDownloaderProvider<
+        Client: BlockClient<Block = <Self::Primitives as NetworkPrimitives>::Block>,
+    > + NetworkSyncUpdater
     + NetworkInfo
     + NetworkEventListenerProvider
     + EngineRxProvider
     + PeersInfo
     + Peers
+    + PeersHandleProvider
     + Clone
+    + Unpin
     + 'static
 {
 }
 
 impl<T> FullNetwork for T where
-    T: BlockDownloaderProvider
-        + NetworkSyncUpdater
+    T: BlockDownloaderProvider<
+            Client: BlockClient<Block = <Self::Primitives as NetworkPrimitives>::Block>,
+        > + NetworkSyncUpdater
         + NetworkInfo
         + NetworkEventListenerProvider
         + EngineRxProvider
         + PeersInfo
         + Peers
+        + PeersHandleProvider
         + Clone
+        + Unpin
         + 'static
 {
 }
@@ -82,6 +95,14 @@ pub trait NetworkInfo: Send + Sync {
 
     /// Returns the chain id
     fn chain_id(&self) -> u64;
+
+    /// Returns shared blob cell custody state for [EIP-8070] sparse blobpool sampling.
+    ///
+    /// This is updated from non-null `custodyColumns` values received through
+    /// `engine_forkchoiceUpdatedV4` and should be treated as a lightweight sampling hint.
+    ///
+    /// [EIP-8070]: https://eips.ethereum.org/EIPS/eip-8070
+    fn cell_custody(&self) -> &CellCustody;
 
     /// Returns `true` if the network is undergoing sync.
     fn is_syncing(&self) -> bool;
@@ -109,13 +130,17 @@ pub trait PeersInfo: Send + Sync {
 #[auto_impl::auto_impl(&, Arc)]
 pub trait Peers: PeersInfo {
     /// Adds a peer to the peer set with TCP `SocketAddr`.
+    ///
+    /// If the peer already exists, then this will update its tracked info.
     fn add_peer(&self, peer: PeerId, tcp_addr: SocketAddr) {
-        self.add_peer_kind(peer, PeerKind::Static, tcp_addr, None);
+        self.add_peer_kind(peer, Some(PeerKind::Static), tcp_addr, None);
     }
 
     /// Adds a peer to the peer set with TCP and UDP `SocketAddr`.
+    ///
+    /// If the peer already exists, then this will update its tracked info.
     fn add_peer_with_udp(&self, peer: PeerId, tcp_addr: SocketAddr, udp_addr: SocketAddr) {
-        self.add_peer_kind(peer, PeerKind::Static, tcp_addr, Some(udp_addr));
+        self.add_peer_kind(peer, Some(PeerKind::Static), tcp_addr, Some(udp_addr));
     }
 
     /// Adds a trusted [`PeerId`] to the peer set.
@@ -125,19 +150,28 @@ pub trait Peers: PeersInfo {
 
     /// Adds a trusted peer to the peer set with TCP `SocketAddr`.
     fn add_trusted_peer(&self, peer: PeerId, tcp_addr: SocketAddr) {
-        self.add_peer_kind(peer, PeerKind::Trusted, tcp_addr, None);
+        self.add_peer_kind(peer, Some(PeerKind::Trusted), tcp_addr, None);
     }
 
     /// Adds a trusted peer with TCP and UDP `SocketAddr` to the peer set.
     fn add_trusted_peer_with_udp(&self, peer: PeerId, tcp_addr: SocketAddr, udp_addr: SocketAddr) {
-        self.add_peer_kind(peer, PeerKind::Trusted, tcp_addr, Some(udp_addr));
+        self.add_peer_kind(peer, Some(PeerKind::Trusted), tcp_addr, Some(udp_addr));
     }
 
+    /// Registers a trusted peer that may use a hostname instead of an IP address.
+    ///
+    /// Resolution is performed asynchronously by the periodic DNS resolver; the peer is
+    /// added to the peer set on first successful resolution and re-resolved periodically
+    /// so address changes are picked up automatically.
+    fn add_trusted_peer_node(&self, _peer: reth_network_peers::TrustedPeer) {}
+
     /// Adds a peer to the known peer set, with the given kind.
+    ///
+    /// If the peer already exists, then this will update its tracked info.
     fn add_peer_kind(
         &self,
         peer: PeerId,
-        kind: PeerKind,
+        kind: Option<PeerKind>,
         tcp_addr: SocketAddr,
         udp_addr: Option<SocketAddr>,
     );
@@ -189,7 +223,13 @@ pub trait Peers: PeersInfo {
     /// Disconnect an existing connection to the given peer using the provided reason
     fn disconnect_peer_with_reason(&self, peer: PeerId, reason: DisconnectReason);
 
-    /// Connect to the given peer. NOTE: if the maximum number out outbound sessions is reached,
+    /// Bans the given peer and disconnects an active non-trusted session if one exists.
+    fn ban_peer(&self, peer: PeerId);
+
+    /// Unbans the given peer.
+    fn unban_peer(&self, peer: PeerId);
+
+    /// Connect to the given peer. NOTE: if the maximum number of outbound sessions is reached,
     /// this won't do anything. See `reth_network::SessionManager::dial_outbound`.
     fn connect_peer(&self, peer: PeerId, tcp_addr: SocketAddr) {
         self.connect_peer_kind(peer, PeerKind::Static, tcp_addr, None)
@@ -245,7 +285,7 @@ pub struct PeerInfo {
     /// The negotiated eth version.
     pub eth_version: EthVersion,
     /// The Status message the peer sent for the `eth` handshake
-    pub status: Arc<Status>,
+    pub status: Arc<UnifiedStatus>,
     /// The timestamp when the session to that peer has been established.
     pub session_established: Instant,
     /// The peer's connection kind
@@ -262,12 +302,12 @@ pub enum Direction {
 }
 
 impl Direction {
-    /// Returns `true` if this an incoming connection.
+    /// Returns `true` if this is an incoming connection.
     pub const fn is_incoming(&self) -> bool {
         matches!(self, Self::Incoming)
     }
 
-    /// Returns `true` if this an outgoing connection.
+    /// Returns `true` if this is an outgoing connection.
     pub const fn is_outgoing(&self) -> bool {
         matches!(self, Self::Outgoing(_))
     }
@@ -292,4 +332,6 @@ pub struct NetworkStatus {
     pub protocol_version: u64,
     /// Information about the Ethereum Wire Protocol.
     pub eth_protocol_info: EthProtocolInfo,
+    /// The list of supported capabilities and their versions.
+    pub capabilities: Vec<Capability>,
 }

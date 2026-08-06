@@ -1,16 +1,19 @@
-use alloy_primitives::{B256, U256};
+use alloy_primitives::B256;
+use alloy_rpc_types_engine::{
+    ForkchoiceUpdateError, INVALID_FORK_CHOICE_STATE_ERROR, INVALID_FORK_CHOICE_STATE_ERROR_MSG,
+    INVALID_PAYLOAD_ATTRIBUTES_ERROR, INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+};
 use jsonrpsee_types::error::{
     INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE, INVALID_PARAMS_MSG, SERVER_ERROR_MSG,
 };
-use reth_beacon_consensus::{BeaconForkChoiceUpdateError, BeaconOnNewPayloadError};
-use reth_payload_primitives::{EngineObjectValidationError, PayloadBuilderError};
+use reth_engine_primitives::{BeaconForkChoiceUpdateError, BeaconOnNewPayloadError};
+use reth_payload_builder_primitives::PayloadBuilderError;
+use reth_payload_primitives::{EngineObjectValidationError, VersionSpecificValidationError};
 use thiserror::Error;
 
 /// The Engine API result type
 pub type EngineApiResult<Ok> = Result<Ok, EngineApiError>;
 
-/// Invalid payload attributes code.
-pub const INVALID_PAYLOAD_ATTRIBUTES: i32 = -38003;
 /// Payload unsupported fork code.
 pub const UNSUPPORTED_FORK_CODE: i32 = -38005;
 /// Payload unknown error code.
@@ -20,9 +23,6 @@ pub const REQUEST_TOO_LARGE_CODE: i32 = -38004;
 
 /// Error message for the request too large error.
 const REQUEST_TOO_LARGE_MESSAGE: &str = "Too large request";
-
-/// Error message for the request too large error.
-const INVALID_PAYLOAD_ATTRIBUTES_MSG: &str = "Invalid payload attributes";
 
 /// Error returned by [`EngineApi`][crate::EngineApi]
 ///
@@ -54,17 +54,6 @@ pub enum EngineApiError {
         /// Requested number of items
         count: u64,
     },
-    /// Terminal total difficulty mismatch during transition configuration exchange.
-    #[error(
-        "invalid transition terminal total difficulty: \
-         execution: {execution}, consensus: {consensus}"
-    )]
-    TerminalTD {
-        /// Execution terminal total difficulty value.
-        execution: U256,
-        /// Consensus terminal total difficulty value.
-        consensus: U256,
-    },
     /// Terminal block hash mismatch during transition configuration exchange.
     #[error(
         "invalid transition terminal block hash: \
@@ -91,6 +80,9 @@ pub enum EngineApiError {
     /// The payload or attributes are known to be malformed before processing.
     #[error(transparent)]
     EngineObjectValidationError(#[from] EngineObjectValidationError),
+    /// Requests hash provided, but can't be accepted by the API.
+    #[error("requests hash cannot be accepted by the API without `--engine.accept-execution-requests-hash` flag")]
+    UnexpectedRequestsHash,
     /// Any other rpc error
     #[error("{0}")]
     Other(jsonrpsee_types::ErrorObject<'static>),
@@ -120,30 +112,41 @@ impl ErrorData {
 impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
     fn from(error: EngineApiError) -> Self {
         match error {
+            // Per the Shanghai Engine API spec, FCU V2 must return -38003 when the wrong
+            // PayloadAttributes version is used.
+            // Spec: https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md
+            // Change: https://github.com/ethereum/execution-apis/pull/761
+            EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::PayloadAttributes(
+                    VersionSpecificValidationError::WithdrawalsNotSupportedInV1 |
+                    VersionSpecificValidationError::NoWithdrawalsPostShanghai |
+                    VersionSpecificValidationError::HasWithdrawalsPreShanghai |
+                    VersionSpecificValidationError::BlockAccessListNotSupported |
+                    VersionSpecificValidationError::HasBlockAccessListPreAmsterdam |
+                    VersionSpecificValidationError::NoBlockAccessListPostAmsterdam |
+                    VersionSpecificValidationError::HasSlotNumberPreAmsterdam |
+                    VersionSpecificValidationError::NoSlotNumberPostAmsterdam |
+                    VersionSpecificValidationError::SlotNumberNotSupported,
+                ),
+            ) |
+            EngineApiError::UnexpectedRequestsHash => {
+                // Note: the data field is not required by the spec, but is also included by other
+                // clients
+                jsonrpsee_types::error::ErrorObject::owned(
+                    INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+                    INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+                    Some(ErrorData::new(error)),
+                )
+            }
             EngineApiError::InvalidBodiesRange { .. } |
             EngineApiError::EngineObjectValidationError(
                 EngineObjectValidationError::Payload(_) |
                 EngineObjectValidationError::InvalidParams(_),
-            ) => {
-                // Note: the data field is not required by the spec, but is also included by other
-                // clients
-                jsonrpsee_types::error::ErrorObject::owned(
-                    INVALID_PARAMS_CODE,
-                    INVALID_PARAMS_MSG,
-                    Some(ErrorData::new(error)),
-                )
-            }
-            EngineApiError::EngineObjectValidationError(
-                EngineObjectValidationError::PayloadAttributes(_),
-            ) => {
-                // Note: the data field is not required by the spec, but is also included by other
-                // clients
-                jsonrpsee_types::error::ErrorObject::owned(
-                    INVALID_PAYLOAD_ATTRIBUTES,
-                    INVALID_PAYLOAD_ATTRIBUTES_MSG,
-                    Some(ErrorData::new(error)),
-                )
-            }
+            ) => jsonrpsee_types::error::ErrorObject::owned(
+                INVALID_PARAMS_CODE,
+                INVALID_PARAMS_MSG,
+                Some(ErrorData::new(error)),
+            ),
             EngineApiError::UnknownPayload => jsonrpsee_types::error::ErrorObject::owned(
                 UNKNOWN_PAYLOAD_CODE,
                 error.to_string(),
@@ -158,6 +161,16 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                 )
             }
             EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::PayloadAttributes(
+                    VersionSpecificValidationError::ParentBeaconBlockRootNotSupportedBeforeV3 |
+                    VersionSpecificValidationError::NoParentBeaconBlockRootPostCancun,
+                ),
+            ) => jsonrpsee_types::error::ErrorObject::owned(
+                INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+                INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+                Some(ErrorData::new(error)),
+            ),
+            EngineApiError::EngineObjectValidationError(
                 EngineObjectValidationError::UnsupportedFork,
             ) => jsonrpsee_types::error::ErrorObject::owned(
                 UNSUPPORTED_FORK_CODE,
@@ -166,7 +179,32 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
             ),
             // Error responses from the consensus engine
             EngineApiError::ForkChoiceUpdate(ref err) => match err {
-                BeaconForkChoiceUpdateError::ForkchoiceUpdateError(err) => (*err).into(),
+                BeaconForkChoiceUpdateError::ForkchoiceUpdateError(err) => match err {
+                    ForkchoiceUpdateError::UpdatedInvalidPayloadAttributes => {
+                        jsonrpsee_types::error::ErrorObject::owned(
+                            INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+                            INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+                            None::<()>,
+                        )
+                    }
+                    ForkchoiceUpdateError::InvalidState |
+                    ForkchoiceUpdateError::UnknownFinalBlock => {
+                        jsonrpsee_types::error::ErrorObject::owned(
+                            INVALID_FORK_CHOICE_STATE_ERROR,
+                            INVALID_FORK_CHOICE_STATE_ERROR_MSG,
+                            None::<()>,
+                        )
+                    }
+                    // Map future alloy forkchoice errors as internal until handled.
+                    #[allow(unreachable_patterns, clippy::needless_return)]
+                    _ => {
+                        return jsonrpsee_types::error::ErrorObject::owned(
+                            INTERNAL_ERROR_CODE,
+                            SERVER_ERROR_MSG,
+                            Some(ErrorData::new(error)),
+                        );
+                    }
+                },
                 BeaconForkChoiceUpdateError::EngineUnavailable |
                 BeaconForkChoiceUpdateError::Internal(_) => {
                     jsonrpsee_types::error::ErrorObject::owned(
@@ -177,7 +215,6 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
                 }
             },
             // Any other server error
-            EngineApiError::TerminalTD { .. } |
             EngineApiError::TerminalBlockHash { .. } |
             EngineApiError::NewPayload(_) |
             EngineApiError::Internal(_) |
@@ -195,7 +232,6 @@ impl From<EngineApiError> for jsonrpsee_types::error::ErrorObject<'static> {
 mod tests {
     use super::*;
     use alloy_rpc_types_engine::ForkchoiceUpdateError;
-
     #[track_caller]
     fn ensure_engine_rpc_error(
         code: i32,
@@ -233,6 +269,8 @@ mod tests {
             )),
         );
 
+        // ForkchoiceUpdateError::UpdatedInvalidPayloadAttributes is for semantic validation
+        // errors that occur AFTER the structure check passes, so it returns -38003
         ensure_engine_rpc_error(
             -38003,
             "Invalid payload attributes",
@@ -245,6 +283,57 @@ mod tests {
             UNKNOWN_PAYLOAD_CODE,
             "Unknown payload",
             EngineApiError::UnknownPayload,
+        );
+
+        // Per the Shanghai Engine API spec, FCU V2 must return -38003 when the wrong
+        // PayloadAttributes version is used.
+        // Spec: https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md
+        // Change: https://github.com/ethereum/execution-apis/pull/761
+        ensure_engine_rpc_error(
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+            EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::PayloadAttributes(
+                    VersionSpecificValidationError::NoWithdrawalsPostShanghai,
+                ),
+            ),
+        );
+
+        ensure_engine_rpc_error(
+            INVALID_PARAMS_CODE,
+            INVALID_PARAMS_MSG,
+            EngineApiError::EngineObjectValidationError(EngineObjectValidationError::Payload(
+                VersionSpecificValidationError::NoWithdrawalsPostShanghai,
+            )),
+        );
+
+        ensure_engine_rpc_error(
+            INVALID_PARAMS_CODE,
+            INVALID_PARAMS_MSG,
+            EngineApiError::EngineObjectValidationError(EngineObjectValidationError::Payload(
+                VersionSpecificValidationError::HasWithdrawalsPreShanghai,
+            )),
+        );
+
+        ensure_engine_rpc_error(
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+            EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::PayloadAttributes(
+                    VersionSpecificValidationError::HasWithdrawalsPreShanghai,
+                ),
+            ),
+        );
+
+        // Beacon root shape mismatches on PayloadAttributes are reported as -38003.
+        ensure_engine_rpc_error(
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR,
+            INVALID_PAYLOAD_ATTRIBUTES_ERROR_MSG,
+            EngineApiError::EngineObjectValidationError(
+                EngineObjectValidationError::PayloadAttributes(
+                    VersionSpecificValidationError::ParentBeaconBlockRootNotSupportedBeforeV3,
+                ),
+            ),
         );
     }
 }

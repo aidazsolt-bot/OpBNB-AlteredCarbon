@@ -1,3 +1,30 @@
+use crate::{
+    config::NetworkMode, message::PeerMessage, protocol::RlpxSubProtocol,
+    swarm::NetworkConnectionState, transactions::TransactionsHandle, FetchClient,
+};
+use alloy_primitives::B256;
+use enr::Enr;
+use futures::StreamExt;
+use parking_lot::Mutex;
+use reth_discv4::{Discv4, NatResolver};
+use reth_discv5::Discv5;
+use reth_eth_wire::{
+    BlockRangeUpdate, BroadcastPoolTransactions, DisconnectReason, EthNetworkPrimitives,
+    NetworkPrimitives, NewPooledTransactionHashes, SharedTransactions,
+};
+use reth_ethereum_forks::Head;
+use reth_network_api::{
+    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
+    test_utils::{PeersHandle, PeersHandleProvider},
+    BlockDownloaderProvider, CellCustody, DiscoveryEvent, NetworkError, NetworkEvent,
+    NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
+    PeersInfo,
+};
+use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
+use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
+use reth_network_types::{PeerAddr, PeerKind, Reputation, ReputationChangeKind};
+use reth_tokio_util::{EventSender, EventStream};
+use secp256k1::SecretKey;
 use std::{
     net::SocketAddr,
     sync::{
@@ -5,59 +32,30 @@ use std::{
         Arc,
     },
 };
-
-use alloy_primitives::B256;
-use enr::Enr;
-use parking_lot::Mutex;
-use reth_discv4::{Discv4, NatResolver};
-use reth_discv5::Discv5;
-use reth_eth_wire::{DisconnectReason, NewBlock, NewPooledTransactionHashes, SharedTransactions};
-use reth_network_api::{
-    events::EngineMessage,
-    test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, DiscoveryEvent, EngineRxProvider, NetworkError, NetworkEvent,
-    NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
-    PeersInfo,
-};
-use reth_network_p2p::{
-    sync::{NetworkSyncUpdater, SyncState, SyncStateProvider},
-    BlockClient,
-};
-use reth_network_peers::{NodeRecord, PeerId};
-use reth_network_types::{PeerAddr, PeerKind, Reputation, ReputationChangeKind};
-use reth_primitives::{Head, TransactionSigned};
-use reth_tokio_util::{EventSender, EventStream};
-use secp256k1::SecretKey;
 use tokio::sync::{
-    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-
-use crate::{
-    config::NetworkMode, protocol::RlpxSubProtocol, swarm::NetworkConnectionState,
-    transactions::TransactionsHandle, FetchClient,
-};
 
 /// A _shareable_ network frontend. Used to interact with the network.
 ///
 /// See also [`NetworkManager`](crate::NetworkManager).
 #[derive(Clone, Debug)]
-pub struct NetworkHandle {
+pub struct NetworkHandle<N: NetworkPrimitives = EthNetworkPrimitives> {
     /// The Arc'ed delegate that contains the state.
-    inner: Arc<NetworkInner>,
+    inner: Arc<NetworkInner<N>>,
 }
 
 // === impl NetworkHandle ===
 
-impl NetworkHandle {
+impl<N: NetworkPrimitives> NetworkHandle<N> {
     /// Creates a single new instance.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn new(
         num_active_peers: Arc<AtomicUsize>,
         listener_address: Arc<Mutex<SocketAddr>>,
-        to_manager_tx: UnboundedSender<NetworkHandleMessage>,
-        engine_rx: Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>>,
+        to_manager_tx: UnboundedSender<NetworkHandleMessage<N>>,
         secret_key: SecretKey,
         local_peer_id: PeerId,
         peers: PeersHandle,
@@ -66,13 +64,12 @@ impl NetworkHandle {
         tx_gossip_disabled: bool,
         discv4: Option<Discv4>,
         discv5: Option<Discv5>,
-        event_sender: EventSender<NetworkEvent>,
+        event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
         nat: Option<NatResolver>,
     ) -> Self {
         let inner = NetworkInner {
             num_active_peers,
             to_manager_tx,
-            engine_rx,
             listener_address,
             secret_key,
             local_peer_id,
@@ -81,6 +78,7 @@ impl NetworkHandle {
             is_syncing: Arc::new(AtomicBool::new(false)),
             initial_sync_done: Arc::new(AtomicBool::new(false)),
             chain_id,
+            cell_custody: CellCustody::default(),
             tx_gossip_disabled,
             discv4,
             discv5,
@@ -95,7 +93,7 @@ impl NetworkHandle {
         &self.inner.local_peer_id
     }
 
-    fn manager(&self) -> &UnboundedSender<NetworkHandleMessage> {
+    fn manager(&self) -> &UnboundedSender<NetworkHandleMessage<N>> {
         &self.inner.to_manager_tx
     }
 
@@ -114,7 +112,7 @@ impl NetworkHandle {
     }
 
     /// Sends a [`NetworkHandleMessage`] to the manager
-    pub(crate) fn send_message(&self, msg: NetworkHandleMessage) {
+    pub(crate) fn send_message(&self, msg: NetworkHandleMessage<N>) {
         let _ = self.inner.to_manager_tx.send(msg);
     }
 
@@ -128,12 +126,12 @@ impl NetworkHandle {
     /// Caution: in `PoS` this is a noop because new blocks are no longer announced over devp2p.
     /// Instead they are sent to the node by CL and can be requested over devp2p.
     /// Broadcasting new blocks is considered a protocol violation.
-    pub fn announce_block(&self, block: NewBlock, hash: B256) {
+    pub fn announce_block(&self, block: N::NewBlockPayload, hash: B256) {
         self.send_message(NetworkHandleMessage::AnnounceBlock(block, hash))
     }
 
     /// Sends a [`PeerRequest`] to the given peer's session.
-    pub fn send_request(&self, peer_id: PeerId, request: PeerRequest) {
+    pub fn send_request(&self, peer_id: PeerId, request: PeerRequest<N>) {
         self.send_message(NetworkHandleMessage::EthRequest { peer_id, request })
     }
 
@@ -143,17 +141,31 @@ impl NetworkHandle {
     }
 
     /// Send full transactions to the peer
-    pub fn send_transactions(&self, peer_id: PeerId, msg: Vec<Arc<TransactionSigned>>) {
+    pub fn send_transactions(&self, peer_id: PeerId, msg: Vec<Arc<N::BroadcastedTransaction>>) {
         self.send_message(NetworkHandleMessage::SendTransaction {
             peer_id,
             msg: SharedTransactions(msg),
         })
     }
 
+    /// Send cached full pool transactions to the peer.
+    pub(crate) fn send_broadcast_pool_transactions(
+        &self,
+        peer_id: PeerId,
+        msg: BroadcastPoolTransactions,
+    ) {
+        self.send_message(NetworkHandleMessage::SendBroadcastPoolTransactions { peer_id, msg })
+    }
+
+    /// Send eth message to the peer.
+    pub fn send_eth_message(&self, peer_id: PeerId, message: PeerMessage<N>) {
+        self.send_message(NetworkHandleMessage::EthMessage { peer_id, message })
+    }
+
     /// Send message to get the [`TransactionsHandle`].
     ///
     /// Returns `None` if no transaction task is installed.
-    pub async fn transactions_handle(&self) -> Option<TransactionsHandle> {
+    pub async fn transactions_handle(&self) -> Option<TransactionsHandle<N>> {
         let (tx, rx) = oneshot::channel();
         let _ = self.manager().send(NetworkHandleMessage::GetTransactionsHandle(tx));
         rx.await.unwrap()
@@ -197,12 +209,35 @@ impl NetworkHandle {
     pub fn secret_key(&self) -> &SecretKey {
         &self.inner.secret_key
     }
+
+    /// Returns the [`Discv4`] handle if discv4 is enabled.
+    pub fn discv4(&self) -> Option<&Discv4> {
+        self.inner.discv4.as_ref()
+    }
+
+    /// Returns the [`Discv5`] handle if discv5 is enabled.
+    pub fn discv5(&self) -> Option<&Discv5> {
+        self.inner.discv5.as_ref()
+    }
 }
 
 // === API Implementations ===
 
-impl NetworkEventListenerProvider for NetworkHandle {
-    fn event_listener(&self) -> EventStream<NetworkEvent> {
+impl<N: NetworkPrimitives> NetworkPeersEvents for NetworkHandle<N> {
+    /// Returns an event stream of peer-specific network events.
+    fn peer_events(&self) -> PeerEventStream {
+        let peer_events = self.inner.event_sender.new_listener().map(|event| match event {
+            NetworkEvent::Peer(peer_event) => peer_event,
+            NetworkEvent::ActivePeerSession { info, .. } => PeerEvent::SessionEstablished(info),
+        });
+        PeerEventStream::new(peer_events)
+    }
+}
+
+impl<N: NetworkPrimitives> NetworkEventListenerProvider for NetworkHandle<N> {
+    type Primitives = N;
+
+    fn event_listener(&self) -> EventStream<NetworkEvent<PeerRequest<Self::Primitives>>> {
         self.inner.event_sender.new_listener()
     }
 
@@ -213,26 +248,46 @@ impl NetworkEventListenerProvider for NetworkHandle {
     }
 }
 
-impl NetworkProtocols for NetworkHandle {
+impl<N: NetworkPrimitives> NetworkProtocols for NetworkHandle<N> {
     fn add_rlpx_sub_protocol(&self, protocol: RlpxSubProtocol) {
         self.send_message(NetworkHandleMessage::AddRlpxSubProtocol(protocol))
     }
 }
 
-impl PeersInfo for NetworkHandle {
+impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
     fn num_connected_peers(&self) -> usize {
         self.inner.num_active_peers.load(Ordering::Relaxed)
     }
 
     fn local_node_record(&self) -> NodeRecord {
         if let Some(discv4) = &self.inner.discv4 {
+            // Note: the discv4 services uses the same `nat` so we can directly return the node
+            // record here
             discv4.node_record()
-        } else if let Some(record) = self.inner.discv5.as_ref().and_then(|d| d.node_record()) {
-            record
+        } else if let Some(discv5) = self.inner.discv5.as_ref() {
+            // for disv5 we must check if we have an external ip configured
+            if let Some(external) =
+                self.inner.nat.clone().and_then(|nat| nat.as_external_ip(discv5.local_port()))
+            {
+                NodeRecord::new((external, discv5.local_port()).into(), *self.peer_id())
+            } else {
+                // use the node record that discv5 tracks or use localhost
+                self.inner.discv5.as_ref().and_then(|d| d.node_record()).unwrap_or_else(|| {
+                    NodeRecord::new(
+                        (std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), discv5.local_port())
+                            .into(),
+                        *self.peer_id(),
+                    )
+                })
+            }
+            // also use the tcp port
+            .with_tcp_port(self.inner.listener_address.lock().port())
         } else {
-            let external_ip = self.inner.nat.and_then(|nat| nat.as_external_ip());
-
             let mut socket_addr = *self.inner.listener_address.lock();
+
+            let external_ip =
+                self.inner.nat.clone().and_then(|nat| nat.as_external_ip(socket_addr.port()));
+
             if let Some(ip) = external_ip {
                 // if able to resolve external ip, use it instead and also set the local address
                 socket_addr.set_ip(ip)
@@ -256,17 +311,36 @@ impl PeersInfo for NetworkHandle {
         if local_node_record.address.is_ipv4() {
             builder.udp4(local_node_record.udp_port);
             builder.tcp4(local_node_record.tcp_port);
+
+            // add IPv6 fields from discv5 for dual-stack support
+            if let Some(discv5) = self.inner.discv5.as_ref() {
+                let discv5_enr = discv5.local_enr();
+                if let Some(ip6) = discv5_enr.ip6() {
+                    builder.ip6(ip6);
+                }
+                if let Some(udp6) = discv5_enr.udp6() {
+                    builder.udp6(udp6);
+                }
+                if let Some(tcp6) = discv5_enr.tcp6() {
+                    builder.tcp6(tcp6);
+                }
+            }
         } else {
             builder.udp6(local_node_record.udp_port);
             builder.tcp6(local_node_record.tcp_port);
         }
+
         builder.build(&self.inner.secret_key).expect("valid enr")
     }
 }
 
-impl Peers for NetworkHandle {
+impl<N: NetworkPrimitives> Peers for NetworkHandle<N> {
     fn add_trusted_peer_id(&self, peer: PeerId) {
         self.send_message(NetworkHandleMessage::AddTrustedPeerId(peer));
+    }
+
+    fn add_trusted_peer_node(&self, peer: TrustedPeer) {
+        self.send_message(NetworkHandleMessage::AddTrustedPeerNode(peer));
     }
 
     /// Sends a message to the [`NetworkManager`](crate::NetworkManager) to add a peer to the known
@@ -274,7 +348,7 @@ impl Peers for NetworkHandle {
     fn add_peer_kind(
         &self,
         peer: PeerId,
-        kind: PeerKind,
+        kind: Option<PeerKind>,
         tcp_addr: SocketAddr,
         udp_addr: Option<SocketAddr>,
     ) {
@@ -324,8 +398,22 @@ impl Peers for NetworkHandle {
         self.send_message(NetworkHandleMessage::DisconnectPeer(peer, Some(reason)))
     }
 
+    /// Sends a message to the [`NetworkManager`](crate::NetworkManager) to ban the given peer and
+    /// disconnect an active non-trusted session if one exists.
+    fn ban_peer(&self, peer: PeerId) {
+        self.send_message(NetworkHandleMessage::BanPeer(peer))
+    }
+
+    /// Sends a message to the [`NetworkManager`](crate::NetworkManager) to unban the given peer.
+    fn unban_peer(&self, peer: PeerId) {
+        self.send_message(NetworkHandleMessage::UnbanPeer(peer))
+    }
+
     /// Sends a message to the [`NetworkManager`](crate::NetworkManager) to connect to the given
     /// peer.
+    ///
+    /// This will add a new entry for the given peer if it isn't tracked yet.
+    /// If it is tracked then the peer is updated with the given information.
     fn connect_peer_kind(
         &self,
         peer_id: PeerId,
@@ -352,13 +440,13 @@ impl Peers for NetworkHandle {
     }
 }
 
-impl PeersHandleProvider for NetworkHandle {
+impl<N: NetworkPrimitives> PeersHandleProvider for NetworkHandle<N> {
     fn peers_handle(&self) -> &PeersHandle {
         &self.inner.peers
     }
 }
 
-impl NetworkInfo for NetworkHandle {
+impl<N: NetworkPrimitives> NetworkInfo for NetworkHandle<N> {
     fn local_addr(&self) -> SocketAddr {
         *self.inner.listener_address.lock()
     }
@@ -373,6 +461,10 @@ impl NetworkInfo for NetworkHandle {
         self.inner.chain_id.load(Ordering::Relaxed)
     }
 
+    fn cell_custody(&self) -> &CellCustody {
+        &self.inner.cell_custody
+    }
+
     fn is_syncing(&self) -> bool {
         SyncStateProvider::is_syncing(self)
     }
@@ -382,7 +474,7 @@ impl NetworkInfo for NetworkHandle {
     }
 }
 
-impl SyncStateProvider for NetworkHandle {
+impl<N: NetworkPrimitives> SyncStateProvider for NetworkHandle<N> {
     fn is_syncing(&self) -> bool {
         self.inner.is_syncing.load(Ordering::Relaxed)
     }
@@ -395,7 +487,7 @@ impl SyncStateProvider for NetworkHandle {
     }
 }
 
-impl NetworkSyncUpdater for NetworkHandle {
+impl<N: NetworkPrimitives> NetworkSyncUpdater for NetworkHandle<N> {
     fn update_sync_state(&self, state: SyncState) {
         let future_state = state.is_syncing();
         let prev_state = self.inner.is_syncing.swap(future_state, Ordering::Relaxed);
@@ -409,37 +501,36 @@ impl NetworkSyncUpdater for NetworkHandle {
     fn update_status(&self, head: Head) {
         self.send_message(NetworkHandleMessage::StatusUpdate { head });
     }
+
+    /// Updates the advertised block range.
+    fn update_block_range(&self, update: reth_eth_wire::BlockRangeUpdate) {
+        self.send_message(NetworkHandleMessage::InternalBlockRangeUpdate(update));
+    }
 }
 
-impl BlockDownloaderProvider for NetworkHandle {
-    async fn fetch_client(&self) -> Result<impl BlockClient + 'static, oneshot::error::RecvError> {
+impl<N: NetworkPrimitives> BlockDownloaderProvider for NetworkHandle<N> {
+    type Client = FetchClient<N>;
+
+    async fn fetch_client(&self) -> Result<Self::Client, oneshot::error::RecvError> {
         let (tx, rx) = oneshot::channel();
         let _ = self.manager().send(NetworkHandleMessage::FetchClient(tx));
         rx.await
     }
 }
 
-impl EngineRxProvider for NetworkHandle {
-    fn get_to_engine_rx(&self) -> Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>> {
-        self.inner.engine_rx.clone()
-    }
-}
-
 #[derive(Debug)]
-struct NetworkInner {
+struct NetworkInner<N: NetworkPrimitives = EthNetworkPrimitives> {
     /// Number of active peer sessions the node's currently handling.
     num_active_peers: Arc<AtomicUsize>,
     /// Sender half of the message channel to the [`crate::NetworkManager`].
-    to_manager_tx: UnboundedSender<NetworkHandleMessage>,
-    /// The receiver of the message channel to the Task Engine.
-    engine_rx: Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>>,
+    to_manager_tx: UnboundedSender<NetworkHandleMessage<N>>,
     /// The local address that accepts incoming connections.
     listener_address: Arc<Mutex<SocketAddr>>,
     /// The secret key used for authenticating sessions.
     secret_key: SecretKey,
     /// The identifier used by this node.
     local_peer_id: PeerId,
-    /// Access to the all the nodes.
+    /// Access to all the nodes.
     peers: PeersHandle,
     /// The mode of the network
     network_mode: NetworkMode,
@@ -449,6 +540,8 @@ struct NetworkInner {
     initial_sync_done: Arc<AtomicBool>,
     /// The chain id
     chain_id: Arc<AtomicU64>,
+    /// Shared blob cell custody bitmap.
+    cell_custody: CellCustody,
     /// Whether to disable transaction gossip
     tx_gossip_disabled: bool,
     /// The instance of the discv4 service
@@ -456,7 +549,7 @@ struct NetworkInner {
     /// The instance of the discv5 service
     discv5: Option<Discv5>,
     /// Sender for high level network events.
-    event_sender: EventSender<NetworkEvent>,
+    event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
     /// The NAT resolver
     nat: Option<NatResolver>,
 }
@@ -469,23 +562,36 @@ pub trait NetworkProtocols: Send + Sync {
 
 /// Internal messages that can be passed to the  [`NetworkManager`](crate::NetworkManager).
 #[derive(Debug)]
-pub(crate) enum NetworkHandleMessage {
+pub(crate) enum NetworkHandleMessage<N: NetworkPrimitives = EthNetworkPrimitives> {
     /// Marks a peer as trusted.
     AddTrustedPeerId(PeerId),
+    /// Adds a trusted peer that may use a hostname, registering it for periodic DNS re-resolution.
+    AddTrustedPeerNode(TrustedPeer),
     /// Adds an address for a peer, including its ID, kind, and socket address.
-    AddPeerAddress(PeerId, PeerKind, PeerAddr),
+    AddPeerAddress(PeerId, Option<PeerKind>, PeerAddr),
     /// Removes a peer from the peerset corresponding to the given kind.
     RemovePeer(PeerId, PeerKind),
     /// Disconnects a connection to a peer if it exists, optionally providing a disconnect reason.
     DisconnectPeer(PeerId, Option<DisconnectReason>),
+    /// Bans a peer and disconnects an active non-trusted session if one exists.
+    BanPeer(PeerId),
+    /// Unbans a peer.
+    UnbanPeer(PeerId),
     /// Broadcasts an event to announce a new block to all nodes.
-    AnnounceBlock(NewBlock, B256),
+    AnnounceBlock(N::NewBlockPayload, B256),
     /// Sends a list of transactions to the given peer.
     SendTransaction {
         /// The ID of the peer to which the transactions are sent.
         peer_id: PeerId,
         /// The shared transactions to send.
-        msg: SharedTransactions,
+        msg: SharedTransactions<N::BroadcastedTransaction>,
+    },
+    /// Sends cached full pool transactions to the given peer.
+    SendBroadcastPoolTransactions {
+        /// The ID of the peer to which the transactions are sent.
+        peer_id: PeerId,
+        /// The cached pool transactions to send.
+        msg: BroadcastPoolTransactions,
     },
     /// Sends a list of transaction hashes to the given peer.
     SendPooledTransactionHashes {
@@ -499,12 +605,19 @@ pub(crate) enum NetworkHandleMessage {
         /// The peer to send the request to.
         peer_id: PeerId,
         /// The request to send to the peer's sessions.
-        request: PeerRequest,
+        request: PeerRequest<N>,
+    },
+    /// Sends an `eth` protocol message to the peer.
+    EthMessage {
+        /// The peer to send the message to.
+        peer_id: PeerId,
+        /// The `eth` protocol message to send to the peer's session.
+        message: PeerMessage<N>,
     },
     /// Applies a reputation change to the given peer.
     ReputationChange(PeerId, ReputationChangeKind),
     /// Returns the client that can be used to interact with the network.
-    FetchClient(oneshot::Sender<FetchClient>),
+    FetchClient(oneshot::Sender<FetchClient<N>>),
     /// Applies a status update.
     StatusUpdate {
         /// The head status to apply.
@@ -523,7 +636,7 @@ pub(crate) enum NetworkHandleMessage {
     /// Gets the reputation for a specific peer via a oneshot sender.
     GetReputationById(PeerId, oneshot::Sender<Option<Reputation>>),
     /// Retrieves the `TransactionsHandle` via a oneshot sender.
-    GetTransactionsHandle(oneshot::Sender<Option<TransactionsHandle>>),
+    GetTransactionsHandle(oneshot::Sender<Option<TransactionsHandle<N>>>),
     /// Initiates a graceful shutdown of the network via a oneshot sender.
     Shutdown(oneshot::Sender<()>),
     /// Sets the network state between hibernation and active.
@@ -534,4 +647,6 @@ pub(crate) enum NetworkHandleMessage {
     AddRlpxSubProtocol(RlpxSubProtocol),
     /// Connect to the given peer.
     ConnectPeer(PeerId, PeerKind, PeerAddr),
+    /// Message to update the node's advertised block range information.
+    InternalBlockRangeUpdate(BlockRangeUpdate),
 }

@@ -6,47 +6,77 @@
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
 
 mod payload;
-use std::sync::Arc;
+use alloy_primitives::Bytes;
+pub use payload::{BlobSidecars, EthBuiltPayload};
 
+mod error;
+pub use error::*;
+
+use alloy_rpc_types_engine::{ExecutionData, ExecutionPayload};
 pub use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
-    ExecutionPayloadV1, PayloadAttributes as EthPayloadAttributes,
+    ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadV1,
+    PayloadAttributes as EthPayloadAttributes,
 };
-pub use payload::{EthBuiltPayload, EthPayloadBuilderAttributes};
-use reth_chainspec::ChainSpec;
-use reth_engine_primitives::{EngineTypes, EngineValidator};
-use reth_payload_primitives::{
-    validate_version_specific_fields, EngineApiMessageVersion, EngineObjectValidationError,
-    PayloadOrAttributes, PayloadTypes,
-};
+use reth_engine_primitives::EngineTypes;
+use reth_payload_primitives::{BuiltPayload, PayloadTypes};
+use reth_primitives_traits::{NodePrimitives, SealedBlock};
 
 /// The types used in the default mainnet ethereum beacon consensus engine.
 #[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
 pub struct EthEngineTypes<T: PayloadTypes = EthPayloadTypes> {
-    _marker: std::marker::PhantomData<T>,
+    _marker: core::marker::PhantomData<T>,
 }
 
-impl<T: PayloadTypes> PayloadTypes for EthEngineTypes<T> {
+impl<T> PayloadTypes for EthEngineTypes<T>
+where
+    T: PayloadTypes<
+        ExecutionData = ExecutionData,
+        BuiltPayload: BuiltPayload<
+            Primitives: NodePrimitives<Block = reth_ethereum_primitives::Block>,
+        >,
+    >,
+    ExecutionData: From<T::BuiltPayload>,
+{
+    type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
-    type PayloadBuilderAttributes = T::PayloadBuilderAttributes;
+
+    fn block_to_payload(
+        block: SealedBlock<
+            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
+        >,
+        bal: Option<Bytes>,
+    ) -> Self::ExecutionData {
+        T::block_to_payload(block, bal)
+    }
 }
 
-impl<T: PayloadTypes> EngineTypes for EthEngineTypes<T>
+impl<T> EngineTypes for EthEngineTypes<T>
 where
-    T::BuiltPayload: TryInto<ExecutionPayloadV1>
+    T: PayloadTypes<ExecutionData = ExecutionData>,
+    ExecutionData: From<T::BuiltPayload>,
+    T::BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = reth_ethereum_primitives::Block>>
+        + TryInto<ExecutionPayloadV1>
         + TryInto<ExecutionPayloadEnvelopeV2>
         + TryInto<ExecutionPayloadEnvelopeV3>
-        + TryInto<ExecutionPayloadEnvelopeV4>,
+        + TryInto<ExecutionPayloadEnvelopeV4>
+        + TryInto<ExecutionPayloadEnvelopeV5>
+        + TryInto<ExecutionPayloadEnvelopeV6>,
 {
     type ExecutionPayloadEnvelopeV1 = ExecutionPayloadV1;
     type ExecutionPayloadEnvelopeV2 = ExecutionPayloadEnvelopeV2;
     type ExecutionPayloadEnvelopeV3 = ExecutionPayloadEnvelopeV3;
     type ExecutionPayloadEnvelopeV4 = ExecutionPayloadEnvelopeV4;
+    type ExecutionPayloadEnvelopeV5 = ExecutionPayloadEnvelopeV5;
+    type ExecutionPayloadEnvelopeV6 = ExecutionPayloadEnvelopeV6;
 }
 
 /// A default payload type for [`EthEngineTypes`]
@@ -57,39 +87,19 @@ pub struct EthPayloadTypes;
 impl PayloadTypes for EthPayloadTypes {
     type BuiltPayload = EthBuiltPayload;
     type PayloadAttributes = EthPayloadAttributes;
-    type PayloadBuilderAttributes = EthPayloadBuilderAttributes;
-}
+    type ExecutionData = ExecutionData;
 
-/// Validator for the ethereum engine API.
-#[derive(Debug, Clone)]
-pub struct EthereumEngineValidator {
-    chain_spec: Arc<ChainSpec>,
-}
-
-impl EthereumEngineValidator {
-    /// Instantiates a new validator.
-    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
-        Self { chain_spec }
-    }
-}
-
-impl<Types> EngineValidator<Types> for EthereumEngineValidator
-where
-    Types: EngineTypes<PayloadAttributes = EthPayloadAttributes>,
-{
-    fn validate_version_specific_fields(
-        &self,
-        version: EngineApiMessageVersion,
-        payload_or_attrs: PayloadOrAttributes<'_, EthPayloadAttributes>,
-    ) -> Result<(), EngineObjectValidationError> {
-        validate_version_specific_fields(&self.chain_spec, version, payload_or_attrs)
-    }
-
-    fn ensure_well_formed_attributes(
-        &self,
-        version: EngineApiMessageVersion,
-        attributes: &EthPayloadAttributes,
-    ) -> Result<(), EngineObjectValidationError> {
-        validate_version_specific_fields(&self.chain_spec, version, attributes.into())
+    fn block_to_payload(
+        block: SealedBlock<
+            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
+        >,
+        bal: Option<Bytes>,
+    ) -> Self::ExecutionData {
+        let (payload, sidecar) = ExecutionPayload::from_block_unchecked_with_extras(
+            block.hash(),
+            &block.into_block(),
+            bal,
+        );
+        ExecutionData { payload, sidecar }
     }
 }

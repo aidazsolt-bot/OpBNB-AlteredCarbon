@@ -6,51 +6,138 @@ use std::{
     future::Future,
     net::SocketAddr,
     pin::Pin,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{
+        atomic::{AtomicU64, AtomicUsize},
+        Arc,
+    },
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-
-use futures::{stream::Fuse, SinkExt, StreamExt};
-use metrics::Gauge;
-use reth_eth_wire::{
-    errors::{EthHandshakeError, EthStreamError, P2PStreamError},
-    message::{EthBroadcastMessage, RequestPair},
-    Capabilities, DisconnectP2P, DisconnectReason, EthMessage,
-};
-use reth_metrics::common::mpsc::MeteredPollSender;
-use reth_network_api::PeerRequest;
-use reth_network_p2p::error::RequestError;
-use reth_network_peers::PeerId;
-use reth_network_types::session::config::INITIAL_REQUEST_TIMEOUT;
-use rustc_hash::FxHashMap;
-use tokio::{
-    sync::{mpsc::error::TrySendError, oneshot},
-    time::Interval,
-};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::PollSender;
-use tracing::{debug, trace};
 
 use crate::{
     message::{NewBlockMessage, PeerMessage, PeerResponse, PeerResponseResult},
     session::{
         conn::EthRlpxConnection,
         handle::{ActiveSessionMessage, SessionCommand},
-        SessionId,
+        BlockRangeInfo, EthVersion, SessionId,
     },
 };
+use alloy_eips::merge::EPOCH_SLOTS;
+use alloy_primitives::Sealable;
+use futures::{stream::Fuse, SinkExt, StreamExt};
+use metrics::{Counter, Gauge};
+use reth_eth_wire::{
+    errors::{EthHandshakeError, EthStreamError},
+    message::{EthBroadcastMessage, MessageError},
+    Capabilities, DisconnectP2P, DisconnectReason, EthMessage, EthSnapMessage, NetworkPrimitives,
+    NewBlockPayload,
+};
+use reth_eth_wire_types::{
+    message::RequestPair, snap::SnapProtocolMessage, NewPooledTransactionHashes,
+    RawCapabilityMessage,
+};
+use reth_metrics::common::mpsc::MeteredPollSender;
+use reth_network_api::{PeerRequest, RequestMessage};
+use reth_network_p2p::{error::RequestError, snap::client::SnapResponse};
+use reth_network_peers::PeerId;
+use reth_network_types::session::config::INITIAL_REQUEST_TIMEOUT;
+use reth_primitives_traits::Block;
+use rustc_hash::FxHashMap;
+use tokio::{
+    sync::{mpsc, mpsc::error::TrySendError, oneshot},
+    time::Interval,
+};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::PollSender;
+use tracing::{debug, trace};
+
+/// The recommended interval at which to check if a new range update should be sent to the remote
+/// peer.
+///
+/// Updates are only sent when the block height has advanced by at least one epoch (32 blocks)
+/// since the last update. The interval is set to one epoch duration in seconds.
+pub(super) const RANGE_UPDATE_INTERVAL: Duration = Duration::from_secs(EPOCH_SLOTS * 12);
 
 // Constants for timeout updating.
 
 /// Minimum timeout value
 const MINIMUM_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Maximum timeout value
 const MAXIMUM_TIMEOUT: Duration = INITIAL_REQUEST_TIMEOUT;
 /// How much the new measurements affect the current timeout (X percent)
 const SAMPLE_IMPACT: f64 = 0.1;
 /// Amount of RTTs before timeout
 const TIMEOUT_SCALING: u32 = 3;
+
+/// Restricts the number of queued outgoing messages for larger responses:
+///  - Block Bodies
+///  - Receipts
+///  - Headers
+///  - `PooledTransactions`
+///
+/// With proper softlimits in place (2MB) this targets 10MB (4+1 * 2MB) of outgoing response data.
+///
+/// This parameter serves as backpressure for reading additional requests from the remote.
+/// Once we've queued up more responses than this, the session should prioritize message flushing
+/// before reading any more messages from the remote peer, throttling the peer.
+const MAX_QUEUED_OUTGOING_RESPONSES: usize = 4;
+
+/// Capacity above which the drained outgoing message queue is shrunk back to its steady-state
+/// size, see [`QueuedOutgoingMessages::shrink_to_fit`].
+const SHRINK_CAPACITY_THRESHOLD: usize = 64;
+
+/// Maximum number of messages read from the connection per session poll before the task yields
+/// back to the scheduler, see the receive loop in the session's `Future` impl.
+///
+/// Message decoding is CPU intensive, so the budget bounds how long a single busy session can
+/// occupy the executor thread. Small tx gossip messages dominate under load and are cheap to
+/// decode individually, so the budget is sized such that their per-poll fixed costs (draining
+/// command channels, advancing the sink, flushing the transport) amortize over a larger batch.
+const RECEIVE_MESSAGE_BUDGET: usize = 16;
+
+/// Soft limit for the total number of buffered outgoing broadcast items (e.g. transaction hashes).
+///
+/// Many small broadcast messages carrying a single tx hash each are equivalent in cost to one
+/// message carrying many hashes. This limit counts individual items (hashes, transactions, blocks)
+/// rather than messages, so that many small messages don't trigger aggressive drops unnecessarily.
+const MAX_QUEUED_BROADCAST_ITEMS: usize = 4096;
+
+/// Shared counter for in-flight broadcast items (tx hashes, transactions, blocks) across the
+/// bounded command channel, unbounded overflow channel, and session outgoing queue.
+///
+/// Wrapped in a newtype so the backing storage can be changed later (e.g. to track memory) without
+/// touching every call-site.
+#[derive(Debug, Clone)]
+pub(crate) struct BroadcastItemCounter(Arc<AtomicUsize>);
+
+impl BroadcastItemCounter {
+    /// Creates a new counter starting at zero.
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(AtomicUsize::new(0)))
+    }
+
+    /// Returns the current count.
+    pub(crate) fn get(&self) -> usize {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// Attempts to add `n` items. Returns `true` if under the limit, `false` if over (no change).
+    pub(crate) fn try_add(&self, n: usize) -> bool {
+        let prev = self.0.fetch_add(n, Ordering::Relaxed);
+        if prev >= MAX_QUEUED_BROADCAST_ITEMS {
+            self.0.fetch_sub(n, Ordering::Relaxed);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Subtracts `n` items from the counter.
+    pub(crate) fn sub(&self, n: usize) {
+        self.0.fetch_sub(n, Ordering::Relaxed);
+    }
+}
 
 /// The type that advances an established session by listening for incoming messages (from local
 /// node or read from connection) and emitting events back to the
@@ -61,12 +148,12 @@ const TIMEOUT_SCALING: u32 = 3;
 ///    - incoming _internal_ requests/broadcasts via the request/command channel
 ///    - incoming requests/broadcasts _from remote_ via the connection
 ///    - responses for handled ETH requests received from the remote peer.
-#[allow(dead_code)]
-pub(crate) struct ActiveSession {
+#[expect(dead_code)]
+pub(crate) struct ActiveSession<N: NetworkPrimitives> {
     /// Keeps track of request ids.
     pub(crate) next_id: u64,
     /// The underlying connection.
-    pub(crate) conn: EthRlpxConnection,
+    pub(crate) conn: EthRlpxConnection<N>,
     /// Identifier of the node we're connected to.
     pub(crate) remote_peer_id: PeerId,
     /// The address we're connected to.
@@ -76,19 +163,25 @@ pub(crate) struct ActiveSession {
     /// Internal identifier of this session
     pub(crate) session_id: SessionId,
     /// Incoming commands from the manager
-    pub(crate) commands_rx: ReceiverStream<SessionCommand>,
+    pub(crate) commands_rx: ReceiverStream<SessionCommand<N>>,
+    /// Unbounded channel for commands that couldn't fit in the bounded channel (broadcast
+    /// overflow) and for disconnect commands that must never be dropped.
+    pub(crate) unbounded_rx: mpsc::UnboundedReceiver<SessionCommand<N>>,
+    /// Counter for broadcast messages received via the unbounded overflow channel.
+    pub(crate) unbounded_broadcast_msgs: Counter,
     /// Sink to send messages to the [`SessionManager`](super::SessionManager).
-    pub(crate) to_session_manager: MeteredPollSender<ActiveSessionMessage>,
+    pub(crate) to_session_manager: MeteredPollSender<ActiveSessionMessage<N>>,
     /// A message that needs to be delivered to the session manager
-    pub(crate) pending_message_to_session: Option<ActiveSessionMessage>,
+    pub(crate) pending_message_to_session: Option<ActiveSessionMessage<N>>,
     /// Incoming internal requests which are delegated to the remote peer.
-    pub(crate) internal_request_tx: Fuse<ReceiverStream<PeerRequest>>,
-    /// All requests sent to the remote peer we're waiting on a response
-    pub(crate) inflight_requests: FxHashMap<u64, InflightRequest>,
+    pub(crate) internal_request_rx: Fuse<ReceiverStream<PeerRequest<N>>>,
+    /// All requests sent to the remote peer we're waiting on a response for, including `snap/2`
+    /// requests ([`PeerRequest::GetSnap`]).
+    pub(crate) inflight_requests: FxHashMap<u64, InflightRequest<PeerRequest<N>>>,
     /// All requests that were sent by the remote peer and we're waiting on an internal response
-    pub(crate) received_requests_from_remote: Vec<ReceivedRequest>,
+    pub(crate) received_requests_from_remote: Vec<ReceivedRequest<N>>,
     /// Buffered messages that should be handled and sent to the peer.
-    pub(crate) queued_outgoing: QueuedOutgoingMessages,
+    pub(crate) queued_outgoing: QueuedOutgoingMessages<N>,
     /// The maximum time we wait for a response from a peer.
     pub(crate) internal_request_timeout: Arc<AtomicU64>,
     /// Interval when to check for timed out requests.
@@ -97,32 +190,73 @@ pub(crate) struct ActiveSession {
     /// considered a protocol violation and the session will initiate a drop.
     pub(crate) protocol_breach_request_timeout: Duration,
     /// Used to reserve a slot to guarantee that the termination message is delivered
-    pub(crate) terminate_message: Option<(PollSender<ActiveSessionMessage>, ActiveSessionMessage)>,
+    pub(crate) terminate_message:
+        Option<(PollSender<ActiveSessionMessage<N>>, ActiveSessionMessage<N>)>,
+    /// The eth69 range info for the remote peer.
+    /// This is `None` for peers negotiating versions below `eth/69`.
+    pub(crate) range_info: Option<BlockRangeInfo>,
+    /// The eth69 range info for the local node (this node).
+    /// This represents the range of blocks that this node can serve to other peers.
+    pub(crate) local_range_info: BlockRangeInfo,
+    /// Optional interval for sending periodic range updates to the remote peer (eth69+)
+    /// The interval is set to one epoch duration (~6.4 minutes), but updates are only sent when
+    /// the block height has advanced by at least one epoch (32 blocks) since the last update
+    pub(crate) range_update_interval: Option<Interval>,
+    /// The last latest block number we sent in a range update
+    /// Used to avoid sending unnecessary updates when block height hasn't changed significantly
+    pub(crate) last_sent_latest_block: Option<u64>,
 }
 
-impl ActiveSession {
+impl<N: NetworkPrimitives> ActiveSession<N> {
     /// Returns `true` if the session is currently in the process of disconnecting
     fn is_disconnecting(&self) -> bool {
         self.conn.inner().is_disconnecting()
     }
 
     /// Returns the next request id
-    fn next_id(&mut self) -> u64 {
+    const fn next_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         id
     }
 
-    /// Shrinks the capacity of the internal buffers.
+    /// Shrinks the capacity of the outgoing message queue once it is drained.
+    ///
+    /// The buffered incoming requests need no shrinking: the receive loop stops reading from the
+    /// wire while more than [`MAX_QUEUED_OUTGOING_RESPONSES`] of them are pending, which keeps
+    /// that buffer's capacity small.
     pub fn shrink_to_fit(&mut self) {
-        self.received_requests_from_remote.shrink_to_fit();
         self.queued_outgoing.shrink_to_fit();
+    }
+
+    /// Drains messages queued for sending into the connection's sink as long as the connection
+    /// can accept more, without flushing the underlying transport.
+    ///
+    /// This always advances the sink at least once, even with nothing queued, so connection
+    /// keepalive (ping) timers embedded in the sink's readiness logic are polled every session
+    /// poll.
+    ///
+    /// Returns `true` if at least one message was handed to the connection.
+    fn poll_send_queued(&mut self, cx: &mut Context<'_>) -> Result<bool, EthStreamError> {
+        let mut progress = false;
+        while self.conn.poll_ready_unpin(cx).is_ready() {
+            let Some(msg) = self.queued_outgoing.pop_front() else { break };
+            progress = true;
+            let res = match msg {
+                OutgoingMessage::Snap(msg) => self.conn.start_send_snap(msg),
+                OutgoingMessage::Eth(msg) => self.conn.start_send_unpin(msg),
+                OutgoingMessage::Broadcast(msg) => self.conn.start_send_broadcast(msg),
+                OutgoingMessage::Raw(msg) => self.conn.start_send_raw(msg),
+            };
+            res?;
+        }
+        Ok(progress)
     }
 
     /// Handle a message read from the connection.
     ///
     /// Returns an error if the message is considered to be in violation of the protocol.
-    fn on_incoming_message(&mut self, msg: EthMessage) -> OnIncomingMessageOutcome {
+    fn on_incoming_message(&mut self, msg: EthMessage<N>) -> OnIncomingMessageOutcome<N> {
         /// A macro that handles an incoming request
         /// This creates a new channel and tries to send the sender half to the session while
         /// storing the receiver half internally so the pending response can be polled.
@@ -148,10 +282,10 @@ impl ActiveSession {
         macro_rules! on_response {
             ($resp:ident, $item:ident) => {{
                 let RequestPair { request_id, message } = $resp;
-                #[allow(clippy::collapsible_match)]
                 if let Some(req) = self.inflight_requests.remove(&request_id) {
                     match req.request {
                         RequestState::Waiting(PeerRequest::$item { response, .. }) => {
+                            trace!(peer_id=?self.remote_peer_id, ?request_id, "received response from peer");
                             let _ = response.send(Ok(message));
                             self.update_request_timeout(req.timestamp, Instant::now());
                         }
@@ -164,6 +298,7 @@ impl ActiveSession {
                         }
                     }
                 } else {
+                    trace!(peer_id=?self.remote_peer_id, ?request_id, "received response to unknown request");
                     // we received a response to a request we never sent
                     self.on_bad_message();
                 }
@@ -185,8 +320,10 @@ impl ActiveSession {
                 self.try_emit_broadcast(PeerMessage::NewBlockHashes(msg)).into()
             }
             EthMessage::NewBlock(msg) => {
-                let block =
-                    NewBlockMessage { hash: msg.block.header.hash_slow(), block: Arc::new(*msg) };
+                let block = NewBlockMessage {
+                    hash: msg.block().header().hash_slow(),
+                    block: Arc::new(*msg),
+                };
                 self.try_emit_broadcast(PeerMessage::NewBlock(block)).into()
             }
             EthMessage::Transactions(msg) => {
@@ -196,16 +333,9 @@ impl ActiveSession {
                 self.try_emit_broadcast(PeerMessage::PooledTransactions(msg.into())).into()
             }
             EthMessage::NewPooledTransactionHashes68(msg) => {
-                if msg.hashes.len() != msg.types.len() || msg.hashes.len() != msg.sizes.len() {
-                    return OnIncomingMessageOutcome::BadMessage {
-                        error: EthStreamError::TransactionHashesInvalidLenOfFields {
-                            hashes_len: msg.hashes.len(),
-                            types_len: msg.types.len(),
-                            sizes_len: msg.sizes.len(),
-                        },
-                        message: EthMessage::NewPooledTransactionHashes68(msg),
-                    }
-                }
+                self.try_emit_broadcast(PeerMessage::PooledTransactions(msg.into())).into()
+            }
+            EthMessage::NewPooledTransactionHashes72(msg) => {
                 self.try_emit_broadcast(PeerMessage::PooledTransactions(msg.into())).into()
             }
             EthMessage::GetBlockHeaders(req) => {
@@ -233,19 +363,162 @@ impl ActiveSession {
                 on_response!(resp, GetNodeData)
             }
             EthMessage::GetReceipts(req) => {
-                on_request!(req, Receipts, GetReceipts)
+                if self.conn.version() >= EthVersion::Eth69 {
+                    on_request!(req, Receipts69, GetReceipts69)
+                } else {
+                    on_request!(req, Receipts, GetReceipts)
+                }
+            }
+            EthMessage::GetReceipts70(req) => {
+                on_request!(req, Receipts70, GetReceipts70)
             }
             EthMessage::Receipts(resp) => {
                 on_response!(resp, GetReceipts)
             }
+            EthMessage::Receipts69(resp) => {
+                on_response!(resp, GetReceipts69)
+            }
+            EthMessage::Receipts70(resp) => {
+                on_response!(resp, GetReceipts70)
+            }
+            EthMessage::GetBlockAccessLists(req) => {
+                on_request!(req, BlockAccessLists, GetBlockAccessLists)
+            }
+            EthMessage::BlockAccessLists(resp) => {
+                on_response!(resp, GetBlockAccessLists)
+            }
+            EthMessage::Cells(resp) => {
+                on_response!(resp, GetCells)
+            }
+            EthMessage::BlockRangeUpdate(msg) => {
+                // Validate that earliest <= latest according to the spec
+                if msg.earliest > msg.latest {
+                    return OnIncomingMessageOutcome::BadMessage {
+                        error: EthStreamError::InvalidMessage(MessageError::Other(format!(
+                            "invalid block range: earliest ({}) > latest ({})",
+                            msg.earliest, msg.latest
+                        ))),
+                        message: EthMessage::BlockRangeUpdate(msg),
+                    };
+                }
+
+                // Validate that the latest hash is not zero
+                if msg.latest_hash.is_zero() {
+                    return OnIncomingMessageOutcome::BadMessage {
+                        error: EthStreamError::InvalidMessage(MessageError::Other(
+                            "invalid block range: latest_hash cannot be zero".to_string(),
+                        )),
+                        message: EthMessage::BlockRangeUpdate(msg),
+                    };
+                }
+
+                if let Some(range_info) = self.range_info.as_ref() {
+                    range_info.update(msg.earliest, msg.latest, msg.latest_hash);
+                }
+
+                OnIncomingMessageOutcome::Ok
+            }
+            EthMessage::GetCells(resp) => {
+                on_request!(resp, Cells, GetCells)
+            }
+            EthMessage::Other(bytes) => self.try_emit_broadcast(PeerMessage::Other(bytes)).into(),
         }
     }
 
+    /// Handles an inbound `snap/2` message.
+    ///
+    /// Responses are correlated to the in-flight [`PeerRequest::GetSnap`] by `request_id` (shared
+    /// with eth requests in [`Self::inflight_requests`]) and type-checked against the originally
+    /// sent request kind; unsolicited or mismatched ones count as bad messages. Inbound requests
+    /// are routed upward as [`PeerRequest::GetSnap`], same as any other eth request.
+    fn on_incoming_snap_message(
+        &mut self,
+        mut msg: SnapProtocolMessage,
+    ) -> OnIncomingMessageOutcome<N> {
+        let request_id = msg.request_id();
+        if !msg.is_response() {
+            let (tx, response) = oneshot::channel();
+            self.received_requests_from_remote.push(ReceivedRequest {
+                request_id,
+                rx: PeerResponse::Snap { response },
+                received: Instant::now(),
+            });
+            return self
+                .try_emit_request(PeerMessage::EthRequest(PeerRequest::GetSnap {
+                    request: msg,
+                    response: tx,
+                }))
+                .into()
+        }
+
+        let Some(req) = self.inflight_requests.remove(&request_id) else {
+            trace!(target: "net::session", ?request_id, remote_peer_id=?self.remote_peer_id, "received snap response to unknown request");
+            self.on_bad_message();
+            return OnIncomingMessageOutcome::Ok
+        };
+
+        match req.request {
+            RequestState::Waiting(PeerRequest::GetSnap { request, response }) => {
+                if Some(msg.message_id()) != request.message_id().response() {
+                    debug!(target: "net::session", ?request_id, msg_id=?msg.message_id(), remote_peer_id=?self.remote_peer_id, "received snap response of wrong type");
+                    self.on_bad_message();
+                    let _ = response.send(Err(RequestError::BadResponse));
+                    return OnIncomingMessageOutcome::Ok
+                }
+                // Restore the caller's original request id, not the wire-assigned one.
+                msg.set_request_id(request.request_id());
+                match SnapResponse::try_from(msg) {
+                    Ok(snap_response) => {
+                        trace!(target: "net::session", ?request_id, remote_peer_id=?self.remote_peer_id, "received snap response from peer");
+                        let _ = response.send(Ok(snap_response));
+                        self.update_request_timeout(req.timestamp, Instant::now());
+                    }
+                    Err(_) => {
+                        let _ = response.send(Err(RequestError::BadResponse));
+                    }
+                }
+            }
+            RequestState::Waiting(request) => {
+                // A different PeerRequest kind was pending for this id.
+                request.send_bad_response();
+            }
+            RequestState::TimedOut => {
+                self.update_request_timeout(req.timestamp, Instant::now());
+            }
+        }
+        OnIncomingMessageOutcome::Ok
+    }
+
     /// Handle an internal peer request that will be sent to the remote.
-    fn on_internal_peer_request(&mut self, request: PeerRequest, deadline: Instant) {
+    fn on_internal_peer_request(&mut self, request: PeerRequest<N>, deadline: Instant) {
+        let version = self.conn.version();
+        if !Self::is_request_supported_for_version(&request, version) {
+            debug!(
+                target: "net",
+                ?request,
+                peer_id=?self.remote_peer_id,
+                ?version,
+                "Request not supported for negotiated eth version",
+            );
+            request.send_err_response(RequestError::UnsupportedCapability);
+            return;
+        }
+
+        // `GetSnap` isn't covered by the eth-version check above, and a connection that never
+        // negotiated `snap/2` can't send one without erroring the whole session.
+        if matches!(request, PeerRequest::GetSnap { .. }) && !self.conn.supports_snap() {
+            request.send_err_response(RequestError::UnsupportedCapability);
+            return;
+        }
+
         let request_id = self.next_id();
-        let msg = request.create_request_message(request_id);
-        self.queued_outgoing.push_back(msg.into());
+        trace!(?request, peer_id=?self.remote_peer_id, ?request_id, "sending request to peer");
+        let msg = match request.create_request_message(request_id) {
+            RequestMessage::Eth(msg) => msg.map_versioned(version).into(),
+            RequestMessage::Snap(msg) => OutgoingMessage::Snap(msg),
+        };
+
+        self.queued_outgoing.push_back(msg);
         let req = InflightRequest {
             request: RequestState::Waiting(request),
             timestamp: Instant::now(),
@@ -254,8 +527,13 @@ impl ActiveSession {
         self.inflight_requests.insert(request_id, req);
     }
 
+    #[inline]
+    fn is_request_supported_for_version(request: &PeerRequest<N>, version: EthVersion) -> bool {
+        request.is_supported_by_eth_version(version)
+    }
+
     /// Handle a message received from the internal network
-    fn on_internal_peer_message(&mut self, msg: PeerMessage) {
+    fn on_internal_peer_message(&mut self, msg: PeerMessage<N>) {
         match msg {
             PeerMessage::NewBlockHashes(msg) => {
                 self.queued_outgoing.push_back(EthMessage::NewBlockHashes(msg).into());
@@ -265,7 +543,10 @@ impl ActiveSession {
             }
             PeerMessage::PooledTransactions(msg) => {
                 if msg.is_valid_for_version(self.conn.version()) {
-                    self.queued_outgoing.push_back(EthMessage::from(msg).into());
+                    self.queued_outgoing.push_pooled_hashes(msg);
+                } else {
+                    self.queued_outgoing.broadcast_items.sub(msg.len());
+                    debug!(target: "net", ?msg,  version=?self.conn.version(), "Message is invalid for connection version, skipping");
                 }
             }
             PeerMessage::EthRequest(req) => {
@@ -275,11 +556,16 @@ impl ActiveSession {
             PeerMessage::SendTransactions(msg) => {
                 self.queued_outgoing.push_back(EthBroadcastMessage::Transactions(msg).into());
             }
+            PeerMessage::SendBroadcastPoolTransactions(msg) => {
+                self.queued_outgoing
+                    .push_back(EthBroadcastMessage::BroadcastPoolTransactions(msg).into());
+            }
+            PeerMessage::BlockRangeUpdated(_) => {}
             PeerMessage::ReceivedTransaction(_) => {
                 unreachable!("Not emitted by network")
             }
             PeerMessage::Other(other) => {
-                debug!(target: "net::session", message_id=%other.id, "Ignoring unsupported message");
+                self.queued_outgoing.push_back(OutgoingMessage::Raw(other));
             }
         }
     }
@@ -293,10 +579,13 @@ impl ActiveSession {
     /// Handle a Response to the peer
     ///
     /// This will queue the response to be sent to the peer
-    fn handle_outgoing_response(&mut self, id: u64, resp: PeerResponseResult) {
+    fn handle_outgoing_response(&mut self, id: u64, resp: PeerResponseResult<N>) {
         match resp.try_into_message(id) {
-            Ok(msg) => {
+            Ok(RequestMessage::Eth(msg)) => {
                 self.queued_outgoing.push_back(msg.into());
+            }
+            Ok(RequestMessage::Snap(msg)) => {
+                self.queued_outgoing.push_back(OutgoingMessage::Snap(msg));
             }
             Err(err) => {
                 debug!(target: "net", %err, "Failed to respond to received request");
@@ -307,8 +596,8 @@ impl ActiveSession {
     /// Send a message back to the [`SessionManager`](super::SessionManager).
     ///
     /// Returns the message if the bounded channel is currently unable to handle this message.
-    #[allow(clippy::result_large_err)]
-    fn try_emit_broadcast(&self, message: PeerMessage) -> Result<(), ActiveSessionMessage> {
+    #[expect(clippy::result_large_err)]
+    fn try_emit_broadcast(&self, message: PeerMessage<N>) -> Result<(), ActiveSessionMessage<N>> {
         let Some(sender) = self.to_session_manager.inner().get_ref() else { return Ok(()) };
 
         match sender
@@ -333,8 +622,8 @@ impl ActiveSession {
     /// covering both broadcasts and incoming requests.
     ///
     /// Returns the message if the bounded channel is currently unable to handle this message.
-    #[allow(clippy::result_large_err)]
-    fn try_emit_request(&self, message: PeerMessage) -> Result<(), ActiveSessionMessage> {
+    #[expect(clippy::result_large_err)]
+    fn try_emit_request(&self, message: PeerMessage<N>) -> Result<(), ActiveSessionMessage<N>> {
         let Some(sender) = self.to_session_manager.inner().get_ref() else { return Ok(()) };
 
         match sender
@@ -390,11 +679,7 @@ impl ActiveSession {
 
     /// Starts the disconnect process
     fn start_disconnect(&mut self, reason: DisconnectReason) -> Result<(), EthStreamError> {
-        self.conn
-            .inner_mut()
-            .start_disconnect(reason)
-            .map_err(P2PStreamError::from)
-            .map_err(Into::into)
+        Ok(self.conn.inner_mut().start_disconnect(reason)?)
     }
 
     /// Flushes the disconnect message and emits the corresponding message
@@ -451,7 +736,7 @@ impl ActiveSession {
         let current = Duration::from_millis(self.internal_request_timeout.load(Ordering::Relaxed));
         let request_timeout = calculate_new_timeout(current, elapsed);
         self.internal_request_timeout.store(request_timeout.as_millis() as u64, Ordering::Relaxed);
-        self.internal_request_timeout_interval = tokio::time::interval(request_timeout);
+        self.internal_request_timeout_interval = request_timeout_interval(request_timeout);
     }
 
     /// If a termination message is queued this will try to send it
@@ -474,7 +759,7 @@ impl ActiveSession {
     }
 }
 
-impl Future for ActiveSession {
+impl<N: NetworkPrimitives> Future for ActiveSession<N> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -494,11 +779,12 @@ impl Future for ActiveSession {
         // If the budget is exhausted we manually yield back control to the (coop) scheduler. This
         // manual yield point should prevent situations where polling appears to be frozen. See also <https://tokio.rs/blog/2020-04-preemption>
         // And tokio's docs on cooperative scheduling <https://docs.rs/tokio/latest/tokio/task/#cooperative-scheduling>
-        let mut budget = 4;
+        let mut budget = RECEIVE_MESSAGE_BUDGET;
 
         // The main poll loop that drives the session
         'main: loop {
             let mut progress = false;
+            let mut receive_pending = false;
 
             // we prioritize incoming commands sent from the session manager
             loop {
@@ -532,9 +818,24 @@ impl Future for ActiveSession {
                 }
             }
 
+            // Drain the unbounded channel (broadcast overflow + disconnect commands)
+            while let Poll::Ready(Some(cmd)) = this.unbounded_rx.poll_recv(cx) {
+                progress = true;
+                match cmd {
+                    SessionCommand::Message(msg) => {
+                        this.unbounded_broadcast_msgs.increment(1);
+                        this.on_internal_peer_message(msg);
+                    }
+                    SessionCommand::Disconnect { reason } => {
+                        let reason = reason.unwrap_or(DisconnectReason::DisconnectRequested);
+                        return this.try_disconnect(reason, cx);
+                    }
+                }
+            }
+
             let deadline = this.request_deadline();
 
-            while let Poll::Ready(Some(req)) = this.internal_request_tx.poll_next_unpin(cx) {
+            while let Poll::Ready(Some(req)) = this.internal_request_rx.poll_next_unpin(cx) {
                 progress = true;
                 this.on_internal_peer_request(req, deadline);
             }
@@ -554,22 +855,16 @@ impl Future for ActiveSession {
                 }
             }
 
-            // Send messages by advancing the sink and queuing in buffered messages
-            while this.conn.poll_ready_unpin(cx).is_ready() {
-                if let Some(msg) = this.queued_outgoing.pop_front() {
-                    progress = true;
-                    let res = match msg {
-                        OutgoingMessage::Eth(msg) => this.conn.start_send_unpin(msg),
-                        OutgoingMessage::Broadcast(msg) => this.conn.start_send_broadcast(msg),
-                    };
-                    if let Err(err) = res {
-                        debug!(target: "net::session", %err, remote_peer_id=?this.remote_peer_id, "failed to send message");
-                        // notify the manager
-                        return this.close_on_error(err, cx)
-                    }
-                } else {
-                    // no more messages to send over the wire
-                    break
+            // Send messages by advancing the sink and queuing in buffered messages. The sink only
+            // buffers sent messages; the explicit flush happens once per poll after the main
+            // loop, so messages queued across the loop's passes batch up (the sink still writes
+            // out on its own for control messages and when its write buffer runs full).
+            match this.poll_send_queued(cx) {
+                Ok(sent) => progress |= sent,
+                Err(err) => {
+                    debug!(target: "net::session", %err, remote_peer_id=?this.remote_peer_id, "failed to send message");
+                    // notify the manager
+                    return this.close_on_error(err, cx)
                 }
             }
 
@@ -599,8 +894,32 @@ impl Future for ActiveSession {
                     };
                 }
 
+                // check whether we should throttle incoming messages
+                if this.received_requests_from_remote.len() > MAX_QUEUED_OUTGOING_RESPONSES {
+                    // we're currently waiting for the responses to the peer's requests which aren't
+                    // queued as outgoing yet
+                    //
+                    // Note: we don't need to register the waker here because we polled the requests
+                    // above
+                    break 'receive
+                }
+
+                // we also need to check if we have multiple responses queued up
+                if this.queued_outgoing.response_count() > MAX_QUEUED_OUTGOING_RESPONSES {
+                    // if we've queued up more responses than allowed, we don't poll for new
+                    // messages and break the receive loop early
+                    //
+                    // Note: we don't need to register the waker here because we still have
+                    // queued messages and the sink impl registered the waker because we've
+                    // already advanced it to `Pending` earlier
+                    break 'receive
+                }
+
                 match this.conn.poll_next_unpin(cx) {
-                    Poll::Pending => break,
+                    Poll::Pending => {
+                        receive_pending = true;
+                        break
+                    }
                     Poll::Ready(None) => {
                         if this.is_disconnecting() {
                             break
@@ -611,26 +930,37 @@ impl Future for ActiveSession {
                     Poll::Ready(Some(res)) => {
                         match res {
                             Ok(msg) => {
-                                trace!(target: "net::session", msg_id=?msg.message_id(), remote_peer_id=?this.remote_peer_id, "received eth message");
-                                // decode and handle message
-                                match this.on_incoming_message(msg) {
+                                let outcome = match msg {
+                                    EthSnapMessage::Eth(msg) => {
+                                        trace!(target: "net::session", msg_id=?msg.message_id(), remote_peer_id=?this.remote_peer_id, "received eth message");
+                                        // decode and handle message
+                                        this.on_incoming_message(msg)
+                                    }
+                                    EthSnapMessage::Snap(msg) => this.on_incoming_snap_message(msg),
+                                };
+                                match outcome {
                                     OnIncomingMessageOutcome::Ok => {
                                         // handled successfully
                                         progress = true;
                                     }
                                     OnIncomingMessageOutcome::BadMessage { error, message } => {
                                         debug!(target: "net::session", %error, msg=?message, remote_peer_id=?this.remote_peer_id, "received invalid protocol message");
-                                        return this.close_on_error(error, cx)
+                                        this.on_bad_message();
+                                        return this
+                                            .try_disconnect(DisconnectReason::ProtocolBreach, cx)
                                     }
                                     OnIncomingMessageOutcome::NoCapacity(msg) => {
                                         // failed to send due to lack of capacity
                                         this.pending_message_to_session = Some(msg);
-                                        continue 'receive
                                     }
                                 }
                             }
                             Err(err) => {
                                 debug!(target: "net::session", %err, remote_peer_id=?this.remote_peer_id, "failed to receive message");
+                                if err.is_protocol_breach() {
+                                    this.on_bad_message();
+                                    return this.try_disconnect(DisconnectReason::ProtocolBreach, cx)
+                                }
                                 return this.close_on_error(err, cx)
                             }
                         }
@@ -638,18 +968,65 @@ impl Future for ActiveSession {
                 }
             }
 
+            // Avoid one extra empty outer-loop pass after the wire is pending, unless the receive
+            // pass produced work that should be driven immediately.
+            if receive_pending &&
+                this.queued_outgoing.is_empty() &&
+                this.pending_message_to_session.is_none() &&
+                this.received_requests_from_remote.is_empty()
+            {
+                break 'main
+            }
+
             if !progress {
                 break 'main
             }
         }
 
-        while this.internal_request_timeout_interval.poll_tick(cx).is_ready() {
-            // check for timed out requests
-            if this.check_timed_out_requests(Instant::now()) {
-                if let Poll::Ready(Ok(_)) = this.to_session_manager.poll_reserve(cx) {
+        if let Some(interval) = &mut this.range_update_interval {
+            // Check if we should send a range update based on block height changes
+            while interval.poll_tick(cx).is_ready() {
+                let current_latest = this.local_range_info.latest();
+                let should_send = if let Some(last_sent) = this.last_sent_latest_block {
+                    // Only send if block height has advanced by at least one epoch (32 blocks)
+                    current_latest.saturating_sub(last_sent) >= EPOCH_SLOTS
+                } else {
+                    true // First update, always send
+                };
+
+                if should_send {
+                    this.queued_outgoing.push_back(
+                        EthMessage::BlockRangeUpdate(this.local_range_info.to_message()).into(),
+                    );
+                    this.last_sent_latest_block = Some(current_latest);
+                }
+            }
+        }
+
+        if !this.inflight_requests.is_empty() {
+            while this.internal_request_timeout_interval.poll_tick(cx).is_ready() {
+                // check for timed out requests
+                if this.check_timed_out_requests(Instant::now()) &&
+                    let Poll::Ready(Ok(_)) = this.to_session_manager.poll_reserve(cx)
+                {
                     let msg = ActiveSessionMessage::ProtocolBreach { peer_id: this.remote_peer_id };
                     this.pending_message_to_session = Some(msg);
                 }
+            }
+        }
+
+        // Send anything the interval handlers above queued, then flush the transport for
+        // everything buffered during this poll. This also resumes a flush that returned pending
+        // on an earlier poll; a no-op if nothing is buffered.
+        if let Err(err) = this.poll_send_queued(cx) {
+            debug!(target: "net::session", %err, remote_peer_id=?this.remote_peer_id, "failed to send message");
+            return this.close_on_error(err, cx)
+        }
+        match this.conn.poll_flush_unpin(cx) {
+            Poll::Pending | Poll::Ready(Ok(())) => {}
+            Poll::Ready(Err(err)) => {
+                debug!(target: "net::session", %err, remote_peer_id=?this.remote_peer_id, "failed to flush connection");
+                return this.close_on_error(err, cx)
             }
         }
 
@@ -660,29 +1037,27 @@ impl Future for ActiveSession {
 }
 
 /// Tracks a request received from the peer
-pub(crate) struct ReceivedRequest {
+pub(crate) struct ReceivedRequest<N: NetworkPrimitives> {
     /// Protocol Identifier
     request_id: u64,
     /// Receiver half of the channel that's supposed to receive the proper response.
-    rx: PeerResponse,
+    rx: PeerResponse<N>,
     /// Timestamp when we read this msg from the wire.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     received: Instant,
 }
 
 /// A request that waits for a response from the peer
-pub(crate) struct InflightRequest {
+pub(crate) struct InflightRequest<R> {
     /// Request we sent to peer and the internal response channel
-    request: RequestState,
+    request: RequestState<R>,
     /// Instant when the request was sent
     timestamp: Instant,
     /// Time limit for the response
     deadline: Instant,
 }
 
-// === impl InflightRequest ===
-
-impl InflightRequest {
+impl<N: NetworkPrimitives> InflightRequest<PeerRequest<N>> {
     /// Returns true if the request is timedout
     #[inline]
     fn is_timed_out(&self, now: Instant) -> bool {
@@ -707,17 +1082,19 @@ impl InflightRequest {
 }
 
 /// All outcome variants when handling an incoming message
-enum OnIncomingMessageOutcome {
+enum OnIncomingMessageOutcome<N: NetworkPrimitives> {
     /// Message successfully handled.
     Ok,
     /// Message is considered to be in violation of the protocol
-    BadMessage { error: EthStreamError, message: EthMessage },
+    BadMessage { error: EthStreamError, message: EthMessage<N> },
     /// Currently no capacity to handle the message
-    NoCapacity(ActiveSessionMessage),
+    NoCapacity(ActiveSessionMessage<N>),
 }
 
-impl From<Result<(), ActiveSessionMessage>> for OnIncomingMessageOutcome {
-    fn from(res: Result<(), ActiveSessionMessage>) -> Self {
+impl<N: NetworkPrimitives> From<Result<(), ActiveSessionMessage<N>>>
+    for OnIncomingMessageOutcome<N>
+{
+    fn from(res: Result<(), ActiveSessionMessage<N>>) -> Self {
         match res {
             Ok(_) => Self::Ok,
             Err(msg) => Self::NoCapacity(msg),
@@ -725,31 +1102,119 @@ impl From<Result<(), ActiveSessionMessage>> for OnIncomingMessageOutcome {
     }
 }
 
-enum RequestState {
+enum RequestState<R> {
     /// Waiting for the response
-    Waiting(PeerRequest),
+    Waiting(R),
     /// Request already timed out
     TimedOut,
 }
 
 /// Outgoing messages that can be sent over the wire.
-pub(crate) enum OutgoingMessage {
+#[derive(Debug)]
+pub(crate) enum OutgoingMessage<N: NetworkPrimitives> {
     /// A message that is owned.
-    Eth(EthMessage),
+    Eth(EthMessage<N>),
     /// A message that may be shared by multiple sessions.
-    Broadcast(EthBroadcastMessage),
+    Broadcast(EthBroadcastMessage<N>),
+    /// A raw capability message
+    Raw(RawCapabilityMessage),
+    /// A `snap/2` message to send over the dedicated `eth`+`snap` stream.
+    Snap(SnapProtocolMessage),
 }
 
-impl From<EthMessage> for OutgoingMessage {
-    fn from(value: EthMessage) -> Self {
+impl<N: NetworkPrimitives> OutgoingMessage<N> {
+    /// Returns true if this is a response.
+    const fn is_response(&self) -> bool {
+        match self {
+            Self::Eth(msg) => msg.is_response(),
+            // Served snap responses count toward response backpressure; outbound snap requests do
+            // not. `SnapProtocolMessage::is_response` distinguishes the two.
+            Self::Snap(msg) => msg.is_response(),
+            Self::Broadcast(_) | Self::Raw(_) => false,
+        }
+    }
+
+    /// Returns the number of broadcast items in this message.
+    ///
+    /// For transaction hash announcements this is the number of hashes, for full transaction
+    /// broadcasts it is the number of transactions, and for blocks it is 1.
+    /// Request/response messages return 0.
+    fn broadcast_item_count(&self) -> usize {
+        match self {
+            Self::Eth(msg) => match msg {
+                EthMessage::NewBlockHashes(h) => h.len(),
+                EthMessage::NewPooledTransactionHashes66(h) => h.len(),
+                EthMessage::NewPooledTransactionHashes68(h) => h.hashes.len(),
+                EthMessage::NewPooledTransactionHashes72(h) => h.hashes.len(),
+                _ => 0,
+            },
+            Self::Broadcast(msg) => match msg {
+                EthBroadcastMessage::NewBlock(_) => 1,
+                EthBroadcastMessage::Transactions(txs) => txs.len(),
+                EthBroadcastMessage::BroadcastPoolTransactions(txs) => txs.len(),
+            },
+            Self::Raw(_) | Self::Snap(_) => 0,
+        }
+    }
+
+    /// Tries to merge pooled transaction hash announcements into this message, consuming the
+    /// incoming hashes. Returns `Some(incoming)` back if the variants don't match.
+    fn try_merge_hashes(
+        &mut self,
+        incoming: NewPooledTransactionHashes,
+    ) -> Option<NewPooledTransactionHashes> {
+        let Self::Eth(eth) = self else { return Some(incoming) };
+        match (eth, incoming) {
+            (
+                EthMessage::NewPooledTransactionHashes66(existing),
+                NewPooledTransactionHashes::Eth66(inc),
+            ) => {
+                existing.extend(inc);
+                None
+            }
+            (
+                EthMessage::NewPooledTransactionHashes68(existing),
+                NewPooledTransactionHashes::Eth68(inc),
+            ) => {
+                existing.hashes.extend(inc.hashes);
+                existing.sizes.extend(inc.sizes);
+                existing.types.extend(inc.types);
+                None
+            }
+            (
+                EthMessage::NewPooledTransactionHashes72(existing),
+                NewPooledTransactionHashes::Eth72(inc),
+            ) => {
+                existing.hashes.extend(inc.hashes);
+                existing.sizes.extend(inc.sizes);
+                existing.types.extend(inc.types);
+                None
+            }
+            (_, incoming) => Some(incoming),
+        }
+    }
+}
+
+impl<N: NetworkPrimitives> From<EthMessage<N>> for OutgoingMessage<N> {
+    fn from(value: EthMessage<N>) -> Self {
         Self::Eth(value)
     }
 }
 
-impl From<EthBroadcastMessage> for OutgoingMessage {
-    fn from(value: EthBroadcastMessage) -> Self {
+impl<N: NetworkPrimitives> From<EthBroadcastMessage<N>> for OutgoingMessage<N> {
+    fn from(value: EthBroadcastMessage<N>) -> Self {
         Self::Broadcast(value)
     }
+}
+
+/// Returns the interval used to check for timed out requests.
+///
+/// Uses delayed missed-tick behavior because the interval is only polled while requests are in
+/// flight, so ticks that elapsed while the session was idle must not fire in a burst.
+pub(super) fn request_timeout_interval(timeout: Duration) -> Interval {
+    let mut interval = tokio::time::interval(timeout);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval
 }
 
 /// Calculates a new timeout using an updated estimation of the RTT
@@ -763,28 +1228,85 @@ fn calculate_new_timeout(current_timeout: Duration, estimated_rtt: Duration) -> 
     smoothened_timeout.clamp(MINIMUM_TIMEOUT, MAXIMUM_TIMEOUT)
 }
 
-/// A helper struct that wraps the queue of outgoing messages and a metric to track their count
-pub(crate) struct QueuedOutgoingMessages {
-    messages: VecDeque<OutgoingMessage>,
+/// A helper struct that wraps the queue of outgoing messages with broadcast-aware tracking.
+///
+/// Tracks both the total number of queued messages (via a metric gauge) and the total number of
+/// broadcast items (tx hashes, transactions, blocks) via a shared atomic counter. The atomic
+/// counter is shared with [`ActiveSessionHandle`](super::handle::ActiveSessionHandle) so the
+/// [`SessionManager`](super::SessionManager) can apply size-based backpressure.
+pub(crate) struct QueuedOutgoingMessages<N: NetworkPrimitives> {
+    messages: VecDeque<OutgoingMessage<N>>,
+    /// Number of queued response messages, tracked separately so the session can apply
+    /// backpressure on incoming requests without scanning the whole queue.
+    queued_responses: usize,
     count: Gauge,
+    /// Shared counter of buffered broadcast items for size-based backpressure.
+    broadcast_items: BroadcastItemCounter,
 }
 
-impl QueuedOutgoingMessages {
-    pub(crate) const fn new(metric: Gauge) -> Self {
-        Self { messages: VecDeque::new(), count: metric }
+impl<N: NetworkPrimitives> QueuedOutgoingMessages<N> {
+    pub(crate) const fn new(metric: Gauge, broadcast_items: BroadcastItemCounter) -> Self {
+        Self { messages: VecDeque::new(), queued_responses: 0, count: metric, broadcast_items }
     }
 
-    pub(crate) fn push_back(&mut self, message: OutgoingMessage) {
+    /// Returns the number of queued response messages.
+    pub(crate) const fn response_count(&self) -> usize {
+        self.queued_responses
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
+    pub(crate) fn push_back(&mut self, message: OutgoingMessage<N>) {
+        self.queued_responses += message.is_response() as usize;
         self.messages.push_back(message);
         self.count.increment(1);
     }
 
-    pub(crate) fn pop_front(&mut self) -> Option<OutgoingMessage> {
-        self.messages.pop_front().inspect(|_| self.count.decrement(1))
+    pub(crate) fn pop_front(&mut self) -> Option<OutgoingMessage<N>> {
+        self.messages.pop_front().inspect(|msg| {
+            self.count.decrement(1);
+            self.queued_responses -= msg.is_response() as usize;
+            let items = msg.broadcast_item_count();
+            if items > 0 {
+                self.broadcast_items.sub(items);
+            }
+        })
     }
 
+    /// Pushes a pooled transaction hash announcement, merging into the last queued message if
+    /// it is the same variant (eth66, eth68, or eth72).
+    pub(crate) fn push_pooled_hashes(&mut self, msg: NewPooledTransactionHashes) {
+        let msg = if let Some(last) = self.messages.back_mut() {
+            match last.try_merge_hashes(msg) {
+                None => return,
+                Some(msg) => msg,
+            }
+        } else {
+            msg
+        };
+        self.messages.push_back(EthMessage::from(msg).into());
+        self.count.increment(1);
+    }
+
+    /// Shrinks the queue's capacity back to its steady-state size once it is drained, if it grew
+    /// well beyond it. The threshold avoids a shrink/regrow reallocation cycle on every poll
+    /// under regular bursty traffic.
     pub(crate) fn shrink_to_fit(&mut self) {
-        self.messages.shrink_to_fit();
+        if self.messages.is_empty() && self.messages.capacity() > SHRINK_CAPACITY_THRESHOLD {
+            self.messages.shrink_to(MAX_QUEUED_OUTGOING_RESPONSES);
+        }
+    }
+}
+
+impl<N: NetworkPrimitives> Drop for QueuedOutgoingMessages<N> {
+    fn drop(&mut self) {
+        // Ensure gauge is decremented for any remaining items to avoid metric leak on teardown.
+        let remaining = self.messages.len();
+        if remaining > 0 {
+            self.count.decrement(remaining as f64);
+        }
     }
 }
 
@@ -792,15 +1314,28 @@ impl QueuedOutgoingMessages {
 mod tests {
     use super::*;
     use crate::session::{handle::PendingSessionEvent, start_pending_incoming_session};
+    use alloy_eips::eip2124::ForkFilter;
+    use alloy_primitives::B256;
+    use futures::task::noop_waker;
     use reth_chainspec::MAINNET;
     use reth_ecies::stream::ECIESStream;
     use reth_eth_wire::{
-        EthStream, GetBlockBodies, HelloMessageWithProtocols, P2PStream, Status, StatusBuilder,
-        UnauthedEthStream, UnauthedP2PStream,
+        handshake::EthHandshake, protocol::Protocol, EthNetworkPrimitives, EthStream,
+        GetBlockAccessLists, GetBlockBodies, HelloMessageWithProtocols, P2PStream, StatusBuilder,
+        UnauthedEthStream, UnauthedP2PStream, UnifiedStatus,
     };
+    use reth_eth_wire_types::{
+        message::MAX_MESSAGE_SIZE,
+        snap::{
+            AccountRangeMessage, BlockAccessListsMessage, GetAccountRangeMessage,
+            GetBlockAccessListsMessage,
+        },
+        BlockAccessLists, EthMessageID, NewPooledTransactionHashes72,
+    };
+    use reth_ethereum_forks::EthereumHardfork;
+    use reth_network_p2p::error::RequestResult;
     use reth_network_peers::pk2id;
     use reth_network_types::session::config::PROTOCOL_BREACH_REQUEST_TIMEOUT;
-    use reth_primitives::{EthereumHardfork, ForkFilter};
     use secp256k1::{SecretKey, SECP256K1};
     use tokio::{
         net::{TcpListener, TcpStream},
@@ -812,20 +1347,20 @@ mod tests {
         HelloMessageWithProtocols::builder(pk2id(&server_key.public_key(SECP256K1))).build()
     }
 
-    struct SessionBuilder {
+    struct SessionBuilder<N: NetworkPrimitives = EthNetworkPrimitives> {
         _remote_capabilities: Arc<Capabilities>,
-        active_session_tx: mpsc::Sender<ActiveSessionMessage>,
-        active_session_rx: ReceiverStream<ActiveSessionMessage>,
-        to_sessions: Vec<mpsc::Sender<SessionCommand>>,
+        active_session_tx: mpsc::Sender<ActiveSessionMessage<N>>,
+        active_session_rx: ReceiverStream<ActiveSessionMessage<N>>,
+        to_sessions: Vec<mpsc::Sender<SessionCommand<N>>>,
         secret_key: SecretKey,
         local_peer_id: PeerId,
         hello: HelloMessageWithProtocols,
-        status: Status,
+        status: UnifiedStatus,
         fork_filter: ForkFilter,
         next_id: usize,
     }
 
-    impl SessionBuilder {
+    impl<N: NetworkPrimitives> SessionBuilder<N> {
         fn next_id(&mut self) -> SessionId {
             let id = self.next_id;
             self.next_id += 1;
@@ -839,20 +1374,23 @@ mod tests {
             f: F,
         ) -> Pin<Box<dyn Future<Output = ()> + Send>>
         where
-            F: FnOnce(EthStream<P2PStream<ECIESStream<TcpStream>>>) -> O + Send + 'static,
+            F: FnOnce(EthStream<P2PStream<ECIESStream<TcpStream>>, N>) -> O + Send + 'static,
             O: Future<Output = ()> + Send + Sync,
         {
-            let status = self.status;
+            let mut status = self.status;
             let fork_filter = self.fork_filter.clone();
             let local_peer_id = self.local_peer_id;
             let mut hello = self.hello.clone();
-            let key = SecretKey::new(&mut rand::thread_rng());
+            let key = SecretKey::new(&mut rand_08::thread_rng());
             hello.id = pk2id(&key.public_key(SECP256K1));
             Box::pin(async move {
                 let outgoing = TcpStream::connect(local_addr).await.unwrap();
                 let sink = ECIESStream::connect(outgoing, key, local_peer_id).await.unwrap();
 
                 let (p2p_stream, _) = UnauthedP2PStream::new(sink).handshake(hello).await.unwrap();
+
+                let eth_version = p2p_stream.shared_capabilities().eth_version().unwrap();
+                status.set_eth_version(eth_version);
 
                 let (client_stream, _) = UnauthedEthStream::new(p2p_stream)
                     .handshake(status, fork_filter)
@@ -862,13 +1400,15 @@ mod tests {
             })
         }
 
-        async fn connect_incoming(&mut self, stream: TcpStream) -> ActiveSession {
+        async fn connect_incoming(&mut self, stream: TcpStream) -> ActiveSession<N> {
             let remote_addr = stream.local_addr().unwrap();
             let session_id = self.next_id();
             let (_disconnect_tx, disconnect_rx) = oneshot::channel();
             let (pending_sessions_tx, pending_sessions_rx) = mpsc::channel(1);
 
             tokio::task::spawn(start_pending_incoming_session(
+                Arc::new(EthHandshake::default()),
+                MAX_MESSAGE_SIZE,
                 disconnect_rx,
                 session_id,
                 stream,
@@ -894,6 +1434,7 @@ mod tests {
                 } => {
                     let (_to_session_tx, messages_rx) = mpsc::channel(10);
                     let (commands_to_session, commands_rx) = mpsc::channel(10);
+                    let (_unbounded_tx, unbounded_rx) = mpsc::unbounded_channel();
                     let poll_sender = PollSender::new(self.active_session_tx.clone());
 
                     self.to_sessions.push(commands_to_session);
@@ -905,17 +1446,22 @@ mod tests {
                         remote_capabilities: Arc::clone(&capabilities),
                         session_id,
                         commands_rx: ReceiverStream::new(commands_rx),
+                        unbounded_rx,
+                        unbounded_broadcast_msgs: Counter::noop(),
                         to_session_manager: MeteredPollSender::new(
                             poll_sender,
                             "network_active_session",
                         ),
                         pending_message_to_session: None,
-                        internal_request_tx: ReceiverStream::new(messages_rx).fuse(),
+                        internal_request_rx: ReceiverStream::new(messages_rx).fuse(),
                         inflight_requests: Default::default(),
                         conn,
-                        queued_outgoing: QueuedOutgoingMessages::new(Gauge::noop()),
+                        queued_outgoing: QueuedOutgoingMessages::new(
+                            Gauge::noop(),
+                            BroadcastItemCounter::new(),
+                        ),
                         received_requests_from_remote: Default::default(),
-                        internal_request_timeout_interval: tokio::time::interval(
+                        internal_request_timeout_interval: request_timeout_interval(
                             INITIAL_REQUEST_TIMEOUT,
                         ),
                         internal_request_timeout: Arc::new(AtomicU64::new(
@@ -923,6 +1469,14 @@ mod tests {
                         )),
                         protocol_breach_request_timeout: PROTOCOL_BREACH_REQUEST_TIMEOUT,
                         terminate_message: None,
+                        range_info: None,
+                        local_range_info: BlockRangeInfo::new(
+                            0,
+                            1000,
+                            alloy_primitives::B256::ZERO,
+                        ),
+                        range_update_interval: None,
+                        last_sent_latest_block: None,
                     }
                 }
                 ev => {
@@ -936,7 +1490,7 @@ mod tests {
         fn default() -> Self {
             let (active_session_tx, active_session_rx) = mpsc::channel(100);
 
-            let (secret_key, pk) = SECP256K1.generate_keypair(&mut rand::thread_rng());
+            let (secret_key, pk) = SECP256K1.generate_keypair(&mut rand_08::thread_rng());
             let local_peer_id = pk2id(&pk);
 
             Self {
@@ -956,6 +1510,33 @@ mod tests {
         }
     }
 
+    /// Returns a [`SessionBuilder`] whose hello also advertises `snap/2`, so the negotiated
+    /// session ends up on an [`EthSnapStream`](reth_eth_wire::EthSnapStream) connection instead
+    /// of a plain `eth`-only one.
+    fn snap_session_builder() -> SessionBuilder {
+        let mut builder = SessionBuilder::default();
+        builder.hello.try_add_protocol(Protocol::snap_2()).unwrap();
+        builder
+    }
+
+    /// Dispatches a `snap/2` request via [`ActiveSession::on_internal_peer_request`] and returns
+    /// the session-assigned request id plus the caller's response receiver.
+    fn dispatch_snap_request(
+        session: &mut ActiveSession<EthNetworkPrimitives>,
+        caller_request_id: u64,
+    ) -> (u64, oneshot::Receiver<RequestResult<SnapResponse>>) {
+        let (response, rx) = oneshot::channel();
+        let request = SnapProtocolMessage::GetBlockAccessLists(GetBlockAccessListsMessage {
+            request_id: caller_request_id,
+            block_hashes: Vec::new(),
+            response_bytes: 0,
+        });
+        let deadline = session.request_deadline();
+        session.on_internal_peer_request(PeerRequest::GetSnap { request, response }, deadline);
+        let id = *session.inflight_requests.keys().next().expect("snap request tracked");
+        (id, rx)
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn test_disconnect() {
         let mut builder = SessionBuilder::default();
@@ -965,7 +1546,7 @@ mod tests {
 
         let expected_disconnect = DisconnectReason::UselessPeer;
 
-        let fut = builder.with_client_stream(local_addr, move |mut client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |mut client_stream| {
             let msg = client_stream.next().await.unwrap().unwrap_err();
             assert_eq!(msg.as_disconnected().unwrap(), expected_disconnect);
         });
@@ -982,13 +1563,47 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn test_invalid_message_disconnects_with_protocol_breach() {
+        let mut builder = SessionBuilder::default();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+
+        let fut = builder.with_client_stream(local_addr, async move |mut client_stream| {
+            client_stream
+                .start_send_raw(RawCapabilityMessage::eth(
+                    EthMessageID::PooledTransactions,
+                    vec![0xc0].into(),
+                ))
+                .unwrap();
+            client_stream.flush().await.unwrap();
+
+            let msg = client_stream.next().await.unwrap().unwrap_err();
+            assert_eq!(msg.as_disconnected(), Some(DisconnectReason::ProtocolBreach));
+        });
+
+        let (tx, rx) = oneshot::channel();
+
+        tokio::task::spawn(async move {
+            let (incoming, _) = listener.accept().await.unwrap();
+            let session = builder.connect_incoming(incoming).await;
+            session.await;
+
+            tx.send(()).unwrap();
+        });
+
+        fut.await;
+        rx.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn handle_dropped_stream() {
         let mut builder = SessionBuilder::default();
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let local_addr = listener.local_addr().unwrap();
 
-        let fut = builder.with_client_stream(local_addr, move |client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
             drop(client_stream);
             tokio::time::sleep(Duration::from_secs(1)).await
         });
@@ -1018,7 +1633,7 @@ mod tests {
 
         let num_messages = 100;
 
-        let fut = builder.with_client_stream(local_addr, move |mut client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |mut client_stream| {
             for _ in 0..num_messages {
                 client_stream
                     .send(EthMessage::NewPooledTransactionHashes66(Vec::new().into()))
@@ -1054,7 +1669,7 @@ mod tests {
         let request_timeout = Duration::from_millis(100);
         let drop_timeout = Duration::from_millis(1500);
 
-        let fut = builder.with_client_stream(local_addr, move |client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
             let _client_stream = client_stream;
             tokio::time::sleep(drop_timeout * 60).await;
         });
@@ -1068,6 +1683,9 @@ mod tests {
         session.protocol_breach_request_timeout = drop_timeout;
         session.internal_request_timeout_interval =
             tokio::time::interval_at(tokio::time::Instant::now(), request_timeout);
+        session
+            .internal_request_timeout_interval
+            .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let (tx, rx) = oneshot::channel();
         let req = PeerRequest::GetBlockBodies { request: GetBlockBodies(vec![]), response: tx };
         session.on_internal_peer_request(req, Instant::now());
@@ -1085,13 +1703,290 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn snap_request_is_assigned_unique_id_and_response_correlated() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        // The session assigns its own request id (not the caller's sentinel) and tracks it.
+        let (id, rx) = dispatch_snap_request(&mut session, u64::MAX);
+        assert_ne!(id, u64::MAX, "session must assign its own request id");
+
+        // A response carrying that id is correlated back to the caller's future.
+        let outcome = session.on_incoming_snap_message(SnapProtocolMessage::BlockAccessLists(
+            BlockAccessListsMessage {
+                request_id: id,
+                block_access_lists: BlockAccessLists(Vec::new()),
+            },
+        ));
+        assert!(matches!(outcome, OnIncomingMessageOutcome::Ok));
+        assert!(!session.inflight_requests.contains_key(&id));
+
+        // The delivered response carries the caller's original id again, not the session's.
+        let response = rx.await.unwrap().unwrap();
+        assert!(matches!(
+            response,
+            SnapResponse::BlockAccessLists(m) if m.request_id == u64::MAX
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn wrong_type_snap_response_is_rejected() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        let (id, rx) = dispatch_snap_request(&mut session, 0);
+
+        // Answering a GetBlockAccessLists with an AccountRange under the same id is a bad message.
+        let outcome = session.on_incoming_snap_message(SnapProtocolMessage::AccountRange(
+            AccountRangeMessage { request_id: id, accounts: Vec::new(), proof: Vec::new() },
+        ));
+        assert!(matches!(outcome, OnIncomingMessageOutcome::Ok));
+        assert!(!session.inflight_requests.contains_key(&id));
+        assert_eq!(rx.await.unwrap().unwrap_err(), RequestError::BadResponse);
+        assert!(matches!(
+            builder.active_session_rx.next().await,
+            Some(ActiveSessionMessage::BadMessage { .. })
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn snap_request_times_out() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        // Tiny timeout so the deadline (computed at insert) is already in the past.
+        session.internal_request_timeout.store(1, Ordering::Relaxed);
+        let (id, rx) = dispatch_snap_request(&mut session, 0);
+
+        // The first check resolves the caller with a timeout but keeps the entry so the session
+        // can escalate to a protocol breach.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!session.check_timed_out_requests(Instant::now()));
+        assert!(session.inflight_requests.contains_key(&id));
+        assert_eq!(rx.await.unwrap().unwrap_err(), RequestError::Timeout);
+
+        // Once the breach timeout passes without a response, the session flags a protocol breach.
+        session.protocol_breach_request_timeout = Duration::from_millis(1);
+        assert!(session.check_timed_out_requests(Instant::now()));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn late_snap_response_is_consumed_without_penalty() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        session.internal_request_timeout.store(1, Ordering::Relaxed);
+        let (id, _rx) = dispatch_snap_request(&mut session, 0);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!session.check_timed_out_requests(Instant::now()));
+
+        // A response arriving after the timeout clears the entry without a bad-message report.
+        let outcome = session.on_incoming_snap_message(SnapProtocolMessage::BlockAccessLists(
+            BlockAccessListsMessage {
+                request_id: id,
+                block_access_lists: BlockAccessLists(Vec::new()),
+            },
+        ));
+        assert!(matches!(outcome, OnIncomingMessageOutcome::Ok));
+        assert!(!session.inflight_requests.contains_key(&id));
+        assert!(futures::FutureExt::now_or_never(builder.active_session_rx.next())
+            .flatten()
+            .is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_snap_response_is_penalized() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        // A response for a request we never sent is dropped and reported as a bad message.
+        let outcome = session.on_incoming_snap_message(SnapProtocolMessage::BlockAccessLists(
+            BlockAccessListsMessage {
+                request_id: 999,
+                block_access_lists: BlockAccessLists(Vec::new()),
+            },
+        ));
+        assert!(matches!(outcome, OnIncomingMessageOutcome::Ok));
+        assert!(session.inflight_requests.is_empty());
+        assert!(session.queued_outgoing.pop_front().is_none());
+        assert!(matches!(
+            builder.active_session_rx.next().await,
+            Some(ActiveSessionMessage::BadMessage { .. })
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_snap_request_rejected_without_negotiated_snap() {
+        // A plain `eth`-only session: no `snap/2` was negotiated.
+        let mut builder = SessionBuilder::default();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+        assert!(!session.conn.supports_snap());
+
+        let (response, rx) = oneshot::channel();
+        let request = SnapProtocolMessage::GetBlockAccessLists(GetBlockAccessListsMessage {
+            request_id: 0,
+            block_hashes: Vec::new(),
+            response_bytes: 0,
+        });
+        let deadline = session.request_deadline();
+        session.on_internal_peer_request(PeerRequest::GetSnap { request, response }, deadline);
+
+        // Rejected immediately instead of being queued for a connection that can't send it.
+        assert!(session.inflight_requests.is_empty());
+        assert!(session.queued_outgoing.pop_front().is_none());
+        assert_eq!(rx.await.unwrap().unwrap_err(), RequestError::UnsupportedCapability);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn inbound_snap_request_round_trips_to_a_response() {
+        let mut builder = snap_session_builder();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let fut = builder.with_client_stream(local_addr, async move |client_stream| {
+            let _client_stream = client_stream;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        tokio::task::spawn(fut);
+        let (incoming, _) = listener.accept().await.unwrap();
+        let mut session = builder.connect_incoming(incoming).await;
+
+        // The peer sends an inbound GetAccountRange request.
+        let outcome = session.on_incoming_snap_message(SnapProtocolMessage::GetAccountRange(
+            GetAccountRangeMessage {
+                request_id: 7,
+                root_hash: B256::ZERO,
+                starting_hash: B256::ZERO,
+                limit_hash: B256::ZERO,
+                response_bytes: 1024,
+            },
+        ));
+        assert!(matches!(outcome, OnIncomingMessageOutcome::Ok));
+        assert_eq!(session.received_requests_from_remote.len(), 1);
+
+        // It's routed upward instead of being served inline.
+        let Some(ActiveSessionMessage::ValidMessage {
+            message: PeerMessage::EthRequest(PeerRequest::GetSnap { request, response }),
+            ..
+        }) = builder.active_session_rx.next().await
+        else {
+            panic!("expected an outbound GetSnap request")
+        };
+        assert!(matches!(request, SnapProtocolMessage::GetAccountRange(_)));
+
+        // The handler answers with an empty-but-valid range.
+        let _ = response.send(Ok(SnapResponse::AccountRange(AccountRangeMessage {
+            request_id: 7,
+            accounts: Vec::new(),
+            proof: Vec::new(),
+        })));
+
+        // Drive the same conversion the session's main poll loop would.
+        let mut req = session.received_requests_from_remote.pop().unwrap();
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        let Poll::Ready(resp) = req.rx.poll(&mut cx) else { panic!("response should be ready") };
+        session.handle_outgoing_response(req.request_id, resp);
+
+        // The reply goes out as a snap/2 message carrying the original request id, not an eth
+        // message.
+        let msg = session.queued_outgoing.pop_front().expect("response queued for send");
+        assert!(matches!(
+            msg,
+            OutgoingMessage::Snap(SnapProtocolMessage::AccountRange(AccountRangeMessage {
+                request_id: 7,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn eth72_pooled_hashes_count_broadcast_items() {
+        let hashes =
+            vec![alloy_primitives::B256::repeat_byte(1), alloy_primitives::B256::repeat_byte(2)];
+        let msg: OutgoingMessage<EthNetworkPrimitives> =
+            EthMessage::NewPooledTransactionHashes72(NewPooledTransactionHashes72 {
+                types: vec![0; hashes.len()],
+                sizes: vec![1; hashes.len()],
+                hashes,
+                cell_mask: None,
+            })
+            .into();
+
+        assert_eq!(2, msg.broadcast_item_count());
+    }
+
+    #[test]
+    fn test_reject_bal_request_for_eth70() {
+        let (tx, _rx) = oneshot::channel();
+        let request: PeerRequest<EthNetworkPrimitives> =
+            PeerRequest::GetBlockAccessLists { request: GetBlockAccessLists(vec![]), response: tx };
+
+        assert!(!ActiveSession::<EthNetworkPrimitives>::is_request_supported_for_version(
+            &request,
+            EthVersion::Eth70
+        ));
+        assert!(ActiveSession::<EthNetworkPrimitives>::is_request_supported_for_version(
+            &request,
+            EthVersion::Eth71
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_keep_alive() {
         let mut builder = SessionBuilder::default();
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let local_addr = listener.local_addr().unwrap();
 
-        let fut = builder.with_client_stream(local_addr, move |mut client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |mut client_stream| {
             let _ = tokio::time::timeout(Duration::from_secs(5), client_stream.next()).await;
             client_stream.into_inner().disconnect(DisconnectReason::UselessPeer).await.unwrap();
         });
@@ -1119,7 +2014,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let local_addr = listener.local_addr().unwrap();
 
-        let fut = builder.with_client_stream(local_addr, move |mut client_stream| async move {
+        let fut = builder.with_client_stream(local_addr, async move |mut client_stream| {
             client_stream
                 .send(EthMessage::NewPooledTransactionHashes68(Default::default()))
                 .await
