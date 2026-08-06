@@ -12,7 +12,7 @@ use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, 
 use reth_chainspec::ChainInfo;
 use reth_db::static_file::{
     BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask, StaticFileCursor, TDWithHashMask,
-    TotalDifficultyMask, TransactionMask, TransactionMask,
+    TotalDifficultyMask, TransactionMask, TransactionSenderMask,
 };
 use reth_db_api::table::{Decompress, Value};
 use reth_node_types::NodePrimitives;
@@ -105,6 +105,18 @@ impl<N: NodePrimitives<BlockHeader: Value>> HeaderProvider for StaticFileJarProv
 
     fn header_by_number(&self, num: BlockNumber) -> ProviderResult<Option<Self::Header>> {
         self.cursor()?.get_one::<HeaderMask<Self::Header>>(num.into())
+    }
+
+    fn header_td(&self, block_hash: &BlockHash) -> ProviderResult<Option<U256>> {
+        Ok(self
+            .cursor()?
+            .get_two::<TDWithHashMask>(block_hash.into())?
+            .filter(|(_, hash)| hash == block_hash)
+            .map(|(td, _)| td.into()))
+    }
+
+    fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
+        Ok(self.cursor()?.get_one::<TotalDifficultyMask>(num.into())?.map(Into::into))
     }
 
     fn headers_range(
@@ -280,7 +292,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
         let mut senders = Vec::with_capacity(range_size_hint(&range).unwrap_or(1024));
 
         for num in to_range(range) {
-            if let Some(tx) = cursor.get_one::<TransactionMask>(num.into())? {
+            if let Some(tx) = cursor.get_one::<TransactionSenderMask>(num.into())? {
                 senders.push(tx)
             }
         }
@@ -288,7 +300,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
     }
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
-        self.cursor()?.get_one::<TransactionMask>(id.into())
+        self.cursor()?.get_one::<TransactionSenderMask>(id.into())
     }
 }
 
