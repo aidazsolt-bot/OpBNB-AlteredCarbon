@@ -7,6 +7,7 @@
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![allow(unexpected_cfgs)]
 
 /// Error types for the state-root task and proof computation.
 pub mod error;

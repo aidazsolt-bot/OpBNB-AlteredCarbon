@@ -7,10 +7,11 @@ use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
     providers::StaticFileProvider, BlockReader, ChainStateBlockReader, DBProvider,
     DatabaseProviderFactory, NodePrimitivesProvider, PruneCheckpointReader, PruneCheckpointWriter,
-    StageCheckpointReader, StaticFileProviderFactory, StorageSettingsCache,
+    RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderFactory, StorageSettingsCache,
 };
 use reth_prune_types::PruneModes;
-use std::time::Duration;
+use reth_storage_api::{ChangeSetReader, StorageChangeSetReader};
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::watch;
 
 /// Contains the information required to build a pruner
@@ -26,6 +27,10 @@ pub struct PrunerBuilder {
     timeout: Option<Duration>,
     /// The finished height of all `ExEx`'s.
     finished_exex_height: watch::Receiver<FinishedExExHeight>,
+    /// The number of recent sidecars to keep in static files.
+    recent_sidecars_kept_blocks: usize,
+    /// Optional static file path used by sidecar pruning.
+    static_file_path: Option<PathBuf>,
 }
 
 impl PrunerBuilder {
@@ -75,6 +80,18 @@ impl PrunerBuilder {
         self
     }
 
+    /// Sets the number of recent sidecar blocks to keep.
+    pub const fn recent_sidecars_kept_blocks(mut self, recent_sidecars_kept_blocks: usize) -> Self {
+        self.recent_sidecars_kept_blocks = recent_sidecars_kept_blocks;
+        self
+    }
+
+    /// Sets the static file path used by sidecar pruning.
+    pub fn static_file_path(mut self, static_file_path: Option<PathBuf>) -> Self {
+        self.static_file_path = static_file_path;
+        self
+    }
+
     /// Builds a [Pruner] from the current configuration with the given provider factory.
     pub fn build_with_provider_factory<PF>(self, provider_factory: PF) -> Pruner<PF::ProviderRW, PF>
     where
@@ -85,6 +102,9 @@ impl PrunerBuilder {
                                 + ChainStateBlockReader
                                 + StorageSettingsCache
                                 + StageCheckpointReader
+                                + ChangeSetReader
+                                + StorageChangeSetReader
+                                + RocksDBProviderFactory
                                 + StaticFileProviderFactory<
                     Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
                 >,
@@ -102,6 +122,8 @@ impl PrunerBuilder {
             self.delete_limit,
             self.timeout,
             self.finished_exex_height,
+            self.recent_sidecars_kept_blocks,
+            self.static_file_path,
         )
     }
 
@@ -119,7 +141,10 @@ impl PrunerBuilder {
             + PruneCheckpointWriter
             + PruneCheckpointReader
             + StorageSettingsCache
-            + StageCheckpointReader,
+            + StageCheckpointReader
+            + ChangeSetReader
+            + StorageChangeSetReader
+            + RocksDBProviderFactory,
     {
         let segments = SegmentSet::<Provider>::from_components(static_file_provider, self.segments);
 
@@ -129,6 +154,8 @@ impl PrunerBuilder {
             self.delete_limit,
             self.timeout,
             self.finished_exex_height,
+            self.recent_sidecars_kept_blocks,
+            self.static_file_path,
         )
     }
 }
@@ -141,6 +168,8 @@ impl Default for PrunerBuilder {
             delete_limit: usize::MAX,
             timeout: None,
             finished_exex_height: watch::channel(FinishedExExHeight::NoExExs).1,
+            recent_sidecars_kept_blocks: 0,
+            static_file_path: None,
         }
     }
 }

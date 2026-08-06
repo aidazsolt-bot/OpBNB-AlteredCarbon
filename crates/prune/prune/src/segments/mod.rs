@@ -37,18 +37,30 @@ where
         provider.static_file_provider().delete_segment_below_block(segment, input.to_block + 1)?;
 
     if deleted_headers.is_empty() {
-        return Ok(SegmentOutput::done())
+        return Ok(SegmentOutput {
+            progress: PruneProgress::Finished,
+            pruned: 0,
+            checkpoint: input
+                .previous_checkpoint
+                .map(SegmentOutputCheckpoint::from_prune_checkpoint),
+        })
     }
 
     let tx_ranges = deleted_headers.iter().filter_map(|header| header.tx_range());
 
-    let pruned = tx_ranges.clone().map(|range| range.len()).sum::<u64>() as usize;
+    let pruned = tx_ranges
+        .clone()
+        .map(|range| range.end().saturating_sub(range.start()) + 1)
+        .sum::<u64>() as usize;
+
+    let checkpoint_block =
+        deleted_headers.iter().filter_map(|header| header.block_range()).map(|range| range.end()).max();
 
     Ok(SegmentOutput {
         progress: PruneProgress::Finished,
         pruned,
         checkpoint: Some(SegmentOutputCheckpoint {
-            block_number: Some(input.to_block),
+            block_number: checkpoint_block,
             tx_number: tx_ranges.map(|range| range.end()).max(),
         }),
     })

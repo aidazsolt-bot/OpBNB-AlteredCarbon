@@ -9,13 +9,12 @@ use crate::{
 use alloy_primitives::BlockNumber;
 use reth_db_api::{models::ShardedKey, tables, transaction::DbTxMut};
 use reth_provider::{
-    changeset_walker::StaticFileAccountChangesetWalker, DBProvider, EitherWriter,
-    RocksDBProviderFactory, StaticFileProviderFactory,
+    changeset_walker::StaticFileAccountChangesetWalker, DBProvider, RocksDBProviderFactory,
+    StaticFileProviderFactory,
 };
 use reth_prune_types::{
     PruneMode, PrunePurpose, PruneSegment, SegmentOutput, SegmentOutputCheckpoint,
 };
-use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{ChangeSetReader, StorageSettingsCache};
 use rustc_hash::FxHashMap;
 use tracing::{instrument, trace};
@@ -78,12 +77,7 @@ where
             return self.prune_rocksdb(provider, input, range, range_end);
         }
 
-        // Check where account changesets are stored (MDBX path)
-        if EitherWriter::account_changesets_destination(provider).is_static_file() {
-            self.prune_static_files(provider, input, range, range_end)
-        } else {
-            self.prune_database(provider, input, range, range_end)
-        }
+        self.prune_database(provider, input, range, range_end)
     }
 }
 
@@ -140,12 +134,6 @@ impl AccountHistory {
             limiter.increment_deleted_entries_count();
         }
 
-        // Delete static file jars only when fully processed
-        if done && let Some(last_block) = last_changeset_pruned_block {
-            provider
-                .static_file_provider()
-                .delete_segment_below_block(StaticFileSegment::AccountChangeSets, last_block + 1)?;
-        }
         trace!(target: "pruner", pruned = %pruned_changesets, %done, "Pruned account history (changesets from static files)");
 
         let result = HistoryPruneResult {
@@ -239,7 +227,11 @@ impl AccountHistory {
         range_end: BlockNumber,
     ) -> Result<SegmentOutput, PrunerError>
     where
-        Provider: DBProvider + StaticFileProviderFactory + ChangeSetReader + RocksDBProviderFactory,
+        Provider: DBProvider
+            + StaticFileProviderFactory
+            + ChangeSetReader
+            + RocksDBProviderFactory
+            + Sync,
     {
         // Unlike MDBX path, we don't divide the limit by 2 because RocksDB path only prunes
         // history shards (no separate changeset table to delete from). The changesets are in
@@ -287,12 +279,13 @@ impl AccountHistory {
         let mut sorted_accounts: Vec<_> = highest_deleted_accounts.into_iter().collect();
         sorted_accounts.sort_unstable_by_key(|(addr, _)| *addr);
 
-        provider.with_rocksdb_batch(|mut batch| {
+        provider.with_rocksdb_batch(|_| {
             let targets: Vec<_> = sorted_accounts
                 .iter()
                 .map(|(addr, highest)| (*addr, (*highest).min(last_changeset_pruned_block)))
                 .collect();
 
+            let mut batch = provider.rocksdb_provider().batch();
             let outcomes = batch.prune_account_history_batch(&targets)?;
             deleted_shards = outcomes.deleted;
             updated_shards = outcomes.updated;
@@ -306,13 +299,6 @@ impl AccountHistory {
         // but before MDBX commit, on restart the pruner checkpoint indicates data needs
         // re-pruning, but the RocksDB shards are already pruned - this is safe because pruning
         // is idempotent (re-pruning already-pruned shards is a no-op).
-        if done {
-            provider.static_file_provider().delete_segment_below_block(
-                StaticFileSegment::AccountChangeSets,
-                last_changeset_pruned_block + 1,
-            )?;
-        }
-
         let progress = limiter.progress(done);
 
         Ok(SegmentOutput {
