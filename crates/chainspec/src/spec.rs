@@ -650,7 +650,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     /// Returns the hardfork display helper.
     pub fn display_hardforks(&self) -> DisplayHardforks
     where
-        H: std::fmt::Debug + Send + Sync + Unpin,
+        H: core::fmt::Debug + Send + Sync + Unpin,
     {
         // Create an iterator with hardfork, condition, and optional blob metadata
         let hardforks_with_meta = self.hardforks.forks_iter().map(|(fork, condition)| {

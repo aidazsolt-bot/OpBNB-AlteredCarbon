@@ -41,16 +41,18 @@ pub struct BscChainSpec {
 }
 
 impl EthChainSpec for BscChainSpec {
+    type Header = Header;
+
     fn chain(&self) -> alloy_chains::Chain {
         self.inner.chain()
     }
 
-    fn base_fee_params_at_block(&self, block_number: u64) -> BaseFeeParams {
-        self.inner.base_fee_params_at_block(block_number)
-    }
-
     fn base_fee_params_at_timestamp(&self, timestamp: u64) -> BaseFeeParams {
         self.inner.base_fee_params_at_timestamp(timestamp)
+    }
+
+    fn blob_params_at_timestamp(&self, timestamp: u64) -> Option<alloy_eips::eip7840::BlobParams> {
+        self.inner.blob_params_at_timestamp(timestamp)
     }
 
     fn deposit_contract(&self) -> Option<&DepositContract> {
@@ -77,10 +79,6 @@ impl EthChainSpec for BscChainSpec {
         self.inner.genesis()
     }
 
-    fn max_gas_limit(&self) -> u64 {
-        self.inner.max_gas_limit()
-    }
-
     fn bootnodes(&self) -> Option<Vec<NodeRecord>> {
         self.inner.bootnodes()
     }
@@ -91,6 +89,10 @@ impl EthChainSpec for BscChainSpec {
 
     fn is_bsc(&self) -> bool {
         true
+    }
+
+    fn final_paris_total_difficulty(&self) -> Option<U256> {
+        self.inner.final_paris_total_difficulty()
     }
 }
 
@@ -119,12 +121,8 @@ impl Hardforks for BscChainSpec {
 }
 
 impl EthereumHardforks for BscChainSpec {
-    fn get_final_paris_total_difficulty(&self) -> Option<U256> {
-        self.inner.get_final_paris_total_difficulty()
-    }
-
-    fn final_paris_total_difficulty(&self, block_number: u64) -> Option<U256> {
-        self.inner.final_paris_total_difficulty(block_number)
+    fn ethereum_fork_activation(&self, fork: reth_ethereum_forks::EthereumHardfork) -> reth_chainspec::ForkCondition {
+        self.inner.ethereum_fork_activation(fork)
     }
 }
 

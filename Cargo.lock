@@ -8495,6 +8495,7 @@ version = "2.4.1"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
+ "alloy-eips",
  "alloy-genesis",
  "alloy-primitives",
  "derive_more",
