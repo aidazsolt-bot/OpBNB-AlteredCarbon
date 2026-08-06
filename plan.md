@@ -189,3 +189,87 @@ Zusätzlich bekannt, aber noch nicht angegangen:
    aktualisieren.
 10. Danach: Phase 4 (opBNB Snow/Volta/Fourier Hardforks), Phase 5 (Build/Lint/Test/EF-Tests),
     Phase 6 (Doku-Feinschliff, Live-Test-Nachträge in README).
+
+## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
+
+Weiter Richtung `reth-bsc-evm` grün: iterativer Loop "Check → nächster Blocker → Fix (direkt oder
+per Hintergrund-Agent) → Commit → nächster Blocker". Reihenfolge der in dieser Fortsetzung
+behobenen Blocker (jeweils mit `cargo check -p <crate> --no-default-features` verifiziert):
+
+- **`reth-prune-types`** (`segment.rs`): gleiches Feature-Gating-Muster wie zuvor bei `target.rs`
+  auf `Compact`/`Serialize`/`Deserialize`-Derives angewendet (`cfg_attr(any(test, feature = ...))`).
+- **`reth-trie-sparse`** (`state.rs`): totes/nie definiertes
+  `reth_primitives_traits::ParallelBridgeBuffered` (Merge-Artefakt) durch Standard-
+  `rayon::iter::{ParallelBridge, ParallelIterator}`/`.par_bridge()` ersetzt.
+- **`reth-execution-types`** (`execute.rs`): fehlendes `use alloc::vec::Vec;` in `no_std`-Kontext
+  ergänzt.
+- **`reth-storage-api`**: `lib.rs` hatte ~14 fehlende `mod`/`pub use`-Deklarationen für bereits
+  vorhandene Dateien (`bal.rs`, `chain.rs`, `metadata.rs`, `state_writer.rs`, u.v.m.) — komplett
+  neu geschrieben mit vollständiger, Feature-gegateter Mod-Liste. `withdrawals.rs` (komplett
+  fehlend) aus Git-Historie (`95558cb45~1`) wiederhergestellt. `BlockReader`/`BlockReaderIdExt`/
+  `noop.rs`/`state_writer.rs` per Hintergrund-Agent auf v2.4.1-Form gebracht (`BlockExecutionOutput`
+  bleibt bewusst flach: `state`/`receipts`/`requests`/`gas_used`/`snapshot`, keine `.result`-
+  Verschachtelung). Zweite Runde: `StorageSettings`-Re-Export (`models/metadata.rs` in
+  `models/mod.rs` verdrahtet), `FullBlockHeader`/`FastInstant`-Kompatibilität in
+  `primitives-traits` ergänzt, `BlockOmmers`-Tabellenzugriff auf nicht-generische Form umgestellt.
+- **`reth-db`/`reth-db-api`**: fehlende `StaticFileMap<T>`-Typalias, fehlender `TableSet`-Trait
+  (+ `impl TableInfo`/`TableSet for Tables`). Static-File-Masken (`mask.rs`/`masks.rs`) auf
+  Upstream-Muster "je Verwendung ein eigener Marker-Typ" umgestellt (`HeaderWithHashMask`,
+  `TDWithHashMask`, `BlockHashMask`, `SidecarWithHashMask`, `RawTransactionMask`) — behebt einen
+  echten Rust-Trait-Overlap-Checker-Fehlalarm (E0119) bei generischen Structs über assoziierten
+  Typ-Projektionen.
+- **`reth-network-p2p`**: `SealedBlockWith<B,T>`-Struct (BSC/BAL-Feature) war durch einen
+  Merge-Commit ("refactor: reuse primitive sealed block wrapper") entfernt worden, in der
+  Annahme, sie sei nach `reth_primitives_traits` gewandert — das war nie passiert (totes
+  Merge-Artefakt). Lokal wiederhergestellt. `SealedHeader::size()` von nicht-generischer
+  Inherent-Methode auf generischen `impl<H: InMemorySize> InMemorySize for SealedHeader<H>`
+  umgestellt (passend zu Upstream).
+- **`reth-blockchain-tree-api`**: `error.rs` war komplett gelöscht (nicht wiederhergestellt worden)
+  — aus Git-Historie (`53ccb5d46~1`) restauriert, dann alle Fehler-Enum-Formen (`BlockExecutionError`/
+  `BlockValidationError`) auf die neue `alloy_evm::block`-Form migriert (kein `Consensus`-Variant
+  mehr, kein `BlockPreMerge`/`StateRoot` mehr — konservativ auf `false`/entfernt abgebildet, siehe
+  Kommentare im Code für Semantik-Lücken). `try_seal_with_senders()` → `try_recover()` (neue
+  `RecoveredBlock`-API), `BlockRecoveryError::into_inner()` zum Auspacken des Fehlerfalls ergänzt.
+  `MaybeCompact`-Hilfstrait fehlte komplett in `primitives-traits/src/lib.rs` (für
+  `FullBlockHeader: BlockHeader + MaybeCompact`) — nach Upstream-Vorbild (Feature-gegatet auf
+  `reth-codec`) ergänzt.
+- **`reth-network-api`**: `EngineMessage`/`BlockHashesEvent`/`BlockEvent<N>`-Typen fehlten in
+  `events.rs` (BSC-spezifische Engine-Message-Weiterleitung network↔engine) — aus Git-Historie
+  (Commit `41d092253`) wiederhergestellt und auf aktuelle generische `NetworkPrimitives`/
+  `NewBlock<N::Block>`-Form angepasst.
+- **`reth-chain-state`**: größerer Blocker (~33 Fehler) — fehlende Workspace-Deps
+  (`reth-ethereum-primitives`, `reth-primitives-traits`, `alloy-consensus` fest statt optional),
+  `StateProvider`-Trait-Drift (`&Address`/`&B256`-Signaturen statt Wert, neue Pflicht-Trait-Teile
+  `HashedPostStateProvider`/`BytecodeReader`, `storage_multiproof`, `MultiProofTargets`-Typ,
+  zusätzlicher `ExecutionWitnessMode`-Parameter bei `witness()`), `BlockExecutionOutput`-Zugriffe
+  ohne `.state`-Präfix (Fork-spezifische Flachstruktur beachten), `ExecutedBlock`-Feldumbenennung
+  (`block`→`recovered_block`, `bundle`→`state`), `BundleState::into_plain_state`→`to_plain_state`.
+  Per Hintergrund-Agent gegen `bnb-chain_reth.git`-Referenz gelöst und verifiziert
+  (`cargo check -p reth-chain-state --no-default-features` grün).
+- **`reth-trie-db`/`reth-db-api`**: `trie_cursor.rs` erwartete bereits die gepackten Tabellen-Views
+  (`PackedAccountsTrie`/`PackedStoragesTrie`, 33-Byte-Keys) aus Upstream-PR #22158
+  ("pack StoredNibblesSubKey from 65→33 bytes"), aber `db-api` hatte nie die zugehörigen
+  Tabellen-Definitionen/`Encode`/`Decode`/`Compress`-Impls erhalten. Aus dem Upstream-Commit
+  `80bf5532a` 1:1 portiert (`PackedAccountsTrie`/`PackedStoragesTrie`-Wrapper-Structs in
+  `tables/mod.rs`, `Encode`/`Decode`-Impls + `impl_compression_for_compact!`-Registrierung in
+  `models/mod.rs`). Verifiziert grün.
+
+**Laufend/delegiert bei Session-Fortsetzung:**
+- Hintergrund-Agent `fix-evm-evm`: `crates/evm/evm` (Kern-`reth-evm`-Crate) fehlten mehrere
+  Workspace-Deps (`alloy-evm`, `alloy-consensus`, `reth-trie-common`, `reth-storage-api`,
+  `derive_more`) und `execute.rs` hatte fehlende Trait-Bounds (`BlockExecutorFactory`-assoziierte
+  Typen `ExecutionCtx`/`Transaction`/`Receipt`, `Evm`-assoziierter Typ) — gegen
+  `bnb-chain_reth.git`-Referenz (identische, nicht-BSC-spezifische Datei) delegiert. Ergebnis
+  noch ausstehend bei Verfassung dieses Plan-Updates.
+
+**Commits dieser Fortsetzung** (chronologisch, jeweils mit `Co-authored-by: Copilot`-Trailer):
+`545faf637`, `f01a93c66`, `d27471397`, `8739fa87c`, `cd4943f34`, `4cb4603fd`, `8315201e0`,
+`bd1fc9591` (+ ggf. `fix-evm-evm`-Commit sobald Agent abgeschlossen).
+
+**Nächste Schritte nach `reth-evm`-Fix:**
+1. `cargo check -p reth-bsc-evm --no-default-features` erneut ausführen, nächsten Blocker
+   identifizieren (BSC-eigene EVM-Konfiguration, Precompile-Registrierung).
+2. Iterieren bis `reth-bsc-evm` komplett grün — das ist der aktuelle Phase-3-Meilenstein.
+3. Danach `reth-bsc-node`, dann breitere Workspace-Prüfung.
+4. `plan.md` weiterhin nach jedem größeren Fund/Fix aktualisieren (Nutzer-Vorgabe: lückenlos, für
+   spätere Übernahme in die User-Doku inkl. Token-/Zeit-Aufwand).
