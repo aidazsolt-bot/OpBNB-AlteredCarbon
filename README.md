@@ -362,6 +362,9 @@ this effort is higher. They are provided for transparency about the practical co
 maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency optimization was
 attempted.
 
+> **TODO:** Update this effort log once the port has been validated against live BSC/opBNB testnet (or
+> mainnet) sync, including final cumulative token/time figures and the outcome of live testing.
+
 ### Status disclaimer (repeated for emphasis)
 
 As stated at the top of this document: this is an unaudited, experimental fork with **no warranty and no
