@@ -57,3 +57,46 @@ prop_compose! {
         generate_valid_header(header, eip_4844_active, blob_gas_used, excess_blob_gas, parent_beacon_block_root)
     }
 }
+
+/// Test-only extension trait providing mutable setters for block header fields, used to build
+/// synthetic blocks/headers in tests without needing to construct a whole new header value.
+#[cfg(any(test, feature = "test-utils"))]
+pub trait TestHeader: crate::BlockHeader {
+    /// Updates the parent block hash.
+    fn set_parent_hash(&mut self, hash: B256);
+
+    /// Updates the block number.
+    fn set_block_number(&mut self, number: alloy_primitives::BlockNumber);
+
+    /// Updates the block state root.
+    fn set_state_root(&mut self, state_root: B256);
+
+    /// Updates the block difficulty.
+    fn set_difficulty(&mut self, difficulty: alloy_primitives::U256);
+
+    /// Updates the block timestamp.
+    fn set_timestamp(&mut self, timestamp: u64);
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl TestHeader for Header {
+    fn set_parent_hash(&mut self, hash: B256) {
+        self.parent_hash = hash;
+    }
+
+    fn set_block_number(&mut self, number: alloy_primitives::BlockNumber) {
+        self.number = number;
+    }
+
+    fn set_state_root(&mut self, state_root: B256) {
+        self.state_root = state_root;
+    }
+
+    fn set_difficulty(&mut self, difficulty: alloy_primitives::U256) {
+        self.difficulty = difficulty;
+    }
+
+    fn set_timestamp(&mut self, timestamp: u64) {
+        self.timestamp = timestamp;
+    }
+}
