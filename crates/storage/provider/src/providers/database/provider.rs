@@ -527,7 +527,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
             let mdbx_start = Instant::now();
 
             // Collect all transaction hashes across all blocks, sort them, and write in batch
-            if !self.cached_storage_settings().transaction_hash_numbers_in_rocksdb &&
+            if !self.cached_storage_settings().transaction_hash_numbers_in_rocksdb() &&
                 self.prune_modes.transaction_lookup.is_none_or(|m| !m.is_full())
             {
                 let start = Instant::now();
@@ -589,6 +589,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
                         StateWriteConfig {
                             write_receipts: !sf_ctx.write_receipts,
                             write_account_changesets: !sf_ctx.write_account_changesets,
+                            write_storage_changesets: true,
                         },
                     )?;
                     timings.write_state += start.elapsed();
@@ -626,7 +627,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
                             }
 
                             let triedb_hashed_post_state =
-                                trie_data.hashed_state.to_triedb_hashed_post_state();
+                                trie_data.sorted.hashed_state.to_triedb_hashed_post_state();
 
                             debug!(
                                 target: "providers::db",
@@ -663,7 +664,7 @@ impl<TX: DbTx + DbTxMut + 'static, N: NodeTypesForProvider> DatabaseProvider<TX,
                         timings.write_hashed_state += start.elapsed();
                     } else {
                         // Non-TrieDB mode: write hashed state to MDBX
-                        self.write_hashed_state(&trie_data.hashed_state)?;
+                        self.write_hashed_state(&trie_data.sorted.hashed_state)?;
                     }
                 }
             }
@@ -1379,10 +1380,10 @@ impl<TX: DbTx + 'static, N: NodeTypes> AccountExtReader for DatabaseProvider<TX,
     ) -> ProviderResult<BTreeMap<Address, Vec<u64>>> {
         let highest_static_block = self
             .static_file_provider
-            .get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
+            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
 
         if let Some(highest) = highest_static_block &&
-            self.cached_storage_settings().account_changesets_in_static_files
+            self.cached_storage_settings().storage_v2
         {
             let start = *range.start();
             let static_end = (*range.end()).min(highest + 1);
@@ -1463,7 +1464,7 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         &self,
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<AccountBeforeTx>> {
-        if self.cached_storage_settings().account_changesets_in_static_files {
+        if self.cached_storage_settings().storage_v2 {
             let static_changesets =
                 self.static_file_provider.account_block_changeset(block_number)?;
             Ok(static_changesets)
@@ -1485,7 +1486,7 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         block_number: BlockNumber,
         address: Address,
     ) -> ProviderResult<Option<AccountBeforeTx>> {
-        if self.cached_storage_settings().account_changesets_in_static_files {
+        if self.cached_storage_settings().storage_v2 {
             Ok(self.static_file_provider.get_account_before_block(block_number, address)?)
         } else {
             self.tx
@@ -1503,10 +1504,10 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
     ) -> ProviderResult<Vec<(BlockNumber, AccountBeforeTx)>> {
         let range = to_range(range);
         let mut changesets = Vec::new();
-        if self.cached_storage_settings().account_changesets_in_static_files &&
+        if self.cached_storage_settings().storage_v2 &&
             let Some(highest) = self
                 .static_file_provider
-                .get_highest_static_file_block(StaticFileSegment::AccountChangeSets)
+                .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)
         {
             let static_end = range.end.min(highest + 1);
             if range.start < static_end {
@@ -2643,14 +2644,14 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         // if there are static files for this segment, prune them.
         let highest_changeset_block = self
             .static_file_provider
-            .get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
+            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
         let account_changeset = if let Some(highest_block) = highest_changeset_block &&
-            self.cached_storage_settings().account_changesets_in_static_files
+            self.cached_storage_settings().storage_v2
         {
             // TODO: add a `take` method that removes and returns the items instead of doing this
             let changesets = self.account_changesets_range(block + 1..highest_block + 1)?;
             let mut changeset_writer =
-                self.static_file_provider.latest_writer(StaticFileSegment::AccountChangeSets)?;
+                self.static_file_provider.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)?;
             changeset_writer.prune_account_changesets(block)?;
 
             changesets
@@ -3098,12 +3099,12 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HistoryWriter for DatabaseProvi
     #[instrument(level = "debug", target = "providers::db", skip_all)]
     fn update_history_indices(&self, range: RangeInclusive<BlockNumber>) -> ProviderResult<()> {
         let storage_settings = self.cached_storage_settings();
-        if !storage_settings.account_history_in_rocksdb {
+        if !storage_settings.account_history_in_rocksdb() {
             let indices = self.changed_accounts_and_blocks_with_range(range.clone())?;
             self.insert_account_history_index(indices)?;
         }
 
-        if !storage_settings.storages_history_in_rocksdb {
+        if !storage_settings.storages_history_in_rocksdb() {
             let indices = self.changed_storages_and_blocks_with_range(range)?;
             self.insert_storage_history_index(indices)?;
         }
@@ -3452,8 +3453,8 @@ impl<TX: DbTx + 'static, N: NodeTypes> ChainStateBlockReader for DatabaseProvide
             .take(1)
             .collect::<Result<BTreeMap<tables::ChainStateKey, BlockNumber>, _>>()?;
 
-        let last_finalized_block_number = finalized_blocks.pop_first().map(|pair| pair.1);
-        Ok(last_finalized_block_number)
+        let last_safe_block_number = finalized_blocks.pop_first().map(|pair| pair.1);
+        Ok(last_safe_block_number)
     }
 
     fn last_safe_block_number(&self) -> ProviderResult<Option<BlockNumber>> {

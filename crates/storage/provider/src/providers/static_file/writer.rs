@@ -78,6 +78,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
+            StaticFileSegment::Sidecars => self.transactions.write(),
         };
 
         if write_guard.is_none() {
@@ -359,12 +360,6 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
                 PruneStrategy::Receipts { num_rows, last_block } => {
                     self.prune_receipt_data(num_rows, last_block)?
                 }
-                PruneStrategy::TransactionSenders { num_rows, last_block } => {
-                    self.prune_transaction_sender_data(num_rows, last_block)?
-                }
-                PruneStrategy::AccountChangeSets { last_block } => {
-                    self.prune_account_changeset_data(last_block)?
-                }
             }
         }
 
@@ -597,9 +592,9 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         // Now we're in the correct file, we need to find how many rows to prune
         // We need to iterate through the changesets to find the correct position
         // Since changesets are stored per block, we need to find the offset for the block
-        let changeset_offsets = self.writer.user_header().changeset_offsets().ok_or_else(|| {
-            ProviderError::other(StaticFileWriterError::new("Missing changeset offsets"))
-        })?;
+        return Err(ProviderError::other(StaticFileWriterError::new(
+            "account changeset static-file support is not available in this fork",
+        )));
 
         // Find the number of rows to keep (up to and including last_block)
         let blocks_to_keep = if last_block >= expected_block_start {
@@ -608,49 +603,6 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
             0
         };
 
-        let rows_to_keep = if blocks_to_keep == 0 {
-            0
-        } else if blocks_to_keep as usize > changeset_offsets.len() {
-            // Keep all rows in this file (shouldn't happen if data is consistent)
-            self.writer.rows() as u64
-        } else if blocks_to_keep as usize == changeset_offsets.len() {
-            // Keep all rows
-            self.writer.rows() as u64
-        } else {
-            // Find the offset for the block after last_block
-            // This gives us the number of rows to keep
-            changeset_offsets[blocks_to_keep as usize].offset()
-        };
-
-        let total_rows = self.writer.rows() as u64;
-        let rows_to_delete = total_rows.saturating_sub(rows_to_keep);
-
-        if rows_to_delete > 0 {
-            // Calculate the number of blocks to prune
-            let current_block_end = self
-                .writer
-                .user_header()
-                .block_end()
-                .ok_or(ProviderError::MissingStaticFileBlock(segment, 0))?;
-            let blocks_to_remove = current_block_end - last_block;
-
-            // Update segment header - for changesets, prune expects number of blocks, not rows
-            self.writer.user_header_mut().prune(blocks_to_remove);
-
-            // Prune the actual rows
-            self.writer.prune_rows(rows_to_delete as usize).map_err(ProviderError::other)?;
-        }
-
-        // Update the block range
-        self.writer.user_header_mut().set_block_range(expected_block_start, last_block);
-
-        // Sync changeset offsets to match the new block range
-        self.writer.user_header_mut().sync_changeset_offsets();
-
-        // Commits new changes to disk
-        self.commit()?;
-
-        Ok(())
     }
 
     /// Truncates a number of rows from disk. It deletes and loads an older static file if block
@@ -664,7 +616,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let mut remaining_rows = num_rows;
         let segment = self.writer.user_header().segment();
         while remaining_rows > 0 {
-            let len = if segment.is_block_based() {
+            let len = if segment.is_headers() {
                 self.writer.user_header().block_len().unwrap_or_default()
             } else {
                 self.writer.user_header().tx_len().unwrap_or_default()
@@ -780,12 +732,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Appends change to changeset static file.
     fn append_change<V: Compact>(&mut self, change: &V) -> ProviderResult<()> {
-        if self.writer.user_header().changeset_offsets().is_some() {
-            self.writer.user_header_mut().increment_block_changes();
-        }
-
-        self.append_column(change)?;
-        Ok(())
+        let _ = change;
+        Err(ProviderError::other(StaticFileWriterError::new(
+            "account changeset static-file support is not available in this fork",
+        )))
     }
 
     /// Appends header to static file.
@@ -1085,11 +1035,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         to_delete: u64,
         last_block: BlockNumber,
     ) -> ProviderResult<()> {
-        debug_assert_eq!(
-            self.writer.user_header().segment(),
-            StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */
-        );
-        self.queue_prune(PruneStrategy::TransactionSenders { num_rows: to_delete, last_block })
+        let _ = (to_delete, last_block);
+        Err(ProviderError::other(StaticFileWriterError::new(
+            "transaction sender static-file support is not available in this fork",
+        )))
     }
 
     /// Adds an instruction to prune `to_delete` headers during commit.
@@ -1100,8 +1049,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Adds an instruction to prune changesets until the given block.
     pub fn prune_account_changesets(&mut self, last_block: u64) -> ProviderResult<()> {
-        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
-        self.queue_prune(PruneStrategy::AccountChangeSets { last_block })
+        let _ = last_block;
+        Err(ProviderError::other(StaticFileWriterError::new(
+            "account changeset static-file support is not available in this fork",
+        )))
     }
 
     /// Adds an instruction to prune elements during commit using the specified strategy.
