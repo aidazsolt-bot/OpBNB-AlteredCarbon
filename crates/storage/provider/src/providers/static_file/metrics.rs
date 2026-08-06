@@ -20,7 +20,7 @@ impl Default for StaticFileProviderMetrics {
     fn default() -> Self {
         Self {
             segments: Box::new(
-                StaticFileSegment::iter()
+                [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
                     .map(|segment| {
                         (
                             segment,
@@ -32,7 +32,7 @@ impl Default for StaticFileProviderMetrics {
                     })
                     .collect(),
             ),
-            segment_operations: StaticFileSegment::iter()
+            segment_operations: [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
                 .cartesian_product(StaticFileProviderOperation::iter())
                 .map(|(segment, operation)| {
                     (

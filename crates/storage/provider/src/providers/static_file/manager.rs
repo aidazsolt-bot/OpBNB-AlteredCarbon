@@ -175,7 +175,7 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
 
     /// Set a custom number of blocks per file for all segments.
     pub fn with_blocks_per_file(mut self, blocks_per_file: u64) -> Self {
-        for segment in StaticFileSegment::iter() {
+        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
             self.blocks_per_file.insert(segment, blocks_per_file);
         }
         self
@@ -404,7 +404,7 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
         };
 
         let mut blocks_per_file = StaticFileMap::default();
-        for segment in StaticFileSegment::iter() {
+        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
             blocks_per_file.insert(segment, DEFAULT_BLOCKS_PER_STATIC_FILE);
         }
 
@@ -738,7 +738,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         segment: StaticFileSegment,
         number: u64,
     ) -> ProviderResult<StaticFileJarProvider<'_, N>> {
-        if segment.is_block_or_change_based() {
+        if matches!(segment, StaticFileSegment::Headers) {
             self.get_segment_provider_for_block(segment, number, None)
         } else {
             self.get_segment_provider_for_transaction(segment, number, None)
@@ -754,7 +754,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         segment: StaticFileSegment,
         number: u64,
     ) -> ProviderResult<Option<StaticFileJarProvider<'_, N>>> {
-        let provider = if segment.is_block_or_change_based() {
+        let provider = if matches!(segment, StaticFileSegment::Headers) {
             self.get_segment_provider_for_block(segment, number, None)
         } else {
             self.get_segment_provider_for_transaction(segment, number, None)
@@ -1385,15 +1385,16 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         highest_tx,
                         highest_block,
                     )?,
-                StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => self
-                    .ensure_invariants::<_, tables::TransactionSenders>(
+                // TODO(opbnb-port): this fork's StaticFileSegment/StorageSettings predates upstream's account-changeset/transaction-sender static-file support; revisit if/when that's backported.
+                StaticFileSegment::Sidecars => self
+                    .ensure_invariants::<_, tables::Sidecars>(
                         provider,
                         segment,
                         highest_tx,
                         highest_block,
                     )?,
-                StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => self
-                    .ensure_invariants::<_, tables::AccountChangeSets>(
+                StaticFileSegment::Sidecars => self
+                    .ensure_invariants::<_, tables::Sidecars>(
                         provider,
                         segment,
                         highest_tx,
@@ -1436,7 +1437,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
-        StaticFileSegment::iter()
+        [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
             .filter(move |segment| self.should_check_segment(provider, *segment))
     }
 
@@ -1667,7 +1668,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                                 writer.prune_receipts(number, checkpoint_block_number)?
                             }
                             StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
-                                writer.prune_transaction_senders(number, checkpoint_block_number)?
+                                writer.prune_transactions(number, checkpoint_block_number)?
                             }
                             StaticFileSegment::Headers | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
                                 unreachable!()
@@ -1678,7 +1679,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                     }
                 }
                 StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
-                    writer.prune_account_changesets(checkpoint_block_number)?;
+                    writer.prune_headers(highest_static_file_block - checkpoint_block_number)?;
                 }
             }
             debug!(target: "reth::providers::static_file", ?segment, "Committing writer after pruning");
@@ -1913,7 +1914,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         FD: Fn() -> ProviderResult<Option<T>>,
     {
         // If there is, check the maximum block or transaction number of the segment.
-        let static_file_upper_bound = if segment.is_block_based() {
+        let static_file_upper_bound = if matches!(segment, StaticFileSegment::Headers | StaticFileSegment::Sidecars) {
             self.get_highest_static_file_block(segment)
         } else {
             self.get_highest_static_file_tx(segment)
@@ -1954,7 +1955,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let mut data = Vec::new();
 
         // If there is, check the maximum block or transaction number of the segment.
-        if let Some(static_file_upper_bound) = if segment.is_block_or_change_based() {
+        if let Some(static_file_upper_bound) = if matches!(segment, StaticFileSegment::Headers) {
             self.get_highest_static_file_block(segment)
         } else {
             self.get_highest_static_file_tx(segment)
