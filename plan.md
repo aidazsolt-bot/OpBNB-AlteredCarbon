@@ -273,3 +273,41 @@ behobenen Blocker (jeweils mit `cargo check -p <crate> --no-default-features` ve
 3. Danach `reth-bsc-node`, dann breitere Workspace-Prüfung.
 4. `plan.md` weiterhin nach jedem größeren Fund/Fix aktualisieren (Nutzer-Vorgabe: lückenlos, für
    spätere Übernahme in die User-Doku inkl. Token-/Zeit-Aufwand).
+
+## Session-Fortsetzung: SignedTransaction-Fix, reth-provider-Blocker (Commit 717a5743c)
+
+- **reth-transaction-pool grün:** `EthPooledTransaction::new()` rief `max_fee_per_gas()`/
+  `gas_limit()`/`value()`/`blob_gas_used()`/`max_fee_per_blob_gas()` auf `Recovered<T>` auf.
+  `alloy_consensus::Recovered<T>` hat **keinen `Deref`-Impl** (reiner Wrapper) — `T` selbst
+  muss `alloy_consensus::Transaction` implementieren. Root Cause: unser `SignedTransaction`-
+  Trait (`crates/primitives-traits/src/transaction/signed.rs`) hatte den Supertrait-Bound
+  `+ alloy_consensus::Transaction` verloren (upstream vorhanden). Ein einziger Bound-Zusatz
+  behob alle 5 verbleibenden Fehler. Zusätzlich vorher schon erledigt: `FullBlock`/
+  `FullSignedTx`/`FullBlockBody`-Marker-Traits (komplett gefehlt), `try_into_recovered()`,
+  `TipZero`-Match-Arm-Fix. Verifiziert grün: `reth-primitives-traits`, `reth-node-types`,
+  `reth-transaction-pool`.
+- **Neuer Blocker:** `cargo check -p reth-bsc-evm` → `reth-provider`
+  (`crates/storage/provider`) mit **~167 Fehlern** — großer, nicht-BSC-spezifischer
+  Kern-Crate. Fehlerkategorien: fehlende/umbenannte Trait-Methoden auf
+  TransactionsProvider/HeaderProvider/BlockReader/WithdrawalsProvider/CanonChainTracker,
+  fehlende Imports (BlobSidecars, Withdrawals, reth_primitives_traits,
+  revm::primitives::{BlockEnv,CfgEnvWithHandlerCfg}, reth_evm::ConfigureEvmEnv,
+  reth_static_file_types, rocksdb), Signatur-Mismatches (basic_account &Address,
+  Associated-Type-Header/Block-Rückgaben), `tables::Receipts<N::Receipt>`-Generic-Mismatch,
+  6 fehlende Modul-Dateien (dead merge artifacts: trie, tree_viewer, stats, state, history,
+  header_sync_gap), 2x `gen`-Keyword-Kollisionen, 2x unvollständige Trait-Impls
+  (Header-Assoc-Type + local_tip_header fehlt).
+- An Hintergrund-Agent `fix-reth-provider` delegiert (detaillierter Prompt mit allen
+  Kategorien, Referenz `bnb-chain_reth.git`, Schutz der `bd1fc9591`-Packed-Trie-Tables,
+  Anweisung BSC-spezifischen Code wie evtl. RocksDB-Secondary-Storage zu erhalten).
+
+**Commits dieser Fortsetzung (aktualisiert):** ..., `717a5743c` (SignedTransaction-Bound-Fix).
+
+**Nächste Schritte:**
+1. Warten auf `fix-reth-provider`-Agent-Ergebnis, verifizieren, committen falls nicht
+   bereits durch Agent geschehen.
+2. `cargo check -p reth-bsc-evm --no-default-features` erneut, nächsten Blocker angehen.
+3. Iterieren bis `reth-bsc-evm` grün (Phase-3-Meilenstein), danach `reth-bsc-node`,
+   dann breitere Workspace-Prüfung.
+4. `plan.md` nach jedem Meilenstein weiter aktualisieren (inkl. Token-/Zeit-Aufwand für
+   spätere User-Doku-Übernahme).
