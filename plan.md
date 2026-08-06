@@ -498,3 +498,19 @@ eigenen Commit erstellen.
    Meilenstein nach `reth-bsc-evm`).
 4. Danach breitere Workspace-Prüfung (`cargo check --workspace --no-default-features`),
    dann mit Default-Features, dann `crates/optimism/*` (opBNB) analog zu BSC.
+
+**Update:** `fix-static-file-prune-cluster`-Agent lieferte `reth-static-file` fertig grün
+(committed `44b0e41fa`), aber `reth-prune` erwies sich als deutlich größerer Umbau als
+angenommen (~31 tiefere Fehler nach ersten API-Anpassungen: entfernte Static-File-Segmente
+`AccountChangeSets`/`StorageChangeSets`/`TransactionSenders`, alte RocksDB-Batch-APIs,
+veraltete `Bodies`/Segment-Enum-Varianten) — Agent-Versuch dort wurde verworfen (hätte
+Fehlerzahl von 14 auf 32 erhöht), stattdessen sauber zurückgesetzt. `reth-prune` braucht
+einen eigenen, breiteren Portierungs-Task gegen die v2.4.1-Prune-Architektur.
+
+**Nächste Schritte (aktualisiert):**
+1. `reth-prune` als eigenständigen, größeren Task angehen (nicht als Quick-Fix) —
+   entfernte Static-File-Segmente/Enum-Varianten/RocksDB-Batch-APIs gegen v2.4.1 neu
+   aufbauen, `bnb-chain_reth.git`s `crates/prune/*` als Referenz.
+2. Danach `reth-db-common`, `reth-trie-parallel`.
+3. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker
+   identifizieren.
