@@ -452,7 +452,7 @@ where
                             let attributes = input.attributes.clone();
                             let job_result = {
                                 let _entered = job_span.enter();
-                                this.generator.new_payload_job(*input, id)
+                                this.generator.new_payload_job(attributes.clone())
                             };
 
                             match job_result {

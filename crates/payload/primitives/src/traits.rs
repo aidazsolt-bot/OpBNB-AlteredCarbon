@@ -386,3 +386,43 @@ mod tests {
         assert_ne!(first, payload_id(&parent, &attributes));
     }
 }
+
+/// Attributes to build a payload on top of a parent block.
+///
+/// These are the attributes received from the consensus layer via the Engine API.
+pub trait PayloadBuilderAttributes: Send + Sync + Unpin + core::fmt::Debug + 'static {
+    /// The external payload attributes format this type can be constructed from.
+    type RpcPayloadAttributes: Send + Sync + 'static;
+    /// The error type used in [`PayloadBuilderAttributes::try_new`].
+    type Error: core::error::Error + Send + Sync + 'static;
+
+    /// Constructs new builder attributes from external payload attributes.
+    fn try_new(
+        parent: alloy_primitives::B256,
+        rpc_payload_attributes: Self::RpcPayloadAttributes,
+        version: u8,
+    ) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+
+    /// Returns the unique identifier for this payload build job.
+    fn payload_id(&self) -> alloy_rpc_types_engine::PayloadId;
+
+    /// Returns the hash of the parent block this payload builds on.
+    fn parent(&self) -> alloy_primitives::B256;
+
+    /// Returns the timestamp to be used in the payload's header.
+    fn timestamp(&self) -> u64;
+
+    /// Returns the beacon chain block root from the parent block.
+    fn parent_beacon_block_root(&self) -> Option<alloy_primitives::B256>;
+
+    /// Returns the address that should receive transaction fees.
+    fn suggested_fee_recipient(&self) -> alloy_primitives::Address;
+
+    /// Returns the randomness value for this block.
+    fn prev_randao(&self) -> alloy_primitives::B256;
+
+    /// Returns the list of withdrawals to be processed in this block.
+    fn withdrawals(&self) -> &alloy_eips::eip4895::Withdrawals;
+}
