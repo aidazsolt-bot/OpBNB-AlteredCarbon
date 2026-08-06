@@ -349,7 +349,8 @@ impl InvalidPoolTransactionError {
                     }
                     InvalidTransactionError::GasTooLow
                     | InvalidTransactionError::GasTooHigh
-                    | InvalidTransactionError::TipAboveFeeCap => {
+                    |                     InvalidTransactionError::TipAboveFeeCap
+                    | InvalidTransactionError::TipZero => {
                         // these are technically not invalid
                         false
                     }

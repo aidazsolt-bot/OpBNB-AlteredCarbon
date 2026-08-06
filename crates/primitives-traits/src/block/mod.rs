@@ -11,6 +11,7 @@ pub mod error;
 pub mod header;
 
 use alloc::{fmt, vec::Vec};
+use crate::block::header::FullBlockHeader;
 use alloy_primitives::{Address, B256};
 use alloy_rlp::{Decodable, Encodable};
 
@@ -175,6 +176,17 @@ pub trait Block:
         let (header, body) = self.split();
         alloy_consensus::Block::new(header, body.into_ethereum_body())
     }
+}
+
+/// Helper trait that unifies all behaviour required by block to support full node operations.
+pub trait FullBlock:
+    Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
+{
+}
+
+impl<T> FullBlock for T where
+    T: Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
+{
 }
 
 impl<T, H> Block for alloy_consensus::Block<T, H>
