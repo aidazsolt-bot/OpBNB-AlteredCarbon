@@ -263,7 +263,7 @@ impl Default for DefaultEngineValues {
             state_cache_disabled: false,
             prewarming_disabled: false,
             state_provider_metrics: false,
-            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB,
+            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB as usize,
             state_root_task_compare_updates: false,
             accept_execution_requests_hash: false,
             multiproof_chunk_size: DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE,
