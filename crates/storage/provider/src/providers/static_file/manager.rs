@@ -168,7 +168,7 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
         mut self,
         segments: &StaticFileMap<u64>,
     ) -> Self {
-        for (segment, &blocks_per_file) in segments {
+        for (&segment, &blocks_per_file) in segments {
             self.blocks_per_file.insert(segment, blocks_per_file);
         }
         self
@@ -500,6 +500,11 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
 }
 
 impl<N: NodePrimitives> StaticFileProvider<N> {
+    pub fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
+        let _ = num;
+        Err(ProviderError::UnsupportedProvider)
+    }
+
     /// Reports metrics for the static files.
     ///
     /// This uses the in-memory index to get file sizes from mmap handles instead of reading
@@ -508,7 +513,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let Some(metrics) = &self.metrics else { return Ok(()) };
 
         let static_files = iter_static_files(&self.path).map_err(ProviderError::other)?;
-        for (segment, headers) in &static_files {
+        for (&segment, headers) in &static_files {
             let mut entries = 0;
             let mut size = 0;
 
@@ -1146,10 +1151,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         if let Some(index) = index.available_block_ranges_by_max_tx.as_mut() {
                             index
                                 .retain(|_, block_range| block_range.start() < fixed_range.start());
-                            index.insert(tx_end, current_block_range);
+                            index.insert(tx_end, *current_block_range);
                         } else {
                             index.available_block_ranges_by_max_tx =
-                                Some(BTreeMap::from([(tx_end, current_block_range)]));
+                                Some(BTreeMap::from([(tx_end, *current_block_range)]));
                         }
                     }
                 } else if segment.is_tx_based() {
@@ -1174,7 +1179,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             }
             None => {
                 debug!(target: "provider::static_file", ?segment, "Removing segment from index");
-                indexes.remove(segment);
+                indexes.remove(&segment);
             }
         };
 
@@ -1187,7 +1192,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let mut indexes = self.indexes.write();
         indexes.clear();
 
-        for (segment, headers) in &*iter_static_files(&self.path).map_err(ProviderError::other)? {
+        for (&segment, headers) in &iter_static_files(&self.path).map_err(ProviderError::other)? {
             // Update first and last block for each segment
             //
             // It's safe to call `expect` here, because every segment has at least one header
@@ -1229,7 +1234,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
 
         // initialize the expired history height to the lowest static file block
         if let Some(lowest_range) =
-            indexes.get(StaticFileSegment::Transactions).and_then(|index| index.min_block_range)
+            indexes.get(&StaticFileSegment::Transactions).and_then(|index| index.min_block_range)
         {
             // the earliest height is the lowest available block number
             self.earliest_history_height
