@@ -81,12 +81,22 @@ pub struct RocksReadSnapshot<'a> {
 }
 
 impl RocksDBBatch {
+    pub fn into_raw(self) -> crate::either_writer::RawRocksDBBatch {
+        ()
+    }
+
     pub fn put<T: Table>(&self, _key: T::Key, _value: &T::Value) -> ProviderResult<()> {
         Ok(())
     }
 
     pub fn delete<T: Table>(&self, _key: T::Key) -> ProviderResult<()> {
         Ok(())
+    }
+}
+
+impl RocksReadSnapshot<'_> {
+    pub fn into_raw(self) -> crate::either_writer::RocksTxRefArg<'static> {
+        ()
     }
 }
 
