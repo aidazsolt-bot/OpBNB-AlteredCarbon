@@ -105,3 +105,4 @@ test-utils = [
 ]
 
 bsc = []
+trie-debug = []

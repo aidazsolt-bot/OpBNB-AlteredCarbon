@@ -82,3 +82,13 @@ serde-bincode-compat = [
 	"alloy-eips/serde-bincode-compat"
 ]
 bsc = []
+secp256k1 = [
+    "revm/secp256k1"
+]
+rayon = []
+quanta = []
+serde = []
+reth-codec = [
+    "reth-codecs/alloy"
+]
+rpc-compat = []

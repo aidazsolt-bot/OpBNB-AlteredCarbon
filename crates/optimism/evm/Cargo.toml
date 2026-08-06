@@ -75,5 +75,4 @@ optimism = [
 ]
 opbnb = [
     "reth-primitives/opbnb",
-    "revm-primitives/opbnb",
 ]

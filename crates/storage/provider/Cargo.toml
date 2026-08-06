@@ -94,7 +94,6 @@ optimism = [
 	"reth-codecs/optimism",
 	"reth-db/optimism",
 	"reth-db-api/optimism",
-	"revm/optimism",
 	"reth-chainspec/optimism"
 ]
 serde = [
@@ -126,7 +125,7 @@ test-utils = [
 	"reth-codecs/test-utils",
 	"reth-db-api/test-utils",
 	"reth-trie-db/test-utils",
-	"revm/test-utils",
 	"reth-prune-types/test-utils",
 	"reth-stages-types/test-utils"
 ]
+
