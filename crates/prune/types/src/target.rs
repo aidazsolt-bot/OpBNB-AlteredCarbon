@@ -1,5 +1,7 @@
 use crate::{PruneMode, ReceiptsLogPruneConfig};
+#[cfg(feature = "serde")]
 use alloc::format;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Minimum distance from the tip necessary for the node to work correctly:
@@ -10,32 +12,42 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub const MINIMUM_PRUNING_DISTANCE: u64 = 32 * 2 + 10_000;
 
 /// Pruning configuration for every segment of the data that can be pruned.
-#[derive(Debug, Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct PruneModes {
     /// Sender Recovery pruning configuration.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub sender_recovery: Option<PruneMode>,
     /// Transaction Lookup pruning configuration.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub transaction_lookup: Option<PruneMode>,
     /// Receipts pruning configuration. This setting overrides `receipts_log_filter`
     /// and offers improved performance.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+        )
     )]
     pub receipts: Option<PruneMode>,
     /// Account History pruning configuration.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+        )
     )]
     pub account_history: Option<PruneMode>,
     /// Storage History pruning configuration.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_opt_prune_mode_with_min_blocks::<MINIMUM_PRUNING_DISTANCE, _>"
+        )
     )]
     pub storage_history: Option<PruneMode>,
     /// Receipts pruning configuration by retaining only those receipts that contain logs emitted
@@ -83,6 +95,7 @@ impl PruneModes {
 /// 2. For [`PruneMode::Distance(distance`)], it fails if `distance < MIN_BLOCKS + 1`. `+ 1` is
 ///    needed because `PruneMode::Distance(0)` means that we leave zero blocks from the latest,
 ///    meaning we    have one block in the database.
+#[cfg(feature = "serde")]
 fn deserialize_opt_prune_mode_with_min_blocks<'de, const MIN_BLOCKS: u64, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<PruneMode>, D::Error> {
@@ -109,7 +122,7 @@ fn deserialize_opt_prune_mode_with_min_blocks<'de, const MIN_BLOCKS: u64, D: Des
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "serde"))]
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
