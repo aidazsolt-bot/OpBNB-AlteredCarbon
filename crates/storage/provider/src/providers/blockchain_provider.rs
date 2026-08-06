@@ -5,7 +5,7 @@ use crate::{
     },
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
     BlockSource, CanonChainTracker, CanonStateNotifications, CanonStateSubscriptions,
-    ChainSpecProvider, ChainStateBlockReader, ChangeSetReader, DatabaseProviderFactory,
+    ChainSpecProvider, ChangeSetReader, DatabaseProviderFactory,
     HashedPostStateProvider, HeaderProvider, ProviderError, ProviderFactory, PruneCheckpointReader,
     ReceiptProvider, ReceiptProviderIdExt, RocksDBProviderFactory, StageCheckpointReader,
     StateProviderBox, StateProviderFactory, StateReader, StaticFileProviderFactory,
@@ -200,14 +200,6 @@ impl<N: ProviderNodeTypes> HeaderProvider for BlockchainProvider<N> {
 
     fn header_by_number(&self, num: BlockNumber) -> ProviderResult<Option<Self::Header>> {
         self.consistent_provider()?.header_by_number(num)
-    }
-
-    fn header_td(&self, hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        self.consistent_provider()?.header_td(hash)
-    }
-
-    fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
-        self.consistent_provider()?.header_td_by_number(number)
     }
 
     fn headers_range(
@@ -752,9 +744,6 @@ impl<N: ProviderNodeTypes> ChangeSetReader for BlockchainProvider<N> {
         self.consistent_provider()?.account_changesets_range(range)
     }
 
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
-        self.consistent_provider()?.account_changeset_count()
-    }
 }
 
 impl<N: ProviderNodeTypes> AccountReader for BlockchainProvider<N> {

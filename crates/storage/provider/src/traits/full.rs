@@ -2,7 +2,7 @@
 
 use crate::{
     AccountReader, BlockReaderIdExt, ChainSpecProvider, ChangeSetReader, DatabaseProviderFactory,
-    EvmEnvProvider, HeaderProvider, ParliaSnapshotReader, StageCheckpointReader,
+    HeaderProvider, StageCheckpointReader,
     StateProviderFactory, StaticFileProviderFactory, TransactionsProvider,
 };
 use reth_chain_state::{CanonStateSubscriptions, ForkChoiceSubscriptions};
@@ -16,14 +16,12 @@ pub trait FullProvider<N: NodeTypesWithDB>:
     + BlockReaderIdExt
     + AccountReader
     + StateProviderFactory
-    + EvmEnvProvider
     + ChainSpecProvider<ChainSpec = N::ChainSpec>
     + ChangeSetReader
     + CanonStateSubscriptions
     + ForkChoiceSubscriptions
     + StageCheckpointReader
     + HeaderProvider
-    + ParliaSnapshotReader
     + Clone
     + Unpin
     + 'static
@@ -36,15 +34,13 @@ impl<T, N: NodeTypesWithDB> FullProvider<N> for T where
         + BlockReaderIdExt
         + AccountReader
         + StateProviderFactory
-        + EvmEnvProvider
-        + ChainSpecProvider<ChainSpec = N::ChainSpec>
+            + ChainSpecProvider<ChainSpec = N::ChainSpec>
         + ChangeSetReader
         + CanonStateSubscriptions
         + ForkChoiceSubscriptions
         + StageCheckpointReader
         + HeaderProvider
-        + ParliaSnapshotReader
-        + Clone
+            + Clone
         + Unpin
         + 'static
 {
@@ -54,7 +50,6 @@ impl<T, N: NodeTypesWithDB> FullProvider<N> for T where
 /// simplicity.
 pub trait FullRpcProvider:
     StateProviderFactory
-    + EvmEnvProvider
     + ChainSpecProvider<ChainSpec: EthereumHardforks>
     + BlockReaderIdExt
     + HeaderProvider
@@ -68,8 +63,7 @@ pub trait FullRpcProvider:
 
 impl<T> FullRpcProvider for T where
     T: StateProviderFactory
-        + EvmEnvProvider
-        + ChainSpecProvider<ChainSpec: EthereumHardforks>
+            + ChainSpecProvider<ChainSpec: EthereumHardforks>
         + BlockReaderIdExt
         + HeaderProvider
         + TransactionsProvider

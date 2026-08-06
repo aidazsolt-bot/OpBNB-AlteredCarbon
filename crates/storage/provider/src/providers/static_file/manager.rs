@@ -22,7 +22,7 @@ use reth_db::{
     lockfile::StorageLock,
     static_file::{
         iter_static_files, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-        StaticFileCursor, TransactionMask, TransactionSenderMask,
+        StaticFileCursor, TransactionMask, TransactionMask,
     },
 };
 use reth_db_api::{
@@ -2211,23 +2211,6 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         self.walk_account_changeset_range(range).collect()
     }
 
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
-        let mut count = 0;
-
-        // iterate through static files and sum changeset metadata via each static file header
-        let static_files = iter_static_files(&self.path).map_err(ProviderError::other)?;
-        if let Some(changeset_segments) = static_files.get(StaticFileSegment::AccountChangeSets) {
-            for (_, header) in changeset_segments {
-                if let Some(changeset_offsets) = header.changeset_offsets() {
-                    for offset in changeset_offsets {
-                        count += offset.num_changes() as usize;
-                    }
-                }
-            }
-        }
-
-        Ok(count)
-    }
 }
 
 impl<N: NodePrimitives> StaticFileProvider<N> {
@@ -2268,24 +2251,6 @@ impl<N: NodePrimitives<BlockHeader: Value>> HeaderProvider for StaticFileProvide
     fn header_by_number(&self, num: BlockNumber) -> ProviderResult<Option<Self::Header>> {
         self.get_segment_provider_for_block(StaticFileSegment::Headers, num, None)
             .and_then(|provider| provider.header_by_number(num))
-            .or_else(|err| {
-                if let ProviderError::MissingStaticFileBlock(_, _) = err {
-                    Ok(None)
-                } else {
-                    Err(err)
-                }
-            })
-    }
-
-    fn header_td(&self, block_hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        // Static file cursors do not support key-based lookups and would panic here.
-        let _ = block_hash;
-        Ok(None)
-    }
-
-    fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
-        self.get_segment_provider_for_block(StaticFileSegment::Headers, num, None)
-            .and_then(|provider| provider.header_td_by_number(num))
             .or_else(|err| {
                 if let ProviderError::MissingStaticFileBlock(_, _) = err {
                     Ok(None)
@@ -2580,7 +2545,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
         self.fetch_range_with_predicate(
             StaticFileSegment::TransactionSenders,
             to_range(range),
-            |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
+            |cursor, number| cursor.get_one::<TransactionMask>(number.into()),
             |_| true,
         )
     }

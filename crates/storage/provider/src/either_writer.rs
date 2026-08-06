@@ -18,7 +18,7 @@ use rayon::slice::ParallelSliceMut;
 use reth_db::{
     cursor::{DbCursorRO, DbDupCursorRW},
     models::AccountBeforeTx,
-    static_file::TransactionSenderMask,
+    static_file::TransactionMask,
     table::Value,
     transaction::{CursorMutTy, CursorTy, DbTx, DbTxMut, DupCursorMutTy, DupCursorTy},
 };
@@ -708,7 +708,7 @@ where
                 .zip(provider.fetch_range_iter(
                     StaticFileSegment::TransactionSenders,
                     range,
-                    |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
+                    |cursor, number| cursor.get_one::<TransactionMask>(number.into()),
                 )?)
                 .filter_map(|(tx_num, sender)| {
                     let result = sender.transpose()?;

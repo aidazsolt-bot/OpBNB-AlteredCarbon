@@ -17,7 +17,7 @@ mod state;
 pub use state::{
     historical::{
         compute_history_rank, history_info, needs_prev_shard_check, HistoricalStateProvider,
-        HistoricalStateProviderRef, HistoryInfo, LowestAvailableBlocks, PipelineConsistency,
+        HistoricalStateProviderRef, HistoryInfo, LowestAvailableBlocks,
     },
     latest::{LatestStateProvider, LatestStateProviderRef},
     overlay::{OverlayStateProvider, OverlayStateProviderFactory},
@@ -38,7 +38,7 @@ pub use consistent::ConsistentProvider;
 #[cfg_attr(not(all(unix, feature = "rocksdb")), path = "rocksdb_stub.rs")]
 pub(crate) mod rocksdb;
 
-pub use rocksdb::{RocksDBBatch, RocksDBBuilder, RocksDBProvider, RocksTx};
+pub use rocksdb::{PruneShardOutcome, PrunedIndices, RocksDBBatch, RocksDBBuilder, RocksDBProvider, RocksTx};
 
 /// Helper trait to bound [`NodeTypes`] so that combined with database they satisfy
 /// [`ProviderNodeTypes`].

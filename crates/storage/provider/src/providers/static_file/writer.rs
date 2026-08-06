@@ -9,7 +9,7 @@ use reth_db_api::models::CompactU256;
 use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter};
 use reth_primitives::{
     static_file::{SegmentHeader, SegmentRangeInclusive},
-    BlobSidecars, Header, Receipt, StaticFileSegment, TransactionSignedNoHash,
+    Header, Receipt, StaticFileSegment, TransactionSignedNoHash,
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use std::{

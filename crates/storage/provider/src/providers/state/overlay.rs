@@ -5,10 +5,8 @@ use reth_chain_state::{EthPrimitives, StateTrieOverlayManager};
 use reth_db_api::{tables, transaction::DbTx, DatabaseError};
 use reth_errors::{ProviderError, ProviderResult};
 use reth_metrics::Metrics;
-use reth_primitives_traits::{
-    dashmap::{self, DashMap},
-    NodePrimitives,
-};
+use dashmap::{self, DashMap};
+use reth_primitives_traits::NodePrimitives;
 use reth_prune_types::PruneSegment;
 use reth_stages_types::StageId;
 use reth_storage_api::{
