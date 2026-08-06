@@ -1,4 +1,5 @@
 use super::{BlockHeader, Header};
+use crate::InMemorySize;
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
@@ -86,10 +87,10 @@ impl<H: BlockHeader + Sealable> SealedHeader<H> {
     }
 }
 
-impl SealedHeader {
+impl<H: InMemorySize> InMemorySize for SealedHeader<H> {
     /// Calculates a heuristic for the in-memory size of the [`SealedHeader`].
     #[inline]
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         self.header.size() + mem::size_of::<BlockHash>()
     }
 }

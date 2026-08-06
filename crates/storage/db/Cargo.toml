@@ -20,9 +20,14 @@ reth-nippy-jar.workspace = true
 reth-tracing.workspace = true
 tracing.workspace = true
 reth-static-file-types.workspace = true
+reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
 
 # ethereum
 alloy-primitives.workspace = true
+
+# misc
+paste.workspace = true
 
 # mdbx
 reth-libmdbx = { workspace = true, optional = true, features = ["return-borrowed", "read-tx-timeouts"] }
