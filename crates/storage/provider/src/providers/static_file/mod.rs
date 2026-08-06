@@ -321,7 +321,7 @@ mod tests {
                 // Append transaction/receipt if there's still a transaction count to append
                 if tx_count > 0 {
                     match segment {
-                        StaticFileSegment::Headers | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
+                        StaticFileSegment::Headers | StaticFileSegment::Sidecars => {
                             panic!("non tx based segment")
                         }
                         StaticFileSegment::Transactions => {
@@ -335,11 +335,6 @@ mod tests {
                             // Used as ID for validation
                             receipt.cumulative_gas_used = *next_tx_num;
                             writer.append_receipt(*next_tx_num, &receipt).unwrap();
-                        }
-                        StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
-                            // Used as ID for validation
-                            let sender = Address::from(U160::from(*next_tx_num));
-                            writer.append_transaction_sender(*next_tx_num, &sender).unwrap();
                         }
                     }
                     *next_tx_num += 1;
@@ -438,16 +433,13 @@ mod tests {
 
             // Prune transactions or receipts based on the segment type
             match segment {
-                StaticFileSegment::Headers | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
+                StaticFileSegment::Headers | StaticFileSegment::Sidecars => {
                     panic!("non tx based segment")
                 }
                 StaticFileSegment::Transactions => {
                     writer.prune_transactions(prune_count, last_block)?
                 }
                 StaticFileSegment::Receipts => writer.prune_receipts(prune_count, last_block)?,
-                StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
-                    writer.prune_transaction_senders(prune_count, last_block)?
-                }
             }
             writer.commit()?;
 
@@ -463,7 +455,7 @@ mod tests {
             // cumulative_gas_used & nonce as ids.
             if let Some(id) = expected_tx_tip {
                 match segment {
-                    StaticFileSegment::Headers | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
+                    StaticFileSegment::Headers | StaticFileSegment::Sidecars => {
                         panic!("non tx based segment")
                     }
                     StaticFileSegment::Transactions => assert_eyre(
@@ -475,13 +467,6 @@ mod tests {
                         expected_tx_tip,
                         sf_rw.receipt(id)?.map(|r| r.cumulative_gas_used),
                         "receipt mismatch",
-                    )?,
-                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => assert_eyre(
-                        expected_tx_tip,
-                        sf_rw
-                            .transaction_sender(id)?
-                            .map(|s| u64::try_from(U160::from_be_bytes(s.0.into())).unwrap()),
-                        "sender mismatch",
                     )?,
                 }
             }
