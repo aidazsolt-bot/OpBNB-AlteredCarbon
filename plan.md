@@ -561,3 +561,36 @@ Background-Agent `port-prune-trieparallel-v2-4-1` delegiert, Ergebnis steht noch
 2. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker-Cluster
    identifizieren.
 3. Iterieren bis reth-bsc-node grün.
+
+---
+
+## Session-Log: Sitzung 5 (Fortsetzung Phase 2 – Compile-Fix Loop)
+
+**Zeitraum:** (laufend)
+
+### Grün geschaltet in dieser Sitzung:
+- `reth-trie-parallel` → `StorageRootTargets` aus Reference-Repo hinzugefügt (`crates/trie/parallel/src/storage_root_targets.rs`), in lib.rs exportiert; workspace Cargo.toml: `reth-trie-parallel` mit `default-features=false`
+- `reth-trie-prefetch` → Agent `port-trie-prefetch` hat alle 12 Fehler behoben (Commit `4f112f438`); eigene Nachkorrekturen: `StateRootTaskError`-Import entfernt, `LegacyKeyAdapter`-Annotation; metrics immer aktiviert (Feature-Boundary-Problem umgangen)
+- `reth-primitives-traits` → `block_timestamp: None` im `TransactionInfo`-Initialisierer ergänzt (alloy-consensus 2.3.0 hat neues Pflichtfeld)
+- `reth-rpc-eth-types` → Agent `port-rpc-eth-types`: bereits aus Vorsitzung grün; Restkorrekturen von Agent (cache bounds, simulate.rs)
+- `reth-beacon-consensus` → Komplett durch Agent `port-node-api-beacon` neu aufgebaut als Stub (re-exportiert von `reth-engine-primitives`); `BeaconConsensusEngineHandle` = `ConsensusEngineHandle`
+- `reth-node-api` → Agent: `FullNodeTypes`, `FullNodeComponents` auf v2.4.1-API portiert (`NodeTypes::Payload` statt `NodeTypesWithEngine::Engine`, `DB` type param, `FullConsensus` statt `Consensus`, `payload_builder_handle()`)
+- `reth-basic-payload-builder` → Komplett durch Reference-Repo ersetzt (keine BSC-spezifischen Teile); `PayloadBuilderAttributes`-Trait in `reth-payload-primitives/traits.rs` hinzugefügt; `PayloadJobGenerator::new_payload_job` Signatur auf 1 Param geändert; `PayloadJob::PayloadAttributes: PayloadBuilderAttributes` (statt `PayloadAttributes`)
+
+### Commits (Session 5):
+- `df67c8807` — trie-parallel StorageRootTargets, prefetch fixes, primitives-traits TransactionInfo
+- `4f112f438` — trie/prefetch: Agentenfix
+- `e1102d8df` — rpc-eth-types: Restfehler
+- `10425cc11` — node-api + beacon-consensus: v2.4.1-Port (Agent)
+- `cae0c7058` — payload traits + basic-payload-builder
+
+### Noch offen:
+- `reth-node-core` (~19 Fehler): fehlende Deps, verschobene Typen → Agent `port-nodecore-bctree`
+- `reth-blockchain-tree` (fehlende Submodul-Dateien) → gleicher Agent
+- Nach Agentenabschluss: `reth-stages`, `reth-node-builder`, `reth-bsc-node`
+
+### Agent-Token-Verbrauch (geschätzt, Session 5):
+- `port-trie-prefetch`: ~85k Tokens, ~24 min
+- `port-rpc-eth-types`: ~120k Tokens, ~38 min
+- `port-node-api-beacon`: ~65k Tokens, ~16 min
+- `port-nodecore-bctree`: läuft noch
