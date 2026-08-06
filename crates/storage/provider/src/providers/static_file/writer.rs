@@ -44,18 +44,7 @@ enum PruneStrategy {
         /// The last block number after pruning.
         last_block: BlockNumber,
     },
-    /// Prune transaction senders by number of rows and last block.
-    TransactionSenders {
-        /// Number of transaction sender rows to delete.
-        num_rows: u64,
-        /// The last block number after pruning.
-        last_block: BlockNumber,
-    },
-    /// Prune account changesets to a target block number.
-    AccountChangeSets {
-        /// The target block number to prune to.
-        last_block: BlockNumber,
-    },
+    // TODO(opbnb-port): this fork's StaticFileSegment/StorageSettings predates upstream's account-changeset/transaction-sender static-file support; revisit if/when that's backported.
 }
 
 /// Static file writers for every known [`StaticFileSegment`].
@@ -67,8 +56,6 @@ pub(crate) struct StaticFileWriters<N> {
     headers: RwLock<Option<StaticFileProviderRW<N>>>,
     transactions: RwLock<Option<StaticFileProviderRW<N>>>,
     receipts: RwLock<Option<StaticFileProviderRW<N>>>,
-    transaction_senders: RwLock<Option<StaticFileProviderRW<N>>>,
-    account_change_sets: RwLock<Option<StaticFileProviderRW<N>>>,
 }
 
 impl<N> Default for StaticFileWriters<N> {
@@ -77,8 +64,6 @@ impl<N> Default for StaticFileWriters<N> {
             headers: Default::default(),
             transactions: Default::default(),
             receipts: Default::default(),
-            transaction_senders: Default::default(),
-            account_change_sets: Default::default(),
         }
     }
 }
@@ -93,8 +78,6 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
-            StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
-            StaticFileSegment::AccountChangeSets => self.account_change_sets.write(),
         };
 
         if write_guard.is_none() {
@@ -111,8 +94,6 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
-            &self.transaction_senders,
-            &self.account_change_sets,
         ] {
             let mut writer = writer_lock.write();
             if let Some(writer) = writer.as_mut() {
@@ -129,8 +110,6 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
-            &self.transaction_senders,
-            &self.account_change_sets,
         ] {
             let writer = writer_lock.read();
             if let Some(writer) = writer.as_ref() &&
@@ -153,8 +132,6 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
-            &self.transaction_senders,
-            &self.account_change_sets,
         ] {
             let mut writer = writer_lock.write();
             if let Some(writer) = writer.as_mut() {
@@ -596,7 +573,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     /// Commits to the configuration file at the end
     fn truncate_changesets(&mut self, last_block: u64) -> ProviderResult<()> {
         let segment = self.writer.user_header().segment();
-        debug_assert_eq!(segment, StaticFileSegment::AccountChangeSets);
+        debug_assert_eq!(segment, StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
 
         // Get the current block range
         let current_block_end = self
@@ -989,12 +966,12 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let start = Instant::now();
         self.ensure_no_queued_prune()?;
 
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
         self.append_with_tx_number(tx_num, sender)?;
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
-                StaticFileSegment::TransactionSenders,
+                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                 StaticFileProviderOperation::Append,
                 Some(start.elapsed()),
             );
@@ -1008,7 +985,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     where
         I: Iterator<Item = (TxNumber, alloy_primitives::Address)>,
     {
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
 
         let mut senders_iter = senders.into_iter().peekable();
         // If senders are empty, we can simply return
@@ -1028,7 +1005,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operations(
-                StaticFileSegment::TransactionSenders,
+                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                 StaticFileProviderOperation::Append,
                 count,
                 Some(start.elapsed()),
@@ -1048,7 +1025,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         mut changeset: Vec<AccountBeforeTx>,
         block_number: u64,
     ) -> ProviderResult<()> {
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::AccountChangeSets);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
         let start = Instant::now();
 
         self.increment_block(block_number)?;
@@ -1066,7 +1043,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operations(
-                StaticFileSegment::AccountChangeSets,
+                StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
                 StaticFileProviderOperation::Append,
                 count,
                 Some(start.elapsed()),
@@ -1110,7 +1087,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     ) -> ProviderResult<()> {
         debug_assert_eq!(
             self.writer.user_header().segment(),
-            StaticFileSegment::TransactionSenders
+            StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */
         );
         self.queue_prune(PruneStrategy::TransactionSenders { num_rows: to_delete, last_block })
     }
@@ -1123,7 +1100,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Adds an instruction to prune changesets until the given block.
     pub fn prune_account_changesets(&mut self, last_block: u64) -> ProviderResult<()> {
-        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::AccountChangeSets);
+        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
         self.queue_prune(PruneStrategy::AccountChangeSets { last_block })
     }
 
@@ -1171,13 +1148,13 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     fn prune_account_changeset_data(&mut self, last_block: BlockNumber) -> ProviderResult<()> {
         let start = Instant::now();
 
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::AccountChangeSets);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
 
         self.truncate_changesets(last_block)?;
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
-                StaticFileSegment::AccountChangeSets,
+                StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
                 StaticFileProviderOperation::Prune,
                 Some(start.elapsed()),
             );
@@ -1217,13 +1194,13 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     ) -> ProviderResult<()> {
         let start = Instant::now();
 
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
 
         self.truncate(to_delete, Some(last_block))?;
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
-                StaticFileSegment::TransactionSenders,
+                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                 StaticFileProviderOperation::Prune,
                 Some(start.elapsed()),
             );
