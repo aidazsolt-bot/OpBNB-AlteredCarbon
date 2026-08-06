@@ -1,38 +1,86 @@
 //! API related to listening for network events.
 
-use std::{fmt, net::SocketAddr, sync::Arc};
-
-use alloy_primitives::B256;
 use reth_eth_wire_types::{
-    message::RequestPair, BlockBodies, BlockHashNumber, BlockHeaders, Capabilities,
-    DisconnectReason, EthMessage, EthVersion, GetBlockBodies, GetBlockHeaders, GetNodeData,
-    GetPooledTransactions, GetReceipts, NewBlock, NodeData, PooledTransactions, Receipts, Status,
+    message::RequestPair, snap::SnapProtocolMessage, BlockAccessLists, BlockBodies, BlockHeaders,
+    Capabilities, Cells, DisconnectReason, EthMessage, EthNetworkPrimitives, EthVersion,
+    GetBlockAccessLists, GetBlockBodies, GetBlockHeaders, GetCells, GetNodeData,
+    GetPooledTransactions, GetReceipts, GetReceipts70, NetworkPrimitives, NodeData,
+    PooledTransactions, Receipts, Receipts69, Receipts70, UnifiedStatus,
 };
 use reth_ethereum_forks::ForkId;
-use reth_network_p2p::error::{RequestError, RequestResult};
-use reth_network_peers::PeerId;
-use reth_network_types::PeerAddr;
+use reth_network_p2p::{
+    error::{RequestError, RequestResult},
+    snap::client::SnapResponse,
+};
+use reth_network_peers::{NodeRecord, PeerId};
+use reth_network_types::{PeerAddr, PeerKind};
 use reth_tokio_util::EventStream;
+use std::{
+    fmt,
+    net::SocketAddr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::{wrappers::UnboundedReceiverStream, Stream, StreamExt};
 
-/// Provides event subscription for the network.
-#[auto_impl::auto_impl(&, Arc)]
-pub trait NetworkEventListenerProvider: Send + Sync {
-    /// Creates a new [`NetworkEvent`] listener channel.
-    fn event_listener(&self) -> EventStream<NetworkEvent>;
-    /// Returns a new [`DiscoveryEvent`] stream.
-    ///
-    /// This stream yields [`DiscoveryEvent`]s for each peer that is discovered.
-    fn discovery_listener(&self) -> UnboundedReceiverStream<DiscoveryEvent>;
+/// A boxed stream of network peer events that provides a type-erased interface.
+pub struct PeerEventStream(Pin<Box<dyn Stream<Item = PeerEvent> + Send + Sync>>);
+
+impl fmt::Debug for PeerEventStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PeerEventStream").finish_non_exhaustive()
+    }
 }
 
-/// (Non-exhaustive) Events emitted by the network that are of interest for subscribers.
+impl PeerEventStream {
+    /// Create a new stream [`PeerEventStream`] by converting the provided stream's items into peer
+    /// events [`PeerEvent`]
+    pub fn new<S, T>(stream: S) -> Self
+    where
+        S: Stream<Item = T> + Send + Sync + 'static,
+        T: Into<PeerEvent> + 'static,
+    {
+        let mapped_stream = stream.map(Into::into);
+        Self(Box::pin(mapped_stream))
+    }
+}
+
+impl Stream for PeerEventStream {
+    type Item = PeerEvent;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0.as_mut().poll_next(cx)
+    }
+}
+
+/// Represents information about an established peer session.
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    /// The identifier of the peer to which a session was established.
+    pub peer_id: PeerId,
+    /// The remote addr of the peer to which a session was established.
+    pub remote_addr: SocketAddr,
+    /// The client version of the peer to which a session was established.
+    pub client_version: Arc<str>,
+    /// Capabilities the peer announced.
+    pub capabilities: Arc<Capabilities>,
+    /// The status of the peer to which a session was established.
+    pub status: Arc<UnifiedStatus>,
+    /// Negotiated eth version of the session.
+    pub version: EthVersion,
+    /// The kind of peer this session represents
+    pub peer_kind: PeerKind,
+}
+
+/// (Non-exhaustive) List of the different events emitted by the network that are of interest for
+/// subscribers.
 ///
 /// This includes any event types that may be relevant to tasks, for metrics, keep track of peers
 /// etc.
 #[derive(Debug, Clone)]
-pub enum NetworkEvent {
+pub enum PeerEvent {
     /// Closed the peer session.
     SessionClosed {
         /// The identifier of the peer to which a session was closed.
@@ -41,26 +89,66 @@ pub enum NetworkEvent {
         reason: Option<DisconnectReason>,
     },
     /// Established a new session with the given peer.
-    SessionEstablished {
-        /// The identifier of the peer to which a session was established.
-        peer_id: PeerId,
-        /// The remote addr of the peer to which a session was established.
-        remote_addr: SocketAddr,
-        /// The client version of the peer to which a session was established.
-        client_version: Arc<str>,
-        /// Capabilities the peer announced
-        capabilities: Arc<Capabilities>,
-        /// A request channel to the session task.
-        messages: PeerRequestSender,
-        /// The status of the peer to which a session was established.
-        status: Arc<Status>,
-        /// negotiated eth version of the session
-        version: EthVersion,
-    },
+    SessionEstablished(SessionInfo),
     /// Event emitted when a new peer is added
     PeerAdded(PeerId),
     /// Event emitted when a new peer is removed
     PeerRemoved(PeerId),
+}
+
+/// (Non-exhaustive) Network events representing peer lifecycle events and session requests.
+#[derive(Debug)]
+pub enum NetworkEvent<R = PeerRequest> {
+    /// Basic peer lifecycle event.
+    Peer(PeerEvent),
+    /// Session established with requests.
+    ActivePeerSession {
+        /// Session information
+        info: SessionInfo,
+        /// A request channel to the session task.
+        messages: PeerRequestSender<R>,
+    },
+}
+
+impl<R> Clone for NetworkEvent<R> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Peer(event) => Self::Peer(event.clone()),
+            Self::ActivePeerSession { info, messages } => {
+                Self::ActivePeerSession { info: info.clone(), messages: messages.clone() }
+            }
+        }
+    }
+}
+
+impl<R> From<NetworkEvent<R>> for PeerEvent {
+    fn from(event: NetworkEvent<R>) -> Self {
+        match event {
+            NetworkEvent::Peer(peer_event) => peer_event,
+            NetworkEvent::ActivePeerSession { info, .. } => Self::SessionEstablished(info),
+        }
+    }
+}
+
+/// Provides peer event subscription for the network.
+#[auto_impl::auto_impl(&, Arc)]
+pub trait NetworkPeersEvents: Send + Sync {
+    /// Creates a new peer event listener stream.
+    fn peer_events(&self) -> PeerEventStream;
+}
+
+/// Provides event subscription for the network.
+#[auto_impl::auto_impl(&, Arc)]
+pub trait NetworkEventListenerProvider: NetworkPeersEvents {
+    /// The primitive types to use in the `PeerRequest` used in the stream.
+    type Primitives: NetworkPrimitives;
+
+    /// Creates a new [`NetworkEvent`] listener channel.
+    fn event_listener(&self) -> EventStream<NetworkEvent<PeerRequest<Self::Primitives>>>;
+    /// Returns a new [`DiscoveryEvent`] stream.
+    ///
+    /// This stream yields [`DiscoveryEvent`]s for each peer that is discovered.
+    fn discovery_listener(&self) -> UnboundedReceiverStream<DiscoveryEvent>;
 }
 
 /// Events produced by the `Discovery` manager.
@@ -68,8 +156,13 @@ pub enum NetworkEvent {
 pub enum DiscoveryEvent {
     /// Discovered a node
     NewNode(DiscoveredEvent),
-    /// Retrieved a [`ForkId`] from the peer via ENR request, See <https://eips.ethereum.org/EIPS/eip-868>
-    EnrForkId(PeerId, ForkId),
+    /// Retrieved a [`ForkId`] from the peer via ENR request.
+    ///
+    /// Contains the full [`NodeRecord`] (peer ID + address) and the reported [`ForkId`].
+    /// Used to verify fork compatibility before admitting the peer.
+    ///
+    /// See also <https://eips.ethereum.org/EIPS/eip-868>
+    EnrForkId(NodeRecord, ForkId),
 }
 
 /// Represents events related to peer discovery in the network.
@@ -99,7 +192,7 @@ pub enum DiscoveredEvent {
 
 /// Protocol related request messages that expect a response
 #[derive(Debug)]
-pub enum PeerRequest {
+pub enum PeerRequest<N: NetworkPrimitives = EthNetworkPrimitives> {
     /// Requests block headers from the peer.
     ///
     /// The response should be sent through the channel.
@@ -107,7 +200,7 @@ pub enum PeerRequest {
         /// The request for block headers.
         request: GetBlockHeaders,
         /// The channel to send the response for block headers.
-        response: oneshot::Sender<RequestResult<BlockHeaders>>,
+        response: oneshot::Sender<RequestResult<BlockHeaders<N::BlockHeader>>>,
     },
     /// Requests block bodies from the peer.
     ///
@@ -116,7 +209,7 @@ pub enum PeerRequest {
         /// The request for block bodies.
         request: GetBlockBodies,
         /// The channel to send the response for block bodies.
-        response: oneshot::Sender<RequestResult<BlockBodies>>,
+        response: oneshot::Sender<RequestResult<BlockBodies<N::BlockBody>>>,
     },
     /// Requests pooled transactions from the peer.
     ///
@@ -125,7 +218,7 @@ pub enum PeerRequest {
         /// The request for pooled transactions.
         request: GetPooledTransactions,
         /// The channel to send the response for pooled transactions.
-        response: oneshot::Sender<RequestResult<PooledTransactions>>,
+        response: oneshot::Sender<RequestResult<PooledTransactions<N::PooledTransaction>>>,
     },
     /// Requests `NodeData` from the peer.
     ///
@@ -143,13 +236,68 @@ pub enum PeerRequest {
         /// The request for receipts.
         request: GetReceipts,
         /// The channel to send the response for receipts.
-        response: oneshot::Sender<RequestResult<Receipts>>,
+        response: oneshot::Sender<RequestResult<Receipts<N::Receipt>>>,
     },
+    /// Requests receipts from the peer without bloom filter.
+    ///
+    /// The response should be sent through the channel.
+    GetReceipts69 {
+        /// The request for receipts.
+        request: GetReceipts,
+        /// The channel to send the response for receipts.
+        response: oneshot::Sender<RequestResult<Receipts69<N::Receipt>>>,
+    },
+    /// Requests receipts from the peer using eth/70 (supports `firstBlockReceiptIndex`).
+    ///
+    /// The response should be sent through the channel.
+    GetReceipts70 {
+        /// The request for receipts.
+        request: GetReceipts70,
+        /// The channel to send the response for receipts.
+        response: oneshot::Sender<RequestResult<Receipts70<N::Receipt>>>,
+    },
+    /// Requests block access lists from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetBlockAccessLists {
+        /// The request for block access lists.
+        request: GetBlockAccessLists,
+        /// The channel to send the response for block access lists.
+        response: oneshot::Sender<RequestResult<BlockAccessLists>>,
+    },
+    /// Requests cells from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetCells {
+        /// The request for cells.
+        request: GetCells,
+        /// The channel to send the response for cells.
+        response: oneshot::Sender<RequestResult<Cells>>,
+    },
+    /// Requests a `snap/2` (EIP-8189) message from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetSnap {
+        /// The `snap/2` request to send.
+        request: SnapProtocolMessage,
+        /// The channel to send the response for the request.
+        response: oneshot::Sender<RequestResult<SnapResponse>>,
+    },
+}
+
+/// The wire message a [`PeerRequest`] resolves to before it's queued for sending: either an `eth`
+/// message or a `snap/2` message.
+#[derive(Debug)]
+pub enum RequestMessage<N: NetworkPrimitives = EthNetworkPrimitives> {
+    /// An `eth` protocol message.
+    Eth(EthMessage<N>),
+    /// A `snap/2` (EIP-8189) protocol message.
+    Snap(SnapProtocolMessage),
 }
 
 // === impl PeerRequest ===
 
-impl PeerRequest {
+impl<N: NetworkPrimitives> PeerRequest<N> {
     /// Invoked if we received a response which does not match the request
     pub fn send_bad_response(self) {
         self.send_err_response(RequestError::BadResponse)
@@ -163,29 +311,79 @@ impl PeerRequest {
             Self::GetPooledTransactions { response, .. } => response.send(Err(err)).ok(),
             Self::GetNodeData { response, .. } => response.send(Err(err)).ok(),
             Self::GetReceipts { response, .. } => response.send(Err(err)).ok(),
+            Self::GetReceipts69 { response, .. } => response.send(Err(err)).ok(),
+            Self::GetReceipts70 { response, .. } => response.send(Err(err)).ok(),
+            Self::GetBlockAccessLists { response, .. } => response.send(Err(err)).ok(),
+            Self::GetCells { response, .. } => response.send(Err(err)).ok(),
+            Self::GetSnap { response, .. } => response.send(Err(err)).ok(),
         };
     }
 
-    /// Returns the [`EthMessage`] for this type
-    pub fn create_request_message(&self, request_id: u64) -> EthMessage {
+    /// Returns true if this request is supported for the negotiated eth protocol version.
+    #[inline]
+    pub fn is_supported_by_eth_version(&self, version: EthVersion) -> bool {
+        match self {
+            Self::GetBlockAccessLists { .. } => version >= EthVersion::Eth71,
+            Self::GetCells { .. } => version >= EthVersion::Eth72,
+            _ => true,
+        }
+    }
+
+    /// Returns the [`RequestMessage`] for this type.
+    pub fn create_request_message(&self, request_id: u64) -> RequestMessage<N> {
         match self {
             Self::GetBlockHeaders { request, .. } => {
-                EthMessage::GetBlockHeaders(RequestPair { request_id, message: *request })
+                RequestMessage::Eth(EthMessage::GetBlockHeaders(RequestPair {
+                    request_id,
+                    message: *request,
+                }))
             }
             Self::GetBlockBodies { request, .. } => {
-                EthMessage::GetBlockBodies(RequestPair { request_id, message: request.clone() })
-            }
-            Self::GetPooledTransactions { request, .. } => {
-                EthMessage::GetPooledTransactions(RequestPair {
+                RequestMessage::Eth(EthMessage::GetBlockBodies(RequestPair {
                     request_id,
                     message: request.clone(),
-                })
+                }))
+            }
+            Self::GetPooledTransactions { request, .. } => {
+                RequestMessage::Eth(EthMessage::GetPooledTransactions(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
             }
             Self::GetNodeData { request, .. } => {
-                EthMessage::GetNodeData(RequestPair { request_id, message: request.clone() })
+                RequestMessage::Eth(EthMessage::GetNodeData(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
             }
-            Self::GetReceipts { request, .. } => {
-                EthMessage::GetReceipts(RequestPair { request_id, message: request.clone() })
+            Self::GetReceipts { request, .. } | Self::GetReceipts69 { request, .. } => {
+                RequestMessage::Eth(EthMessage::GetReceipts(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
+            }
+            Self::GetReceipts70 { request, .. } => {
+                RequestMessage::Eth(EthMessage::GetReceipts70(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
+            }
+            Self::GetBlockAccessLists { request, .. } => {
+                RequestMessage::Eth(EthMessage::GetBlockAccessLists(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
+            }
+            Self::GetCells { request, .. } => {
+                RequestMessage::Eth(EthMessage::GetCells(RequestPair {
+                    request_id,
+                    message: request.clone(),
+                }))
+            }
+            Self::GetSnap { request, .. } => {
+                let mut message = request.clone();
+                message.set_request_id(request_id);
+                RequestMessage::Snap(message)
             }
         }
     }
@@ -200,24 +398,29 @@ impl PeerRequest {
 }
 
 /// A Cloneable connection for sending _requests_ directly to the session of a peer.
-#[derive(Clone)]
-pub struct PeerRequestSender {
+pub struct PeerRequestSender<R = PeerRequest> {
     /// id of the remote node.
     pub peer_id: PeerId,
     /// The Sender half connected to a session.
-    pub to_session_tx: mpsc::Sender<PeerRequest>,
+    pub to_session_tx: mpsc::Sender<R>,
+}
+
+impl<R> Clone for PeerRequestSender<R> {
+    fn clone(&self) -> Self {
+        Self { peer_id: self.peer_id, to_session_tx: self.to_session_tx.clone() }
+    }
 }
 
 // === impl PeerRequestSender ===
 
-impl PeerRequestSender {
+impl<R> PeerRequestSender<R> {
     /// Constructs a new sender instance that's wired to a session
-    pub const fn new(peer_id: PeerId, to_session_tx: mpsc::Sender<PeerRequest>) -> Self {
+    pub const fn new(peer_id: PeerId, to_session_tx: mpsc::Sender<R>) -> Self {
         Self { peer_id, to_session_tx }
     }
 
     /// Attempts to immediately send a message on this Sender
-    pub fn try_send(&self, req: PeerRequest) -> Result<(), mpsc::error::TrySendError<PeerRequest>> {
+    pub fn try_send(&self, req: R) -> Result<(), mpsc::error::TrySendError<R>> {
         self.to_session_tx.try_send(req)
     }
 
@@ -227,34 +430,33 @@ impl PeerRequestSender {
     }
 }
 
-impl fmt::Debug for PeerRequestSender {
+impl<R> fmt::Debug for PeerRequestSender<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PeerRequestSender").field("peer_id", &self.peer_id).finish_non_exhaustive()
     }
 }
 
-/// All message variants that can be sent to `TaskEngine`.
-#[derive(Debug)]
-pub enum EngineMessage {
-    /// Announce new block hashes
-    NewBlockHashes(BlockHashesEvent),
-    /// Broadcast new block.
-    NewBlock(BlockEvent),
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// internal message to engine task
-#[derive(Debug, Clone)]
-pub struct BlockHashesEvent {
-    /// New block hashes and the block number for each blockhash.
-    /// Clients should request blocks using a [`GetBlockBodies`](crate::GetBlockBodies) message.
-    pub hashes: Vec<BlockHashNumber>,
-}
+    #[test]
+    fn test_get_block_access_lists_version_support() {
+        let (tx, _rx) = oneshot::channel();
+        let req: PeerRequest<EthNetworkPrimitives> =
+            PeerRequest::GetBlockAccessLists { request: GetBlockAccessLists(vec![]), response: tx };
 
-/// internal message to engine task
-#[derive(Debug, Clone)]
-pub struct BlockEvent {
-    /// Hash of the block
-    pub hash: B256,
-    /// Raw received message
-    pub block: Arc<NewBlock>,
+        assert!(!req.is_supported_by_eth_version(EthVersion::Eth70));
+        assert!(req.is_supported_by_eth_version(EthVersion::Eth71));
+    }
+
+    #[test]
+    fn test_get_cells_version_support() {
+        let (tx, _rx) = oneshot::channel();
+        let req: PeerRequest<EthNetworkPrimitives> =
+            PeerRequest::GetCells { request: GetCells::default(), response: tx };
+
+        assert!(!req.is_supported_by_eth_version(EthVersion::Eth71));
+        assert!(req.is_supported_by_eth_version(EthVersion::Eth72));
+    }
 }

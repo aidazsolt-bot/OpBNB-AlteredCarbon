@@ -1,5 +1,5 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Report a Vulnerability
 
-Contact [security@ithaca.xyz](mailto:security@ithaca.xyz).
+Contact [security@tempo.xyz](mailto:security@tempo.xyz).

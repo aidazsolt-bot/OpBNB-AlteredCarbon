@@ -26,6 +26,16 @@ use tracing::{instrument, trace};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Write buffer size at which the underlying `Framed` transport starts flushing frames to the
+/// socket from `poll_ready`, replacing the tokio-util default of 8KiB.
+///
+/// `RLPx` callers queue batches of messages (e.g. transaction broadcasts) and drive one flush per
+/// batch; the 8KiB default splits such a batch into one write syscall per few messages. A larger
+/// boundary batches them into fewer, larger writes. Once grown, the write buffer's capacity is
+/// retained for the connection's lifetime, so this also bounds the resident write buffer per
+/// connection.
+pub const DEFAULT_BACKPRESSURE_BOUNDARY: usize = 64 * 1024;
+
 /// `ECIES` stream over TCP exchanging raw bytes
 #[derive(Debug)]
 #[pin_project::pin_project]
@@ -40,7 +50,7 @@ where
     Io: AsyncRead + AsyncWrite + Unpin,
 {
     /// Connect to an `ECIES` server
-    #[instrument(skip(transport, secret_key))]
+    #[instrument(level = "trace", target = "net::ecies", skip(transport, secret_key))]
     pub async fn connect(
         transport: Io,
         secret_key: SecretKey,
@@ -67,10 +77,10 @@ where
         secret_key: SecretKey,
         remote_id: PeerId,
     ) -> Result<Self, ECIESError> {
-        let ecies = ECIESCodec::new_client(secret_key, remote_id)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "invalid handshake"))?;
+        let ecies = ECIESCodec::new_client(secret_key, remote_id)?;
 
         let mut transport = ecies.framed(transport);
+        transport.set_backpressure_boundary(DEFAULT_BACKPRESSURE_BOUNDARY);
 
         trace!("sending ecies auth ...");
         transport.send(EgressECIESValue::Auth).await?;
@@ -102,6 +112,7 @@ where
 
         trace!("incoming ecies stream");
         let mut transport = ecies.framed(transport);
+        transport.set_backpressure_boundary(DEFAULT_BACKPRESSURE_BOUNDARY);
         let msg = transport.try_next().await?;
 
         trace!("receiving ecies auth");
@@ -128,6 +139,17 @@ where
     }
 }
 
+impl<Io> ECIESStream<Io> {
+    /// Sets the write buffer size at which the underlying transport starts flushing to the socket
+    /// from `poll_ready`, overriding [`DEFAULT_BACKPRESSURE_BOUNDARY`].
+    ///
+    /// A larger boundary batches more frames into a single write syscall when many messages are
+    /// sent back to back, at the cost of buffering more encrypted data in memory per connection.
+    pub fn set_backpressure_boundary(&mut self, boundary: usize) {
+        self.stream.set_backpressure_boundary(boundary);
+    }
+}
+
 impl<Io> Stream for ECIESStream<Io>
 where
     Io: AsyncRead + Unpin,
@@ -137,10 +159,9 @@ where
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(self.project().stream.poll_next(cx)) {
             Some(Ok(IngressECIESValue::Message(body))) => Poll::Ready(Some(Ok(body))),
-            Some(other) => Poll::Ready(Some(Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("ECIES stream protocol error: expected message, received {other:?}"),
-            )))),
+            Some(other) => Poll::Ready(Some(Err(io::Error::other(format!(
+                "ECIES stream protocol error: expected message, received {other:?}"
+            ))))),
             None => Poll::Ready(None),
         }
     }
@@ -181,7 +202,7 @@ mod tests {
     async fn can_write_and_read() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let server_key = SecretKey::new(&mut rand::thread_rng());
+        let server_key = SecretKey::new(&mut rand_08::thread_rng());
 
         let handle = tokio::spawn(async move {
             // roughly based off of the design of tokio::net::TcpListener
@@ -196,7 +217,7 @@ mod tests {
         // create the server pubkey
         let server_id = pk2id(&server_key.public_key(SECP256K1));
 
-        let client_key = SecretKey::new(&mut rand::thread_rng());
+        let client_key = SecretKey::new(&mut rand_08::thread_rng());
         let outgoing = TcpStream::connect(addr).await.unwrap();
         let mut client_stream =
             ECIESStream::connect(outgoing, client_key, server_id).await.unwrap();
@@ -210,7 +231,7 @@ mod tests {
     async fn connection_should_timeout() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let server_key = SecretKey::new(&mut rand::thread_rng());
+        let server_key = SecretKey::new(&mut rand_08::thread_rng());
 
         let _handle = tokio::spawn(async move {
             // Delay accepting the connection for longer than the client's timeout period
@@ -226,7 +247,7 @@ mod tests {
         // create the server pubkey
         let server_id = pk2id(&server_key.public_key(SECP256K1));
 
-        let client_key = SecretKey::new(&mut rand::thread_rng());
+        let client_key = SecretKey::new(&mut rand_08::thread_rng());
         let outgoing = TcpStream::connect(addr).await.unwrap();
 
         // Attempt to connect, expecting a timeout due to the server's delayed response

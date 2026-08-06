@@ -9,21 +9,10 @@
 //!
 //! For more information, refer to the [Ethereum MAC specification](https://github.com/ethereum/devp2p/blob/master/rlpx.md#mac).
 
-use aes::Aes256Enc;
-use alloy_primitives::{B128, B256};
-use block_padding::NoPadding;
+use aes::{Aes256Enc, Block};
+use alloy_primitives::{Keccak256, B128, B256};
 use cipher::BlockEncrypt;
 use digest::KeyInit;
-use generic_array::GenericArray;
-use sha3::{Digest, Keccak256};
-use typenum::U16;
-
-/// Type alias for a fixed-size array of 16 bytes used as headers.
-///
-/// This type is defined as [`GenericArray<u8, U16>`] and is commonly employed in Ethereum `RLPx`
-/// protocol-related structures for headers. It represents 16 bytes of data used in various
-/// cryptographic operations, such as MAC (Message Authentication Code) computation.
-pub type HeaderBytes = GenericArray<u8, U16>;
 
 /// [`Ethereum MAC`](https://github.com/ethereum/devp2p/blob/master/rlpx.md#mac) state.
 ///
@@ -34,14 +23,22 @@ pub type HeaderBytes = GenericArray<u8, U16>;
 /// and is not defined as a general MAC.
 #[derive(Debug)]
 pub struct MAC {
-    secret: B256,
+    /// AES-256 block cipher keyed with the MAC secret.
+    ///
+    /// The secret is fixed for the lifetime of the connection, so the key schedule is expanded
+    /// once here instead of on every header/body update.
+    aes: Aes256Enc,
     hasher: Keccak256,
 }
 
 impl MAC {
     /// Initialize the MAC with the given secret
     pub fn new(secret: B256) -> Self {
-        Self { secret, hasher: Keccak256::new() }
+        Self {
+            aes: Aes256Enc::new_from_slice(secret.as_ref())
+                .expect("32 bytes is a valid AES-256 key"),
+            hasher: Keccak256::new(),
+        }
     }
 
     /// Update the internal keccak256 hasher with the given data
@@ -49,30 +46,22 @@ impl MAC {
         self.hasher.update(data)
     }
 
-    /// Accumulate the given [`HeaderBytes`] into the MAC's internal state.
-    pub fn update_header(&mut self, data: &HeaderBytes) {
-        let aes = Aes256Enc::new_from_slice(self.secret.as_ref()).unwrap();
-        let mut encrypted = self.digest().0;
+    /// Accumulate the given header bytes into the MAC's internal state.
+    pub fn update_header(&mut self, data: &[u8; 16]) {
+        let mut encrypted = self.digest();
 
-        aes.encrypt_padded::<NoPadding>(&mut encrypted, B128::len_bytes()).unwrap();
-        for i in 0..data.len() {
-            encrypted[i] ^= data[i];
-        }
-        self.hasher.update(encrypted);
+        self.aes.encrypt_block(Block::from_mut_slice(encrypted.as_mut_slice()));
+        self.hasher.update(encrypted ^ B128::from(data));
     }
 
     /// Accumulate the given message body into the MAC's internal state.
     pub fn update_body(&mut self, data: &[u8]) {
         self.hasher.update(data);
         let prev = self.digest();
-        let aes = Aes256Enc::new_from_slice(self.secret.as_ref()).unwrap();
-        let mut encrypted = self.digest().0;
+        let mut encrypted = prev;
 
-        aes.encrypt_padded::<NoPadding>(&mut encrypted, B128::len_bytes()).unwrap();
-        for i in 0..16 {
-            encrypted[i] ^= prev[i];
-        }
-        self.hasher.update(encrypted);
+        self.aes.encrypt_block(Block::from_mut_slice(encrypted.as_mut_slice()));
+        self.hasher.update(encrypted ^ prev);
     }
 
     /// Produce a digest by finalizing the internal keccak256 hasher and returning the first 128
