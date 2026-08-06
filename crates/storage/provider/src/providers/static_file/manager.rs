@@ -18,6 +18,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use reth_chain_state::ExecutedBlock;
 use reth_chainspec::{ChainInfo, ChainSpecProvider, EthChainSpec, NamedChain};
+use reth_codecs::Compact;
 use reth_db::{
     lockfile::StorageLock,
     static_file::{
@@ -443,7 +444,7 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
         block: BlockNumber,
     ) -> SegmentRangeInclusive {
         let blocks_per_file =
-            self.blocks_per_file.get(segment).copied().unwrap_or(DEFAULT_BLOCKS_PER_STATIC_FILE);
+            self.blocks_per_file.get(&segment).copied().unwrap_or(DEFAULT_BLOCKS_PER_STATIC_FILE);
 
         if let Some(block_index) = block_index {
             // Find first block range that contains the requested block
@@ -487,7 +488,7 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
     ) -> SegmentRangeInclusive {
         self.find_fixed_range_with_block_index(
             segment,
-            self.indexes.read().get(segment).map(|index| &index.expected_block_ranges_by_max_block),
+            self.indexes.read().get(&segment).map(|index| &index.expected_block_ranges_by_max_block),
             block,
         )
     }
@@ -589,7 +590,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         blocks: &[ExecutedBlock<N>],
         tx_nums: &[TxNumber],
         ctx: &StaticFileWriteCtx,
-    ) -> ProviderResult<()> {
+    ) -> ProviderResult<()>
+    where
+        N::Receipt: Compact,
+    {
         for (block, &first_tx) in blocks.iter().zip(tx_nums) {
             let block_number = block.recovered_block().number();
             w.increment_block(block_number)?;
@@ -993,7 +997,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         block: u64,
     ) -> Option<SegmentRangeInclusive> {
         let indexes = self.indexes.read();
-        let index = indexes.get(segment)?;
+        let index = indexes.get(&segment)?;
 
         (index.max_block >= block).then(|| {
             self.find_fixed_range_with_block_index(
@@ -1012,7 +1016,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         tx: u64,
     ) -> Option<SegmentRangeInclusive> {
         let indexes = self.indexes.read();
-        let index = indexes.get(segment)?;
+        let index = indexes.get(&segment)?;
         let available_block_ranges_by_max_tx = index.available_block_ranges_by_max_tx.as_ref()?;
 
         // It's more probable that the request comes from a newer tx height, so we iterate
@@ -1059,7 +1063,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             Some(segment_max_block) => {
                 let fixed_range = self.find_fixed_range_with_block_index(
                     segment,
-                    indexes.get(segment).map(|index| &index.expected_block_ranges_by_max_block),
+                    indexes.get(&segment).map(|index| &index.expected_block_ranges_by_max_block),
                     segment_max_block,
                 );
 
@@ -1115,10 +1119,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         // delete_jar WILL ALWAYS re-initialize all indexes, so we are always
                         // sure that current_min is always the lowest.
                         if current_block_range.start() == min_block_range.start() {
-                            *min_block_range = current_block_range;
+                            *min_block_range = *current_block_range;
                         }
                     } else {
-                        index.min_block_range = Some(current_block_range);
+                        index.min_block_range = Some(*current_block_range);
                     }
                 }
 
