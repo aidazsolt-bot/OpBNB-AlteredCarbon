@@ -4,6 +4,7 @@ use crate::{
     HeaderTerminalDifficulties, RawValue, Transactions,
 };
 use alloy_primitives::{Address, BlockHash};
+use reth_db_api::AccountChangeSets;
 use reth_db_api::table::Table;
 
 // HEADER MASKS
@@ -65,4 +66,10 @@ add_static_file_mask! {
 add_static_file_mask! {
     #[doc = "Mask for selecting a blob sidecar together with block hash from `Sidecars` static file segment"]
     SidecarWithHashMask<S>, S, BlockHash, 0b11
+}
+
+// ACCOUNT CHANGESET MASKS
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single changeset from `AccountChangesets` static file segment"]
+    AccountChangesetMask, <AccountChangeSets as reth_db_api::table::Table>::Value, 0b1
 }

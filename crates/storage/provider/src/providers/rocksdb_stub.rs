@@ -111,3 +111,25 @@ impl RocksDBBuilder {
 /// A stub transaction for `RocksDB`.
 #[derive(Debug)]
 pub struct RocksTx;
+
+/// Outcome of pruning a history shard in `RocksDB` (stub).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PruneShardOutcome {
+    /// Shard was deleted entirely.
+    Deleted,
+    /// Shard was updated with filtered block numbers.
+    Updated,
+    /// Shard was unchanged (no blocks <= `to_block`).
+    Unchanged,
+}
+
+/// Tracks pruning outcomes for batch operations (stub).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PrunedIndices {
+    /// Number of shards completely deleted.
+    pub deleted: usize,
+    /// Number of shards that were updated (filtered but still have entries).
+    pub updated: usize,
+    /// Number of shards that were unchanged.
+    pub unchanged: usize,
+}
