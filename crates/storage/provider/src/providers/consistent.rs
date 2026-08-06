@@ -1302,11 +1302,12 @@ impl<N: ProviderNodeTypes> BlockReaderIdExt for ConsistentProvider<N> {
     }
 
     fn ommers_by_id(&self, id: BlockId) -> ProviderResult<Option<Vec<HeaderTy<N>>>> {
-        self.get_in_memory_or_storage_by_block(
-            id,
-            |db_provider| db_provider.ommers_by_id(id),
-            |block_state| Ok(Some(block_state.block().body().ommers.clone())),
-        )
+        Ok(match id {
+            BlockId::Number(num) => self.block(num.into())?.map(|block| block.body().ommers.clone()),
+            BlockId::Hash(hash) => self.header(hash.block_hash)?.and_then(|_| {
+                self.block(hash.block_hash.into()).ok().flatten().map(|block| block.body().ommers.clone())
+            }),
+        })
     }
 }
 
