@@ -53,7 +53,7 @@ impl PruneMode {
         purpose: PrunePurpose,
         min_blocks_override: Option<u64>,
     ) -> Result<Option<(BlockNumber, Self)>, PruneSegmentError> {
-        let min_blocks = min_blocks_override.unwrap_or_else(|| segment.min_blocks());
+        let min_blocks = min_blocks_override.unwrap_or_else(|| segment.min_blocks(purpose));
         let result = match self {
             Self::Full if min_blocks == 0 => Some((tip, *self)),
             // For segments with min_blocks > 0, Full mode behaves like Distance(min_blocks)
@@ -139,12 +139,12 @@ mod tests {
 
         let tests = vec![
             // Full mode with min_blocks > 0 behaves like Distance(min_blocks)
-            (PruneMode::Full, Ok(Some(tip - segment.min_blocks()))),
+            (PruneMode::Full, Ok(Some(tip - segment.min_blocks(purpose)))),
             // Nothing to prune
             (PruneMode::Distance(tip + 1), Ok(None)),
             (
-                PruneMode::Distance(segment.min_blocks() + 1),
-                Ok(Some(tip - (segment.min_blocks() + 1))),
+                PruneMode::Distance(segment.min_blocks(purpose) + 1),
+                Ok(Some(tip - (segment.min_blocks(purpose) + 1))),
             ),
             // Nothing to prune
             (PruneMode::Before(tip + 1), Ok(None)),

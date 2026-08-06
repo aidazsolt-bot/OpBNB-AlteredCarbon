@@ -2,7 +2,7 @@
 
 use alloc::{fmt, vec::Vec};
 
-use alloy_consensus::{BlockHeader, Transaction, TxType};
+use alloy_consensus::{BlockHeader, Transaction, TxType, Typed2718};
 use alloy_eips::{eip4895::Withdrawal, eip7685::Requests};
 use alloy_primitives::{Address, B256};
 
