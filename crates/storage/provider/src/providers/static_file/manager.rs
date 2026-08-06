@@ -694,7 +694,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_senders = ctx.write_senders.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::TransactionSenders,
+                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
                     first_block_number,
                     |w| Self::write_transaction_senders(w, blocks, tx_nums),
                 )
@@ -709,7 +709,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_account_changesets = ctx.write_account_changesets.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::AccountChangeSets,
+                    StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
                     first_block_number,
                     |w| Self::write_account_changesets(w, blocks),
                 )
@@ -1385,14 +1385,14 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         highest_tx,
                         highest_block,
                     )?,
-                StaticFileSegment::TransactionSenders => self
+                StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => self
                     .ensure_invariants::<_, tables::TransactionSenders>(
                         provider,
                         segment,
                         highest_tx,
                         highest_block,
                     )?,
-                StaticFileSegment::AccountChangeSets => self
+                StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => self
                     .ensure_invariants::<_, tables::AccountChangeSets>(
                         provider,
                         segment,
@@ -1470,10 +1470,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
 
                 true
             }
-            StaticFileSegment::TransactionSenders => {
+            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
                 !EitherWriterDestination::senders(provider).is_database()
             }
-            StaticFileSegment::AccountChangeSets => {
+            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
                 if EitherWriter::account_changesets_destination(provider).is_database() {
                     debug!(target: "reth::providers::static_file", ?segment, "Skipping account changesets segment: changesets stored in database");
                     return false;
@@ -1612,10 +1612,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let stage_id = match segment {
             StaticFileSegment::Headers => StageId::Headers,
             StaticFileSegment::Transactions => StageId::Bodies,
-            StaticFileSegment::Receipts | StaticFileSegment::AccountChangeSets => {
+            StaticFileSegment::Receipts | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
                 StageId::Execution
             }
-            StaticFileSegment::TransactionSenders => StageId::SenderRecovery,
+            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => StageId::SenderRecovery,
         };
         let checkpoint_block_number =
             provider.get_stage_checkpoint(stage_id)?.unwrap_or_default().block_number;
@@ -1654,7 +1654,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                 }
                 StaticFileSegment::Transactions |
                 StaticFileSegment::Receipts |
-                StaticFileSegment::TransactionSenders => {
+                StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
                     if let Some(block) = provider.block_body_indices(checkpoint_block_number)? {
                         let number = highest_static_file_entry - block.last_tx_num();
                         debug!(target: "reth::providers::static_file", ?segment, prune_count = number, checkpoint_block_number, "Pruning transaction based segment");
@@ -1666,10 +1666,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                             StaticFileSegment::Receipts => {
                                 writer.prune_receipts(number, checkpoint_block_number)?
                             }
-                            StaticFileSegment::TransactionSenders => {
+                            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */ => {
                                 writer.prune_transaction_senders(number, checkpoint_block_number)?
                             }
-                            StaticFileSegment::Headers | StaticFileSegment::AccountChangeSets => {
+                            StaticFileSegment::Headers | StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
                                 unreachable!()
                             }
                         }
@@ -1677,7 +1677,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         debug!(target: "reth::providers::static_file", ?segment, checkpoint_block_number, "No block body indices found for checkpoint block");
                     }
                 }
-                StaticFileSegment::AccountChangeSets => {
+                StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */ => {
                     writer.prune_account_changesets(checkpoint_block_number)?;
                 }
             }
@@ -2113,7 +2113,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::AccountChangeSets,
+            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
             block_number,
             None,
         ) {
@@ -2145,7 +2145,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         address: Address,
     ) -> ProviderResult<Option<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::AccountChangeSets,
+            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
             block_number,
             None,
         ) {
@@ -2543,7 +2543,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
         range: impl RangeBounds<TxNumber>,
     ) -> ProviderResult<Vec<Address>> {
         self.fetch_range_with_predicate(
-            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
             to_range(range),
             |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
             |_| true,
@@ -2551,7 +2551,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
     }
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
-        self.get_segment_provider_for_transaction(StaticFileSegment::TransactionSenders, id, None)
+        self.get_segment_provider_for_transaction(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */, id, None)
             .and_then(|provider| provider.transaction_sender(id))
             .or_else(|err| {
                 if let ProviderError::MissingStaticFileTx(_, _) = err {
@@ -2692,7 +2692,7 @@ impl<N: NodePrimitives> StatsReader for StaticFileProvider<N> {
                 .unwrap_or_default()
                 as usize),
             tables::TransactionSenders::NAME => Ok(self
-                .get_highest_static_file_tx(StaticFileSegment::TransactionSenders)
+                .get_highest_static_file_tx(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */)
                 .map(|txs| txs + 1)
                 .unwrap_or_default() as usize),
             _ => Err(ProviderError::UnsupportedProvider),
