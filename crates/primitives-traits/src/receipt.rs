@@ -1,6 +1,6 @@
 //! Receipt abstraction
 
-use alloy_consensus::TxReceipt;
+use alloy_consensus::{TxReceipt, Typed2718};
 use reth_codecs::Compact;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,15 @@ impl<T> FullReceipt for T where T: Receipt + Compact {}
 
 /// Abstraction of a receipt.
 pub trait Receipt:
-    TxReceipt
+    Send
+    + Sync
+    + Unpin
+    + Clone
+    + core::fmt::Debug
+    + PartialEq
+    + Eq
+    + TxReceipt
+    + Typed2718
     + Default
     + alloy_rlp::Encodable
     + alloy_rlp::Decodable
@@ -19,5 +27,25 @@ pub trait Receipt:
     + for<'de> Deserialize<'de>
 {
     /// Returns transaction type.
-    fn tx_type(&self) -> u8;
+    fn tx_type(&self) -> u8 {
+        self.ty()
+    }
+}
+
+impl<T> Receipt for T where
+    T: Send
+        + Sync
+        + Unpin
+        + Clone
+        + core::fmt::Debug
+        + PartialEq
+        + Eq
+        + TxReceipt
+        + Typed2718
+        + Default
+        + alloy_rlp::Encodable
+        + alloy_rlp::Decodable
+        + Serialize
+        + for<'de> Deserialize<'de>
+{
 }

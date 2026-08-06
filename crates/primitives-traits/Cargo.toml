@@ -22,6 +22,7 @@ alloy-rlp = { workspace = true, features = ["derive"] }
 alloy-trie.workspace = true
 
 revm = { workspace = true, features = ["serde"] }
+alloy-evm.workspace = true
 
 # misc
 byteorder = "1"

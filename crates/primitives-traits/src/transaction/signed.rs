@@ -73,7 +73,12 @@ pub trait SignedTransaction: 'static +
     }
 
     /// Fills [`TxEnv`] with an [`Address`] and transaction.
-    fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address);
+    fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address)
+    where
+        for<'a> TxEnv: alloy_evm::FromRecoveredTx<&'a Self>,
+    {
+        *tx_env = <TxEnv as alloy_evm::FromRecoveredTx<&Self>>::from_recovered_tx(&self, sender);
+    }
 
     /// Returns a [`super::Recovered`] with the given sender, without additional validation.
     fn with_signer(self, signer: Address) -> super::Recovered<Self>
@@ -81,5 +86,58 @@ pub trait SignedTransaction: 'static +
         Self: Sized,
     {
         super::Recovered::new_unchecked(self, signer)
+    }
+}
+
+impl<T> SignedTransaction for alloy_consensus::EthereumTxEnvelope<T>
+where
+    T: alloy_consensus::transaction::RlpEcdsaEncodableTx
+        + alloy_consensus::transaction::RlpEcdsaDecodableTx
+        + alloy_consensus::SignableTransaction<Signature>
+        + AsRef<alloy_consensus::TxEip4844>
+        + Unpin
+        + Clone
+        + PartialEq
+        + Eq
+        + core::hash::Hash
+        + fmt::Debug
+        + Send
+        + Sync
+        + InMemorySize
+        + serde::Serialize
+        + for<'de> serde::Deserialize<'de>
+        + 'static,
+    Self: Transaction,
+{
+    type Transaction = Self;
+
+    fn tx_hash(&self) -> &TxHash {
+        self.hash()
+    }
+
+    fn transaction(&self) -> &Self::Transaction {
+        self
+    }
+
+    fn signature(&self) -> &Signature {
+        Self::signature(self)
+    }
+
+    fn recover_signer(&self) -> Option<Address> {
+        <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self).ok()
+    }
+
+    fn recover_signer_unchecked(&self) -> Option<Address> {
+        <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer_unchecked(self)
+            .ok()
+    }
+
+    fn from_transaction_and_signature(transaction: Self::Transaction, signature: Signature) -> Self {
+        let _ = signature;
+        transaction
+    }
+
+    fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address) {
+        *tx_env = alloy_evm::FromRecoveredTx::from_recovered_tx(self, sender);
     }
 }
