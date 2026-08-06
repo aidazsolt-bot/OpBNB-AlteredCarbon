@@ -7,8 +7,9 @@ use crate::{
     BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt, BlockSource, BytecodeReader,
     ChangeSetReader, HashedPostStateProvider, HeaderProvider, NodePrimitivesProvider,
     PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader,
-    StateProofProvider, StateProvider, StateProviderBox, StateProviderFactory, StateReader,
-    StateRootProvider, StorageRootProvider, TransactionVariant, TransactionsProvider,
+    SidecarsProvider, StateProofProvider, StateProvider, StateProviderBox, StateProviderFactory,
+    StateReader, StateRootProvider, StorageRootProvider, TransactionVariant, TransactionsProvider,
+    WithdrawalsProvider,
 };
 
 #[cfg(feature = "db-api")]
@@ -30,7 +31,7 @@ use reth_db_api::mock::{DatabaseMock, TxMock};
 use reth_db_models::{AccountBeforeTx, StoredBlockBodyIndices};
 use reth_ethereum_primitives::EthPrimitives;
 use reth_execution_types::ExecutionOutcome;
-use reth_primitives_traits::{Account, Bytecode, NodePrimitives, RecoveredBlock, SealedHeader};
+use reth_primitives_traits::{Account, BlobSidecars, Bytecode, NodePrimitives, RecoveredBlock, SealedHeader};
 #[cfg(feature = "db-api")]
 use reth_prune_types::PruneModes;
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
@@ -189,6 +190,10 @@ impl<C: Send + Sync, N: NodePrimitives> BlockReaderIdExt for NoopProvider<C, N> 
     fn header_by_id(&self, _id: BlockId) -> ProviderResult<Option<N::BlockHeader>> {
         Ok(None)
     }
+
+    fn ommers_by_id(&self, _id: BlockId) -> ProviderResult<Option<Vec<N::BlockHeader>>> {
+        Ok(None)
+    }
 }
 
 impl<C: Send + Sync, N: NodePrimitives> BlockReader for NoopProvider<C, N> {
@@ -251,6 +256,32 @@ impl<C: Send + Sync, N: NodePrimitives> BlockReader for NoopProvider<C, N> {
     }
 
     fn block_by_transaction_id(&self, _id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        Ok(None)
+    }
+}
+
+impl<C: Send + Sync, N: NodePrimitives> WithdrawalsProvider for NoopProvider<C, N> {
+    fn withdrawals_by_block(
+        &self,
+        _id: BlockHashOrNumber,
+        _timestamp: u64,
+    ) -> ProviderResult<Option<alloy_eips::eip4895::Withdrawals>> {
+        Ok(None)
+    }
+}
+
+impl<C: Send + Sync, N: NodePrimitives> SidecarsProvider for NoopProvider<C, N> {
+    fn sidecars(
+        &self,
+        _block_hash: &alloy_primitives::BlockHash,
+    ) -> ProviderResult<Option<BlobSidecars>> {
+        Ok(None)
+    }
+
+    fn sidecars_by_number(
+        &self,
+        _num: BlockNumber,
+    ) -> ProviderResult<Option<BlobSidecars>> {
         Ok(None)
     }
 }
