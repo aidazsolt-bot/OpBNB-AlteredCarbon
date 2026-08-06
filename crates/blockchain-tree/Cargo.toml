@@ -15,6 +15,7 @@ workspace = true
 reth-blockchain-tree-api.workspace = true
 reth-chainspec.workspace = true
 reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
 reth-storage-errors.workspace = true
 reth-execution-errors.workspace = true
 reth-db.workspace = true
@@ -35,6 +36,7 @@ reth-node-types.workspace = true
 # ethereum
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
+alloy-consensus.workspace = true
 
 # common
 parking_lot.workspace = true
@@ -48,6 +50,7 @@ metrics.workspace = true
 # misc
 aquamarine.workspace = true
 linked_hash_set.workspace = true
+indexmap.workspace = true
 dashmap = "6.1.0"
 
 [dev-dependencies]
