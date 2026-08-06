@@ -33,12 +33,16 @@ reth-codecs.workspace = true
 reth-evm.workspace = true
 reth-chain-state.workspace = true
 reth-node-types.workspace = true
+reth-tasks.workspace = true
+reth-primitives-traits.workspace = true
+reth-static-file-types.workspace = true
 
 # ethereum
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
 alloy-rpc-types-engine.workspace = true
 revm.workspace = true
+rocksdb = { workspace = true, optional = true }
 
 # optimism
 reth-optimism-primitives = { workspace = true, optional = true }
@@ -110,6 +114,8 @@ serde = [
 	"revm/serde",
 	"reth-codecs/serde"
 ]
+rocksdb = ["dep:rocksdb"]
+
 test-utils = [
 	"reth-db/test-utils",
 	"reth-nippy-jar/test-utils",

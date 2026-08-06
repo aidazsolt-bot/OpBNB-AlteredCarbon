@@ -1,51 +1,67 @@
 use crate::{
-    providers::{state::latest::LatestStateProvider, StaticFileProvider},
+    providers::{
+        state::latest::LatestStateProvider, NodeTypesForProvider, RocksDBProvider,
+        StaticFileProvider, StaticFileProviderRWRefMut,
+    },
     to_range,
     traits::{BlockSource, ReceiptProvider},
     BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
-    EvmEnvProvider, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, ParliaSnapshotReader,
-    ProviderError, PruneCheckpointReader, StageCheckpointReader, StateProviderBox,
-    StaticFileProviderFactory, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
+    EitherWriterDestination, HashedPostStateProvider, HeaderProvider, HeaderSyncGapProvider,
+    MetadataProvider, ProviderError, PruneCheckpointReader, RocksDBProviderFactory,
+    StageCheckpointReader, StateProviderBox, StaticFileProviderFactory, StaticFileWriter,
+    TransactionVariant, TransactionsProvider,
 };
-use alloy_eips::{eip4895::Withdrawal, BlockHashOrNumber};
+use alloy_consensus::transaction::TransactionMeta;
+use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use core::fmt;
-use reth_chainspec::{ChainInfo, EthereumHardforks};
+use parking_lot::RwLock;
+use reth_chainspec::ChainInfo;
 use reth_db::{init_db, mdbx::DatabaseArguments, DatabaseEnv};
 use reth_db_api::{database::Database, models::StoredBlockBodyIndices};
 use reth_errors::{RethError, RethResult};
-use reth_evm::ConfigureEvmEnv;
-use reth_node_types::NodeTypesWithDB;
-use reth_primitives::{
-    parlia::Snapshot, BlobSidecars, Block, BlockWithSenders, Header, Receipt, SealedBlock,
-    SealedBlockWithSenders, SealedHeader, StaticFileSegment, TransactionMeta, TransactionSigned,
-    TransactionSignedNoHash, Withdrawals,
+use reth_node_types::{
+    BlockTy, HeaderTy, NodeTypesWithDB, NodeTypesWithDBAdapter, ReceiptTy, TxTy,
 };
+use reth_primitives_traits::{RecoveredBlock, SealedHeader};
 use reth_prune_types::{PruneCheckpoint, PruneModes, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
-use reth_storage_api::{SidecarsProvider, TryIntoHistoricalStateProvider};
+use reth_static_file_types::StaticFileSegment;
+use reth_storage_api::{
+    BlockBodyIndicesProvider, NodePrimitivesProvider, StorageSettings, StorageSettingsCache,
+    TryIntoHistoricalStateProvider,
+};
 use reth_storage_errors::provider::ProviderResult;
-use revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg};
+use reth_trie::HashedPostState;
+use reth_trie_db::ChangesetCache;
+use revm_database::BundleState;
 use std::{
     ops::{RangeBounds, RangeInclusive},
     path::Path,
     sync::Arc,
 };
-use tokio::sync::watch;
+
 use tracing::trace;
 
 mod provider;
-pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW};
+pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW, SaveBlocksMode};
 
 use super::ProviderNodeTypes;
+use reth_trie::KeccakKeyHasher;
+
+mod builder;
+pub use builder::{ProviderFactoryBuilder, ReadOnlyConfig};
 
 mod metrics;
+
+mod chain;
+pub use chain::*;
 
 /// A common provider that fetches data from a database or static file.
 ///
 /// This provider implements most provider or provider factory traits.
 pub struct ProviderFactory<N: NodeTypesWithDB> {
-    /// Database
+    /// Database instance
     db: N::DB,
     /// Chain spec
     chain_spec: Arc<N::ChainSpec>,
@@ -53,42 +69,72 @@ pub struct ProviderFactory<N: NodeTypesWithDB> {
     static_file_provider: StaticFileProvider,
     /// Optional pruning configuration
     prune_modes: PruneModes,
+    /// The node storage handler.
+    storage: Arc<N::Storage>,
+    /// Storage configuration settings for this node
+    storage_settings: Arc<RwLock<StorageSettings>>,
+    /// `RocksDB` provider
+    rocksdb_provider: RocksDBProvider,
+    /// Changeset cache for trie unwinding
+    changeset_cache: ChangesetCache,
 }
 
-impl<N> fmt::Debug for ProviderFactory<N>
-where
-    N: NodeTypesWithDB<DB: fmt::Debug, ChainSpec: fmt::Debug>,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { db, chain_spec, static_file_provider, prune_modes } = self;
-        f.debug_struct("ProviderFactory")
-            .field("db", &db)
-            .field("chain_spec", &chain_spec)
-            .field("static_file_provider", &static_file_provider)
-            .field("prune_modes", &prune_modes)
-            .finish()
+impl<N: NodeTypesForProvider> ProviderFactory<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>> {
+    /// Instantiates the builder for this type
+    pub fn builder() -> ProviderFactoryBuilder<N> {
+        ProviderFactoryBuilder::default()
     }
 }
 
-impl<N: NodeTypesWithDB> ProviderFactory<N> {
+impl<N: ProviderNodeTypes> ProviderFactory<N> {
     /// Create new database provider factory.
     pub fn new(
         db: N::DB,
         chain_spec: Arc<N::ChainSpec>,
         static_file_provider: StaticFileProvider,
-    ) -> Self {
-        Self { db, chain_spec, static_file_provider, prune_modes: PruneModes::none() }
-    }
+        rocksdb_provider: RocksDBProvider,
+    ) -> ProviderResult<Self> {
+        // Load storage settings from database at init time. Creates a temporary provider
+        // to read persisted settings, falling back to legacy defaults if none exist.
+        //
+        // Both factory and all providers it creates should share these cached settings.
+        let legacy_settings = StorageSettings::legacy();
+        let storage_settings = DatabaseProvider::<_, N>::new(
+            db.tx()?,
+            chain_spec.clone(),
+            static_file_provider.clone(),
+            Default::default(),
+            Default::default(),
+            Arc::new(RwLock::new(legacy_settings)),
+            rocksdb_provider.clone(),
+            ChangesetCache::new(),
+        )
+        .storage_settings()?
+        .unwrap_or(legacy_settings);
 
-    /// Enables metrics on the static file provider.
-    pub fn with_static_files_metrics(mut self) -> Self {
-        self.static_file_provider = self.static_file_provider.with_metrics();
-        self
+        Ok(Self {
+            db,
+            chain_spec,
+            static_file_provider,
+            prune_modes: PruneModes::default(),
+            storage: Default::default(),
+            storage_settings: Arc::new(RwLock::new(storage_settings)),
+            rocksdb_provider,
+            changeset_cache: ChangesetCache::new(),
+        })
     }
+}
 
+impl<N: NodeTypesWithDB> ProviderFactory<N> {
     /// Sets the pruning configuration for an existing [`ProviderFactory`].
     pub fn with_prune_modes(mut self, prune_modes: PruneModes) -> Self {
         self.prune_modes = prune_modes;
+        self
+    }
+
+    /// Sets the changeset cache for an existing [`ProviderFactory`].
+    pub fn with_changeset_cache(mut self, changeset_cache: ChangesetCache) -> Self {
+        self.changeset_cache = changeset_cache;
         self
     }
 
@@ -104,7 +150,28 @@ impl<N: NodeTypesWithDB> ProviderFactory<N> {
     }
 }
 
-impl<N: NodeTypesWithDB<DB = Arc<DatabaseEnv>>> ProviderFactory<N> {
+impl<N: NodeTypesWithDB> StorageSettingsCache for ProviderFactory<N> {
+    fn cached_storage_settings(&self) -> StorageSettings {
+        *self.storage_settings.read()
+    }
+
+    fn set_storage_settings_cache(&self, settings: StorageSettings) {
+        *self.storage_settings.write() = settings;
+    }
+}
+
+impl<N: NodeTypesWithDB> RocksDBProviderFactory for ProviderFactory<N> {
+    fn rocksdb_provider(&self) -> RocksDBProvider {
+        self.rocksdb_provider.clone()
+    }
+
+    #[cfg(all(unix, feature = "rocksdb"))]
+    fn set_pending_rocksdb_batch(&self, _batch: rocksdb::WriteBatchWithTransaction<true>) {
+        unimplemented!("ProviderFactory is a factory, not a provider - use DatabaseProvider::set_pending_rocksdb_batch instead")
+    }
+}
+
+impl<N: ProviderNodeTypes<DB = Arc<DatabaseEnv>>> ProviderFactory<N> {
     /// Create new database provider by passing a path. [`ProviderFactory`] will own the database
     /// instance.
     pub fn new_with_database_path<P: AsRef<Path>>(
@@ -112,13 +179,15 @@ impl<N: NodeTypesWithDB<DB = Arc<DatabaseEnv>>> ProviderFactory<N> {
         chain_spec: Arc<N::ChainSpec>,
         args: DatabaseArguments,
         static_file_provider: StaticFileProvider,
+        rocksdb_provider: RocksDBProvider,
     ) -> RethResult<Self> {
-        Ok(Self {
-            db: Arc::new(init_db(path, args).map_err(RethError::msg)?),
+        Self::new(
+            Arc::new(init_db(path, args).map_err(RethError::msg)?),
             chain_spec,
             static_file_provider,
-            prune_modes: PruneModes::none(),
-        })
+            rocksdb_provider,
+        )
+        .map_err(RethError::Provider)
     }
 }
 
@@ -136,6 +205,10 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             self.chain_spec.clone(),
             self.static_file_provider.clone(),
             self.prune_modes.clone(),
+            self.storage.clone(),
+            self.storage_settings.clone(),
+            self.rocksdb_provider.clone(),
+            self.changeset_cache.clone(),
         ))
     }
 
@@ -150,6 +223,10 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             self.chain_spec.clone(),
             self.static_file_provider.clone(),
             self.prune_modes.clone(),
+            self.storage.clone(),
+            self.storage_settings.clone(),
+            self.rocksdb_provider.clone(),
+            self.changeset_cache.clone(),
         )))
     }
 
@@ -157,7 +234,7 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
     #[track_caller]
     pub fn latest(&self) -> ProviderResult<StateProviderBox> {
         trace!(target: "providers::db", "Returning latest state provider");
-        Ok(Box::new(LatestStateProvider::new(self.db.tx()?, self.static_file_provider())))
+        Ok(Box::new(LatestStateProvider::new(self.database_provider_ro()?)))
     }
 
     /// Storage provider for state at that given block
@@ -178,10 +255,14 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             .block_number(block_hash)?
             .ok_or(ProviderError::BlockHashNotFound(block_hash))?;
 
-        let state_provider = self.provider()?.try_into_history_at_block(block_number)?;
+        let state_provider = provider.try_into_history_at_block(block_number)?;
         trace!(target: "providers::db", ?block_number, %block_hash, "Returning historical state provider for block hash");
         Ok(state_provider)
     }
+}
+
+impl<N: NodeTypesWithDB> NodePrimitivesProvider for ProviderFactory<N> {
+    type Primitives = N::Primitives;
 }
 
 impl<N: ProviderNodeTypes> DatabaseProviderFactory for ProviderFactory<N> {
@@ -200,27 +281,37 @@ impl<N: ProviderNodeTypes> DatabaseProviderFactory for ProviderFactory<N> {
 
 impl<N: NodeTypesWithDB> StaticFileProviderFactory for ProviderFactory<N> {
     /// Returns static file provider
-    fn static_file_provider(&self) -> StaticFileProvider {
+    fn static_file_provider(&self) -> StaticFileProvider<Self::Primitives> {
         self.static_file_provider.clone()
+    }
+
+    fn get_static_file_writer(
+        &self,
+        block: BlockNumber,
+        segment: StaticFileSegment,
+    ) -> ProviderResult<StaticFileProviderRWRefMut<'_>> {
+        self.static_file_provider.get_writer(block, segment)
     }
 }
 
 impl<N: ProviderNodeTypes> HeaderSyncGapProvider for ProviderFactory<N> {
-    fn sync_gap(
+    type Header = HeaderTy<N>;
+    fn local_tip_header(
         &self,
-        tip: watch::Receiver<B256>,
         highest_uninterrupted_block: BlockNumber,
-    ) -> ProviderResult<HeaderSyncGap> {
-        self.provider()?.sync_gap(tip, highest_uninterrupted_block)
+    ) -> ProviderResult<SealedHeader<Self::Header>> {
+        self.provider()?.local_tip_header(highest_uninterrupted_block)
     }
 }
 
 impl<N: ProviderNodeTypes> HeaderProvider for ProviderFactory<N> {
-    fn header(&self, block_hash: &BlockHash) -> ProviderResult<Option<Header>> {
+    type Header = HeaderTy<N>;
+
+    fn header(&self, block_hash: BlockHash) -> ProviderResult<Option<Self::Header>> {
         self.provider()?.header(block_hash)
     }
 
-    fn header_by_number(&self, num: BlockNumber) -> ProviderResult<Option<Header>> {
+    fn header_by_number(&self, num: BlockNumber) -> ProviderResult<Option<Self::Header>> {
         self.static_file_provider.get_with_static_file_or_database(
             StaticFileSegment::Headers,
             num,
@@ -234,31 +325,20 @@ impl<N: ProviderNodeTypes> HeaderProvider for ProviderFactory<N> {
     }
 
     fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
-        if let Some(td) = self.chain_spec.final_paris_total_difficulty(number) {
-            // if this block is higher than the final paris(merge) block, return the final paris
-            // difficulty
-            return Ok(Some(td))
-        }
-
-        self.static_file_provider.get_with_static_file_or_database(
-            StaticFileSegment::Headers,
-            number,
-            |static_file| static_file.header_td_by_number(number),
-            || self.provider()?.header_td_by_number(number),
-        )
+        self.provider()?.header_td_by_number(number)
     }
 
-    fn headers_range(&self, range: impl RangeBounds<BlockNumber>) -> ProviderResult<Vec<Header>> {
-        self.static_file_provider.get_range_with_static_file_or_database(
-            StaticFileSegment::Headers,
-            to_range(range),
-            |static_file, range, _| static_file.headers_range(range),
-            |range, _| self.provider()?.headers_range(range),
-            |_| true,
-        )
+    fn headers_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Self::Header>> {
+        self.static_file_provider.headers_range(range)
     }
 
-    fn sealed_header(&self, number: BlockNumber) -> ProviderResult<Option<SealedHeader>> {
+    fn sealed_header(
+        &self,
+        number: BlockNumber,
+    ) -> ProviderResult<Option<SealedHeader<Self::Header>>> {
         self.static_file_provider.get_with_static_file_or_database(
             StaticFileSegment::Headers,
             number,
@@ -270,22 +350,16 @@ impl<N: ProviderNodeTypes> HeaderProvider for ProviderFactory<N> {
     fn sealed_headers_range(
         &self,
         range: impl RangeBounds<BlockNumber>,
-    ) -> ProviderResult<Vec<SealedHeader>> {
-        self.sealed_headers_while(range, |_| true)
+    ) -> ProviderResult<Vec<SealedHeader<Self::Header>>> {
+        self.static_file_provider.sealed_headers_range(range)
     }
 
     fn sealed_headers_while(
         &self,
         range: impl RangeBounds<BlockNumber>,
-        predicate: impl FnMut(&SealedHeader) -> bool,
-    ) -> ProviderResult<Vec<SealedHeader>> {
-        self.static_file_provider.get_range_with_static_file_or_database(
-            StaticFileSegment::Headers,
-            to_range(range),
-            |static_file, range, predicate| static_file.sealed_headers_while(range, predicate),
-            |range, predicate| self.provider()?.sealed_headers_while(range, predicate),
-            predicate,
-        )
+        predicate: impl FnMut(&SealedHeader<Self::Header>) -> bool,
+    ) -> ProviderResult<Vec<SealedHeader<Self::Header>>> {
+        self.static_file_provider.sealed_headers_while(range, predicate)
     }
 }
 
@@ -304,13 +378,7 @@ impl<N: ProviderNodeTypes> BlockHashReader for ProviderFactory<N> {
         start: BlockNumber,
         end: BlockNumber,
     ) -> ProviderResult<Vec<B256>> {
-        self.static_file_provider.get_range_with_static_file_or_database(
-            StaticFileSegment::Headers,
-            start..end,
-            |static_file, range, _| static_file.canonical_hashes_range(range.start, range.end),
-            |range, _| self.provider()?.canonical_hashes_range(range.start, range.end),
-            |_| true,
-        )
+        self.static_file_provider.canonical_hashes_range(start, end)
     }
 }
 
@@ -324,7 +392,13 @@ impl<N: ProviderNodeTypes> BlockNumReader for ProviderFactory<N> {
     }
 
     fn last_block_number(&self) -> ProviderResult<BlockNumber> {
-        self.provider()?.last_block_number()
+        self.static_file_provider.last_block_number()
+    }
+
+    fn earliest_block_number(&self) -> ProviderResult<BlockNumber> {
+        // earliest history height tracks the lowest block number that has __not__ been expired, in
+        // other words, the first/earliest available block.
+        Ok(self.static_file_provider.earliest_history_height())
     }
 
     fn block_number(&self, hash: B256) -> ProviderResult<Option<BlockNumber>> {
@@ -333,148 +407,143 @@ impl<N: ProviderNodeTypes> BlockNumReader for ProviderFactory<N> {
 }
 
 impl<N: ProviderNodeTypes> BlockReader for ProviderFactory<N> {
-    fn find_block_by_hash(&self, hash: B256, source: BlockSource) -> ProviderResult<Option<Block>> {
+    type Block = BlockTy<N>;
+
+    fn find_block_by_hash(
+        &self,
+        hash: B256,
+        source: BlockSource,
+    ) -> ProviderResult<Option<Self::Block>> {
         self.provider()?.find_block_by_hash(hash, source)
     }
 
-    fn block(&self, id: BlockHashOrNumber) -> ProviderResult<Option<Block>> {
+    fn block(&self, id: BlockHashOrNumber) -> ProviderResult<Option<Self::Block>> {
         self.provider()?.block(id)
     }
 
-    fn pending_block(&self) -> ProviderResult<Option<SealedBlock>> {
+    fn pending_block(&self) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
         self.provider()?.pending_block()
     }
 
-    fn pending_block_with_senders(&self) -> ProviderResult<Option<SealedBlockWithSenders>> {
-        self.provider()?.pending_block_with_senders()
-    }
-
-    fn pending_block_and_receipts(&self) -> ProviderResult<Option<(SealedBlock, Vec<Receipt>)>> {
+    fn pending_block_and_receipts(
+        &self,
+    ) -> ProviderResult<Option<(RecoveredBlock<Self::Block>, Vec<Self::Receipt>)>> {
         self.provider()?.pending_block_and_receipts()
     }
 
-    fn ommers(&self, id: BlockHashOrNumber) -> ProviderResult<Option<Vec<Header>>> {
-        self.provider()?.ommers(id)
-    }
-
-    fn block_body_indices(
-        &self,
-        number: BlockNumber,
-    ) -> ProviderResult<Option<StoredBlockBodyIndices>> {
-        self.provider()?.block_body_indices(number)
-    }
-
-    fn block_with_senders(
+    fn recovered_block(
         &self,
         id: BlockHashOrNumber,
         transaction_kind: TransactionVariant,
-    ) -> ProviderResult<Option<BlockWithSenders>> {
-        self.provider()?.block_with_senders(id, transaction_kind)
+    ) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
+        self.provider()?.recovered_block(id, transaction_kind)
     }
 
     fn sealed_block_with_senders(
         &self,
         id: BlockHashOrNumber,
         transaction_kind: TransactionVariant,
-    ) -> ProviderResult<Option<SealedBlockWithSenders>> {
+    ) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
         self.provider()?.sealed_block_with_senders(id, transaction_kind)
     }
 
-    fn block_range(&self, range: RangeInclusive<BlockNumber>) -> ProviderResult<Vec<Block>> {
+    fn block_range(&self, range: RangeInclusive<BlockNumber>) -> ProviderResult<Vec<Self::Block>> {
         self.provider()?.block_range(range)
     }
 
     fn block_with_senders_range(
         &self,
         range: RangeInclusive<BlockNumber>,
-    ) -> ProviderResult<Vec<BlockWithSenders>> {
+    ) -> ProviderResult<Vec<RecoveredBlock<Self::Block>>> {
         self.provider()?.block_with_senders_range(range)
     }
 
-    fn sealed_block_with_senders_range(
+    fn recovered_block_range(
         &self,
         range: RangeInclusive<BlockNumber>,
-    ) -> ProviderResult<Vec<SealedBlockWithSenders>> {
-        self.provider()?.sealed_block_with_senders_range(range)
+    ) -> ProviderResult<Vec<RecoveredBlock<Self::Block>>> {
+        self.provider()?.recovered_block_range(range)
+    }
+
+    fn block_by_transaction_id(&self, id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        self.provider()?.block_by_transaction_id(id)
     }
 }
 
 impl<N: ProviderNodeTypes> TransactionsProvider for ProviderFactory<N> {
+    type Transaction = TxTy<N>;
+
     fn transaction_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
         self.provider()?.transaction_id(tx_hash)
     }
 
-    fn transaction_by_id(&self, id: TxNumber) -> ProviderResult<Option<TransactionSigned>> {
-        self.static_file_provider.get_with_static_file_or_database(
-            StaticFileSegment::Transactions,
-            id,
-            |static_file| static_file.transaction_by_id(id),
-            || self.provider()?.transaction_by_id(id),
-        )
+    fn transaction_by_id(&self, id: TxNumber) -> ProviderResult<Option<Self::Transaction>> {
+        self.static_file_provider.transaction_by_id(id)
     }
 
-    fn transaction_by_id_no_hash(
+    fn transaction_by_id_unhashed(
         &self,
         id: TxNumber,
-    ) -> ProviderResult<Option<TransactionSignedNoHash>> {
-        self.static_file_provider.get_with_static_file_or_database(
-            StaticFileSegment::Transactions,
-            id,
-            |static_file| static_file.transaction_by_id_no_hash(id),
-            || self.provider()?.transaction_by_id_no_hash(id),
-        )
+    ) -> ProviderResult<Option<Self::Transaction>> {
+        self.static_file_provider.transaction_by_id_unhashed(id)
     }
 
-    fn transaction_by_hash(&self, hash: TxHash) -> ProviderResult<Option<TransactionSigned>> {
+    fn transaction_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Self::Transaction>> {
         self.provider()?.transaction_by_hash(hash)
     }
 
     fn transaction_by_hash_with_meta(
         &self,
         tx_hash: TxHash,
-    ) -> ProviderResult<Option<(TransactionSigned, TransactionMeta)>> {
+    ) -> ProviderResult<Option<(Self::Transaction, TransactionMeta)>> {
         self.provider()?.transaction_by_hash_with_meta(tx_hash)
-    }
-
-    fn transaction_block(&self, id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
-        self.provider()?.transaction_block(id)
     }
 
     fn transactions_by_block(
         &self,
         id: BlockHashOrNumber,
-    ) -> ProviderResult<Option<Vec<TransactionSigned>>> {
+    ) -> ProviderResult<Option<Vec<Self::Transaction>>> {
         self.provider()?.transactions_by_block(id)
     }
 
     fn transactions_by_block_range(
         &self,
         range: impl RangeBounds<BlockNumber>,
-    ) -> ProviderResult<Vec<Vec<TransactionSigned>>> {
+    ) -> ProviderResult<Vec<Vec<Self::Transaction>>> {
         self.provider()?.transactions_by_block_range(range)
     }
 
     fn transactions_by_tx_range(
         &self,
         range: impl RangeBounds<TxNumber>,
-    ) -> ProviderResult<Vec<TransactionSignedNoHash>> {
-        self.provider()?.transactions_by_tx_range(range)
+    ) -> ProviderResult<Vec<Self::Transaction>> {
+        self.static_file_provider.transactions_by_tx_range(range)
     }
 
     fn senders_by_tx_range(
         &self,
         range: impl RangeBounds<TxNumber>,
     ) -> ProviderResult<Vec<Address>> {
-        self.provider()?.senders_by_tx_range(range)
+        if EitherWriterDestination::senders(self).is_static_file() {
+            self.static_file_provider.senders_by_tx_range(range)
+        } else {
+            self.provider()?.senders_by_tx_range(range)
+        }
     }
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
-        self.provider()?.transaction_sender(id)
+        if EitherWriterDestination::senders(self).is_static_file() {
+            self.static_file_provider.transaction_sender(id)
+        } else {
+            self.provider()?.transaction_sender(id)
+        }
     }
 }
 
 impl<N: ProviderNodeTypes> ReceiptProvider for ProviderFactory<N> {
-    fn receipt(&self, id: TxNumber) -> ProviderResult<Option<Receipt>> {
+    type Receipt = ReceiptTy<N>;
+
+    fn receipt(&self, id: TxNumber) -> ProviderResult<Option<Self::Receipt>> {
         self.static_file_provider.get_with_static_file_or_database(
             StaticFileSegment::Receipts,
             id,
@@ -483,18 +552,21 @@ impl<N: ProviderNodeTypes> ReceiptProvider for ProviderFactory<N> {
         )
     }
 
-    fn receipt_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Receipt>> {
+    fn receipt_by_hash(&self, hash: TxHash) -> ProviderResult<Option<Self::Receipt>> {
         self.provider()?.receipt_by_hash(hash)
     }
 
-    fn receipts_by_block(&self, block: BlockHashOrNumber) -> ProviderResult<Option<Vec<Receipt>>> {
+    fn receipts_by_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<Self::Receipt>>> {
         self.provider()?.receipts_by_block(block)
     }
 
     fn receipts_by_tx_range(
         &self,
         range: impl RangeBounds<TxNumber>,
-    ) -> ProviderResult<Vec<Receipt>> {
+    ) -> ProviderResult<Vec<Self::Receipt>> {
         self.static_file_provider.get_range_with_static_file_or_database(
             StaticFileSegment::Receipts,
             to_range(range),
@@ -503,34 +575,28 @@ impl<N: ProviderNodeTypes> ReceiptProvider for ProviderFactory<N> {
             |_| true,
         )
     }
-}
 
-impl<N: ProviderNodeTypes> WithdrawalsProvider for ProviderFactory<N> {
-    fn withdrawals_by_block(
+    fn receipts_by_block_range(
         &self,
-        id: BlockHashOrNumber,
-        timestamp: u64,
-    ) -> ProviderResult<Option<Withdrawals>> {
-        self.provider()?.withdrawals_by_block(id, timestamp)
-    }
-
-    fn latest_withdrawal(&self) -> ProviderResult<Option<Withdrawal>> {
-        self.provider()?.latest_withdrawal()
+        block_range: RangeInclusive<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<Self::Receipt>>> {
+        self.provider()?.receipts_by_block_range(block_range)
     }
 }
 
-impl<N: ProviderNodeTypes> SidecarsProvider for ProviderFactory<N> {
-    fn sidecars(&self, block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
-        self.provider()?.sidecars(block_hash)
+impl<N: ProviderNodeTypes> BlockBodyIndicesProvider for ProviderFactory<N> {
+    fn block_body_indices(
+        &self,
+        number: BlockNumber,
+    ) -> ProviderResult<Option<StoredBlockBodyIndices>> {
+        self.provider()?.block_body_indices(number)
     }
 
-    fn sidecars_by_number(&self, num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
-        self.static_file_provider.get_with_static_file_or_database(
-            StaticFileSegment::Sidecars,
-            num,
-            |static_file| static_file.sidecars_by_number(num),
-            || self.provider()?.sidecars_by_number(num),
-        )
+    fn block_body_indices_range(
+        &self,
+        range: RangeInclusive<BlockNumber>,
+    ) -> ProviderResult<Vec<StoredBlockBodyIndices>> {
+        self.provider()?.block_body_indices_range(range)
     }
 }
 
@@ -544,58 +610,6 @@ impl<N: ProviderNodeTypes> StageCheckpointReader for ProviderFactory<N> {
     }
     fn get_all_checkpoints(&self) -> ProviderResult<Vec<(String, StageCheckpoint)>> {
         self.provider()?.get_all_checkpoints()
-    }
-}
-
-impl<N: ProviderNodeTypes> EvmEnvProvider for ProviderFactory<N> {
-    fn fill_env_at<EvmConfig>(
-        &self,
-        cfg: &mut CfgEnvWithHandlerCfg,
-        block_env: &mut BlockEnv,
-        at: BlockHashOrNumber,
-        evm_config: EvmConfig,
-    ) -> ProviderResult<()>
-    where
-        EvmConfig: ConfigureEvmEnv<Header = Header>,
-    {
-        self.provider()?.fill_env_at(cfg, block_env, at, evm_config)
-    }
-
-    fn fill_env_with_header<EvmConfig>(
-        &self,
-        cfg: &mut CfgEnvWithHandlerCfg,
-        block_env: &mut BlockEnv,
-        header: &Header,
-        evm_config: EvmConfig,
-    ) -> ProviderResult<()>
-    where
-        EvmConfig: ConfigureEvmEnv<Header = Header>,
-    {
-        self.provider()?.fill_env_with_header(cfg, block_env, header, evm_config)
-    }
-
-    fn fill_cfg_env_at<EvmConfig>(
-        &self,
-        cfg: &mut CfgEnvWithHandlerCfg,
-        at: BlockHashOrNumber,
-        evm_config: EvmConfig,
-    ) -> ProviderResult<()>
-    where
-        EvmConfig: ConfigureEvmEnv<Header = Header>,
-    {
-        self.provider()?.fill_cfg_env_at(cfg, at, evm_config)
-    }
-
-    fn fill_cfg_env_with_header<EvmConfig>(
-        &self,
-        cfg: &mut CfgEnvWithHandlerCfg,
-        header: &Header,
-        evm_config: EvmConfig,
-    ) -> ProviderResult<()>
-    where
-        EvmConfig: ConfigureEvmEnv<Header = Header>,
-    {
-        self.provider()?.fill_cfg_env_with_header(cfg, header, evm_config)
     }
 }
 
@@ -620,9 +634,43 @@ impl<N: ProviderNodeTypes> PruneCheckpointReader for ProviderFactory<N> {
     }
 }
 
-impl<N: ProviderNodeTypes> ParliaSnapshotReader for ProviderFactory<N> {
-    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
-        self.provider()?.get_parlia_snapshot(block_hash)
+impl<N: ProviderNodeTypes> HashedPostStateProvider for ProviderFactory<N> {
+    fn hashed_post_state(&self, bundle_state: &BundleState) -> HashedPostState {
+        HashedPostState::from_bundle_state::<KeccakKeyHasher>(bundle_state.state())
+    }
+}
+
+impl<N: ProviderNodeTypes> MetadataProvider for ProviderFactory<N> {
+    fn get_metadata(&self, key: &str) -> ProviderResult<Option<Vec<u8>>> {
+        self.provider()?.get_metadata(key)
+    }
+}
+
+impl<N> fmt::Debug for ProviderFactory<N>
+where
+    N: NodeTypesWithDB<DB: fmt::Debug, ChainSpec: fmt::Debug, Storage: fmt::Debug>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            db,
+            chain_spec,
+            static_file_provider,
+            prune_modes,
+            storage,
+            storage_settings,
+            rocksdb_provider,
+            changeset_cache,
+        } = self;
+        f.debug_struct("ProviderFactory")
+            .field("db", &db)
+            .field("chain_spec", &chain_spec)
+            .field("static_file_provider", &static_file_provider)
+            .field("prune_modes", &prune_modes)
+            .field("storage", &storage)
+            .field("storage_settings", &*storage_settings.read())
+            .field("rocksdb_provider", &rocksdb_provider)
+            .field("changeset_cache", &changeset_cache)
+            .finish()
     }
 }
 
@@ -633,6 +681,10 @@ impl<N: NodeTypesWithDB> Clone for ProviderFactory<N> {
             chain_spec: self.chain_spec.clone(),
             static_file_provider: self.static_file_provider.clone(),
             prune_modes: self.prune_modes.clone(),
+            storage: self.storage.clone(),
+            storage_settings: self.storage_settings.clone(),
+            rocksdb_provider: self.rocksdb_provider.clone(),
+            changeset_cache: self.changeset_cache.clone(),
         }
     }
 }
@@ -643,23 +695,22 @@ mod tests {
     use crate::{
         providers::{StaticFileProvider, StaticFileWriter},
         test_utils::{blocks::TEST_BLOCK, create_test_provider_factory, MockNodeTypesWithDB},
-        BlockHashReader, BlockNumReader, BlockWriter, HeaderSyncGapProvider, TransactionsProvider,
+        BlockHashReader, BlockNumReader, BlockWriter, DBProvider, HeaderSyncGapProvider,
+        TransactionsProvider,
     };
-    use alloy_primitives::{TxNumber, B256, U256};
+    use alloy_primitives::{TxNumber, B256};
     use assert_matches::assert_matches;
-    use rand::Rng;
     use reth_chainspec::ChainSpecBuilder;
     use reth_db::{
         mdbx::DatabaseArguments,
-        tables,
-        test_utils::{create_test_static_files_dir, ERROR_TEMPDIR},
+        test_utils::{create_test_rocksdb_dir, create_test_static_files_dir, ERROR_TEMPDIR},
     };
-    use reth_primitives::StaticFileSegment;
+    use reth_db_api::tables;
+    use reth_primitives_traits::SignerRecoverable;
     use reth_prune_types::{PruneMode, PruneModes};
     use reth_storage_errors::provider::ProviderError;
     use reth_testing_utils::generators::{self, random_block, random_header, BlockParams};
     use std::{ops::RangeInclusive, sync::Arc};
-    use tokio::sync::watch;
 
     #[test]
     fn common_history_provider() {
@@ -691,14 +742,15 @@ mod tests {
     fn provider_factory_with_database_path() {
         let chain_spec = ChainSpecBuilder::mainnet().build();
         let (_static_dir, static_dir_path) = create_test_static_files_dir();
+        let (_, rocksdb_path) = create_test_rocksdb_dir();
         let factory = ProviderFactory::<MockNodeTypesWithDB<DatabaseEnv>>::new_with_database_path(
-            tempfile::TempDir::new().expect(ERROR_TEMPDIR).into_path(),
+            tempfile::TempDir::new().expect(ERROR_TEMPDIR).keep(),
             Arc::new(chain_spec),
             DatabaseArguments::new(Default::default()),
             StaticFileProvider::read_write(static_dir_path).unwrap(),
+            RocksDBProvider::builder(&rocksdb_path).build().unwrap(),
         )
         .unwrap();
-
         let provider = factory.provider().unwrap();
         provider.block_hash(0).unwrap();
         let provider_rw = factory.provider_rw().unwrap();
@@ -708,84 +760,66 @@ mod tests {
 
     #[test]
     fn insert_block_with_prune_modes() {
-        let factory = create_test_provider_factory();
-
         let block = TEST_BLOCK.clone();
+
         {
+            let factory = create_test_provider_factory();
             let provider = factory.provider_rw().unwrap();
-            assert_matches!(
-                provider.insert_block(block.clone().try_seal_with_senders().unwrap()),
-                Ok(_)
-            );
+            assert_matches!(provider.insert_block(&block.clone().try_recover().unwrap()), Ok(_));
             assert_matches!(
                 provider.transaction_sender(0), Ok(Some(sender))
-                if sender == block.body.transactions[0].recover_signer().unwrap()
+                if sender == block.body().transactions[0].recover_signer().unwrap()
             );
-            assert_matches!(provider.transaction_id(block.body.transactions[0].hash), Ok(Some(0)));
+            assert_matches!(
+                provider.transaction_id(*block.body().transactions[0].tx_hash()),
+                Ok(Some(0))
+            );
         }
 
         {
             let prune_modes = PruneModes {
                 sender_recovery: Some(PruneMode::Full),
                 transaction_lookup: Some(PruneMode::Full),
-                ..PruneModes::none()
+                ..PruneModes::default()
             };
+            let factory = create_test_provider_factory();
             let provider = factory.with_prune_modes(prune_modes).provider_rw().unwrap();
-            assert_matches!(
-                provider.insert_block(block.clone().try_seal_with_senders().unwrap(),),
-                Ok(_)
-            );
+            assert_matches!(provider.insert_block(&block.clone().try_recover().unwrap()), Ok(_));
             assert_matches!(provider.transaction_sender(0), Ok(None));
-            assert_matches!(provider.transaction_id(block.body.transactions[0].hash), Ok(None));
+            assert_matches!(
+                provider.transaction_id(*block.body().transactions[0].tx_hash()),
+                Ok(None)
+            );
         }
     }
 
     #[test]
     fn take_block_transaction_range_recover_senders() {
-        let factory = create_test_provider_factory();
-
         let mut rng = generators::rng();
         let block =
             random_block(&mut rng, 0, BlockParams { tx_count: Some(3), ..Default::default() });
 
         let tx_ranges: Vec<RangeInclusive<TxNumber>> = vec![0..=0, 1..=1, 2..=2, 0..=1, 1..=2];
         for range in tx_ranges {
+            let factory = create_test_provider_factory();
             let provider = factory.provider_rw().unwrap();
 
-            assert_matches!(
-                provider.insert_block(block.clone().try_seal_with_senders().unwrap()),
-                Ok(_)
-            );
+            assert_matches!(provider.insert_block(&block.clone().try_recover().unwrap()), Ok(_));
 
-            let senders = provider.take::<tables::TransactionSenders>(range.clone());
+            let senders = provider.take::<tables::TransactionSenders>(range.clone()).unwrap();
             assert_eq!(
                 senders,
-                Ok(range
+                range
                     .clone()
                     .map(|tx_number| (
                         tx_number,
-                        block.body.transactions[tx_number as usize].recover_signer().unwrap()
+                        block.body().transactions[tx_number as usize].recover_signer().unwrap()
                     ))
-                    .collect())
+                    .collect::<Vec<_>>()
             );
 
             let db_senders = provider.senders_by_tx_range(range);
-            assert_eq!(db_senders, Ok(vec![]));
-
-            let result = provider.take_block_transaction_range(0..=0);
-            assert_eq!(
-                result,
-                Ok(vec![(
-                    0,
-                    block
-                        .body
-                        .transactions
-                        .iter()
-                        .cloned()
-                        .map(|tx| tx.into_ecrecovered().unwrap())
-                        .collect()
-                )])
-            )
+            assert!(matches!(db_senders, Ok(ref v) if v.is_empty()));
         }
     }
 
@@ -795,8 +829,6 @@ mod tests {
         let provider = factory.provider_rw().unwrap();
 
         let mut rng = generators::rng();
-        let consensus_tip = rng.gen();
-        let (_tip_tx, tip_rx) = watch::channel(consensus_tip);
 
         // Genesis
         let checkpoint = 0;
@@ -804,7 +836,7 @@ mod tests {
 
         // Empty database
         assert_matches!(
-            provider.sync_gap(tip_rx.clone(), checkpoint),
+            provider.local_tip_header(checkpoint),
             Err(ProviderError::HeaderNotFound(block_number))
                 if block_number.as_number().unwrap() == checkpoint
         );
@@ -813,12 +845,12 @@ mod tests {
         let static_file_provider = provider.static_file_provider();
         let mut static_file_writer =
             static_file_provider.latest_writer(StaticFileSegment::Headers).unwrap();
-        static_file_writer.append_header(head.header(), U256::ZERO, &head.hash()).unwrap();
+        static_file_writer.append_header(head.header(), &head.hash()).unwrap();
         static_file_writer.commit().unwrap();
         drop(static_file_writer);
 
-        let gap = provider.sync_gap(tip_rx, checkpoint).unwrap();
-        assert_eq!(gap.local_head, head);
-        assert_eq!(gap.target.tip(), consensus_tip.into());
+        let local_head = provider.local_tip_header(checkpoint).unwrap();
+
+        assert_eq!(local_head, head);
     }
 }
