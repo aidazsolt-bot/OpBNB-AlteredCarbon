@@ -121,7 +121,6 @@ c-kzg = [
 	"revm/c-kzg",
 ]
 optimism = [
-	"reth-codecs?/optimism",
 	"reth-chainspec/optimism",
 ]
 opbnb = [

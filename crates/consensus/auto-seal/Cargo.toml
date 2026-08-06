@@ -33,7 +33,6 @@ reth-trie.workspace = true
 # ethereum
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
-revm-primitives.workspace = true
 alloy-rpc-types-engine.workspace = true
 
 # optimism
@@ -53,6 +52,5 @@ optimism = [
 	"reth-execution-types/optimism",
 	"reth-optimism-consensus?/optimism",
 	"reth-primitives/optimism",
-	"revm-primitives/optimism",
 	"reth-chainspec/optimism"
 ]

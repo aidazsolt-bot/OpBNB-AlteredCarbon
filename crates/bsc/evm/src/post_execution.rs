@@ -17,7 +17,7 @@ use reth_primitives::{
 };
 use reth_provider::ParliaProvider;
 use reth_revm::bsc::SYSTEM_ADDRESS;
-use revm_primitives::{db::Database, EnvWithHandlerCfg};
+use revm::{context::EnvWithHandlerCfg, Database};
 use tracing::debug;
 
 use crate::{BscBlockExecutionError, BscBlockExecutor, SnapshotReader};

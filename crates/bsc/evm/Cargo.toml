@@ -35,7 +35,6 @@ reth-bsc-primitives.workspace = true
 alloy-consensus.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
-revm-primitives.workspace = true
 
 # misc
 thiserror.workspace = true

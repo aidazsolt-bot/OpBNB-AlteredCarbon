@@ -35,7 +35,7 @@ use reth_payload_builder::PayloadBuilderHandle;
 use reth_payload_primitives::{PayloadAttributes, PayloadBuilder, PayloadBuilderAttributes};
 use reth_payload_validator::ExecutionPayloadValidator;
 use reth_primitives::{
-    revm_primitives::EvmState, Block, GotExpected, Header, SealedBlock, SealedBlockWithSenders,
+    revm::primitives::EvmState, Block, GotExpected, Header, SealedBlock, SealedBlockWithSenders,
     SealedHeader,
 };
 use reth_provider::{
