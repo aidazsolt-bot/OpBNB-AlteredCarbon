@@ -5,7 +5,7 @@
 
 extern crate alloc;
 
-use reth_ethereum_forks::EthereumHardforks;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 
 pub mod hardfork;
 pub use hardfork::BscHardfork;
@@ -13,7 +13,7 @@ mod dev;
 pub use dev::DEV_HARDFORKS;
 
 /// Extends [`EthereumHardforks`] with bsc helper methods.
-pub trait BscHardforks: EthereumHardforks {
+pub trait BscHardforks: EthereumHardforks + Hardforks {
     /// Convenience method to check if [`BscHardfork::Ramanujan`] is firstly active at a given
     /// block.
     fn is_on_ramanujan_at_block(&self, block_number: u64) -> bool {
