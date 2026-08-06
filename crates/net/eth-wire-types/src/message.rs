@@ -713,6 +713,7 @@ impl EthMessageID {
             Self::GetCells => 0x14,
             Self::Cells => 0x15,
             Self::Other(value) => *value, // Return the stored `u8`
+            Self::UpgradeStatus => 0x0b,
         }
     }
 
@@ -771,8 +772,8 @@ impl Decodable for EthMessageID {
             0x13 => Self::BlockAccessLists,
             0x14 => Self::GetCells,
             0x15 => Self::Cells,
-            unknown => Self::Other(*unknown),
             0x0b => Self::UpgradeStatus,
+            unknown => Self::Other(*unknown),
         };
         buf.advance(1);
         Ok(id)

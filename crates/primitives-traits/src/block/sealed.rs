@@ -18,7 +18,11 @@ use core::ops::Deref;
 /// This type uses lazy sealing to avoid hashing the header until it is needed, see also
 /// [`SealedHeader`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "B: serde::Serialize + serde::de::DeserializeOwned")
+)]
 pub struct SealedBlock<B: Block> {
     /// Sealed Header.
     header: SealedHeader<B::Header>,

@@ -1,6 +1,7 @@
 //! Receipt abstraction
 
-use alloy_consensus::{TxReceipt, Typed2718};
+use alloy_consensus::{RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt, Typed2718};
+use alloy_rlp::{Decodable, Encodable};
 use reth_codecs::Compact;
 use serde::{Deserialize, Serialize};
 
@@ -21,8 +22,10 @@ pub trait Receipt:
     + TxReceipt
     + Typed2718
     + Default
-    + alloy_rlp::Encodable
-    + alloy_rlp::Decodable
+    + RlpEncodableReceipt
+    + RlpDecodableReceipt
+    + Encodable
+    + Decodable
     + Serialize
     + for<'de> Deserialize<'de>
 {
@@ -43,8 +46,10 @@ impl<T> Receipt for T where
         + TxReceipt
         + Typed2718
         + Default
-        + alloy_rlp::Encodable
-        + alloy_rlp::Decodable
+        + RlpEncodableReceipt
+        + RlpDecodableReceipt
+        + Encodable
+        + Decodable
         + Serialize
         + for<'de> Deserialize<'de>
 {
