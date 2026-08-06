@@ -15,6 +15,7 @@ use crate::{
 };
 use alloy_primitives::{map::HashMap, Address, BlockNumber, TxHash, TxNumber};
 use rayon::slice::ParallelSliceMut;
+use reth_codecs::Compact;
 use reth_db::{
     cursor::{DbCursorRO, DbDupCursorRW},
     models::AccountBeforeTx,

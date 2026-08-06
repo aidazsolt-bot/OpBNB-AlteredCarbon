@@ -14,7 +14,7 @@ use crate::{
     BlockReader, BlockWriter, BundleStateInit, ChainStateBlockReader, ChainStateBlockWriter,
     DBProvider, EitherReader, EitherWriter, EitherWriterDestination, HashingWriter, HeaderProvider,
     HeaderSyncGapProvider, HistoricalStateProvider, HistoricalStateProviderRef, HistoryWriter,
-    LatestStateProvider, LatestStateProviderRef, OriginalValuesKnown, PipelineConsistency,
+    LatestStateProvider, LatestStateProviderRef, OriginalValuesKnown,
     ProviderError, PruneCheckpointReader, PruneCheckpointWriter, RawRocksDBBatch, RevertsInit,
     RocksBatchArg, RocksDBProviderFactory, StageCheckpointReader, StateProviderBox, StateWriter,
     StaticFileProviderFactory, StatsReader, StorageReader, StorageTrieWriter, TransactionVariant,
@@ -73,7 +73,7 @@ use reth_trie::{
     HashedPostStateSorted, StoredNibbles, StoredNibblesSubKey, TrieChangeSetsEntry,
 };
 use reth_trie_db::{ChangesetCache, DatabaseAccountTrieCursor, DatabaseStorageTrieCursor};
-use revm_database::states::{
+use revm::database::states::{
     PlainStateReverts, PlainStorageChangeset, PlainStorageRevert, StateChangeset,
 };
 use rust_eth_triedb::{get_global_triedb, triedb_manager::is_triedb_active};
@@ -1057,7 +1057,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
 }
 
 impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
-    fn convert_account_info(info: &revm_state::AccountInfo) -> reth_primitives_traits::Account {
+    fn convert_account_info(info: &revm::state::AccountInfo) -> reth_primitives_traits::Account {
         let code_hash = info.code_hash;
         reth_primitives_traits::Account {
             balance: info.balance,
