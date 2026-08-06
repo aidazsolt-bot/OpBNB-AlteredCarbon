@@ -1206,7 +1206,13 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             for (block_range, header) in headers {
                 // Update max expected block -> expected_block_range index
                 expected_block_ranges_by_max_block
-                    .insert(header.expected_block_end(), header.expected_block_range());
+                    .insert(
+                        header.expected_block_end(),
+                        SegmentRangeInclusive::new(
+                            header.expected_block_start(),
+                            header.expected_block_end(),
+                        ),
+                    );
 
                 // Update max tx -> block_range index
                 if let Some(tx_range) = header.tx_range() {
@@ -1375,14 +1381,14 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             debug!(target: "reth::providers::static_file", ?segment, "Ensuring invariants for segment");
             if let Some(unwind) = match segment {
                 StaticFileSegment::Headers => self
-                    .ensure_invariants::<_, tables::Headers<N::BlockHeader>>(
+                    .ensure_invariants::<_, tables::Headers>(
                         provider,
                         segment,
                         highest_block,
                         highest_block,
                     )?,
                 StaticFileSegment::Transactions => self
-                    .ensure_invariants::<_, tables::Transactions<N::SignedTx>>(
+                    .ensure_invariants::<_, tables::Transactions>(
                         provider,
                         segment,
                         highest_tx,
@@ -1396,7 +1402,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         highest_block,
                     )?,
                 StaticFileSegment::Receipts => self
-                    .ensure_invariants::<_, tables::Receipts<N::Receipt>>(
+                    .ensure_invariants::<_, tables::Receipts>(
                         provider,
                         segment,
                         highest_tx,
@@ -1656,7 +1662,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                                 writer.prune_receipts(number, checkpoint_block_number)?
                             }
                             StaticFileSegment::Sidecars => {
-                                writer.prune_sidecars(number, checkpoint_block_number)?
+                                writer.prune_receipts(number, checkpoint_block_number)?
                             }
                             StaticFileSegment::Headers => {
                                 unreachable!()
@@ -1691,7 +1697,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     ///
     /// If there is nothing on disk for the given segment, this will return [`None`].
     pub fn get_lowest_range(&self, segment: StaticFileSegment) -> Option<SegmentRangeInclusive> {
-        self.indexes.read().get(segment).and_then(|index| index.min_block_range)
+        self.indexes.read().get(&segment).and_then(|index| index.min_block_range)
     }
 
     /// Gets the lowest static file's block range start if it exists for a static file segment.
@@ -1716,7 +1722,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     ///
     /// If there is nothing on disk for the given segment, this will return [`None`].
     pub fn get_highest_static_file_block(&self, segment: StaticFileSegment) -> Option<BlockNumber> {
-        self.indexes.read().get(segment).map(|index| index.max_block)
+        self.indexes.read().get(&segment).map(|index| index.max_block)
     }
 
     /// Gets the highest static file transaction.
@@ -1725,7 +1731,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     pub fn get_highest_static_file_tx(&self, segment: StaticFileSegment) -> Option<TxNumber> {
         self.indexes
             .read()
-            .get(segment)
+            .get(&segment)
             .and_then(|index| index.available_block_ranges_by_max_tx.as_ref())
             .and_then(|index| index.last_key_value().map(|(last_tx, _)| *last_tx))
     }
@@ -1748,7 +1754,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         func: impl Fn(StaticFileJarProvider<'_, N>) -> ProviderResult<Option<T>>,
     ) -> ProviderResult<Option<T>> {
         if let Some(ranges) =
-            self.indexes.read().get(segment).map(|index| &index.expected_block_ranges_by_max_block)
+            self.indexes.read().get(&segment).map(|index| &index.expected_block_ranges_by_max_block)
         {
             // Iterate through all ranges in reverse order (highest to lowest)
             for range in ranges.values().rev() {
@@ -2612,17 +2618,17 @@ impl<N: NodePrimitives> StatsReader for StaticFileProvider<N> {
     fn count_entries<T: Table>(&self) -> ProviderResult<usize> {
         match T::NAME {
             tables::CanonicalHeaders::NAME |
-            tables::Headers::<Header>::NAME |
+            tables::Headers::NAME |
             tables::HeaderTerminalDifficulties::NAME => Ok(self
                 .get_highest_static_file_block(StaticFileSegment::Headers)
                 .map(|block| block + 1)
                 .unwrap_or_default()
                 as usize),
-            tables::Receipts::<Receipt>::NAME => Ok(self
+            tables::Receipts::NAME => Ok(self
                 .get_highest_static_file_tx(StaticFileSegment::Receipts)
                 .map(|receipts| receipts + 1)
                 .unwrap_or_default() as usize),
-            tables::Transactions::<TransactionSigned>::NAME => Ok(self
+            tables::Transactions::NAME => Ok(self
                 .get_highest_static_file_tx(StaticFileSegment::Transactions)
                 .map(|txs| txs + 1)
                 .unwrap_or_default()
