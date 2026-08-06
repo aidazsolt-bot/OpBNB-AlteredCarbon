@@ -421,6 +421,121 @@ impl<T> From<(BlockExecutionOutput<T>, BlockNumber)> for ExecutionOutcome<T> {
     }
 }
 
+#[cfg(feature = "serde-bincode-compat")]
+pub(super) mod serde_bincode_compat {
+    use alloc::{borrow::Cow, vec::Vec};
+    use alloy_eips::eip7685::Requests;
+    use alloy_primitives::BlockNumber;
+    use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
+    use revm::database::BundleState;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
+
+    /// Bincode-compatible [`super::ExecutionOutcome`] serde implementation.
+    ///
+    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
+    /// ```rust
+    /// use reth_execution_types::{serde_bincode_compat, ExecutionOutcome};
+    /// ///
+    /// use reth_primitives_traits::serde_bincode_compat::SerdeBincodeCompat;
+    /// use serde::{Deserialize, Serialize};
+    /// use serde_with::serde_as;
+    ///
+    /// #[serde_as]
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Data<T: SerdeBincodeCompat + core::fmt::Debug> {
+    ///     #[serde_as(as = "serde_bincode_compat::ExecutionOutcome<'_, T>")]
+    ///     chain: ExecutionOutcome<T>,
+    /// }
+    /// ```
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct ExecutionOutcome<'a, T>
+    where
+        T: SerdeBincodeCompat + core::fmt::Debug,
+    {
+        bundle: Cow<'a, BundleState>,
+        receipts: Vec<Vec<T::BincodeRepr<'a>>>,
+        first_block: BlockNumber,
+        requests: Cow<'a, Vec<Requests>>,
+    }
+
+    impl<'a, T> From<&'a super::ExecutionOutcome<T>> for ExecutionOutcome<'a, T>
+    where
+        T: SerdeBincodeCompat + core::fmt::Debug,
+    {
+        fn from(value: &'a super::ExecutionOutcome<T>) -> Self {
+            ExecutionOutcome {
+                bundle: Cow::Borrowed(&value.bundle),
+                receipts: value
+                    .receipts
+                    .iter()
+                    .map(|vec| vec.iter().map(|receipt| T::as_repr(receipt)).collect())
+                    .collect(),
+                first_block: value.first_block,
+                requests: Cow::Borrowed(&value.requests),
+            }
+        }
+    }
+
+    impl<'a, T> From<ExecutionOutcome<'a, T>> for super::ExecutionOutcome<T>
+    where
+        T: SerdeBincodeCompat + core::fmt::Debug,
+    {
+        fn from(value: ExecutionOutcome<'a, T>) -> Self {
+            Self {
+                bundle: value.bundle.into_owned(),
+                receipts: value
+                    .receipts
+                    .into_iter()
+                    .map(|vec| vec.into_iter().map(|receipt| T::from_repr(receipt)).collect())
+                    .collect(),
+                first_block: value.first_block,
+                requests: value.requests.into_owned(),
+                snapshots: Vec::new(),
+            }
+        }
+    }
+
+    impl<T> SerializeAs<super::ExecutionOutcome<T>> for ExecutionOutcome<'_, T>
+    where
+        T: SerdeBincodeCompat + core::fmt::Debug,
+    {
+        fn serialize_as<S>(
+            source: &super::ExecutionOutcome<T>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            ExecutionOutcome::from(source).serialize(serializer)
+        }
+    }
+
+    impl<'de, T> DeserializeAs<'de, super::ExecutionOutcome<T>> for ExecutionOutcome<'de, T>
+    where
+        T: SerdeBincodeCompat + core::fmt::Debug,
+    {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::ExecutionOutcome<T>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            ExecutionOutcome::deserialize(deserializer).map(Into::into)
+        }
+    }
+
+    impl<T: SerdeBincodeCompat + core::fmt::Debug> SerdeBincodeCompat for super::ExecutionOutcome<T> {
+        type BincodeRepr<'a> = ExecutionOutcome<'a, T>;
+
+        fn as_repr(&self) -> Self::BincodeRepr<'_> {
+            self.into()
+        }
+
+        fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
+            repr.into()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
