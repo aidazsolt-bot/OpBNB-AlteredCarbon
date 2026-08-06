@@ -8,19 +8,20 @@ use reth_codecs::{add_arbitrary_tests, Compact};
 use revm::{bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable}, state::AccountInfo};
 use serde::{Deserialize, Serialize};
 
-/// Identifier for [`LegacyRaw`](RevmBytecode::LegacyRaw).
+/// Identifier for legacy raw bytecode (stored without jump-table analysis).
 const LEGACY_RAW_BYTECODE_ID: u8 = 0;
 
 /// Identifier for removed bytecode variant.
 const REMOVED_BYTECODE_ID: u8 = 1;
 
-/// Identifier for [`LegacyAnalyzed`](RevmBytecode::LegacyAnalyzed).
+/// Identifier for [`LegacyAnalyzed`](revm::bytecode::BytecodeKind::LegacyAnalyzed) bytecode.
 const LEGACY_ANALYZED_BYTECODE_ID: u8 = 2;
 
-/// Identifier for [`Eof`](RevmBytecode::Eof).
+/// Identifier for the (now-removed) EOF bytecode variant. Kept for backwards-compatible decoding
+/// of old database entries.
 const EOF_BYTECODE_ID: u8 = 3;
 
-/// Identifier for [`Eip7702`](RevmBytecode::Eip7702).
+/// Identifier for [`Eip7702`](revm::bytecode::BytecodeKind::Eip7702) bytecode.
 const EIP7702_BYTECODE_ID: u8 = 4;
 
 /// An Ethereum account.
@@ -89,35 +90,20 @@ impl Compact for Bytecode {
     where
         B: bytes::BufMut + AsMut<[u8]>,
     {
-        let bytecode = match &self.0 {
-            RevmBytecode::LegacyRaw(bytes) => bytes,
-            RevmBytecode::LegacyAnalyzed(analyzed) => analyzed.bytecode(),
-            RevmBytecode::Eof(eof) => eof.raw(),
-            RevmBytecode::Eip7702(eip7702) => eip7702.raw(),
-        };
+        let bytecode = if self.0.is_eip7702() { self.0.bytes() } else { self.0.original_bytes() };
         buf.put_u32(bytecode.len() as u32);
         buf.put_slice(bytecode.as_ref());
-        let len = match &self.0 {
-            RevmBytecode::LegacyRaw(_) => {
-                buf.put_u8(LEGACY_RAW_BYTECODE_ID);
-                1
-            }
-            // [`REMOVED_BYTECODE_ID`] has been removed.
-            RevmBytecode::LegacyAnalyzed(analyzed) => {
-                buf.put_u8(LEGACY_ANALYZED_BYTECODE_ID);
-                buf.put_u64(analyzed.original_len() as u64);
-                let map = analyzed.jump_table().as_slice();
-                buf.put_slice(map);
-                1 + 8 + map.len()
-            }
-            RevmBytecode::Eof(_) => {
-                buf.put_u8(EOF_BYTECODE_ID);
-                1
-            }
-            RevmBytecode::Eip7702(_) => {
-                buf.put_u8(EIP7702_BYTECODE_ID);
-                1
-            }
+        let len = if self.0.is_eip7702() {
+            buf.put_u8(EIP7702_BYTECODE_ID);
+            1
+        } else {
+            // Legacy analyzed bytecode.
+            buf.put_u8(LEGACY_ANALYZED_BYTECODE_ID);
+            let original_len = bytecode.len() as u64;
+            buf.put_u64(original_len);
+            let map = self.0.legacy_jump_table().map(|jt| jt.as_slice()).unwrap_or(&[]);
+            buf.put_slice(map);
+            1 + 8 + map.len()
         };
         len + bytecode.len() + 4
     }
@@ -135,13 +121,10 @@ impl Compact for Bytecode {
             REMOVED_BYTECODE_ID => {
                 unreachable!("Junk data in database: checked Bytecode variant was removed")
             }
-            LEGACY_ANALYZED_BYTECODE_ID => Self(unsafe {
-                RevmBytecode::new_analyzed(
-                    bytes,
-                    buf.read_u64::<BigEndian>().unwrap() as usize,
-                    JumpTable::from_slice(buf),
-                )
-            }),
+            LEGACY_ANALYZED_BYTECODE_ID => {
+                let original_len = buf.read_u64::<BigEndian>().unwrap() as usize;
+                Self(unsafe { RevmBytecode::new_analyzed(bytes, original_len, JumpTable::from_slice(buf, original_len)) })
+            }
             EOF_BYTECODE_ID | EIP7702_BYTECODE_ID => {
                 // EOF and EIP-7702 bytecode objects will be decoded from the raw bytecode
                 Self(RevmBytecode::new_raw(bytes))
@@ -180,6 +163,7 @@ impl From<Account> for AccountInfo {
             nonce: reth_acc.nonce,
             code_hash: reth_acc.bytecode_hash.unwrap_or(KECCAK_EMPTY),
             code: None,
+            account_id: None,
         }
     }
 }
