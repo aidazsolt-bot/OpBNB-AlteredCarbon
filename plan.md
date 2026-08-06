@@ -514,3 +514,50 @@ einen eigenen, breiteren Portierungs-Task gegen die v2.4.1-Prune-Architektur.
 2. Danach `reth-db-common`, `reth-trie-parallel`.
 3. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker
    identifizieren.
+
+## Session-Fortsetzung: rpc-traits-Vendoring, writer-Modul-Wiederherstellung, prune/db-common
+
+**Commits dieser Runde:**
+- `b8891d6da` — rpc-traits vendored als lokales Workspace-Member (crates/rpc/rpc-traits/),
+  SealedHeaderFor/TransactionMeta-Exports, try_recover()-Default-Methode,
+  ExecutionOutcome/Chain bincode-compat vereinfacht.
+- `9cbedc78f`, `14ca866da` — Doku-Updates.
+- `44b0e41fa` — reth-static-file auf v2.4.1-Receipts-only-Segmentmodell portiert
+  (Agent-Arbeit, verifiziert vor Commit).
+- `6f8e21394` — reth-prune/-types erster Portierungs-Durchgang (Agent-Arbeit),
+  reth-prune-types wurde grün, reth-prune selbst blieb transitiv durch
+  reth-provider-Fehler blockiert.
+- `faa534b33` — reth-provider writer-Modul auf v2.4.1-Architektur restauriert (Agent-Arbeit):
+  `UnifiedStorageWriter` existiert in v2.4.1 weiterhin als eigener Typ in
+  `crates/storage/provider/src/writer/mod.rs` (keine Verschiebung nach `DatabaseProvider`,
+  wie zunächst vermutet) — die Datei war nach dem Merge nur unvollständig wiederhergestellt
+  (deklarierte `mod database;`/`mod static_file;` auf nicht existente Dateien). Agent hat sie
+  gegen v2.4.1 neu aufgebaut inkl. Parlia-Snapshot/Sidecar-Handling.
+- `6519c8d12` — Eigene Fertigstellung: `pub mod writer;` in provider/lib.rs ergänzt,
+  db-common/init.rs vollständig auf v2.4.1 portiert (`StateChangeWriter`→`StateWriter`,
+  `UnifiedStorageWriter::commit_unwind`→`provider_rw.commit()`, `UnifiedStorageWriter::
+  from_database(&p).write_state(...)`→`provider.write_state(...)` direkt, HashMap-Typen auf
+  `alloy_primitives::map::HashMap` umgestellt wegen BundleStateInit/RevertsInit-Kompatibilität,
+  `StaticFileProvider`/`insert_genesis_header` generisch über `N: NodePrimitives` gemacht,
+  `header.difficulty`/`.state_root` auf Methodenaufrufe (`alloy_consensus::BlockHeader`-Trait)
+  umgestellt, `StateRootComputer::from_tx` über vollqualifizierte `DatabaseStateRoot`-Trait-
+  Syntax mit `LegacyKeyAdapter` aufgerufen). Zusätzlich `PruneSegment::Sidecars`-Variante
+  (BSC/opBNB-Blob-Sidecar-Pruning) wieder ergänzt, die der Prune-Port-Agent beim Angleichen
+  an Upstream fälschlich entfernt hatte (angehängt ans Enum-Ende gemäß Stabilitätsvertrag).
+
+**Verifiziert grün:** reth-rpc-convert, reth-evm-ethereum, reth-chain-state,
+reth-execution-types, reth-exex-types, reth-rpc-traits (vendored), reth-static-file,
+reth-prune-types, reth-provider, **reth-db-common** (neu).
+
+**Noch offen / delegiert:** reth-prune (tiefere API-Drift: PruneLimiter-Reexport,
+Pruner::new/new_with_factory-Signaturen, PrunedSegmentInfo, RocksDBProviderFactory-Bounds,
+AccountChangeSets-Static-File-Segment-Schicksal, Batch-API in account_history.rs) und
+reth-trie-parallel (Cargo.toml stark veraltet: fehlende crossbeam-channel/reth-tasks/
+reth-storage-api/alloy-evm/revm-Deps, Quellcode nutzt bereits neuere APIs) — beide an
+Background-Agent `port-prune-trieparallel-v2-4-1` delegiert, Ergebnis steht noch aus.
+
+**Nächste Schritte:**
+1. Agent-Ergebnis für reth-prune/reth-trie-parallel abwarten, verifizieren, committen.
+2. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker-Cluster
+   identifizieren.
+3. Iterieren bis reth-bsc-node grün.
