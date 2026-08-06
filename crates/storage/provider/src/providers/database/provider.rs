@@ -1493,15 +1493,6 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         Ok(changesets)
     }
 
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
-        // check if account changesets are in static files, otherwise just count the changeset
-        // entries in the DB
-        if self.cached_storage_settings().account_changesets_in_static_files {
-            self.static_file_provider.account_changeset_count()
-        } else {
-            Ok(self.tx.entries::<tables::AccountChangeSets>()?)
-        }
-    }
 }
 
 impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderSyncGapProvider
@@ -1566,31 +1557,6 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderProvider for DatabasePro
             num,
             |static_file| static_file.header_by_number(num),
             || Ok(self.tx.get::<tables::Headers<Self::Header>>(num)?),
-        )
-    }
-
-    fn header_td(&self, block_hash: &BlockHash) -> ProviderResult<Option<U256>> {
-        if let Some(num) = self.block_number(*block_hash)? {
-            self.header_td_by_number(num)
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn header_td_by_number(&self, number: BlockNumber) -> ProviderResult<Option<U256>> {
-        if self.chain_spec.is_paris_active_at_block(number) &&
-            let Some(td) = self.chain_spec.final_paris_total_difficulty()
-        {
-            // if this block is higher than the final paris(merge) block, return the final paris
-            // difficulty
-            return Ok(Some(td));
-        }
-
-        self.static_file_provider.get_with_static_file_or_database(
-            StaticFileSegment::Headers,
-            number,
-            |static_file| static_file.header_td_by_number(number),
-            || Ok(self.tx.get::<tables::HeaderTerminalDifficulties>(number)?.map(|td| td.0)),
         )
     }
 
@@ -2801,81 +2767,6 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> TrieWriter for DatabaseProvider
     ///
     /// Returns the number of keys written.
     #[instrument(level = "debug", target = "providers::db", skip_all)]
-    fn write_trie_changesets(
-        &self,
-        block_number: BlockNumber,
-        trie_updates: &TrieUpdatesSorted,
-        updates_overlay: Option<&TrieUpdatesSorted>,
-    ) -> ProviderResult<usize> {
-        let mut num_entries = 0;
-
-        let mut changeset_cursor =
-            self.tx_ref().cursor_dup_write::<tables::AccountsTrieChangeSets>()?;
-        let curr_values_cursor = self.tx_ref().cursor_read::<tables::AccountsTrie>()?;
-
-        // Wrap the cursor in DatabaseAccountTrieCursor
-        let mut db_account_cursor = DatabaseAccountTrieCursor::new(curr_values_cursor);
-
-        // Create empty TrieUpdatesSorted for when updates_overlay is None
-        let empty_updates = TrieUpdatesSorted::default();
-        let overlay = updates_overlay.unwrap_or(&empty_updates);
-
-        // Wrap the cursor in InMemoryTrieCursor with the overlay
-        let mut in_memory_account_cursor =
-            InMemoryTrieCursor::new_account(&mut db_account_cursor, overlay);
-
-        for (path, _) in trie_updates.account_nodes_ref() {
-            num_entries += 1;
-            let node = in_memory_account_cursor.seek_exact(*path)?.map(|(_, node)| node);
-            changeset_cursor.append_dup(
-                block_number,
-                TrieChangeSetsEntry { nibbles: StoredNibblesSubKey(*path), node },
-            )?;
-        }
-
-        let mut storage_updates = trie_updates.storage_tries_ref().iter().collect::<Vec<_>>();
-        storage_updates.sort_unstable_by(|a, b| a.0.cmp(b.0));
-
-        num_entries += self.write_storage_trie_changesets(
-            block_number,
-            storage_updates.into_iter(),
-            updates_overlay,
-        )?;
-
-        Ok(num_entries)
-    }
-
-    fn clear_trie_changesets(&self) -> ProviderResult<()> {
-        let tx = self.tx_ref();
-        tx.clear::<tables::AccountsTrieChangeSets>()?;
-        tx.clear::<tables::StoragesTrieChangeSets>()?;
-        Ok(())
-    }
-
-    fn clear_trie_changesets_from(&self, from: BlockNumber) -> ProviderResult<()> {
-        let tx = self.tx_ref();
-        {
-            let range = from..;
-            let mut cursor = tx.cursor_dup_write::<tables::AccountsTrieChangeSets>()?;
-            let mut walker = cursor.walk_range(range)?;
-
-            while walker.next().transpose()?.is_some() {
-                walker.delete_current()?;
-            }
-        }
-
-        {
-            let range: RangeFrom<BlockNumberHashedAddress> = (from, B256::ZERO).into()..;
-            let mut cursor = tx.cursor_dup_write::<tables::StoragesTrieChangeSets>()?;
-            let mut walker = cursor.walk_range(range)?;
-
-            while walker.next().transpose()?.is_some() {
-                walker.delete_current()?;
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseProvider<TX, N> {
@@ -2917,67 +2808,6 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseP
     /// `write_storage_trie_updates` with the same set of `StorageTrieUpdates`.
     ///
     /// Returns the number of keys written.
-    fn write_storage_trie_changesets<'a>(
-        &self,
-        block_number: BlockNumber,
-        storage_tries: impl Iterator<Item = (&'a B256, &'a StorageTrieUpdatesSorted)>,
-        updates_overlay: Option<&TrieUpdatesSorted>,
-    ) -> ProviderResult<usize> {
-        let mut num_written = 0;
-
-        let mut changeset_cursor =
-            self.tx_ref().cursor_dup_write::<tables::StoragesTrieChangeSets>()?;
-        let curr_values_cursor = self.tx_ref().cursor_dup_read::<tables::StoragesTrie>()?;
-
-        // Wrap the cursor in DatabaseStorageTrieCursor
-        let mut db_storage_cursor = DatabaseStorageTrieCursor::new(
-            curr_values_cursor,
-            B256::default(), // Will be set per iteration
-        );
-
-        // Create empty TrieUpdatesSorted for when updates_overlay is None
-        let empty_updates = TrieUpdatesSorted::default();
-
-        for (hashed_address, storage_trie_updates) in storage_tries {
-            let changeset_key = BlockNumberHashedAddress((block_number, *hashed_address));
-
-            // Update the hashed address for the cursor
-            db_storage_cursor.set_hashed_address(*hashed_address);
-
-            // Get the overlay updates, or use empty updates
-            let overlay = updates_overlay.unwrap_or(&empty_updates);
-
-            // Wrap the cursor in InMemoryTrieCursor with the overlay
-            let mut in_memory_storage_cursor =
-                InMemoryTrieCursor::new_storage(&mut db_storage_cursor, overlay, *hashed_address);
-
-            let changed_paths = storage_trie_updates.storage_nodes.iter().map(|e| e.0);
-
-            if storage_trie_updates.is_deleted() {
-                let all_nodes = TrieCursorIter::new(&mut in_memory_storage_cursor);
-
-                for wiped in storage_trie_wiped_changeset_iter(changed_paths, all_nodes)? {
-                    let (path, node) = wiped?;
-                    num_written += 1;
-                    changeset_cursor.append_dup(
-                        changeset_key,
-                        TrieChangeSetsEntry { nibbles: StoredNibblesSubKey(path), node },
-                    )?;
-                }
-            } else {
-                for path in changed_paths {
-                    let node = in_memory_storage_cursor.seek_exact(path)?.map(|(_, node)| node);
-                    num_written += 1;
-                    changeset_cursor.append_dup(
-                        changeset_key,
-                        TrieChangeSetsEntry { nibbles: StoredNibblesSubKey(path), node },
-                    )?;
-                }
-            }
-        }
-
-        Ok(num_written)
-    }
 }
 
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvider<TX, N> {
