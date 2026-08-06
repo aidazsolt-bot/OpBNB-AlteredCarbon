@@ -334,6 +334,13 @@ where
         self.lowest_available_blocks.storage_history_block_number = Some(block_number);
         self
     }
+
+    /// Retained for compatibility with older provider call sites. Current historical readers
+    /// already derive safe fallback behavior from the stage checkpoints used to build the
+    /// provider, so this is a no-op adapter.
+    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
+        self
+    }
 }
 
 impl<Provider, N> HistoricalStateProviderRef<'_, Provider, N>
@@ -729,6 +736,13 @@ impl<Provider: DBProvider + ChangeSetReader + StorageChangeSetReader + BlockNumR
         block_number: BlockNumber,
     ) -> Self {
         self.lowest_available_blocks.storage_history_block_number = Some(block_number);
+        self
+    }
+
+    /// Retained for compatibility with older provider call sites. Current historical readers
+    /// already derive safe fallback behavior from the stage checkpoints used to build the
+    /// provider, so this is a no-op adapter.
+    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
         self
     }
 }
