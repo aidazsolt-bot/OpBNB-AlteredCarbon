@@ -7,7 +7,7 @@ use alloy_primitives::{B256, U256};
 use core::fmt::{Debug, Display};
 use reth_ethereum_forks::EthereumHardforks;
 use reth_network_peers::NodeRecord;
-use reth_primitives_traits::{AlloyBlockHeader, BlockHeader};
+use reth_primitives_traits::BlockHeader;
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -77,7 +77,7 @@ pub trait EthChainSpec: Send + Sync + Unpin + Debug {
     }
 }
 
-impl<H: BlockHeader> EthChainSpec for ChainSpec<H> {
+impl<H: BlockHeader + Debug + Send + Sync + Unpin> EthChainSpec for ChainSpec<H> {
     type Header = H;
 
     fn chain(&self) -> Chain {
