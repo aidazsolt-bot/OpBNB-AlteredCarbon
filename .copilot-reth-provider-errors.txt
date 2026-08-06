@@ -1,0 +1,356 @@
+error[E0425]: cannot find type `PipelineConsistency` in this scope
+   --> crates/storage/provider/src/providers/database/provider.rs:240:60
+    |
+240 |     fn build_pipeline_consistency(&self) -> ProviderResult<PipelineConsistency> {
+--
+error[E0422]: cannot find struct, variant or union type `PipelineConsistency` in this scope
+   --> crates/storage/provider/src/providers/database/provider.rs:246:12
+    |
+246 |         Ok(PipelineConsistency { execution_tip, account_history_tip, storage_history_tip })
+--
+error[E0277]: the trait bound `HashMap<StaticFileSegment, u64>: Deref` is not satisfied
+   --> crates/storage/provider/src/providers/static_file/manager.rs:169:20
+    |
+169 |         segments: &<StaticFileMap<u64> as Deref>::Target,
+--
+error[E0599]: no method named `upsert_account_history` found for enum `either_writer::EitherWriter<'a, CURSOR, N>` in the current scope
+   --> crates/storage/provider/src/init.rs:108:20
+    |
+108 |             writer.upsert_account_history(ShardedKey::last(*addr), &list)?;
+--
+error[E0599]: no method named `upsert_storage_history` found for enum `either_writer::EitherWriter<'a, CURSOR, N>` in the current scope
+   --> crates/storage/provider/src/init.rs:136:28
+    |
+136 |                     writer.upsert_storage_history(StorageShardedKey::last(*addr, *key), &list)?;
+--
+error[E0599]: no method named `snapshot` found for struct `RocksDBProvider` in the current scope
+  --> crates/storage/provider/src/traits/rocksdb_provider.rs:48:36
+   |
+48 |             let snapshot = rocksdb.snapshot();
+--
+error[E0308]: mismatched types
+  --> crates/storage/provider/src/traits/rocksdb_provider.rs:51:11
+   |
+51 |         f(None)
+--
+error[E0599]: no method named `batch` found for struct `RocksDBProvider` in the current scope
+  --> crates/storage/provider/src/traits/rocksdb_provider.rs:62:29
+   |
+62 |         let batch = rocksdb.batch();
+--
+error[E0599]: no method named `batch_with_auto_commit` found for struct `RocksDBProvider` in the current scope
+  --> crates/storage/provider/src/traits/rocksdb_provider.rs:80:29
+   |
+80 |         let batch = rocksdb.batch_with_auto_commit();
+--
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> crates/storage/provider/src/providers/database/provider.rs:273:34
+    |
+273 |         let mut state_provider = HistoricalStateProviderRef::new(self, block_number)
+--
+error[E0599]: no method named `with_pipeline_consistency` found for struct `HistoricalStateProviderRef<'b, Provider, N>` in the current scope
+   --> crates/storage/provider/src/providers/database/provider.rs:274:14
+    |
+273 |           let mut state_provider = HistoricalStateProviderRef::new(self, block_number)
+--
+error[E0277]: the trait bound `<<N as NodeTypes>::Primitives as NodePrimitives>::Receipt: Compact` is not satisfied
+   --> crates/storage/provider/src/providers/database/provider.rs:512:29
+    |
+512 |                 sf_provider.write_blocks_data(&blocks, &tx_nums, sf_ctx)?;
+--
+error[E0599]: the method `tx_hash` exists for reference `&<<N as NodeTypes>::Primitives as NodePrimitives>::SignedTx`, but its trait bounds were not satisfied
+   --> crates/storage/provider/src/providers/database/provider.rs:541:58
+    |
+541 |                         all_tx_hashes.push((*transaction.tx_hash(), tx_num));
+--
+error[E0609]: no field `difflayer` on type `&ExecutedBlock<<N as NodeTypes>::Primitives>`
+   --> crates/storage/provider/src/providers/database/provider.rs:603:60
+    |
+603 |                         if let Some(ref difflayer) = block.difflayer {
+--
+error[E0599]: no method named `to_triedb_hashed_post_state` found for struct `Arc<HashedPostStateSorted>` in the current scope
+   --> crates/storage/provider/src/providers/database/provider.rs:630:63
+    |
+630 | ...                   trie_data.sorted.hashed_state.to_triedb_hashed_post_state();
+--
+error[E0277]: the trait bound `&TrieUpdatesSorted: std::convert::From<TrieUpdatesSorted>` is not satisfied
+   --> crates/storage/provider/src/providers/database/provider.rs:710:21
+    |
+710 |                     TrieUpdatesSorted::merge_batch(arcs.iter().map(|arc| arc.as_ref()))
+--
+error[E0308]: `if` and `else` have incompatible types
+   --> crates/storage/provider/src/providers/database/provider.rs:710:21
+    |
+690 |                    } else if num_blocks < MERGE_BATCH_THRESHOLD {
+--
+error[E0599]: no method named `clear_trie_changesets_from` found for reference `&providers::database::provider::DatabaseProvider<TX, N>` in the current scope
+   --> crates/storage/provider/src/providers/database/provider.rs:866:18
+    |
+866 |             self.clear_trie_changesets_from(from)?;
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+   --> crates/storage/provider/src/providers/database/provider.rs:879:31
+    |
+879 |         self.remove::<tables::Receipts<ReceiptTy<N>>>(from_tx..)?;
+--
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> crates/storage/provider/src/providers/database/provider.rs:923:34
+    |
+923 |         let mut state_provider = HistoricalStateProvider::new(self, block_number)
+--
+error[E0599]: no method named `with_pipeline_consistency` found for struct `HistoricalStateProvider<Provider>` in the current scope
+   --> crates/storage/provider/src/providers/database/provider.rs:924:14
+    |
+923 |           let mut state_provider = HistoricalStateProvider::new(self, block_number)
+--
+error[E0599]: no method named `clone` found for type parameter `H` in the current scope
+    --> crates/storage/provider/src/providers/database/provider.rs:1103:51
+     |
+1070 |     fn recovered_block<H, HF, B, BF>(
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:1162:68
+     |
+1159 |             inputs.push((header.clone().into(), transactions));
+--
+error[E0599]: no method named `recover_signer_unchecked` found for reference `&<<N as NodeTypes>::Primitives as NodePrimitives>::SignedTx` in the current scope
+    --> crates/storage/provider/src/providers/database/provider.rs:1204:45
+     |
+1204 | ...                   let sender = tx.recover_signer_unchecked()?;
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:1465:51
+     |
+1461 |         range: impl RangeBounds<BlockNumber>,
+--
+error[E0308]: `?` operator has incompatible types
+    --> crates/storage/provider/src/providers/database/provider.rs:1605:19
+     |
+1605 |             || Ok(self.tx.get::<tables::Headers>(num)?),
+--
+error[E0277]: the trait bound `<... as NodePrimitives>::BlockHeader: From<...>` is not satisfied
+    --> crates/storage/provider/src/providers/database/provider.rs:1817:14
+     |
+1817 |         self.block_with_senders_range(
+--
+error[E0599]: no method named `with_rocksdb_tx` found for reference `&providers::database::provider::DatabaseProvider<TX, N>` in the current scope
+    --> crates/storage/provider/src/providers/database/provider.rs:1855:14
+     |
+1855 |         self.with_rocksdb_tx(|tx_ref| {
+--
+error[E0308]: `?` operator has incompatible types
+    --> crates/storage/provider/src/providers/database/provider.rs:1985:19
+     |
+1985 |             || Ok(self.tx.get::<tables::Receipts>(id)?),
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:2022:24
+     |
+2022 |             |range, _| self.cursor_read_collect::<tables::Receipts>(range),
+--
+error[E0599]: the method `append_receipt` exists for enum `EitherWriter<'_, <TX as DbTxMut>::CursorMut<Receipts>, ...>`, but its trait bounds were not satisfied
+    --> crates/storage/provider/src/providers/database/provider.rs:2330:33
+     |
+2330 |                 receipts_writer.append_receipt(receipt_idx, receipt)?;
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:2438:59
+     |
+2438 |             bytecodes_cursor.upsert(hash, &Bytecode::from(bytecode))?;
+--
+error[E0277]: a value of type `Vec<(u64, <<N as NodeTypes>::Primitives as NodePrimitives>::Receipt)>` cannot be built from an iterator over elements of type `(u64, EthereumReceipt)`
+    --> crates/storage/provider/src/providers/database/provider.rs:2732:26
+     |
+2732 |                         .collect()
+--
+error[E0283]: type annotations needed for `DatabaseStorageTrieCursor<<TX as DbTxMut>::DupCursorMut<reth_db::StoragesTrie>, _>`
+    --> crates/storage/provider/src/providers/database/provider.rs:2834:17
+     |
+2834 |             let mut db_storage_trie_cursor =
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:2945:51
+     |
+2940 |         range: impl RangeBounds<BlockNumber>,
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/database/provider.rs:3094:51
+     |
+3089 |         range: impl RangeBounds<BlockNumber>,
+--
+error[E0560]: struct `BlockExecutionOutput<_>` has no field named `result`
+    --> crates/storage/provider/src/providers/database/provider.rs:3191:17
+     |
+3191 |                 result: BlockExecutionResult {
+--
+error[E0277]: the trait bound `<<N as NodeTypes>::Primitives as NodePrimitives>::SignedTx: Compact` is not satisfied
+    --> crates/storage/provider/src/providers/database/provider.rs:3250:27
+     |
+3250 |                 tx_writer.append_transaction(next_tx_num, transaction)?;
+--
+error[E0599]: no variant, associated function, or constant named `variants` found for enum `PruneSegment` in the current scope
+    --> crates/storage/provider/src/providers/database/provider.rs:3425:26
+     |
+3425 |         Ok(PruneSegment::variants()
+--
+error[E0599]: no associated function or constant named `legacy` found for struct `StorageSettings` in the current scope
+   --> crates/storage/provider/src/providers/database/mod.rs:101:48
+    |
+101 |         let legacy_settings = StorageSettings::legacy();
+--
+error[E0277]: the trait bound `HashMap<StaticFileSegment, u64>: Deref` is not satisfied
+   --> crates/storage/provider/src/providers/static_file/manager.rs:169:19
+    |
+169 |         segments: &<StaticFileMap<u64> as Deref>::Target,
+--
+error[E0614]: type `HashMap<StaticFileSegment, u64>` cannot be dereferenced
+   --> crates/storage/provider/src/providers/static_file/manager.rs:225:43
+    |
+225 |         for (segment, blocks_per_file) in *self.blocks_per_file {
+--
+error[E0614]: type `HashMap<StaticFileSegment, Vec<(SegmentRangeInclusive, SegmentHeader)>>` cannot be dereferenced
+   --> crates/storage/provider/src/providers/static_file/manager.rs:511:36
+    |
+511 |         for (segment, headers) in &*static_files {
+--
+error[E0277]: the trait bound `<N as NodePrimitives>::BlockHeader: Compact` is not satisfied
+   --> crates/storage/provider/src/providers/static_file/manager.rs:547:15
+    |
+547 |             w.append_header_with_td(b.header(), current_td, &b.hash())?;
+--
+error[E0277]: the trait bound `<N as NodePrimitives>::SignedTx: Compact` is not satisfied
+   --> crates/storage/provider/src/providers/static_file/manager.rs:563:19
+    |
+563 |                 w.append_transaction(first_tx + i as u64, tx)?;
+--
+error[E0599]: no method named `header_td_by_number` found for reference `&StaticFileProvider<N>` in the current scope
+   --> crates/storage/provider/src/providers/static_file/manager.rs:681:18
+    |
+681 |             self.header_td_by_number(first_block_number - 1)?.unwrap_or(U256::ZERO)
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1149:50
+     |
+1149 | ...                   index.insert(tx_end, current_block_range);
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1152:38
+     |
+1152 | ...                   Some(BTreeMap::from([(tx_end, current_block_range)]));
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1177:32
+     |
+1177 |                 indexes.remove(segment);
+--
+error[E0614]: type `HashMap<StaticFileSegment, Vec<(SegmentRangeInclusive, SegmentHeader)>>` cannot be dereferenced
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1190:36
+     |
+1190 |         for (segment, headers) in &*iter_static_files(&self.path).map_err(ProviderError::other)? {
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1232:25
+     |
+1232 |             indexes.get(StaticFileSegment::Transactions).and_then(|index| index.min_block_range)
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1373:53
+     |
+1373 |                     .ensure_invariants::<_, tables::Headers<N::BlockHeader>>(
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1380:53
+     |
+1380 |                     .ensure_invariants::<_, tables::Transactions<N::SignedTx>>(
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1394:53
+     |
+1394 |                     .ensure_invariants::<_, tables::Receipts<N::Receipt>>(
+--
+error[E0599]: no method named `prune_sidecars` found for struct `StaticFileProviderRWRefMut<'_, N>` in the current scope
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1654:40
+     |
+1654 | ...                   writer.prune_sidecars(number, checkpoint_block_number)?
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1689:33
+     |
+1689 |         self.indexes.read().get(segment).and_then(|index| index.min_block_range)
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1714:33
+     |
+1714 |         self.indexes.read().get(segment).map(|index| index.max_block)
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1723:18
+     |
+1723 |             .get(segment)
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/static_file/manager.rs:1746:37
+     |
+1746 |             self.indexes.read().get(segment).map(|index| &index.expected_block_ranges_by_max_block)
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:2610:21
+     |
+2610 |             tables::Headers::<Header>::NAME |
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:2616:21
+     |
+2616 |             tables::Receipts::<Receipt>::NAME => Ok(self
+--
+error[E0107]: struct takes 0 generic arguments but 1 generic argument was supplied
+    --> crates/storage/provider/src/providers/static_file/manager.rs:2620:21
+     |
+2620 |             tables::Transactions::<TransactionSigned>::NAME => Ok(self
+--
+error[E0308]: mismatched types
+  --> crates/storage/provider/src/providers/static_file/metrics.rs:22:23
+   |
+22 |   ...   segments: Box::new(
+--
+error[E0308]: mismatched types
+  --> crates/storage/provider/src/providers/static_file/metrics.rs:59:27
+   |
+59 |         self.segments.get(segment).expect("segment metrics should exist").size.set(size as f64);
+--
+error[E0308]: mismatched types
+  --> crates/storage/provider/src/providers/static_file/metrics.rs:60:27
+   |
+60 |         self.segments.get(segment).expect("segment metrics should exist").files.set(files as f64);
+--
+error[E0308]: mismatched types
+  --> crates/storage/provider/src/providers/static_file/metrics.rs:62:18
+   |
+62 |             .get(segment)
+--
+error[E0061]: this method takes 3 arguments but 4 arguments were supplied
+   --> crates/storage/provider/src/providers/state/historical.rs:197:20
+    |
+197 |             reader.account_history_info(
+--
+error[E0061]: this method takes 4 arguments but 5 arguments were supplied
+   --> crates/storage/provider/src/providers/state/historical.rs:225:20
+    |
+225 |             reader.storage_history_info(
+--
+error[E0599]: no method named `ommers_by_id` found for reference `&DatabaseProvider<<<N as NodeTypesWithDB>::DB as Database>::TX, N>` in the current scope
+    --> crates/storage/provider/src/providers/consistent.rs:1307:39
+     |
+1307 |             |db_provider| db_provider.ommers_by_id(id),
+--
+error[E0599]: no method named `body` found for struct `ExecutedBlock<N>` in the current scope
+    --> crates/storage/provider/src/providers/consistent.rs:1308:55
+     |
+1308 |             |block_state| Ok(Some(block_state.block().body().ommers.clone())),
+--
+error[E0308]: mismatched types
+    --> crates/storage/provider/src/providers/consistent.rs:1306:13
+     |
+1305 |         self.get_in_memory_or_storage_by_block(
+--
+error: could not compile `reth-provider` (lib) due to 71 previous errors; 25 warnings emitted
