@@ -55,6 +55,7 @@ reth-tracing = { workspace = true, features = ["std"] }
 reth-transaction-pool.workspace = true
 reth-trie-db = { workspace = true, features = ["metrics"] }
 reth-basic-payload-builder.workspace = true
+reth-beacon-consensus.workspace = true
 reth-node-ethstats.workspace = true
 
 ## ethereum

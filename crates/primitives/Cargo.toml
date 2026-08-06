@@ -18,7 +18,6 @@ reth-ethereum-forks.workspace = true
 reth-static-file-types.workspace = true
 reth-trie-common.workspace = true
 revm = { workspace = true, optional = true }
-revm-primitives = { workspace = true, features = ["serde"] }
 reth-codecs = { workspace = true, optional = true }
 
 # ethereum
@@ -28,13 +27,6 @@ alloy-rlp = { workspace = true, features = ["arrayvec"] }
 alloy-rpc-types = { workspace = true, optional = true }
 alloy-serde = { workspace = true, optional = true }
 alloy-eips = { workspace = true, features = ["serde"] }
-
-# optimism
-op-alloy-rpc-types = { workspace = true, optional = true }
-op-alloy-consensus = { workspace = true, features = [
-	"arbitrary",
-	"serde",
-], optional = true }
 
 # crypto
 secp256k1 = { workspace = true, features = [
@@ -66,7 +58,7 @@ reth-chainspec.workspace = true
 reth-codecs = { workspace = true, features = ["test-utils"] }
 reth-primitives-traits = { workspace = true, features = ["arbitrary"] }
 reth-testing-utils.workspace = true
-revm-primitives = { workspace = true, features = ["arbitrary"] }
+revm = { workspace = true, features = ["arbitrary"] }
 
 alloy-eips = { workspace = true, features = ["arbitrary"] }
 alloy-genesis.workspace = true
@@ -80,12 +72,6 @@ rand.workspace = true
 serde_json.workspace = true
 test-fuzz.workspace = true
 
-criterion.workspace = true
-pprof = { workspace = true, features = [
-	"flamegraph",
-	"frame-pointer",
-	"criterion",
-] }
 
 [features]
 default = ["c-kzg", "alloy-compat", "std", "reth-codec", "secp256k1"]
@@ -98,7 +84,7 @@ std = [
 	"alloy-serde?/std",
 	"k256/std",
 	"once_cell/std",
-	"revm-primitives/std",
+	"revm/std",
 	"secp256k1?/std",
 	"serde/std",
 	"revm?/std"
@@ -106,7 +92,7 @@ std = [
 reth-codec = ["dep:reth-codecs", "dep:zstd", "dep:modular-bitfield", "std"]
 asm-keccak = [
 	"alloy-primitives/asm-keccak",
-	"revm-primitives/asm-keccak",
+	"revm/asm-keccak",
 	"revm?/asm-keccak"
 ]
 arbitrary = [
@@ -116,7 +102,7 @@ arbitrary = [
 	"reth-codec",
 	"reth-ethereum-forks/arbitrary",
 	"reth-primitives-traits/arbitrary",
-	"revm-primitives/arbitrary",
+	"revm/arbitrary",
 	"secp256k1",
 	"reth-chainspec/arbitrary",
 	"reth-trie-common/arbitrary",
@@ -124,8 +110,6 @@ arbitrary = [
 	"alloy-primitives/arbitrary",
 	"alloy-rpc-types?/arbitrary",
 	"alloy-serde?/arbitrary",
-	"op-alloy-consensus?/arbitrary",
-	"op-alloy-rpc-types?/arbitrary",
 	"reth-codecs?/arbitrary",
 	"revm?/arbitrary"
 ]
@@ -134,12 +118,11 @@ c-kzg = [
 	"dep:c-kzg",
 	"alloy-consensus/kzg",
 	"alloy-eips/kzg",
-	"revm-primitives/c-kzg",
+	"revm/c-kzg",
 ]
 optimism = [
-	"dep:op-alloy-consensus",
 	"reth-codecs?/optimism",
-	"revm-primitives/optimism",
+	"revm/optimism",
 	"reth-chainspec/optimism",
 	"revm?/optimism"
 ]
@@ -154,7 +137,6 @@ bsc = [
 alloy-compat = [
 	"dep:alloy-rpc-types",
 	"dep:alloy-serde",
-	"dep:op-alloy-rpc-types",
 ]
 test-utils = [
 	"reth-primitives-traits/test-utils",
@@ -165,7 +147,6 @@ test-utils = [
 ]
 serde-bincode-compat = [
 	"alloy-consensus/serde-bincode-compat",
-	"op-alloy-consensus?/serde-bincode-compat",
 	"reth-primitives-traits/serde-bincode-compat",
 	"serde_with",
 	"alloy-eips/serde-bincode-compat",

@@ -7,7 +7,7 @@ use bytes::{Buf, BufMut};
 use core::mem;
 use derive_more::{Deref, DerefMut, From, IntoIterator};
 use reth_codecs::Compact;
-use revm_primitives::U256;
+use revm::primitives::U256;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(feature = "std"))]

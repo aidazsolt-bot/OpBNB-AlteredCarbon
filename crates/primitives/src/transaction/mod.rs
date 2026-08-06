@@ -61,7 +61,7 @@ use tx_type::{
 
 use alloc::vec::Vec;
 use reth_primitives_traits::SignedTransaction;
-use revm_primitives::{AuthorizationList, TxEnv};
+use revm::primitives::{AuthorizationList, TxEnv};
 
 /// Either a transaction hash or number.
 pub type TxHashOrNumber = BlockHashOrNumber;

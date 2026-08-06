@@ -2,7 +2,7 @@ use crate::{Transaction, TransactionSigned};
 use alloy_primitives::{Address, TxKind, U256};
 #[cfg(feature = "optimism")]
 use op_alloy_consensus::DepositTransaction;
-use revm_primitives::{AuthorizationList, TxEnv};
+use revm::primitives::{AuthorizationList, TxEnv};
 
 /// Implements behaviour to fill a [`TxEnv`] from another transaction.
 pub trait FillTxEnv {
@@ -101,7 +101,7 @@ impl FillTxEnv for TransactionSigned {
                 tx_env.nonce = None;
                 tx_env.authorization_list = None;
 
-                tx_env.optimism = revm_primitives::OptimismFields {
+                tx_env.optimism = revm::primitives::OptimismFields {
                     source_hash: Some(tx.source_hash),
                     mint: tx.mint,
                     is_system_transaction: Some(tx.is_system_transaction),
@@ -113,7 +113,7 @@ impl FillTxEnv for TransactionSigned {
 
         #[cfg(feature = "optimism")]
         if !self.is_deposit() {
-            tx_env.optimism = revm_primitives::OptimismFields {
+            tx_env.optimism = revm::primitives::OptimismFields {
                 source_hash: None,
                 mint: None,
                 is_system_transaction: Some(false),
