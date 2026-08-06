@@ -92,6 +92,32 @@ impl RocksDBBatch {
     pub fn delete<T: Table>(&self, _key: T::Key) -> ProviderResult<()> {
         Ok(())
     }
+
+    /// Stub: clears the batch for a given table (no-op without RocksDB).
+    pub fn clear<T: Table>(self) -> ProviderResult<crate::either_writer::RawRocksDBBatch> {
+        Ok(())
+    }
+
+    /// Stub: commits the batch and returns the raw batch type (no-op without RocksDB).
+    pub fn into_inner(self) -> crate::either_writer::RawRocksDBBatch {
+        ()
+    }
+
+    /// Stub: prunes account history in a RocksDB batch (no-op without RocksDB).
+    pub fn prune_account_history_batch(
+        &mut self,
+        _targets: &[(alloy_primitives::Address, u64)],
+    ) -> ProviderResult<PrunedIndices> {
+        Ok(PrunedIndices::default())
+    }
+
+    /// Stub: prunes storage history in a RocksDB batch (no-op without RocksDB).
+    pub fn prune_storage_history_batch(
+        &mut self,
+        _targets: &[((alloy_primitives::Address, alloy_primitives::StorageKey), u64)],
+    ) -> ProviderResult<PrunedIndices> {
+        Ok(PrunedIndices::default())
+    }
 }
 
 impl RocksReadSnapshot<'_> {

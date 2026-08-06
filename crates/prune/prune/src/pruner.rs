@@ -11,6 +11,7 @@ use reth_provider::{
     StageCheckpointReader,
 };
 use reth_prune_types::{PruneProgress, PrunedSegmentInfo, PrunerOutput};
+use reth_stages_types::StageId;
 use reth_static_file_types::{find_fixed_range, StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE};
 use reth_tokio_util::{EventSender, EventStream};
 use std::{

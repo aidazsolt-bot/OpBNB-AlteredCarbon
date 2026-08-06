@@ -57,7 +57,8 @@ where
         + StorageSettingsCache
         + ChangeSetReader
         + StorageChangeSetReader
-        + RocksDBProviderFactory,
+        + RocksDBProviderFactory
+        + Sync,
 {
     /// Creates a [`SegmentSet`] from an existing components, such as [`StaticFileProvider`] and
     /// [`PruneModes`].

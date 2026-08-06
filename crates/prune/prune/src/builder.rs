@@ -105,6 +105,7 @@ impl PrunerBuilder {
                                 + ChangeSetReader
                                 + StorageChangeSetReader
                                 + RocksDBProviderFactory
+                                + Sync
                                 + StaticFileProviderFactory<
                     Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
                 >,
@@ -144,7 +145,8 @@ impl PrunerBuilder {
             + StageCheckpointReader
             + ChangeSetReader
             + StorageChangeSetReader
-            + RocksDBProviderFactory,
+            + RocksDBProviderFactory
+            + Sync,
     {
         let segments = SegmentSet::<Provider>::from_components(static_file_provider, self.segments);
 
