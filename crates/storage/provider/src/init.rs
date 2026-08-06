@@ -4,8 +4,8 @@ use crate::{
 };
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::Address;
+use alloy_consensus::BlockHeader as _;
 use reth_chainspec::EthChainSpec;
-use reth_primitives_traits::BlockHeader;
 use reth_db::{
     models::{storage_sharded_key::StorageShardedKey, ShardedKey},
     transaction::DbTxMut,
