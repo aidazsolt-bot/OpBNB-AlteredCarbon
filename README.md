@@ -1,46 +1,48 @@
-# ‼️ IMPORTANT NOTE ‼️
+# ‼️ Project Notice — Read Before Use ‼️
 
-**BNB Reth Client: Temporary Suspension of Development**
+This repository is an **independent, personal experiment**. It is **not affiliated with, endorsed by, or
+sponsored by Binance, BNB Chain, or any related entity**, and it is **not an official BNB Chain product**.
+Any resemblance to naming used by upstream projects (e.g. "bnb-chain/reth") is retained only for historical/
+attribution purposes because this repository was originally forked from that project; it does not imply any
+ongoing relationship, support, or endorsement.
 
-We are announcing that the BNB Reth client will suspend development and maintenance. Our team has released the final maintenance version [v1.1.1](https://github.com/bnb-chain/reth/releases/tag/v1.1.1) as the last supported release.
+**Purpose of this project:** this fork exists purely to evaluate how far modern AI coding assistants ("vibe
+coding") can go in modernizing and reviving a real-world, moderately complex, previously-abandoned blockchain
+client codebase — rebasing it onto a current upstream ([paradigmxyz/reth](https://github.com/paradigmxyz/reth))
+and porting forward protocol changes from an actively maintained downstream fork. It is a technology/process
+evaluation, not a production initiative.
 
-Key Points:
-  - The final maintenance release includes stability improvements and minor bug fixes.
-  - Existing users can continue running BSC-reth and op-reth until the BSC/opBNB Pectra upgrade.
-  - The BSC Pectra upgrade is scheduled for testnet on February 21st, 2025, with mainnet upgrade expected in mid-March 2025
-
-While the Reth client will remain functional until the Pectra upgrade, we recommend users to gradually transition to other supported BSC clients, like [Geth](https://github.com/bnb-chain/bsc) and [Erigon](https://github.com/node-real/bsc-erigon). Please ensure you have the latest version installed for optimal performance during the remaining operational period.
-
-**We sincerely thank our community for their continued support throughout BNB Reth's development journey.**
-
-*January 22nd, 2025*
+**No warranty, no liability, use at your own risk.** This software is provided "AS IS", without warranty of
+any kind, express or implied, including but not limited to fitness for a particular purpose, merchantability,
+or non-infringement. The author(s) and contributors accept **no responsibility or liability whatsoever** for
+any damages, financial losses, chain-consensus incidents, data loss, or other harm arising from the use,
+misuse, or inability to use this software — whether run as a node, a library, or in any other capacity. This
+code has **not** been security-audited and should not be trusted with real funds or run against mainnet
+without independent review. If you need a supported client for BNB Smart Chain or opBNB, use one of the
+actively maintained official clients instead (see upstream project links further below).
 
 -------
 
-# BNB Chain Reth
+# reth-bsc-trail
 
 [![CI status](https://github.com/paradigmxyz/reth/workflows/unit/badge.svg)][gh-ci]
 [![cargo-deny status](https://github.com/paradigmxyz/reth/workflows/deny/badge.svg)][gh-deny]
-[![Discord Chat][discord-badge]][discord-url]
 
 [gh-ci]: https://github.com/bnb-chain/reth/actions/workflows/unit.yml
 
 [gh-deny]: https://github.com/bnb-chain/reth/actions/workflows/deny.yml
 
-[discord-badge]: https://img.shields.io/badge/discord-join%20chat-blue.svg
-
-[discord-url]: https://discord.gg/z2VpC455eU
-
-BNB Chain Reth is a blockchain client based on [Reth](https://github.com/paradigmxyz/reth/), designed to provide
-seamless support for [BNB Smart Chain(BSC)](https://github.com/bnb-chain/bsc)
-and [opBNB](https://github.com/bnb-chain/op-geth).
+This is an experimental, community/hobbyist fork of a blockchain client based on
+[Reth](https://github.com/paradigmxyz/reth/), historically providing support for
+[BNB Smart Chain (BSC)](https://github.com/bnb-chain/bsc) and [opBNB](https://github.com/bnb-chain/op-geth)
+network protocols. See the project notice above for the current status and intent of this repository.
 
 ## Build from Source
 
 For prerequisites and detailed build instructions please read
 the [Installation Instructions](https://paradigmxyz.github.io/reth/installation/source.html).
 
-With Rust and the dependencies installed, you're ready to build BNB Chain Reth. First, clone the repository:
+With Rust and the dependencies installed, you're ready to build this fork. First, clone the repository:
 
 ```shell
 git clone https://github.com/bnb-chain/reth.git
@@ -311,17 +313,57 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
 
 ## Contribution
 
-Thank you for considering helping out with the source code! We welcome contributions
-from anyone on the internet, and are grateful for even the smallest of fixes!
-
-If you'd like to contribute to bnb chain reth, please fork, fix, commit and send a pull request
-for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first
-on [our discord channel](https://discord.gg/bnbchain)
-to ensure those changes are in line with the general philosophy of the project and/or get
-some early feedback which can make both your efforts much lighter as well as our review
-and merge procedures quick and simple.
+This is a personal experimental fork, not an actively maintained community project — there is no dedicated
+support channel or roadmap. Thank you for considering helping out with the source code! Contributions
+(forks, fixes, PRs) are welcome, but please understand this is best-effort with no guaranteed review turnaround.
 
 Please see the [Developers' Guide](https://github.com/bnb-chain/reth/tree/develop/docs)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
+
+## About This Fork: Purpose, Method, and Effort Log
+
+### What this is
+
+This repository was resurrected from an archived, unmaintained state (last upstream release `v1.1.1`,
+suspended per the notice at the top of this file) as an experiment in AI-assisted ("vibecoding") software
+maintenance: rebasing a moderately large, protocol-critical Rust codebase onto a much newer upstream
+release of [paradigmxyz/reth](https://github.com/paradigmxyz/reth) (targeting `v2.4.1`), resolving the
+resulting merge conflicts, restructuring code around upstream's architectural changes (e.g. the `revm`
+41.x execution-engine rewrite, the extraction of `crates/optimism` into a separate downstream project,
+and the `blockchain-tree` → `engine-tree` migration), and porting forward opBNB-specific protocol/hardfork
+changes from [bnb-chain/opbnb](https://github.com/bnb-chain/opbnb). The explicit goal was to evaluate how
+far current-generation AI coding assistants can carry this class of work — not to produce a production-ready
+or officially supported client.
+
+### Method
+
+Work was performed interactively with an AI coding agent (GitHub Copilot CLI) across multiple sessions,
+using a mix of direct agent-driven edits and delegated background sub-agents supervising/verifying each
+other's changes (given the scale of the merge — 200+ conflicting files across the initial rebase alone).
+Progress was checkpointed via small, incrementally verified git commits rather than large unreviewed
+batches, specifically to keep the change history auditable and revertible given the semi-autonomous
+nature of the work.
+
+### Effort log (approximate, based on available session telemetry)
+
+| Metric | Value |
+| --- | --- |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days |
+| LLM models used | Claude Sonnet 5 (primary), GPT-5.4 (secondary/delegated sub-agent work) |
+| Approx. input tokens consumed (latest session alone) | ~58.7M (Claude Sonnet 5) + ~38.5M (GPT-5.4) |
+| Approx. output tokens generated (latest session alone) | ~231K (Claude Sonnet 5) + ~78K (GPT-5.4) |
+| Approx. tool/agent turns (latest session alone) | ~800 |
+| Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch for the full, itemized commit history and messages, which double as a technical changelog of what was ported, what was fixed, and why |
+
+These figures cover the most recent working session and are illustrative of the scale of context/inference
+required for this kind of large structural migration; total cumulative consumption across all sessions in
+this effort is higher. They are provided for transparency about the practical cost of AI-assisted
+maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency optimization was
+attempted.
+
+### Status disclaimer (repeated for emphasis)
+
+As stated at the top of this document: this is an unaudited, experimental fork with **no warranty and no
+liability accepted by the author(s)** for any use of this software. It is not affiliated with or endorsed
+by Binance or BNB Chain. Treat it as a research/engineering case study, not as infrastructure to depend on.
