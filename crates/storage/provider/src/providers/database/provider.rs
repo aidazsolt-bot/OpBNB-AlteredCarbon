@@ -1057,6 +1057,16 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
 }
 
 impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
+    fn convert_account_info(info: &revm_state::AccountInfo) -> reth_primitives_traits::Account {
+        let code_hash = info.code_hash;
+        reth_primitives_traits::Account {
+            balance: info.balance,
+            nonce: info.nonce,
+            bytecode_hash: (code_hash != alloy_consensus::constants::KECCAK_EMPTY)
+                .then_some(code_hash),
+        }
+    }
+
     fn recovered_block<H, HF, B, BF>(
         &self,
         id: BlockHashOrNumber,
@@ -1065,7 +1075,6 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         construct_block: BF,
     ) -> ProviderResult<Option<B>>
     where
-        H: AsRef<HeaderTy<N>>,
         HF: FnOnce(BlockNumber) -> ProviderResult<Option<H>>,
         BF: FnOnce(H, BodyTy<N>, Vec<Address>) -> ProviderResult<Option<B>>,
     {
@@ -1091,7 +1100,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         let body = self
             .storage
             .reader()
-            .read_block_bodies(self, vec![(header.as_ref(), transactions)])?
+            .read_block_bodies(self, vec![(header.clone().into(), transactions)])?
             .pop()
             .ok_or(ProviderError::InvalidStorageOutput)?;
 
@@ -1114,7 +1123,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         mut assemble_block: F,
     ) -> ProviderResult<Vec<R>>
     where
-        H: AsRef<HeaderTy<N>>,
+        H: Clone + Into<HeaderTy<N>>,
         HF: FnOnce(RangeInclusive<BlockNumber>) -> ProviderResult<Vec<H>>,
         F: FnMut(H, BodyTy<N>, Range<TxNumber>) -> ProviderResult<R>,
     {
@@ -1147,7 +1156,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
                 self.transactions_by_tx_range(tx_range.clone())?
             };
 
-            inputs.push((header.as_ref(), transactions));
+            inputs.push((header.clone().into(), transactions));
         }
 
         let bodies = self.storage.reader().read_block_bodies(self, inputs)?;
@@ -1176,7 +1185,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         assemble_block: BF,
     ) -> ProviderResult<Vec<B>>
     where
-        H: AsRef<HeaderTy<N>>,
+        H: Clone + Into<HeaderTy<N>>,
         HF: Fn(RangeInclusive<BlockNumber>) -> ProviderResult<Vec<H>>,
         BF: Fn(H, BodyTy<N>, Vec<Address>) -> ProviderResult<B>,
     {
@@ -2389,7 +2398,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
                 .into_iter()
                 .map(|(address, info)| AccountBeforeTx {
                     address,
-                    info: info.as_ref().map(reth_primitives_traits::Account::from),
+                    info: info.as_ref().map(Self::convert_account_info),
                 })
                 .collect::<Vec<_>>();
             let mut account_changesets_writer =
@@ -2415,7 +2424,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         for (address, account) in changes.accounts {
             if let Some(account) = account {
                 tracing::trace!(?address, "Updating plain state account");
-                accounts_cursor.upsert(address, &reth_primitives_traits::Account::from(&account))?;
+                accounts_cursor.upsert(address, &Self::convert_account_info(&account))?;
             } else if accounts_cursor.seek_exact(address)?.is_some() {
                 tracing::trace!(?address, "Deleting plain state account");
                 accounts_cursor.delete_current()?;
@@ -2928,12 +2937,12 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
 
     fn unwind_storage_hashing_range(
         &self,
-        range: impl RangeBounds<BlockNumberAddress>,
+        range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
-            .walk_range(range)?
+            .walk_range(BlockNumberAddress::range(range))?
             .collect::<Result<Vec<_>, _>>()?;
         self.unwind_storage_hashing(changesets.into_iter())
     }
@@ -3077,12 +3086,12 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HistoryWriter for DatabaseProvi
 
     fn unwind_storage_history_indices_range(
         &self,
-        range: impl RangeBounds<BlockNumberAddress>,
+        range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<usize> {
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
-            .walk_range(range)?
+            .walk_range(BlockNumberAddress::range(range))?
             .collect::<Result<Vec<_>, _>>()?;
         self.unwind_storage_history_indices(changesets.into_iter())
     }

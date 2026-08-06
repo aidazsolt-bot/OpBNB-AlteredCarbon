@@ -322,7 +322,10 @@ where
     CURSOR: DbCursorRW<tables::Receipts>,
 {
     /// Append a transaction receipt.
-    pub fn append_receipt(&mut self, tx_num: TxNumber, receipt: &N::Receipt) -> ProviderResult<()> {
+    pub fn append_receipt(&mut self, tx_num: TxNumber, receipt: &N::Receipt) -> ProviderResult<()>
+    where
+        N::Receipt: Compact,
+    {
         match self {
             Self::Database(cursor) => Ok(cursor.append(tx_num, receipt)?),
             Self::StaticFile(writer) => writer.append_receipt(tx_num, receipt),
