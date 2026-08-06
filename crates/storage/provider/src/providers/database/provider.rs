@@ -306,7 +306,7 @@ impl<TX, N: NodeTypes> NodePrimitivesProvider for DatabaseProvider<TX, N> {
 
 impl<TX, N: NodeTypes> StaticFileProviderFactory for DatabaseProvider<TX, N> {
     /// Returns a static file provider
-    fn static_file_provider(&self) -> StaticFileProvider<Self::Primitives> {
+    fn static_file_provider(&self) -> StaticFileProvider {
         self.static_file_provider.clone()
     }
 
@@ -314,7 +314,7 @@ impl<TX, N: NodeTypes> StaticFileProviderFactory for DatabaseProvider<TX, N> {
         &self,
         block: BlockNumber,
         segment: StaticFileSegment,
-    ) -> ProviderResult<crate::providers::StaticFileProviderRWRefMut<'_, Self::Primitives>> {
+    ) -> ProviderResult<crate::providers::StaticFileProviderRWRefMut<'_>> {
         self.static_file_provider.get_writer(block, segment)
     }
 }
@@ -328,6 +328,17 @@ impl<TX, N: NodeTypes> RocksDBProviderFactory for DatabaseProvider<TX, N> {
     #[cfg(all(unix, feature = "rocksdb"))]
     fn set_pending_rocksdb_batch(&self, batch: rocksdb::WriteBatchWithTransaction<true>) {
         self.pending_rocksdb_batches.lock().push(batch);
+    }
+
+    fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            let batches = std::mem::take(&mut *self.pending_rocksdb_batches.lock());
+            for batch in batches {
+                self.rocksdb_provider.write(batch)?;
+            }
+        }
+        Ok(())
     }
 }
 
