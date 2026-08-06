@@ -28,6 +28,13 @@ pub const EIP1559_INITIAL_BASE_FEE: u64 = 0;
 /// Minimum gas limit allowed for transactions.
 pub const MINIMUM_GAS_LIMIT: u64 = 5000;
 
+/// Maximum gas limit allowed for block.
+/// In hex this number is `0x7fffffffffffffff`
+pub const MAXIMUM_GAS_LIMIT_BLOCK: u64 = 2u64.pow(63) - 1;
+
+/// The bound divisor of the gas limit, used in update calculations.
+pub const GAS_LIMIT_BOUND_DIVISOR: u64 = 1024;
+
 /// Holesky genesis hash: `0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4`
 pub const HOLESKY_GENESIS_HASH: B256 =
     b256!("b5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4");
