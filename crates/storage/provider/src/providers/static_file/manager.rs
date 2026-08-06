@@ -166,7 +166,7 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
     /// setting.
     pub fn with_blocks_per_file_for_segments(
         mut self,
-        segments: &<StaticFileMap<u64> as Deref>::Target,
+        segments: &StaticFileMap<u64>,
     ) -> Self {
         for (segment, &blocks_per_file) in segments {
             self.blocks_per_file.insert(segment, blocks_per_file);
@@ -222,7 +222,7 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
             provider.metrics = Some(Arc::new(StaticFileProviderMetrics::default()));
         }
 
-        for (segment, blocks_per_file) in *self.blocks_per_file {
+        for (&segment, &blocks_per_file) in &self.blocks_per_file {
             provider.blocks_per_file.insert(segment, blocks_per_file);
         }
         provider.genesis_block_number = self.genesis_block_number;
@@ -508,7 +508,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let Some(metrics) = &self.metrics else { return Ok(()) };
 
         let static_files = iter_static_files(&self.path).map_err(ProviderError::other)?;
-        for (segment, headers) in &*static_files {
+        for (segment, headers) in &static_files {
             let mut entries = 0;
             let mut size = 0;
 

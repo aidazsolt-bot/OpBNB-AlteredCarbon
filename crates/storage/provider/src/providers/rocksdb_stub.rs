@@ -7,6 +7,7 @@
 use alloy_primitives::BlockNumber;
 use parking_lot::Mutex;
 use reth_db_api::models::StorageSettings;
+use reth_db_api::table::Table;
 use reth_prune_types::PruneMode;
 use reth_storage_errors::{db::LogLevel, provider::ProviderResult};
 use std::{path::Path, sync::Arc};
@@ -56,11 +57,38 @@ impl RocksDBProvider {
     ) -> ProviderResult<Option<BlockNumber>> {
         Ok(None)
     }
+
+    pub const fn snapshot(&self) -> RocksReadSnapshot<'_> {
+        RocksReadSnapshot { _marker: std::marker::PhantomData }
+    }
+
+    pub const fn batch(&self) -> RocksDBBatch {
+        RocksDBBatch
+    }
+
+    pub const fn batch_with_auto_commit(&self) -> RocksDBBatch {
+        RocksDBBatch
+    }
 }
 
 /// A stub batch writer for `RocksDB`.
 #[derive(Debug)]
 pub struct RocksDBBatch;
+
+#[derive(Debug, Clone, Copy)]
+pub struct RocksReadSnapshot<'a> {
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl RocksDBBatch {
+    pub fn put<T: Table>(&self, _key: T::Key, _value: &T::Value) -> ProviderResult<()> {
+        Ok(())
+    }
+
+    pub fn delete<T: Table>(&self, _key: T::Key) -> ProviderResult<()> {
+        Ok(())
+    }
+}
 
 /// A stub builder for `RocksDB`.
 #[derive(Debug)]
