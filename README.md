@@ -365,6 +365,50 @@ attempted.
 > **TODO:** Update this effort log once the port has been validated against live BSC/opBNB testnet (or
 > mainnet) sync, including final cumulative token/time figures and the outcome of live testing.
 
+### Side-evaluation: `kona-node` as an alternative to `op-node` for opBNB
+
+While blocked on the `crates/primitives` legacy-API remediation (see commit history), a live test of
+[`kona-node`](https://github.com/op-rs/kona) (a modern Rust rollup-node implementation, evaluated from a
+local checkout under `optimism.git/rust/kona`) was run against opBNB mainnet config, using an
+in-progress `reth` (this fork) instance as the L2 engine and public BSC RPC endpoints as the L1 source.
+
+**Outcome:** `kona-node` crashed on startup with
+`Failed to load genesis time from beacon client: Backend("HTTP request failed: error decoding response body")`
+(`kona/crates/providers/providers-alloy/src/blobs.rs:61`, `OnlineBlobProvider::init()`). Root cause: BSC does
+not expose a standard Ethereum Beacon Chain API (`bsc-dataseed.bnbchain.org` is an execution-layer JSON-RPC
+endpoint, not a beacon API), and `kona-node`'s `OnlineBlobProvider::init()` unconditionally fetches beacon
+genesis time/slot-interval via `.expect(...)`, with no non-beacon fallback in that code path. This is not a
+BSC/opBNB-specific defect in `kona-node` itself; `op-node` (Go) has the same underlying dependency on an L1
+Beacon API for blob-derivation post-Ecotone, currently disabled in `bnb-chain/opbnb`'s fork
+(`op-node/node/config.go` — the Ecotone Beacon-API-required check is commented out).
+
+**Mitigation found:** `kona-node` already ships a flag for exactly this situation:
+`--l1.slot-duration-override <seconds>` (`kona/bin/node/src/flags/engine/providers.rs`,
+`kona/crates/node/service/src/service/builder.rs`), which bypasses the initial beacon-spec fetch by supplying
+a fixed L1 slot duration instead of querying it from a beacon client. This was identified but not yet
+re-tested end-to-end (blocked on the same `reth-bsc-trail` compile blockers as the main port); a live retest
+with this flag is a recommended next validation step.
+
+**Assessment — should we switch to `kona-node`?**
+- `kona-node` is architecturally more modern (Rust, matches this project's `reth` stack, actively developed,
+  and already spec-aware up to the Isthmus/Jovian/Karst/Lagoon hardforks per its own startup log), which is
+  attractive for a project whose stated goal is evaluating modern tooling.
+- However, it is materially less proven in production than `op-node` for exotic L1s like BSC that lack a
+  genuine Beacon Chain API — the blob-provider assumption is baked in fairly deep and needs the
+  slot-duration-override workaround (or a proper "no-beacon" derivation mode) to function at all here.
+- **Recommendation:** keep `op-node` (via `bnb-chain/opbnb`) as the primary/default rollup-node for opBNB in
+  this fork for now, but track `kona-node` as a promising secondary/experimental option once the
+  slot-duration-override path is validated live. Do not switch defaults until a full derivation-to-tip sync
+  has been demonstrated against opBNB with `kona-node`.
+- Regarding upstream `reth`/`op-reth` rollup defaults: the mainline `reth-optimism-*` crates already bundle
+  the standard OP-stack hardfork schedule (Regolith through Isthmus and beyond) as of the `v2.4.1` base this
+  fork rebases onto — no separate/manual hardfork-default wiring is needed there; opBNB-specific deviations
+  (Snow/Volta/Fourier and similar) are what still needs explicit porting in this fork's BSC/opBNB crates.
+
+> **TODO:** Re-run this `kona-node` evaluation live with `--l1.slot-duration-override` once
+> `reth-bsc-trail` compiles again, and record whether it reaches a synced L2 tip against opBNB
+> mainnet/testnet, including timing and any further blockers found.
+
 ### Status disclaimer (repeated for emphasis)
 
 As stated at the top of this document: this is an unaudited, experimental fork with **no warranty and no
