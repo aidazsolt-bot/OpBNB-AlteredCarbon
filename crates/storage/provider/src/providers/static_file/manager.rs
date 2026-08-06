@@ -543,7 +543,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         w: &mut StaticFileProviderRWRefMut<'_, N>,
         blocks: &[ExecutedBlock<N>],
         starting_td: U256,
-    ) -> ProviderResult<()> {
+    ) -> ProviderResult<()>
+    where
+        N::BlockHeader: Compact,
+    {
         let mut current_td = starting_td;
         for block in blocks {
             let b = block.recovered_block();
@@ -560,7 +563,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         w: &mut StaticFileProviderRWRefMut<'_, N>,
         blocks: &[ExecutedBlock<N>],
         tx_nums: &[TxNumber],
-    ) -> ProviderResult<()> {
+    ) -> ProviderResult<()>
+    where
+        N::SignedTx: Compact,
+    {
         for (block, &first_tx) in blocks.iter().zip(tx_nums) {
             let b = block.recovered_block();
             w.increment_block(b.number())?;

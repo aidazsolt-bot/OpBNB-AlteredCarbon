@@ -1157,7 +1157,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
         assemble_block: BF,
     ) -> ProviderResult<Vec<B>>
     where
-        H: Clone + Into<HeaderTy<N>>,
+        H: AsRef<HeaderTy<N>>,
         HF: Fn(RangeInclusive<BlockNumber>) -> ProviderResult<Vec<H>>,
         BF: Fn(H, BodyTy<N>, Vec<Address>) -> ProviderResult<B>,
     {
@@ -1578,7 +1578,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderProvider for DatabasePro
             StaticFileSegment::Headers,
             num,
             |static_file| static_file.header_by_number(num),
-            || Ok(self.tx.get::<tables::Headers>(num)?.map(SealedHeader::seal_slow)),
+            || Ok(self.tx.get::<tables::Headers>(num)?.map(Into::into)),
         )
     }
 
@@ -2833,7 +2833,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> StorageTrieWriter for DatabaseP
         storage_tries.sort_unstable_by(|a, b| a.0.cmp(b.0));
         let mut cursor = self.tx_ref().cursor_dup_write::<tables::StoragesTrie>()?;
         for (hashed_address, storage_trie_updates) in storage_tries {
-            let mut db_storage_trie_cursor =
+            let mut db_storage_trie_cursor: DatabaseStorageTrieCursor<_, _> =
                 DatabaseStorageTrieCursor::new(cursor, *hashed_address);
             num_entries +=
                 db_storage_trie_cursor.write_storage_trie_updates_sorted(storage_trie_updates)?;
