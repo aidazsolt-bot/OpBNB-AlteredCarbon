@@ -86,11 +86,14 @@
 pub mod test_utils;
 
 /// A re-export of common structs and traits.
+#[cfg(feature = "bsc")]
 pub mod prelude;
 
 /// Implementations of stages.
+#[cfg(feature = "bsc")]
 pub mod stages;
 
+#[cfg(feature = "bsc")]
 pub mod sets;
 
 // re-export the stages API
