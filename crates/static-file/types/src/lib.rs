@@ -9,11 +9,17 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 mod compression;
+mod event;
 mod segment;
 
 use alloy_primitives::BlockNumber;
 pub use compression::Compression;
+use core::ops::RangeInclusive;
+pub use event::StaticFileProducerEvent;
 pub use segment::{SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
+
+/// Map keyed by [`StaticFileSegment`].
+pub type StaticFileMap<T> = std::collections::HashMap<StaticFileSegment, T>;
 
 /// Default static file block count.
 pub const DEFAULT_BLOCKS_PER_STATIC_FILE: u64 = 500_000;
@@ -36,6 +42,11 @@ pub struct HighestStaticFiles {
 }
 
 impl HighestStaticFiles {
+    /// Returns `true` if all segments are either [`None`] or start at the next static file block.
+    fn iter(&self) -> impl Iterator<Item = Option<BlockNumber>> {
+        [self.headers, self.receipts, self.transactions, self.sidecars].into_iter()
+    }
+
     /// Returns the highest static file if it exists for a segment
     pub const fn highest(&self, segment: StaticFileSegment) -> Option<BlockNumber> {
         match segment {
@@ -58,12 +69,54 @@ impl HighestStaticFiles {
 
     /// Returns the minimum block of all segments.
     pub fn min(&self) -> Option<u64> {
-        [self.headers, self.transactions, self.receipts].iter().filter_map(|&option| option).min()
+        self.iter().flatten().min()
     }
 
     /// Returns the maximum block of all segments.
     pub fn max(&self) -> Option<u64> {
-        [self.headers, self.transactions, self.receipts].iter().filter_map(|&option| option).max()
+        self.iter().flatten().max()
+    }
+}
+
+/// Static File targets, per data segment, measured in [`BlockNumber`].
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct StaticFileTargets {
+    /// Targeted range of headers.
+    pub headers: Option<RangeInclusive<BlockNumber>>,
+    /// Targeted range of receipts.
+    pub receipts: Option<RangeInclusive<BlockNumber>>,
+    /// Targeted range of transactions.
+    pub transactions: Option<RangeInclusive<BlockNumber>>,
+    /// Targeted range of sidecars.
+    pub sidecars: Option<RangeInclusive<BlockNumber>>,
+}
+
+impl StaticFileTargets {
+    /// Returns `true` if any of the targets are [Some].
+    pub const fn any(&self) -> bool {
+        self.headers.is_some()
+            || self.receipts.is_some()
+            || self.transactions.is_some()
+            || self.sidecars.is_some()
+    }
+
+    /// Returns `true` if all targets are either [`None`] or contiguous to the current static files.
+    pub fn is_contiguous_to_highest_static_files(&self, static_files: HighestStaticFiles) -> bool {
+        [
+            (self.headers.as_ref(), static_files.headers),
+            (self.receipts.as_ref(), static_files.receipts),
+            (self.transactions.as_ref(), static_files.transactions),
+            (self.sidecars.as_ref(), static_files.sidecars),
+        ]
+        .into_iter()
+        .all(|(target_block_range, highest_static_file_block)| {
+            target_block_range.is_none_or(|target_block_range| {
+                *target_block_range.start()
+                    == highest_static_file_block.map_or(0, |highest_static_file_block| {
+                        highest_static_file_block + 1
+                    })
+            })
+        })
     }
 }
 

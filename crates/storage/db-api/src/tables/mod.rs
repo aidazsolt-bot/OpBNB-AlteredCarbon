@@ -5,7 +5,7 @@
 //! This module defines the tables in reth, as well as some table-related abstractions:
 //!
 //! - [`codecs`] integrates different codecs into [`Encode`] and [`Decode`]
-//! - [`models`](reth_db_api::models) defines the values written to tables
+//! - [`models`](crate::models) defines the values written to tables
 //!
 //! # Database Tour
 //!
@@ -19,24 +19,27 @@ pub use raw::{RawDupSort, RawKey, RawTable, RawValue, TableRawRow};
 #[cfg(feature = "mdbx")]
 pub(crate) mod utils;
 
+use alloy_consensus::Header;
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256};
-use reth_db_api::{
+use crate::{
     models::{
-        accounts::BlockNumberAddress,
+        accounts::{BlockNumberAddress, BlockNumberHashedAddress},
         blocks::{HeaderHash, StoredBlockOmmers},
         storage_sharded_key::StorageShardedKey,
-        AccountBeforeTx, ClientVersion, CompactU256, ShardedKey, StoredBlockBodyIndices,
-        StoredBlockWithdrawals,
+        AccountBeforeTx, ClientVersion, CompactU256, IntegerList, ShardedKey,
+        StoredBlockBodyIndices, StoredBlockWithdrawals,
     },
-    table::{Decode, DupSort, Encode, Table},
+    table::{Decode, DupSort, Encode, Table, TableInfo, TableSet},
 };
-use reth_primitives::{
-    parlia::Snapshot, Account, Bytecode, Header, Receipt, StorageEntry, TransactionSignedNoHash,
-};
-use reth_primitives_traits::{BlobSidecars, IntegerList};
+use reth_ethereum_primitives::{Receipt, TransactionSigned};
+use reth_primitives::parlia::Snapshot;
+use reth_primitives_traits::{Account, BlobSidecars, Bytecode, StorageEntry};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
-use reth_trie_common::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
+use reth_trie_common::{
+    BranchNodeCompact, PackedStorageTrieEntry, PackedStoredNibbles, PackedStoredNibblesSubKey,
+    StorageTrieEntry, StoredNibbles, StoredNibblesSubKey, TrieChangeSetsEntry,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -129,8 +132,9 @@ macro_rules! tables {
                 }
             }
 
-            impl reth_db_api::table::Table for $name {
+            impl crate::table::Table for $name {
                 const NAME: &'static str = table_names::$name;
+                const DUPSORT: bool = tables!(@bool $($subkey)?);
 
                 type Key = $key;
                 type Value = $value;
@@ -231,6 +235,22 @@ macro_rules! tables {
             }
         }
 
+        impl TableInfo for Tables {
+            fn name(&self) -> &'static str {
+                self.name()
+            }
+
+            fn is_dupsort(&self) -> bool {
+                self.is_dupsort()
+            }
+        }
+
+        impl TableSet for Tables {
+            fn tables() -> Box<dyn Iterator<Item = Box<dyn TableInfo>>> {
+                Box::new(Self::ALL.iter().map(|table| Box::new(*table) as Box<dyn TableInfo>))
+            }
+        }
+
         // Need constants to match on in the `FromStr` implementation.
         #[allow(non_upper_case_globals)]
         mod table_names {
@@ -247,7 +267,7 @@ macro_rules! tables {
         ///
         /// ```
         /// use reth_db::{Tables, tables_to_generic};
-        /// use reth_db_api::table::Table;
+        /// use crate::table::Table;
         ///
         /// let table = Tables::Headers;
         /// let result = tables_to_generic!(table, |GenericTable| GenericTable::NAME);
@@ -294,7 +314,7 @@ tables! {
     table BlockWithdrawals<Key = BlockNumber, Value = StoredBlockWithdrawals>;
 
     /// Canonical only Stores the transaction body for canonical transactions.
-    table Transactions<Key = TxNumber, Value = TransactionSignedNoHash>;
+    table Transactions<Key = TxNumber, Value = TransactionSigned>;
 
     /// Stores the mapping of the transaction hash to the transaction number.
     table TransactionHashNumbers<Key = TxHash, Value = TxNumber>;
@@ -390,6 +410,12 @@ tables! {
     /// From HashedAddress => NibblesSubKey => Intermediate value
     table StoragesTrie<Key = B256, Value = StorageTrieEntry, SubKey = StoredNibblesSubKey>;
 
+    /// Stores the state of a node in the accounts trie prior to a particular block being executed.
+    table AccountsTrieChangeSets<Key = BlockNumber, Value = TrieChangeSetsEntry, SubKey = StoredNibblesSubKey>;
+
+    /// Stores the state of a node in a storage trie prior to a particular block being executed.
+    table StoragesTrieChangeSets<Key = BlockNumberHashedAddress, Value = TrieChangeSetsEntry, SubKey = StoredNibblesSubKey>;
+
     /// Stores the transaction sender for each canonical transaction.
     /// It is needed to speed up execution stage and allows fetching signer without doing
     /// transaction signed recovery
@@ -412,6 +438,42 @@ tables! {
 
     /// Stores the parlia snapshot data by block hash.
     table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
+
+    /// Stores generic node metadata as key-value pairs.
+    /// Can store feature flags, configuration markers, and other node-specific data.
+    table Metadata<Key = String, Value = Vec<u8>>;
+}
+
+/// Packed-encoding view of the [`AccountsTrie`] table.
+///
+/// Uses [`PackedStoredNibbles`] (33-byte) keys instead of [`StoredNibbles`] (65-byte).
+/// Shares the same underlying MDBX table — this is a type-level view for storage v2.
+#[derive(Debug)]
+pub struct PackedAccountsTrie;
+
+impl Table for PackedAccountsTrie {
+    const NAME: &'static str = <AccountsTrie as Table>::NAME;
+    const DUPSORT: bool = false;
+    type Key = PackedStoredNibbles;
+    type Value = BranchNodeCompact;
+}
+
+/// Packed-encoding view of the [`StoragesTrie`] table.
+///
+/// Uses [`PackedStoredNibblesSubKey`] (33-byte) subkeys instead of [`StoredNibblesSubKey`]
+/// (65-byte). Shares the same underlying MDBX table — this is a type-level view for storage v2.
+#[derive(Debug)]
+pub struct PackedStoragesTrie;
+
+impl Table for PackedStoragesTrie {
+    const NAME: &'static str = <StoragesTrie as Table>::NAME;
+    const DUPSORT: bool = true;
+    type Key = B256;
+    type Value = PackedStorageTrieEntry;
+}
+
+impl DupSort for PackedStoragesTrie {
+    type SubKey = PackedStoredNibblesSubKey;
 }
 
 /// Keys for the `ChainState` table.
@@ -419,8 +481,8 @@ tables! {
 pub enum ChainStateKey {
     /// Last finalized block key
     LastFinalizedBlock,
-    /// Last finalized block key
-    LastSafeBlockBlock,
+    /// Last safe block key
+    LastSafeBlock,
 }
 
 impl Encode for ChainStateKey {
@@ -429,17 +491,17 @@ impl Encode for ChainStateKey {
     fn encode(self) -> Self::Encoded {
         match self {
             Self::LastFinalizedBlock => [0],
-            Self::LastSafeBlockBlock => [1],
+            Self::LastSafeBlock => [1],
         }
     }
 }
 
 impl Decode for ChainStateKey {
-    fn decode(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
+    fn decode(value: &[u8]) -> Result<Self, crate::DatabaseError> {
         match value {
             [0] => Ok(Self::LastFinalizedBlock),
-            [1] => Ok(Self::LastSafeBlockBlock),
-            _ => Err(reth_db_api::DatabaseError::Decode),
+            [1] => Ok(Self::LastSafeBlock),
+            _ => Err(crate::DatabaseError::Decode),
         }
     }
 }

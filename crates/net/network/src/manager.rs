@@ -496,8 +496,8 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
     /// Sends an event to the [`TransactionsManager`](crate::transactions::TransactionsManager) if
     /// configured.
     fn notify_tx_manager(&self, event: NetworkTransactionEvent<N>) {
-        if let Some(ref tx) = self.to_transactions_manager &&
-            let Err(e) = tx.try_send(event)
+        if let Some(ref tx) = self.to_transactions_manager
+            && let Err(e) = tx.try_send(event)
         {
             match e {
                 TrySendError::Full(_) => {
@@ -714,7 +714,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                 if self.handle.mode().is_stake() {
                     // See [EIP-3675](https://eips.ethereum.org/EIPS/eip-3675#devp2p)
                     warn!(target: "net", "Peer performed block propagation, but it is not supported in proof of stake (EIP-3675)");
-                    return
+                    return;
                 }
                 let msg = NewBlockMessage { hash, block: Arc::new(block) };
                 self.swarm.state_mut().announce_new_block(msg);
@@ -1204,7 +1204,7 @@ impl<N: NetworkPrimitives> Future for NetworkManager<N> {
         if maybe_more_handle_messages || maybe_more_swarm_events {
             // make sure we're woken up again
             cx.waker().wake_by_ref();
-            return Poll::Pending
+            return Poll::Pending;
         }
 
         this.update_poll_metrics(start, poll_durations);

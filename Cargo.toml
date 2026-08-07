@@ -104,6 +104,7 @@ members = [
     "crates/rpc/rpc-testing-util/",
     "crates/rpc/rpc-e2e-tests/",
     "crates/rpc/rpc-convert/",
+    "crates/rpc/rpc-traits/",
     "crates/rpc/rpc/",
     "crates/stages/api/",
     "crates/stages/stages/",
@@ -452,7 +453,7 @@ reth-rpc-layer = { path = "crates/rpc/rpc-layer" }
 reth-rpc-types-compat = { path = "crates/rpc/rpc-types-compat" }
 reth-rpc-server-types = { path = "crates/rpc/rpc-server-types" }
 reth-rpc-convert = { path = "crates/rpc/rpc-convert" }
-reth-rpc-traits = { version = "0.5.0", default-features = false }
+reth-rpc-traits = { path = "crates/rpc/rpc-traits", default-features = false }
 reth-stages = { path = "crates/stages/stages" }
 reth-stages-api = { path = "crates/stages/api" }
 reth-stages-types = { path = "crates/stages/types", default-features = false }
@@ -469,7 +470,7 @@ reth-transaction-pool = { path = "crates/transaction-pool" }
 reth-trie = { path = "crates/trie/trie" }
 reth-trie-common = { path = "crates/trie/common", default-features = false }
 reth-trie-db = { path = "crates/trie/db" }
-reth-trie-parallel = { path = "crates/trie/parallel" }
+reth-trie-parallel = { path = "crates/trie/parallel", default-features = false }
 reth-trie-prefetch = { path = "crates/trie/prefetch" }
 reth-trie-sparse = { path = "crates/trie/sparse", default-features = false }
 reth-zstd-compressors = { version = "0.5.0", default-features = false }
@@ -727,6 +728,7 @@ ratatui = { version = "0.30", default-features = false }
 ringbuffer = "0.16.0"
 rmp-serde = "1.3"
 roaring = "0.11.3"
+parity-scale-codec = "3.2.1"
 rolling-file = "0.2.0"
 sha3 = "0.10.5"
 snap = "1.1.1"
@@ -759,3 +761,15 @@ ipnet = "2.11"
 # as precompile injections in its own `evm` crate on top of stock revm/alloy.
 # Follow-up work (see `bsc-crate-update` todo) must port those precompiles the
 # same way into `crates/bsc/evm` rather than restoring a patched revm/alloy.
+
+# NOTE: `reth-rpc-traits` was originally an external crates.io dependency
+# (matching upstream v2.4.1's own pin), but its published version depends on
+# its own crates.io `reth-primitives-traits`, which is a DIFFERENT, duplicate
+# copy of that crate versus this workspace's local, BSC/opBNB-customized
+# `crates/primitives-traits` path member. A `[patch.crates-io]` override does
+# NOT fix this (crates.io `reth-rpc-traits` still requires `^0.5`, incompatible
+# with our local `2.4.1`), so `reth-rpc-traits` has instead been vendored as a
+# local workspace member at `crates/rpc/rpc-traits` (source copied verbatim
+# from reth-rpc-traits 0.5.2, only the Cargo.toml was rewritten to use
+# workspace-local `reth-primitives-traits`). See `reth-rpc-traits = { path =
+# ... }` above.

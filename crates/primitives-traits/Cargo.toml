@@ -19,6 +19,7 @@ alloy-eips.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
+alloy-rpc-types-eth = { workspace = true, optional = true }
 alloy-trie.workspace = true
 
 revm = { workspace = true, features = ["serde"] }
@@ -96,4 +97,4 @@ serde = []
 reth-codec = [
     "reth-codecs/alloy"
 ]
-rpc-compat = []
+rpc-compat = ["alloy-rpc-types-eth"]

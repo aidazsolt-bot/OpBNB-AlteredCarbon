@@ -81,7 +81,7 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
         let message_type = EthMessageID::decode(buf)?;
 
         if message_type != EthMessageID::Status {
-            return Err(MessageError::ExpectedStatusMessage(message_type))
+            return Err(MessageError::ExpectedStatusMessage(message_type));
         }
 
         let status = if version < EthVersion::Eth69 {
@@ -158,13 +158,13 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::GetNodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData))
+                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData));
                 }
                 EthMessage::GetNodeData(RequestPair::decode(buf)?)
             }
             EthMessageID::NodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::NodeData))
+                    return Err(MessageError::Invalid(version, EthMessageID::NodeData));
                 }
                 EthMessage::NodeData(RequestPair::decode(buf)?)
             }
@@ -195,31 +195,31 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::BlockRangeUpdate => {
                 if version < EthVersion::Eth69 {
-                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate))
+                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate));
                 }
                 EthMessage::BlockRangeUpdate(BlockRangeUpdate::decode(buf)?)
             }
             EthMessageID::GetBlockAccessLists => {
                 if version < EthVersion::Eth71 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetBlockAccessLists))
+                    return Err(MessageError::Invalid(version, EthMessageID::GetBlockAccessLists));
                 }
                 EthMessage::GetBlockAccessLists(RequestPair::decode(buf)?)
             }
             EthMessageID::BlockAccessLists => {
                 if version < EthVersion::Eth71 {
-                    return Err(MessageError::Invalid(version, EthMessageID::BlockAccessLists))
+                    return Err(MessageError::Invalid(version, EthMessageID::BlockAccessLists));
                 }
                 EthMessage::BlockAccessLists(RequestPair::decode(buf)?)
             }
             EthMessageID::Cells => {
                 if version < EthVersion::Eth72 {
-                    return Err(MessageError::Invalid(version, EthMessageID::Cells))
+                    return Err(MessageError::Invalid(version, EthMessageID::Cells));
                 }
                 EthMessage::Cells(RequestPair::decode(buf)?)
             }
             EthMessageID::GetCells => {
                 if version < EthVersion::Eth72 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetCells))
+                    return Err(MessageError::Invalid(version, EthMessageID::GetCells));
                 }
                 EthMessage::GetCells(RequestPair::decode(buf)?)
             }
@@ -424,9 +424,9 @@ impl<N: NetworkPrimitives> EthMessage<N> {
             Self::NewBlockHashes(_) => EthMessageID::NewBlockHashes,
             Self::NewBlock(_) => EthMessageID::NewBlock,
             Self::Transactions(_) => EthMessageID::Transactions,
-            Self::NewPooledTransactionHashes66(_) |
-            Self::NewPooledTransactionHashes68(_) |
-            Self::NewPooledTransactionHashes72(_) => EthMessageID::NewPooledTransactionHashes,
+            Self::NewPooledTransactionHashes66(_)
+            | Self::NewPooledTransactionHashes68(_)
+            | Self::NewPooledTransactionHashes72(_) => EthMessageID::NewPooledTransactionHashes,
             Self::GetBlockHeaders(_) => EthMessageID::GetBlockHeaders,
             Self::BlockHeaders(_) => EthMessageID::BlockHeaders,
             Self::GetBlockBodies(_) => EthMessageID::GetBlockBodies,
@@ -451,14 +451,14 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_request(&self) -> bool {
         matches!(
             self,
-            Self::GetBlockBodies(_) |
-                Self::GetBlockHeaders(_) |
-                Self::GetReceipts(_) |
-                Self::GetReceipts70(_) |
-                Self::GetBlockAccessLists(_) |
-                Self::GetCells(_) |
-                Self::GetPooledTransactions(_) |
-                Self::GetNodeData(_)
+            Self::GetBlockBodies(_)
+                | Self::GetBlockHeaders(_)
+                | Self::GetReceipts(_)
+                | Self::GetReceipts70(_)
+                | Self::GetBlockAccessLists(_)
+                | Self::GetCells(_)
+                | Self::GetPooledTransactions(_)
+                | Self::GetNodeData(_)
         )
     }
 
@@ -466,15 +466,15 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_response(&self) -> bool {
         matches!(
             self,
-            Self::PooledTransactions(_) |
-                Self::Receipts(_) |
-                Self::Receipts69(_) |
-                Self::Receipts70(_) |
-                Self::BlockAccessLists(_) |
-                Self::BlockHeaders(_) |
-                Self::BlockBodies(_) |
-                Self::NodeData(_) |
-                Self::Cells(_)
+            Self::PooledTransactions(_)
+                | Self::Receipts(_)
+                | Self::Receipts69(_)
+                | Self::Receipts70(_)
+                | Self::BlockAccessLists(_)
+                | Self::BlockHeaders(_)
+                | Self::BlockBodies(_)
+                | Self::NodeData(_)
+                | Self::Cells(_)
         )
     }
 
@@ -500,7 +500,7 @@ impl<N: NetworkPrimitives> EthMessage<N> {
                     Self::GetReceipts70(req)
                 }
                 other => other,
-            }
+            };
         }
 
         self
@@ -847,7 +847,7 @@ impl<T> RequestPair<T> {
 
         let consumed_len = initial_length - buf.len();
         if consumed_len != header.payload_length {
-            return Err(alloy_rlp::Error::UnexpectedLength)
+            return Err(alloy_rlp::Error::UnexpectedLength);
         }
 
         Ok(Self { request_id, message })
@@ -893,7 +893,7 @@ where
         // RequestPair
         let consumed_len = initial_length - buf.len();
         if consumed_len != header.payload_length {
-            return Err(alloy_rlp::Error::UnexpectedLength)
+            return Err(alloy_rlp::Error::UnexpectedLength);
         }
 
         Ok(Self { request_id, message })

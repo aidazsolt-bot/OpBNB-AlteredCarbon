@@ -86,3 +86,6 @@ rpc = [
     "dep:alloy-rpc-types-eth",
     "alloy-rpc-types-eth?/serde",
 ]
+serde-bincode-compat = [
+    "reth-primitives-traits/serde-bincode-compat",
+]

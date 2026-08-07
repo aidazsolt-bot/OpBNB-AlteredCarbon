@@ -161,8 +161,8 @@ impl<E> ExecutionStage<E> {
 
         // If we're not executing MerkleStage from scratch (by threshold or first-sync), then erase
         // changeset related pruning configurations
-        if !(max_block - start_block > self.external_clean_threshold ||
-            provider.count_entries::<tables::AccountsTrie>()?.is_zero())
+        if !(max_block - start_block > self.external_clean_threshold
+            || provider.count_entries::<tables::AccountsTrie>()?.is_zero())
         {
             prune_modes.account_history = None;
             prune_modes.storage_history = None;
@@ -196,7 +196,7 @@ where
     /// Execute the stage
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         if input.target_reached() {
-            return Ok(ExecOutput::done(input.checkpoint()))
+            return Ok(ExecOutput::done(input.checkpoint()));
         }
 
         let start_block = input.next_block();
@@ -205,8 +205,8 @@ where
         let static_file_provider = provider.static_file_provider();
 
         // We only use static files for Receipts, if there is no receipt pruning of any kind.
-        let static_file_producer = if self.prune_modes.receipts.is_none() &&
-            self.prune_modes.receipts_log_filter.is_empty()
+        let static_file_producer = if self.prune_modes.receipts.is_none()
+            && self.prune_modes.receipts_log_filter.is_empty()
         {
             debug!(target: "sync::stages::execution", start = start_block, "Preparing static file producer");
             let mut producer =
@@ -322,7 +322,7 @@ where
                 cumulative_gas,
                 batch_start.elapsed(),
             ) {
-                break
+                break;
             }
         }
 
@@ -366,7 +366,7 @@ where
                 // means that we didn't send the notification to ExExes
                 return Err(StageError::PostExecuteCommit(
                     "Previous post execute commit input wasn't processed",
-                ))
+                ));
             }
         }
 
@@ -419,7 +419,7 @@ where
         if range.is_empty() {
             return Ok(UnwindOutput {
                 checkpoint: input.checkpoint.with_block_number(input.unwind_to),
-            })
+            });
         }
 
         // Unwind account and storage changesets, as well as receipts.
@@ -557,8 +557,8 @@ fn execution_checkpoint(
                 block_range: CheckpointBlockRange { from: start_block, to: max_block },
                 progress: EntitiesCheckpoint {
                     processed,
-                    total: processed +
-                        calculate_gas_used_from_headers(provider, start_block..=max_block)?,
+                    total: processed
+                        + calculate_gas_used_from_headers(provider, start_block..=max_block)?,
                 },
             }
         }
@@ -647,11 +647,11 @@ where
             loop {
                 if let Some(indices) = provider.block_body_indices(last_block)? {
                     if indices.last_tx_num() <= last_receipt_num {
-                        break
+                        break;
                     }
                 }
                 if last_block == 0 {
-                    break
+                    break;
                 }
                 last_block -= 1;
             }
@@ -662,7 +662,7 @@ where
             return Err(StageError::MissingStaticFileData {
                 block: missing_block,
                 segment: StaticFileSegment::Receipts,
-            })
+            });
         }
     }
 

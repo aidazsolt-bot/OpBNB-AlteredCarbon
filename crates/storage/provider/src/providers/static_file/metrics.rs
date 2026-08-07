@@ -19,20 +19,16 @@ pub struct StaticFileProviderMetrics {
 impl Default for StaticFileProviderMetrics {
     fn default() -> Self {
         Self {
-            segments: Box::new(
-                StaticFileSegment::iter()
-                    .map(|segment| {
-                        (
-                            segment,
-                            StaticFileSegmentMetrics::new_with_labels(&[(
-                                "segment",
-                                segment.as_str(),
-                            )]),
-                        )
-                    })
-                    .collect(),
-            ),
-            segment_operations: StaticFileSegment::iter()
+            segments: [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars]
+                .into_iter()
+                .map(|segment| {
+                    (
+                        segment,
+                        StaticFileSegmentMetrics::new_with_labels(&[("segment", segment.as_str())]),
+                    )
+                })
+                .collect(),
+            segment_operations: [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
                 .cartesian_product(StaticFileProviderOperation::iter())
                 .map(|(segment, operation)| {
                     (
@@ -56,10 +52,10 @@ impl StaticFileProviderMetrics {
         files: usize,
         entries: usize,
     ) {
-        self.segments.get(segment).expect("segment metrics should exist").size.set(size as f64);
-        self.segments.get(segment).expect("segment metrics should exist").files.set(files as f64);
+        self.segments.get(&segment).expect("segment metrics should exist").size.set(size as f64);
+        self.segments.get(&segment).expect("segment metrics should exist").files.set(files as f64);
         self.segments
-            .get(segment)
+            .get(&segment)
             .expect("segment metrics should exist")
             .entries
             .set(entries as f64);

@@ -1,5 +1,5 @@
 mod sealed;
-pub use sealed::SealedHeader;
+pub use sealed::{SealedHeader, SealedHeaderFor};
 
 mod error;
 pub use error::HeaderError;
@@ -41,9 +41,9 @@ pub trait BlockHeader:
     + InMemorySize
     + serde::Serialize
     + for<'a> serde::Deserialize<'a>
+    + AsRef<Self>
     + 'static
 {
 }
 
 impl BlockHeader for Header {}
-

@@ -1,0 +1,32 @@
+[package]
+name = "reth-rpc-traits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "RPC conversion traits for Ethereum types."
+
+[lints]
+workspace = true
+
+[dependencies]
+reth-primitives-traits = { workspace = true, default-features = false }
+
+alloy-consensus = { workspace = true, default-features = false }
+alloy-network = { workspace = true, default-features = false }
+alloy-primitives = { workspace = true, default-features = false, features = ["map-foldhash"] }
+alloy-rpc-types-eth = { workspace = true, default-features = false }
+alloy-signer = { workspace = true, default-features = false }
+thiserror = { workspace = true, default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "alloy-primitives/std",
+    "alloy-consensus/std",
+    "alloy-rpc-types-eth/std",
+    "reth-primitives-traits/std",
+    "thiserror/std",
+]

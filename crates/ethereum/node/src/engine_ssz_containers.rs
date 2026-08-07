@@ -93,7 +93,7 @@ impl<T: ssz::Decode> ssz::Decode for Optional<T> {
     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, ssz::DecodeError> {
         let values = Vec::<T>::from_ssz_bytes(bytes)?;
         if values.len() > 1 {
-            return Err(ssz::DecodeError::BytesInvalid("optional has more than one value".into()))
+            return Err(ssz::DecodeError::BytesInvalid("optional has more than one value".into()));
         }
         Ok(Self(values))
     }
@@ -138,7 +138,7 @@ fn legacy_validation_error(
         PayloadStatusEnum::Invalid { validation_error } => {
             let bytes = validation_error.as_bytes().to_vec();
             if bytes.len() > MAX_ERROR_BYTES {
-                return Err(ConversionError::ErrorBytesTooLong)
+                return Err(ConversionError::ErrorBytesTooLong);
             }
             Ok(Optional::some(bytes))
         }
@@ -152,9 +152,9 @@ impl ssz::Encode for PayloadStatus {
     }
 
     fn ssz_bytes_len(&self) -> usize {
-        1 + ssz::BYTES_PER_LENGTH_OFFSET * 2 +
-            self.latest_valid_hash.ssz_bytes_len() +
-            self.validation_error.ssz_bytes_len()
+        1 + ssz::BYTES_PER_LENGTH_OFFSET * 2
+            + self.latest_valid_hash.ssz_bytes_len()
+            + self.validation_error.ssz_bytes_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
@@ -189,7 +189,7 @@ impl ssz::Decode for PayloadStatus {
             if validation_error.as_ref().is_some_and(|error| error.len() > MAX_ERROR_BYTES) {
                 return Err(ssz::DecodeError::BytesInvalid(
                     "payload validation error is too long".into(),
-                ))
+                ));
             }
         } else if validation_error.is_some() {
             return Err(ssz::DecodeError::BytesInvalid(
@@ -266,9 +266,9 @@ impl ssz::Encode for ForkchoiceUpdateResponse {
     }
 
     fn ssz_bytes_len(&self) -> usize {
-        ssz::BYTES_PER_LENGTH_OFFSET * 2 +
-            self.payload_status.ssz_bytes_len() +
-            self.payload_id.ssz_bytes_len()
+        ssz::BYTES_PER_LENGTH_OFFSET * 2
+            + self.payload_status.ssz_bytes_len()
+            + self.payload_id.ssz_bytes_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
@@ -306,7 +306,7 @@ impl TryFrom<LegacyForkchoice> for ForkchoiceUpdateResponse {
     fn try_from(value: LegacyForkchoice) -> Result<Self, Self::Error> {
         let payload_status = PayloadStatus::try_from(value.payload_status)?;
         if matches!(payload_status.status, PayloadStatusEnum::Accepted) {
-            return Err(ConversionError::AcceptedForkchoice)
+            return Err(ConversionError::AcceptedForkchoice);
         }
         Ok(Self { payload_status, payload_id: value.payload_id.into() })
     }

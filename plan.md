@@ -168,7 +168,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Session | Zeitraum (UTC) | Modelle | Input-Tokens | Output-Tokens | Turns | Wichtigste Ergebnisse |
 | --- | --- | --- | --- | --- | --- | --- |
 | Frühere Sessions (kumulativ, s. README-Stand vor dieser Aktualisierung) | mehrere Tage, mehrere Sitzungen | Claude Sonnet 5 (primär), GPT-5.4 (Sub-Agenten) | ~58,7M (Sonnet 5) + ~38,5M (GPT-5.4) | ~231K (Sonnet 5) + ~78K (GPT-5.4) | ~800 | Merge/Rebase auf v2.4.1 abgeschlossen, Konflikte aufgelöst, Blockchain-Tree→Engine-Tree-Fund, Kona-Node-Evaluierung, README-Disclaimer |
-| Aktuelle Session `a95758da` | 2026-08-06 09:50 – 18:06 (laufend) | Claude Sonnet 5 (primär), GPT-5.4 (Sub-Agenten) | ~158,2M (Sonnet 5) + ~40,2M (GPT-5.4) | ~576K (Sonnet 5) + ~94K (GPT-5.4) | 14 Turns / 1273+321 Modell-Aufrufe | `crates/primitives`+`primitives-traits` komplett neu geschrieben (größter Einzel-Blocker der gesamten Portierung), `reth-bsc-chainspec`/`reth-chainspec` API-Drift behoben, mehrere Folgefixes (`execution-types`, `eth-wire`, etc.) |
+| Aktuelle Session `a95758da` (Snapshot 2026-08-07 04:12 UTC) | 2026-08-06 09:50 – laufend | Claude Sonnet 5 (primär), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex | ~356,9M (Sonnet 5) + ~135,4M (GPT-5.4) + ~88,4M (Sonnet 4.6) + ~3,3M (GPT-5.3-Codex) = ~584,1M | ~1,162M (Sonnet 5) + ~297,7K (GPT-5.4) + ~260,3K (Sonnet 4.6) + ~3,5K (GPT-5.3-Codex) = ~1,725M | 17 CLI-Turns / 5.188 Modell-Usage-Events | Portierungs-Loop bis `reth-node-core` und `reth-blockchain-tree` grün, `reth-beacon-consensus`/`reth-node-api` auf v2.4.1 API umgestellt, `reth-rpc-eth-types` + `reth-trie-prefetch` grün |
 
 > Hinweis: Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn, kein Maß für "sinnvolle" Ausgabe — dienen der Transparenz über den praktischen Ressourcen-
@@ -189,3 +189,408 @@ Zusätzlich bekannt, aber noch nicht angegangen:
    aktualisieren.
 10. Danach: Phase 4 (opBNB Snow/Volta/Fourier Hardforks), Phase 5 (Build/Lint/Test/EF-Tests),
     Phase 6 (Doku-Feinschliff, Live-Test-Nachträge in README).
+
+## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
+
+Weiter Richtung `reth-bsc-evm` grün: iterativer Loop "Check → nächster Blocker → Fix (direkt oder
+per Hintergrund-Agent) → Commit → nächster Blocker". Reihenfolge der in dieser Fortsetzung
+behobenen Blocker (jeweils mit `cargo check -p <crate> --no-default-features` verifiziert):
+
+- **`reth-prune-types`** (`segment.rs`): gleiches Feature-Gating-Muster wie zuvor bei `target.rs`
+  auf `Compact`/`Serialize`/`Deserialize`-Derives angewendet (`cfg_attr(any(test, feature = ...))`).
+- **`reth-trie-sparse`** (`state.rs`): totes/nie definiertes
+  `reth_primitives_traits::ParallelBridgeBuffered` (Merge-Artefakt) durch Standard-
+  `rayon::iter::{ParallelBridge, ParallelIterator}`/`.par_bridge()` ersetzt.
+- **`reth-execution-types`** (`execute.rs`): fehlendes `use alloc::vec::Vec;` in `no_std`-Kontext
+  ergänzt.
+- **`reth-storage-api`**: `lib.rs` hatte ~14 fehlende `mod`/`pub use`-Deklarationen für bereits
+  vorhandene Dateien (`bal.rs`, `chain.rs`, `metadata.rs`, `state_writer.rs`, u.v.m.) — komplett
+  neu geschrieben mit vollständiger, Feature-gegateter Mod-Liste. `withdrawals.rs` (komplett
+  fehlend) aus Git-Historie (`95558cb45~1`) wiederhergestellt. `BlockReader`/`BlockReaderIdExt`/
+  `noop.rs`/`state_writer.rs` per Hintergrund-Agent auf v2.4.1-Form gebracht (`BlockExecutionOutput`
+  bleibt bewusst flach: `state`/`receipts`/`requests`/`gas_used`/`snapshot`, keine `.result`-
+  Verschachtelung). Zweite Runde: `StorageSettings`-Re-Export (`models/metadata.rs` in
+  `models/mod.rs` verdrahtet), `FullBlockHeader`/`FastInstant`-Kompatibilität in
+  `primitives-traits` ergänzt, `BlockOmmers`-Tabellenzugriff auf nicht-generische Form umgestellt.
+- **`reth-db`/`reth-db-api`**: fehlende `StaticFileMap<T>`-Typalias, fehlender `TableSet`-Trait
+  (+ `impl TableInfo`/`TableSet for Tables`). Static-File-Masken (`mask.rs`/`masks.rs`) auf
+  Upstream-Muster "je Verwendung ein eigener Marker-Typ" umgestellt (`HeaderWithHashMask`,
+  `TDWithHashMask`, `BlockHashMask`, `SidecarWithHashMask`, `RawTransactionMask`) — behebt einen
+  echten Rust-Trait-Overlap-Checker-Fehlalarm (E0119) bei generischen Structs über assoziierten
+  Typ-Projektionen.
+- **`reth-network-p2p`**: `SealedBlockWith<B,T>`-Struct (BSC/BAL-Feature) war durch einen
+  Merge-Commit ("refactor: reuse primitive sealed block wrapper") entfernt worden, in der
+  Annahme, sie sei nach `reth_primitives_traits` gewandert — das war nie passiert (totes
+  Merge-Artefakt). Lokal wiederhergestellt. `SealedHeader::size()` von nicht-generischer
+  Inherent-Methode auf generischen `impl<H: InMemorySize> InMemorySize for SealedHeader<H>`
+  umgestellt (passend zu Upstream).
+- **`reth-blockchain-tree-api`**: `error.rs` war komplett gelöscht (nicht wiederhergestellt worden)
+  — aus Git-Historie (`53ccb5d46~1`) restauriert, dann alle Fehler-Enum-Formen (`BlockExecutionError`/
+  `BlockValidationError`) auf die neue `alloy_evm::block`-Form migriert (kein `Consensus`-Variant
+  mehr, kein `BlockPreMerge`/`StateRoot` mehr — konservativ auf `false`/entfernt abgebildet, siehe
+  Kommentare im Code für Semantik-Lücken). `try_seal_with_senders()` → `try_recover()` (neue
+  `RecoveredBlock`-API), `BlockRecoveryError::into_inner()` zum Auspacken des Fehlerfalls ergänzt.
+  `MaybeCompact`-Hilfstrait fehlte komplett in `primitives-traits/src/lib.rs` (für
+  `FullBlockHeader: BlockHeader + MaybeCompact`) — nach Upstream-Vorbild (Feature-gegatet auf
+  `reth-codec`) ergänzt.
+- **`reth-network-api`**: `EngineMessage`/`BlockHashesEvent`/`BlockEvent<N>`-Typen fehlten in
+  `events.rs` (BSC-spezifische Engine-Message-Weiterleitung network↔engine) — aus Git-Historie
+  (Commit `41d092253`) wiederhergestellt und auf aktuelle generische `NetworkPrimitives`/
+  `NewBlock<N::Block>`-Form angepasst.
+- **`reth-chain-state`**: größerer Blocker (~33 Fehler) — fehlende Workspace-Deps
+  (`reth-ethereum-primitives`, `reth-primitives-traits`, `alloy-consensus` fest statt optional),
+  `StateProvider`-Trait-Drift (`&Address`/`&B256`-Signaturen statt Wert, neue Pflicht-Trait-Teile
+  `HashedPostStateProvider`/`BytecodeReader`, `storage_multiproof`, `MultiProofTargets`-Typ,
+  zusätzlicher `ExecutionWitnessMode`-Parameter bei `witness()`), `BlockExecutionOutput`-Zugriffe
+  ohne `.state`-Präfix (Fork-spezifische Flachstruktur beachten), `ExecutedBlock`-Feldumbenennung
+  (`block`→`recovered_block`, `bundle`→`state`), `BundleState::into_plain_state`→`to_plain_state`.
+  Per Hintergrund-Agent gegen `bnb-chain_reth.git`-Referenz gelöst und verifiziert
+  (`cargo check -p reth-chain-state --no-default-features` grün).
+- **`reth-trie-db`/`reth-db-api`**: `trie_cursor.rs` erwartete bereits die gepackten Tabellen-Views
+  (`PackedAccountsTrie`/`PackedStoragesTrie`, 33-Byte-Keys) aus Upstream-PR #22158
+  ("pack StoredNibblesSubKey from 65→33 bytes"), aber `db-api` hatte nie die zugehörigen
+  Tabellen-Definitionen/`Encode`/`Decode`/`Compress`-Impls erhalten. Aus dem Upstream-Commit
+  `80bf5532a` 1:1 portiert (`PackedAccountsTrie`/`PackedStoragesTrie`-Wrapper-Structs in
+  `tables/mod.rs`, `Encode`/`Decode`-Impls + `impl_compression_for_compact!`-Registrierung in
+  `models/mod.rs`). Verifiziert grün.
+
+**Laufend/delegiert bei Session-Fortsetzung:**
+- Hintergrund-Agent `fix-evm-evm`: `crates/evm/evm` (Kern-`reth-evm`-Crate) fehlten mehrere
+  Workspace-Deps (`alloy-evm`, `alloy-consensus`, `reth-trie-common`, `reth-storage-api`,
+  `derive_more`) und `execute.rs` hatte fehlende Trait-Bounds (`BlockExecutorFactory`-assoziierte
+  Typen `ExecutionCtx`/`Transaction`/`Receipt`, `Evm`-assoziierter Typ) — gegen
+  `bnb-chain_reth.git`-Referenz (identische, nicht-BSC-spezifische Datei) delegiert. Ergebnis
+  noch ausstehend bei Verfassung dieses Plan-Updates.
+
+**Commits dieser Fortsetzung** (chronologisch, jeweils mit `Co-authored-by: Copilot`-Trailer):
+`545faf637`, `f01a93c66`, `d27471397`, `8739fa87c`, `cd4943f34`, `4cb4603fd`, `8315201e0`,
+`bd1fc9591` (+ ggf. `fix-evm-evm`-Commit sobald Agent abgeschlossen).
+
+**Nächste Schritte nach `reth-evm`-Fix:**
+1. `cargo check -p reth-bsc-evm --no-default-features` erneut ausführen, nächsten Blocker
+   identifizieren (BSC-eigene EVM-Konfiguration, Precompile-Registrierung).
+2. Iterieren bis `reth-bsc-evm` komplett grün — das ist der aktuelle Phase-3-Meilenstein.
+3. Danach `reth-bsc-node`, dann breitere Workspace-Prüfung.
+4. `plan.md` weiterhin nach jedem größeren Fund/Fix aktualisieren (Nutzer-Vorgabe: lückenlos, für
+   spätere Übernahme in die User-Doku inkl. Token-/Zeit-Aufwand).
+
+## Session-Fortsetzung: SignedTransaction-Fix, reth-provider-Blocker (Commit 717a5743c)
+
+- **reth-transaction-pool grün:** `EthPooledTransaction::new()` rief `max_fee_per_gas()`/
+  `gas_limit()`/`value()`/`blob_gas_used()`/`max_fee_per_blob_gas()` auf `Recovered<T>` auf.
+  `alloy_consensus::Recovered<T>` hat **keinen `Deref`-Impl** (reiner Wrapper) — `T` selbst
+  muss `alloy_consensus::Transaction` implementieren. Root Cause: unser `SignedTransaction`-
+  Trait (`crates/primitives-traits/src/transaction/signed.rs`) hatte den Supertrait-Bound
+  `+ alloy_consensus::Transaction` verloren (upstream vorhanden). Ein einziger Bound-Zusatz
+  behob alle 5 verbleibenden Fehler. Zusätzlich vorher schon erledigt: `FullBlock`/
+  `FullSignedTx`/`FullBlockBody`-Marker-Traits (komplett gefehlt), `try_into_recovered()`,
+  `TipZero`-Match-Arm-Fix. Verifiziert grün: `reth-primitives-traits`, `reth-node-types`,
+  `reth-transaction-pool`.
+- **Neuer Blocker:** `cargo check -p reth-bsc-evm` → `reth-provider`
+  (`crates/storage/provider`) mit **~167 Fehlern** — großer, nicht-BSC-spezifischer
+  Kern-Crate. Fehlerkategorien: fehlende/umbenannte Trait-Methoden auf
+  TransactionsProvider/HeaderProvider/BlockReader/WithdrawalsProvider/CanonChainTracker,
+  fehlende Imports (BlobSidecars, Withdrawals, reth_primitives_traits,
+  revm::primitives::{BlockEnv,CfgEnvWithHandlerCfg}, reth_evm::ConfigureEvmEnv,
+  reth_static_file_types, rocksdb), Signatur-Mismatches (basic_account &Address,
+  Associated-Type-Header/Block-Rückgaben), `tables::Receipts<N::Receipt>`-Generic-Mismatch,
+  6 fehlende Modul-Dateien (dead merge artifacts: trie, tree_viewer, stats, state, history,
+  header_sync_gap), 2x `gen`-Keyword-Kollisionen, 2x unvollständige Trait-Impls
+  (Header-Assoc-Type + local_tip_header fehlt).
+- An Hintergrund-Agent `fix-reth-provider` delegiert (detaillierter Prompt mit allen
+  Kategorien, Referenz `bnb-chain_reth.git`, Schutz der `bd1fc9591`-Packed-Trie-Tables,
+  Anweisung BSC-spezifischen Code wie evtl. RocksDB-Secondary-Storage zu erhalten).
+
+**Commits dieser Fortsetzung (aktualisiert):** ..., `717a5743c` (SignedTransaction-Bound-Fix).
+
+**Nächste Schritte:**
+1. Warten auf `fix-reth-provider`-Agent-Ergebnis, verifizieren, committen falls nicht
+   bereits durch Agent geschehen.
+2. `cargo check -p reth-bsc-evm --no-default-features` erneut, nächsten Blocker angehen.
+3. Iterieren bis `reth-bsc-evm` grün (Phase-3-Meilenstein), danach `reth-bsc-node`,
+   dann breitere Workspace-Prüfung.
+4. `plan.md` nach jedem Meilenstein weiter aktualisieren (inkl. Token-/Zeit-Aufwand für
+   spätere User-Doku-Übernahme).
+
+## Session-Fortsetzung: reth-provider grün (156→0), reth-network grün — 2026-08-06
+
+**reth-provider (crates/storage/provider) ist jetzt vollständig grün** (sowohl
+`--no-default-features` als auch mit Default-Features/RocksDB), nach einer sehr langen
+iterativen Fehlerbehebungs-Session, die über mehrere vorherige Kompaktierungen lief.
+Fehleranzahl-Verlauf (dieser Fortsetzungs-Abschnitt): 156 → 126 → 108 → 100 → 85 → 75 → 72
+→ 67 → 65 → 54 → 34 → 31 → 17 → 10 → 8 → 6 → **0**. Der Agent (`fix-reth-provider`) hat den
+Großteil (156→17) automatisiert erledigt; die letzten ~17 Fehler wurden direkt von mir (ohne
+Agent) gelöst, da der Agent bei größeren Verallgemeinerungen (Bound-Propagation) wiederholt
+Regressionen verursachte und konservativ zurückrollte — bei architektonisch kniffligen
+Restfehlern ist direktes Eingreifen effizienter als weitere Agent-Iteration.
+
+**Kernerkenntnisse / Root Causes:**
+- `tables::Receipts`/`tables::Headers` sind in diesem Fork **nicht generisch** (fixiert auf
+  konkrete `reth_ethereum_primitives::Receipt`/`alloy_consensus::Header`), im Gegensatz zum
+  Referenz-Repo (`bnb-chain_reth.git`), wo `table Receipts<R = Receipt> { ... }` generisch mit
+  Default-Typparameter ist. Der `tables!`-Macro dieses Forks unterstützt nur Single-Line-Syntax
+  ohne generische Default-Parameter — eine "richtige" architektonische Lösung würde den Macro
+  erweitern (nicht gemacht, zu invasiv für die verbleibende Zeit).
+- Da aktuell **nur `EthPrimitives` `NodePrimitives` implementiert**, sind `N::Receipt`/
+  `N::BlockHeader` in der Praxis immer konkret `EthereumReceipt`/`alloy_consensus::Header` —
+  der Compiler kann das aber generisch nicht wissen. Lösung: neue Helper-Funktion
+  `crate::compact_convert<From: Compact, To: Compact>()` in `storage/provider/src/lib.rs` —
+  eine sichere, generische Byte-Roundtrip-Konvertierung über den bereits garantierten
+  `Compact`-Trait-Bound (aus `NodeTypesForProvider`). Angewandt an 5 Stellen:
+  `header_by_number`, `receipt`, `receipts_by_tx_range`, `write_execution_outcome`
+  (Receipt-Schreiben via `EitherWriter::append_receipt`), und einem `.collect()`-Call beim
+  Sammeln von `(u64, Receipt)`-Tupeln.
+- `EitherWriter::append_receipt`'s `where`-Bound wurde von `N::Receipt: Into<TableValue>`
+  (was einen expliziten `From`-Impl je `NodePrimitives`-Implementierung verlangt hätte, den es
+  nicht gibt) auf `N::Receipt: Value + Clone` gelockert, Konvertierung erfolgt jetzt intern via
+  `compact_convert`.
+- `BlockHeader`-Trait fehlte der Supertrait-Bound `+ AsRef<Self>` (im Referenz-Repo vorhanden)
+  — ein einzeiliger Fix, der mehrere `AsRef<HeaderTy<N>>`-Fehler in generischen
+  Block-Lese-Funktionen (`recovered_block`, `block_range`, `block_with_senders_range`) behob.
+- `Range<u64>` (aus dem lokalen `to_range()`-Helper) hat `.start`/`.end` als **Felder**, nicht
+  Methoden — mehrere `E0689`-Fehler durch fälschliche `.start()/.end()`-Methodenaufrufe (Agent
+  hatte das per Sed-Fix falsch gemacht) korrigiert via Feldzugriff +
+  `saturating_sub(1)`-Rekonstruktion zu `RangeInclusive` wo nötig.
+- `write_storage_trie_updates_sorted`: Cursor für `tables::StoragesTrie`/`PackedStoragesTrie`
+  muss **innerhalb** des `with_adapter!`-Makro-Closures geöffnet werden (via
+  `<A as TrieTableAdapter>::StorageTrieTable`, vollqualifizierte Syntax wegen `E0223`), nicht
+  davor mit fest codiertem Tabellentyp — der Makro wählt den Adapter (Legacy vs. Packed) zur
+  Laufzeit.
+- `tx_hash()`/`recover_signer_unchecked()`: fehlender Import `use
+  reth_primitives_traits::SignedTransaction;` — klassischer "Trait-Methode nicht gefunden, weil
+  Trait nicht importiert"-Rust-Fallstrick.
+- **Wichtigste Lektion:** Ein `where`-Bound auf einen **ganzen impl-Block** (statt einer
+  einzelnen Methode) kann durch Bound-Propagation dramatische Regressionen an entfernten
+  Stellen verursachen (Beispiel: ein Versuch sprang von 17 auf 63-69 Fehler). Lokale,
+  call-site-spezifische Konvertierungen (wie `compact_convert`) sind der sicherere Weg.
+
+**Commit:** `fix(provider): resolve final reth-provider compile errors, reach green`
+(direkt nach den `fix-reth-provider`-Agent-Commits `bdf13bfc3` … `869e3066d`).
+
+**reth-network (crates/net/network + net/eth-wire-types) danach direkt (ohne Agent, schnell)
+gelöst — 6 Fehler:**
+- `SignedTransaction`-Trait fehlte `is_broadcastable_in_full()`-Default-Methode (nutzt
+  bereits verfügbares `is_eip4844()` aus `alloy_consensus::Transaction`-Supertrait) —
+  Upstream-Parität hergestellt.
+- `NetworkPrimitives::PooledTransaction` fehlte `IsTyped2718`-Bound (für
+  `N::PooledTransaction::is_type(ty)` in `transactions/config.rs`-Announcement-Policies).
+- `NetworkPrimitives::BroadcastedTransaction` fehlte `TxHashRef + IsTyped2718`-Bounds (für
+  `PropagateTransaction::new()`/`BroadcastPoolTransaction`-Bound in `transactions/mod.rs`).
+- `NetworkHandle::fetch_client()` gab fälschlich nicht-generisches `FetchClient` zurück statt
+  `FetchClient<N>`.
+- Commit: `fix(network): resolve reth-network compile errors (Typed2718/TxHashRef bounds)`.
+
+**Verifiziert grün (dieser Fortsetzungs-Abschnitt):** `reth-provider` (beide Feature-Varianten),
+`reth-network` (`--no-default-features`).
+
+**Neuer Blocker:** `cargo check -p reth-bsc-evm --no-default-features` → als nächstes
+`reth-bsc-consensus` (crates/bsc/consensus, **BSC-spezifisch**) mit 10 Fehlern. Root Cause:
+die `Consensus`/`FullConsensus`/`HeaderValidator`-Trait-Hierarchie wurde in v2.4.1
+grundlegend umgebaut (drei separate Traits statt einem monolithischen `Consensus`-Trait;
+`PostExecutionInput`-Struct entfernt zugunsten von `&BlockExecutionResult<N::Receipt>` +
+neuen Optional-Parametern `receipt_root_bloom`/`block_access_list_hash`). Zusätzlich:
+`revm_primitives`/`reth_revm::primitives::Account`-Importpfade veraltet,
+`alloy_eips::eip4844::MAX_DATA_GAS_PER_BLOCK`-Konstante umbenannt/verschoben. An
+Hintergrund-Agent `fix-bsc-consensus` delegiert (detaillierter Prompt inkl. exaktem neuen
+Trait-API-Shape, Referenz auf `bnb-chain_reth.git`s Ethereum/Optimism-Consensus-Impls als
+Template für die Drei-Trait-Aufspaltung).
+
+**Commits dieser Fortsetzung:** `fix(provider): resolve final reth-provider compile errors,
+reach green`, `fix(network): resolve reth-network compile errors (Typed2718/TxHashRef bounds)`
+(+ ggf. `fix-bsc-consensus`-Agent-Commit sobald abgeschlossen).
+
+**Wichtiger Hinweis für User-Doku (Standing-Notiz, bereits vom User bestätigt):** nach den
+ersten Live-Tests müssen alle Aufwands-/Token-/Zeit-Angaben in der User-Doku aktualisiert
+werden — dieser Plan.md-Log ist die Rohdaten-Quelle dafür.
+
+**Nächste Schritte:**
+1. Warten auf `fix-bsc-consensus`-Agent-Ergebnis, verifizieren, ggf. nachbessern, committen.
+2. `cargo check -p reth-bsc-evm --no-default-features` erneut, nächsten Blocker identifizieren.
+3. Iterieren bis `reth-bsc-evm` grün (Phase-3-Meilenstein), danach `reth-bsc-node`, dann
+   breitere Workspace-Prüfung (`cargo check --workspace`).
+4. `plan.md` nach jedem Meilenstein weiter aktualisieren.
+
+## Session-Fortsetzung: reth-bsc-node-Blocker (nach reth-bsc-evm-Meilenstein)
+
+**Stand:** `reth-bsc-evm` erreicht grünen Zustand (Phase-3-Meilenstein, beide Feature-
+Varianten). Fortsetzung mit `reth-bsc-node` als nächstem Meilenstein.
+
+**Behobene Blocker-Kette (chronologisch):**
+1. `reth-primitives-traits` fehlte komplett das `serde_bincode_compat`-Modul (Datei nie
+   nach dem Merge wiederhergestellt) — neu erstellt in
+   `crates/primitives-traits/src/serde_bincode_compat.rs` nach Vorbild `bnb-chain_reth.git`.
+2. `reth-config`: serde/toml/humantime-serde waren optional+feature-gated, `config.rs`
+   nutzt sie aber unconditional — als Pflicht-Deps gemacht statt `config.rs` komplett
+   umzubauen.
+3. `reth-node-core`/`build.rs`: **Lektion gelernt** — Workspace pinnt vergen/vergen-git2
+   auf **10.0.1** (ältere API: `Build::builder()...build()` ohne `?`), NICHT auf 9.1.0 wie
+   `bnb-chain_reth.git` (neuere API: `BuildBuilder`-Suffix, `.build()?`). Erst fälschlich
+   auf die neuere API "gefixt", dann korrekt zurückgerollt. Immer die tatsächlich gepinnte
+   Version prüfen, nicht vom Referenz-Repo übernehmen!
+4. `reth-node-metrics`: `jsonrpsee::server::serve_with_graceful_shutdown` → korrekt
+   `jsonrpsee_server::serve_with_graceful_shutdown` (Crate-Pfad-Fix).
+5. `reth-execution-types`: `execution_outcome.rs` fehlte das ganze
+   `serde_bincode_compat`-Submodul; `chain.rs`s Bincode-`Chain`-Struct hatte kaputten Typ
+   `ExecutionOutcome<'a>` (fehlender Generic-Parameter). Erst mit einem custom
+   `RlpBincode`-Trait-Ansatz gefixt (erforderte `N::Receipt: SerdeBincodeCompat`), später
+   **vereinfacht** auf Upstream-Design zurückgebaut: Receipts werden direkt via
+   `T: Receipt`-Bound (der bereits `Encodable`/`Decodable` erfordert) zu rohen RLP-`Bytes`
+   serialisiert — kein zusätzlicher `SerdeBincodeCompat`-Bound auf `N::Receipt` mehr nötig.
+   Das behebt gleichzeitig `reth-exex-types`, das `Chain<N>` generisch über JEDE
+   `NodePrimitives`-Impl instanziiert (inkl. BSCs Receipt-Typ, der nie `RlpBincode`
+   implementierte).
+6. `reth-ethereum-primitives`: Orphan-Rule-Falle — `impl RlpBincode for
+   alloy_consensus::EthereumReceipt<T>` geht nur in `primitives-traits` (Trait-Eigentümer),
+   nicht in `reth-ethereum-primitives` (Alias-Nutzer). Mittlerweile durch Punkt 5 überholt
+   (kein `RlpBincode` mehr für Receipts nötig).
+7. **`reth-rpc-traits`-Duplikat-Problem gelöst:** Diese Crate war als externe
+   crates.io-Dependency gepinnt (`version = "0.5.0"`, exakt wie Upstream-v2.4.1s eigener
+   Pin — verifiziert, kein Fork-Fehler). Problem: die publizierte `reth-rpc-traits-0.5.2`
+   hängt an ihrer EIGENEN crates.io-`reth-primitives-traits` (0.5.2), einem strukturell
+   identischen aber DISTINKTEN Typ zu unserem lokalen `crates/primitives-traits`
+   (2.4.1-Pfad-Member) → `SealedHeader<T>`-Typkonflikte überall wo `reth-rpc-traits`-
+   Methoden auf unsere eigenen Typen treffen. Ein `[patch.crates-io]`-Override griff NICHT
+   (publizierte `reth-rpc-traits` verlangt `^0.5`, inkompatibel mit unserer `2.4.1`).
+   **Lösung:** `reth-rpc-traits` als lokalen Workspace-Member vendort
+   (`crates/rpc/rpc-traits/`, Quellcode 1:1 aus der publizierten 0.5.2 kopiert, nur
+   Cargo.toml auf Workspace-lokale Deps umgeschrieben).
+8. Fehlende Re-Exports aus `reth-primitives-traits` wiederhergestellt: `SealedHeaderFor<N>`
+   (Type-Alias, neu in `header/sealed.rs`), `TransactionMeta`/`SignerRecoverable`/
+   `TxHashRef` (Re-Export von `alloy_consensus::transaction`, sowohl im
+   `transaction`-Modul als auch im Root-`lib.rs`). Fehlender
+   `impl From<SealedHeader<H>> for alloy_consensus::Sealed<H>` ergänzt (benötigt von
+   `reth-rpc-traits::FromConsensusHeader`).
+9. `SignedTransaction::try_recover()`-Default-Methode ergänzt (Trait-Definition +
+   `EthereumTxEnvelope`-Blanket-Impl) — war komplett verschwunden, Upstream hat sie als
+   fehlerbehaftete Variante von `recover_signer` (nicht zu verwechseln mit
+   `alloy_consensus`s eigenem `SignerRecoverable`, das dieser Alloy-Consensus-Pin gar nicht
+   anbietet).
+10. `reth-chain-state`: `rayon`-Feature-Flag deklariert (leer, keine echte Dependency) um
+    `unexpected-cfg`-Warnungen für bestehende `#[cfg(feature = "rayon")]`-Gates in
+    `state_trie_overlay.rs` stumm zu schalten; `serde`-Dependency optional ergänzt +
+    `dep:serde`-Wiring (war referenziert aber nie deklariert → E0433 in
+    `notifications.rs`).
+
+**Commit:** `b8891d6da` "fix(primitives-traits,rpc-traits,execution-types): unify
+reth-rpc-traits dependency, restore missing exports, simplify bincode-compat" — deckt
+Punkte 5, 7, 8, 9, 10 ab (Punkte 1-4, 6 waren bereits in früheren Commits dieser Sitzung).
+
+**Verifiziert grün:** `reth-rpc-convert`, `reth-evm-ethereum`, `reth-chain-state`,
+`reth-execution-types` (beide Feature-Varianten), `reth-exex-types` (beide
+Feature-Varianten), `reth-rpc-traits` (neu vendort).
+
+**Nächster Blocker-Cluster (an Background-Agent `fix-static-file-prune-cluster`
+delegiert):** `reth-static-file`, `reth-prune`, `reth-db-common`, `reth-trie-parallel` —
+gemeinsamer Nenner: `StaticFileProvider` hat jetzt einen Generic-Parameter `N`
+(`StaticFileProvider<N>`), `Segment::copy_to_static_files`-Trait-Signatur hat sich
+geändert (3 statt 4 Parameter erwartet), fehlende Re-Exports aus `reth_prune_types`
+(`MINIMUM_UNWIND_SAFE_DISTANCE`, `PruneLimiter`), Receipt-Typ-Borrow-Trait-Mismatch in
+`append_receipts`. Agent hat Auftrag: alle 4 Crates einzeln grün bekommen, dann
+`reth-bsc-node` erneut prüfen und nächsten Blocker NUR berichten (nicht selbst fixen),
+eigenen Commit erstellen.
+
+**Nächste Schritte:**
+1. Warten auf `fix-static-file-prune-cluster`-Agent-Ergebnis, verifizieren, ggf.
+   nachbessern.
+2. Nächsten von Agent gemeldeten Blocker angehen (selbst oder erneut delegieren, je nach
+   Umfang).
+3. Iterieren bis `reth-bsc-node --no-default-features` grün ist (nächster großer
+   Meilenstein nach `reth-bsc-evm`).
+4. Danach breitere Workspace-Prüfung (`cargo check --workspace --no-default-features`),
+   dann mit Default-Features, dann `crates/optimism/*` (opBNB) analog zu BSC.
+
+**Update:** `fix-static-file-prune-cluster`-Agent lieferte `reth-static-file` fertig grün
+(committed `44b0e41fa`), aber `reth-prune` erwies sich als deutlich größerer Umbau als
+angenommen (~31 tiefere Fehler nach ersten API-Anpassungen: entfernte Static-File-Segmente
+`AccountChangeSets`/`StorageChangeSets`/`TransactionSenders`, alte RocksDB-Batch-APIs,
+veraltete `Bodies`/Segment-Enum-Varianten) — Agent-Versuch dort wurde verworfen (hätte
+Fehlerzahl von 14 auf 32 erhöht), stattdessen sauber zurückgesetzt. `reth-prune` braucht
+einen eigenen, breiteren Portierungs-Task gegen die v2.4.1-Prune-Architektur.
+
+**Nächste Schritte (aktualisiert):**
+1. `reth-prune` als eigenständigen, größeren Task angehen (nicht als Quick-Fix) —
+   entfernte Static-File-Segmente/Enum-Varianten/RocksDB-Batch-APIs gegen v2.4.1 neu
+   aufbauen, `bnb-chain_reth.git`s `crates/prune/*` als Referenz.
+2. Danach `reth-db-common`, `reth-trie-parallel`.
+3. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker
+   identifizieren.
+
+## Session-Fortsetzung: rpc-traits-Vendoring, writer-Modul-Wiederherstellung, prune/db-common
+
+**Commits dieser Runde:**
+- `b8891d6da` — rpc-traits vendored als lokales Workspace-Member (crates/rpc/rpc-traits/),
+  SealedHeaderFor/TransactionMeta-Exports, try_recover()-Default-Methode,
+  ExecutionOutcome/Chain bincode-compat vereinfacht.
+- `9cbedc78f`, `14ca866da` — Doku-Updates.
+- `44b0e41fa` — reth-static-file auf v2.4.1-Receipts-only-Segmentmodell portiert
+  (Agent-Arbeit, verifiziert vor Commit).
+- `6f8e21394` — reth-prune/-types erster Portierungs-Durchgang (Agent-Arbeit),
+  reth-prune-types wurde grün, reth-prune selbst blieb transitiv durch
+  reth-provider-Fehler blockiert.
+- `faa534b33` — reth-provider writer-Modul auf v2.4.1-Architektur restauriert (Agent-Arbeit):
+  `UnifiedStorageWriter` existiert in v2.4.1 weiterhin als eigener Typ in
+  `crates/storage/provider/src/writer/mod.rs` (keine Verschiebung nach `DatabaseProvider`,
+  wie zunächst vermutet) — die Datei war nach dem Merge nur unvollständig wiederhergestellt
+  (deklarierte `mod database;`/`mod static_file;` auf nicht existente Dateien). Agent hat sie
+  gegen v2.4.1 neu aufgebaut inkl. Parlia-Snapshot/Sidecar-Handling.
+- `6519c8d12` — Eigene Fertigstellung: `pub mod writer;` in provider/lib.rs ergänzt,
+  db-common/init.rs vollständig auf v2.4.1 portiert (`StateChangeWriter`→`StateWriter`,
+  `UnifiedStorageWriter::commit_unwind`→`provider_rw.commit()`, `UnifiedStorageWriter::
+  from_database(&p).write_state(...)`→`provider.write_state(...)` direkt, HashMap-Typen auf
+  `alloy_primitives::map::HashMap` umgestellt wegen BundleStateInit/RevertsInit-Kompatibilität,
+  `StaticFileProvider`/`insert_genesis_header` generisch über `N: NodePrimitives` gemacht,
+  `header.difficulty`/`.state_root` auf Methodenaufrufe (`alloy_consensus::BlockHeader`-Trait)
+  umgestellt, `StateRootComputer::from_tx` über vollqualifizierte `DatabaseStateRoot`-Trait-
+  Syntax mit `LegacyKeyAdapter` aufgerufen). Zusätzlich `PruneSegment::Sidecars`-Variante
+  (BSC/opBNB-Blob-Sidecar-Pruning) wieder ergänzt, die der Prune-Port-Agent beim Angleichen
+  an Upstream fälschlich entfernt hatte (angehängt ans Enum-Ende gemäß Stabilitätsvertrag).
+
+**Verifiziert grün:** reth-rpc-convert, reth-evm-ethereum, reth-chain-state,
+reth-execution-types, reth-exex-types, reth-rpc-traits (vendored), reth-static-file,
+reth-prune-types, reth-provider, **reth-db-common** (neu).
+
+**Noch offen / delegiert:** reth-prune (tiefere API-Drift: PruneLimiter-Reexport,
+Pruner::new/new_with_factory-Signaturen, PrunedSegmentInfo, RocksDBProviderFactory-Bounds,
+AccountChangeSets-Static-File-Segment-Schicksal, Batch-API in account_history.rs) und
+reth-trie-parallel (Cargo.toml stark veraltet: fehlende crossbeam-channel/reth-tasks/
+reth-storage-api/alloy-evm/revm-Deps, Quellcode nutzt bereits neuere APIs) — beide an
+Background-Agent `port-prune-trieparallel-v2-4-1` delegiert, Ergebnis steht noch aus.
+
+**Nächste Schritte:**
+1. Agent-Ergebnis für reth-prune/reth-trie-parallel abwarten, verifizieren, committen.
+2. `cargo check -p reth-bsc-node --no-default-features` erneut, nächsten Blocker-Cluster
+   identifizieren.
+3. Iterieren bis reth-bsc-node grün.
+
+---
+
+## Session-Log: Sitzung 5 (Fortsetzung Phase 2 – Compile-Fix Loop)
+
+**Zeitraum:** (laufend)
+
+### Grün geschaltet in dieser Sitzung:
+- `reth-trie-parallel` → `StorageRootTargets` aus Reference-Repo hinzugefügt (`crates/trie/parallel/src/storage_root_targets.rs`), in lib.rs exportiert; workspace Cargo.toml: `reth-trie-parallel` mit `default-features=false`
+- `reth-trie-prefetch` → Agent `port-trie-prefetch` hat alle 12 Fehler behoben (Commit `4f112f438`); eigene Nachkorrekturen: `StateRootTaskError`-Import entfernt, `LegacyKeyAdapter`-Annotation; metrics immer aktiviert (Feature-Boundary-Problem umgangen)
+- `reth-primitives-traits` → `block_timestamp: None` im `TransactionInfo`-Initialisierer ergänzt (alloy-consensus 2.3.0 hat neues Pflichtfeld)
+- `reth-rpc-eth-types` → Agent `port-rpc-eth-types`: bereits aus Vorsitzung grün; Restkorrekturen von Agent (cache bounds, simulate.rs)
+- `reth-beacon-consensus` → Komplett durch Agent `port-node-api-beacon` neu aufgebaut als Stub (re-exportiert von `reth-engine-primitives`); `BeaconConsensusEngineHandle` = `ConsensusEngineHandle`
+- `reth-node-api` → Agent: `FullNodeTypes`, `FullNodeComponents` auf v2.4.1-API portiert (`NodeTypes::Payload` statt `NodeTypesWithEngine::Engine`, `DB` type param, `FullConsensus` statt `Consensus`, `payload_builder_handle()`)
+- `reth-basic-payload-builder` → Komplett durch Reference-Repo ersetzt (keine BSC-spezifischen Teile); `PayloadBuilderAttributes`-Trait in `reth-payload-primitives/traits.rs` hinzugefügt; `PayloadJobGenerator::new_payload_job` Signatur auf 1 Param geändert; `PayloadJob::PayloadAttributes: PayloadBuilderAttributes` (statt `PayloadAttributes`)
+
+### Commits (Session 5):
+- `df67c8807` — trie-parallel StorageRootTargets, prefetch fixes, primitives-traits TransactionInfo
+- `4f112f438` — trie/prefetch: Agentenfix
+- `e1102d8df` — rpc-eth-types: Restfehler
+- `10425cc11` — node-api + beacon-consensus: v2.4.1-Port (Agent)
+- `cae0c7058` — payload traits + basic-payload-builder
+
+### Noch offen:
+- `reth-stages` (Restdrift nach Node/Payload-API-Umstellung)
+- `reth-node-builder` (größerer API-Drift-Cluster)
+- `reth-bsc-node` (abhängig von obigen Restclustern)
+
+### Agent-Token-Verbrauch (geschätzt, Session 5):
+- `port-trie-prefetch`: ~85k Tokens, ~24 min
+- `port-rpc-eth-types`: ~120k Tokens, ~38 min
+- `port-node-api-beacon`: ~65k Tokens, ~16 min
+- `port-nodecore-bctree`: ~35 min (abgeschlossen; node-core + blockchain-tree grün)

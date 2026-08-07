@@ -8,8 +8,10 @@ pub use recovered::RecoveredBlock;
 
 pub mod body;
 pub mod error;
+pub mod header;
 
 use alloc::{fmt, vec::Vec};
+use crate::block::header::FullBlockHeader;
 use alloy_primitives::{Address, B256};
 use alloy_rlp::{Decodable, Encodable};
 
@@ -129,7 +131,7 @@ pub trait Block:
         } else {
             // Fall back to recovery if lengths don't match
             let Ok(senders) = self.body().recover_signers_unchecked() else {
-                return Err(BlockRecoveryError::new(self))
+                return Err(BlockRecoveryError::new(self));
             };
             senders
         };
@@ -149,7 +151,7 @@ pub trait Block:
     /// Returns the block as error if a signature is invalid.
     fn try_into_recovered(self) -> Result<RecoveredBlock<Self>, BlockRecoveryError<Self>> {
         let Ok(signers) = self.body().recover_signers() else {
-            return Err(BlockRecoveryError::new(self))
+            return Err(BlockRecoveryError::new(self));
         };
         Ok(RecoveredBlock::new_unhashed(self, signers))
     }
@@ -174,6 +176,17 @@ pub trait Block:
         let (header, body) = self.split();
         alloy_consensus::Block::new(header, body.into_ethereum_body())
     }
+}
+
+/// Helper trait that unifies all behaviour required by block to support full node operations.
+pub trait FullBlock:
+    Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
+{
+}
+
+impl<T> FullBlock for T where
+    T: Block<Header: FullBlockHeader, Body: crate::block::body::FullBlockBody>
+{
 }
 
 impl<T, H> Block for alloy_consensus::Block<T, H>

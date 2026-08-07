@@ -30,8 +30,8 @@ pub use pruner::{
     SegmentOutputCheckpoint,
 };
 pub use segment::{PrunePurpose, PruneSegment, PruneSegmentError};
-pub use target::{PruneModes, MINIMUM_PRUNING_DISTANCE};
-use strum as _;
+pub use target::{PruneModes, UnwindTargetPrunedError, MINIMUM_PRUNING_DISTANCE};
+pub use target::MINIMUM_PRUNING_DISTANCE as MINIMUM_UNWIND_SAFE_DISTANCE;
 
 /// Configuration for pruning receipts not associated with logs emitted by the specified contracts.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

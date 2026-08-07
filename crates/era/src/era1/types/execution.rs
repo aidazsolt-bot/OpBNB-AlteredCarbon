@@ -592,10 +592,10 @@ impl BlockTuple {
 
     /// Total serialized size of the tuple's four records (each an e2store [`Entry`]) on disk.
     pub fn size(&self) -> usize {
-        self.header.to_entry().size() +
-            self.body.to_entry().size() +
-            self.receipts.to_entry().size() +
-            self.total_difficulty.to_entry().size()
+        self.header.to_entry().size()
+            + self.body.to_entry().size()
+            + self.receipts.to_entry().size()
+            + self.total_difficulty.to_entry().size()
     }
 
     /// Convert to an `alloy_consensus::Block`

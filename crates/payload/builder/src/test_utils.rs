@@ -57,10 +57,9 @@ impl PayloadJobGenerator for TestPayloadJobGenerator {
 
     fn new_payload_job(
         &self,
-        input: BuildNewPayload<EthPayloadAttributes>,
-        _id: PayloadId,
+        attr: EthPayloadAttributes,
     ) -> Result<Self::Job, PayloadBuilderError> {
-        Ok(TestPayloadJob { attr: input.attributes })
+        Ok(TestPayloadJob { attr })
     }
 }
 

@@ -1,4 +1,5 @@
 use super::{BlockHeader, Header};
+use crate::InMemorySize;
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
@@ -9,7 +10,11 @@ use core::mem;
 use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use crate::sync::OnceLock;
+use crate::NodePrimitives;
+
+/// Sealed header type for a [`NodePrimitives`] implementation.
+pub type SealedHeaderFor<N> = SealedHeader<<N as NodePrimitives>::BlockHeader>;
 
 /// A [`Header`] that is sealed at a precalculated hash, use [`SealedHeader::unseal()`] if you want
 /// to modify header.
@@ -86,10 +91,10 @@ impl<H: BlockHeader + Sealable> SealedHeader<H> {
     }
 }
 
-impl SealedHeader {
+impl<H: InMemorySize> InMemorySize for SealedHeader<H> {
     /// Calculates a heuristic for the in-memory size of the [`SealedHeader`].
     #[inline]
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         self.header.size() + mem::size_of::<BlockHash>()
     }
 }
@@ -111,6 +116,13 @@ impl<H: Sealable> core::hash::Hash for SealedHeader<H> {
 impl<H: Default + Sealable> Default for SealedHeader<H> {
     fn default() -> Self {
         Self::seal_slow(H::default())
+    }
+}
+
+impl<H: Sealable> From<SealedHeader<H>> for alloy_consensus::Sealed<H> {
+    fn from(value: SealedHeader<H>) -> Self {
+        let (header, hash) = value.split();
+        Self::new_unchecked(header, hash)
     }
 }
 

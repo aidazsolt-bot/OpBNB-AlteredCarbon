@@ -6,7 +6,10 @@ use alloy_consensus::{Transaction, Typed2718};
 use alloy_eips::{eip2718::Encodable2718, eip4895::Withdrawals};
 use alloy_primitives::{Address, Bytes, B256};
 
-use crate::{transaction::{signed::RecoveryError, Recovered}, BlockHeader as FullBlockHeader, InMemorySize, SignedTransaction};
+use crate::{
+    transaction::{signed::RecoveryError, Recovered},
+    BlockHeader as FullBlockHeader, InMemorySize, SignedTransaction,
+};
 
 /// Abstraction for block's body.
 ///
@@ -133,7 +136,8 @@ pub trait BlockBody:
 
     /// Returns whether or not the block body contains any EIP-7702 transactions.
     fn has_eip7702_transactions(&self) -> bool {
-        self.transactions_iter().any(|tx| tx.transaction().ty() == alloy_consensus::TxType::Eip7702 as u8)
+        self.transactions_iter()
+            .any(|tx| tx.transaction().ty() == alloy_consensus::TxType::Eip7702 as u8)
     }
 
     /// Returns an iterator over all blob versioned hashes from the block body.
@@ -201,6 +205,19 @@ pub trait BlockBody:
                 .collect()
         })
     }
+}
+
+/// Helper trait that unifies all behaviour required by transaction to support full node
+/// operations.
+pub trait FullBlockBody:
+    BlockBody<Transaction: crate::transaction::signed::FullSignedTx> + crate::MaybeSerdeBincodeCompat
+{
+}
+
+impl<T> FullBlockBody for T where
+    T: BlockBody<Transaction: crate::transaction::signed::FullSignedTx>
+        + crate::MaybeSerdeBincodeCompat
+{
 }
 
 impl<T, H> BlockBody for alloy_consensus::BlockBody<T, H>

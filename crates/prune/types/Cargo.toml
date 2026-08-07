@@ -43,10 +43,8 @@ std = [
     "derive_more/std",
     "serde?/std",
     "serde_json/std",
-    "strum/std",
     "thiserror/std",
-    "tracing/std",
-    "reth-codecs?/std",
+    "strum/std",
 ]
 test-utils = [
     "std",

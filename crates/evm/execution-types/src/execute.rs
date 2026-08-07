@@ -1,7 +1,10 @@
+use alloc::vec::Vec;
 use alloy_eips::eip7685::Requests;
 use alloy_primitives::{map::HashMap, B256, U256};
 use reth_primitives::parlia::Snapshot;
 use revm::database::BundleState;
+
+pub use alloy_evm::block::BlockExecutionResult;
 
 /// A helper type for ethereum block inputs that consists of a block and the total difficulty.
 #[derive(Debug)]

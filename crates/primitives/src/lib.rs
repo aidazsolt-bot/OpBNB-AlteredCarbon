@@ -21,6 +21,8 @@
 // to make lint happy
 use alloy_eips as _;
 use alloy_trie as _;
+use modular_bitfield as _;
+use reth_codecs as _;
 
 mod block;
 pub mod constants;
@@ -58,7 +60,9 @@ pub use transaction::{
     InvalidTransactionError, Transaction, TransactionSigned, TxType,
 };
 #[expect(deprecated)]
-pub use transaction::{PooledTransactionsElementEcRecovered, TransactionSignedEcRecovered};
+pub use transaction::{
+    PooledTransactionsElementEcRecovered, TransactionSignedEcRecovered, TransactionSignedNoHash,
+};
 
 // Re-exports
 pub use reth_ethereum_forks::*;

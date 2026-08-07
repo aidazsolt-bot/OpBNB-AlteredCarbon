@@ -6,7 +6,59 @@ use clap::{builder::RangedU64ValueParser, Args};
 use reth_chainspec::EthChainSpec;
 use reth_config::config::PruneConfig;
 use reth_prune_types::{PruneMode, PruneModes, ReceiptsLogPruneConfig, MINIMUM_PRUNING_DISTANCE};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::OnceLock};
+
+/// Global static pruning defaults
+static PRUNING_DEFAULTS: OnceLock<DefaultPruningValues> = OnceLock::new();
+
+/// Default values for pruning that can be customized for downstream binaries.
+#[derive(Debug, Clone)]
+pub struct DefaultPruningValues {
+    /// Default prune modes for full node configuration.
+    pub full_prune_modes: PruneModes,
+    /// Whether full node bodies history should prune before merge.
+    pub full_bodies_history_use_pre_merge: bool,
+}
+
+impl DefaultPruningValues {
+    /// Initialize the global pruning defaults with this configuration.
+    pub fn try_init(self) -> Result<(), Self> {
+        PRUNING_DEFAULTS.set(self)
+    }
+
+    /// Get a reference to the global pruning defaults.
+    pub fn get_global() -> &'static Self {
+        PRUNING_DEFAULTS.get_or_init(Self::default)
+    }
+}
+
+impl Default for DefaultPruningValues {
+    fn default() -> Self {
+        Self {
+            full_prune_modes: PruneModes {
+                sender_recovery: Some(PruneMode::Full),
+                transaction_lookup: None,
+                receipts: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
+                account_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
+                storage_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
+                bodies_history: None,
+                receipts_log_filter: Default::default(),
+            },
+            full_bodies_history_use_pre_merge: true,
+        }
+    }
+}
+
+/// Pruning configuration kind selector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PruneConfigKind {
+    /// Full node pruning
+    Full,
+    /// Archive node (no pruning)
+    Archive,
+    /// Custom pruning
+    Custom,
+}
 
 /// Parameters for pruning and full node
 #[derive(Debug, Clone, Args, PartialEq, Eq, Default)]
@@ -112,6 +164,7 @@ impl PruningArgs {
                         .or(Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE))),
                     account_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
                     storage_history: Some(PruneMode::Distance(MINIMUM_PRUNING_DISTANCE)),
+                    bodies_history: None,
                     receipts_log_filter: ReceiptsLogPruneConfig(
                         chain_spec
                             .deposit_contract()

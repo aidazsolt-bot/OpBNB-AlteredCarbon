@@ -396,7 +396,7 @@ impl Default for PruneConfig {
         Self {
             block_interval: DEFAULT_BLOCK_INTERVAL,
             recent_sidecars_kept_blocks: 0,
-            segments: PruneModes::none(),
+            segments: PruneModes::default(),
         }
     }
 }
@@ -422,6 +422,7 @@ impl PruneConfig {
                     account_history,
                     storage_history,
                     receipts_log_filter,
+                    ..
                 },
         } = other;
 
@@ -1038,4 +1039,30 @@ connect_trusted_nodes_only = true
             assert!(conf.peers.trusted_nodes.contains(&node));
         }
     }
+}
+
+/// Configuration for static files.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct StaticFilesConfig {
+    /// Number of blocks per file for each segment.
+    pub blocks_per_file: BlocksPerFileConfig,
+}
+
+/// Configuration for the number of blocks per file for each segment.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct BlocksPerFileConfig {
+    /// Number of blocks per file for the headers segment.
+    pub headers: Option<u64>,
+    /// Number of blocks per file for the transactions segment.
+    pub transactions: Option<u64>,
+    /// Number of blocks per file for the receipts segment.
+    pub receipts: Option<u64>,
+    /// Number of blocks per file for the transaction senders segment.
+    pub transaction_senders: Option<u64>,
+    /// Number of blocks per file for the account changesets segment.
+    pub account_change_sets: Option<u64>,
+    /// Number of blocks per file for the storage changesets segment.
+    pub storage_change_sets: Option<u64>,
 }

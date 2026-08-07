@@ -15,9 +15,11 @@ use reth_network_p2p::headers::client::HeadersClient;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::Path};
 
+use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{BlockNumber, B256};
-use reth_primitives::{Head, SealedHeader};
+use reth_ethereum_forks::Head;
+use reth_primitives::SealedHeader;
 use reth_stages_types::StageId;
 use reth_storage_api::{
     BlockHashReader, DatabaseProviderFactory, HeaderProvider, StageCheckpointReader,
@@ -25,6 +27,13 @@ use reth_storage_api::{
 use reth_storage_errors::provider::ProviderResult;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tracing::*;
+
+pub use reth_engine_primitives::{
+    DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
+};
+
+/// Default size of cross-block cache in megabytes.
+pub const DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB: u64 = 4 * 1024;
 
 /// This includes all necessary configuration to launch the node.
 /// The individual configuration options can be overwritten before launching the node.
@@ -257,7 +266,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     }
 
     /// Set the dev args for the node
-    pub const fn with_dev(mut self, dev: DevArgs) -> Self {
+    pub fn with_dev(mut self, dev: DevArgs) -> Self {
         self.dev = dev;
         self
     }
@@ -315,10 +324,6 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             .header_by_number(head)?
             .expect("the header for the latest block is missing, database is corrupt");
 
-        let total_difficulty = provider
-            .header_td_by_number(head)?
-            .expect("the total difficulty for the latest block is missing, database is corrupt");
-
         let hash = provider
             .block_hash(head)?
             .expect("the hash for the latest block is missing, database is corrupt");
@@ -326,9 +331,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         Ok(Head {
             number: head,
             hash,
-            difficulty: header.difficulty,
-            total_difficulty,
-            timestamp: header.timestamp,
+            difficulty: header.difficulty(),
+            total_difficulty: Default::default(),
+            timestamp: header.timestamp(),
         })
     }
 
@@ -344,17 +349,17 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     ) -> ProviderResult<u64>
     where
         Provider: HeaderProvider,
-        Client: HeadersClient,
+        Client: HeadersClient<Header: reth_primitives_traits::BlockHeader>,
     {
         let header = provider.header_by_hash_or_number(tip.into())?;
 
         // try to look up the header in the database
         if let Some(header) = header {
             info!(target: "reth::cli", ?tip, "Successfully looked up tip block in the database");
-            return Ok(header.number)
+            return Ok(header.number());
         }
 
-        Ok(self.fetch_tip_from_network(client, tip.into()).await.number)
+        Ok(self.fetch_tip_from_network(client, tip.into()).await.number())
     }
 
     /// Attempt to look up the block with the given number and return the header.
@@ -364,9 +369,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         &self,
         client: Client,
         tip: BlockHashOrNumber,
-    ) -> SealedHeader
+    ) -> SealedHeader<Client::Header>
     where
-        Client: HeadersClient,
+        Client: HeadersClient<Header: reth_primitives_traits::BlockHeader>,
     {
         info!(target: "reth::cli", ?tip, "Fetching tip block from the network.");
         let mut fetch_failures = 0;
@@ -374,7 +379,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             match get_single_header(&client, tip).await {
                 Ok(tip_header) => {
                     info!(target: "reth::cli", ?tip, "Successfully fetched tip");
-                    return tip_header
+                    return tip_header;
                 }
                 Err(error) => {
                     fetch_failures += 1;
@@ -389,8 +394,8 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     /// Change rpc port numbers based on the instance number, using the inner
     /// [`RpcServerArgs::adjust_instance_ports`] method.
     pub fn adjust_instance_ports(&mut self) {
-        self.rpc.adjust_instance_ports(self.instance);
-        self.network.adjust_instance_ports(self.instance);
+        self.rpc.adjust_instance_ports(Some(self.instance));
+        self.network.adjust_instance_ports(Some(self.instance));
     }
 
     /// Sets networking and RPC ports to zero, causing the OS to choose random unused ports when
@@ -482,7 +487,7 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             builder: self.builder.clone(),
             debug: self.debug.clone(),
             db: self.db,
-            dev: self.dev,
+            dev: self.dev.clone(),
             pruning: self.pruning.clone(),
             datadir: self.datadir.clone(),
             enable_prefetch: false,

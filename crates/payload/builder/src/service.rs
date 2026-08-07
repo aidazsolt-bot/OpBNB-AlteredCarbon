@@ -162,7 +162,7 @@ impl<T: PayloadTypes> PayloadBuilderHandle<T> {
         let sent = self.to_service.send(PayloadServiceCommand::Resolve(id, kind, tx)).is_ok();
         async move {
             if !sent {
-                return None
+                return None;
             }
 
             match rx.await.transpose()? {
@@ -322,15 +322,15 @@ where
         let start = Instant::now();
         debug!(target: "payload_builder", %id, "resolving payload job");
 
-        if let Some((cached, _, payload)) = &*self.cached_payload_rx.borrow() &&
-            *cached == id
+        if let Some((cached, _, payload)) = &*self.cached_payload_rx.borrow()
+            && *cached == id
         {
             self.metrics.resolve_duration_seconds.record(start.elapsed());
             return (Some(Box::pin(core::future::ready(Ok(payload.clone())))), None);
         }
 
         let Some(job) = self.payload_jobs.iter().position(|(_, job_id, _)| *job_id == id) else {
-            return (None, None)
+            return (None, None);
         };
         let (fut, keep_alive) = self.payload_jobs[job].0.resolve_kind(kind);
         let payload_timestamp = self.payload_jobs[job].0.payload_timestamp();
@@ -367,8 +367,8 @@ where
 
     /// Returns the payload timestamp for the given payload.
     fn payload_timestamp(&self, id: PayloadId) -> Option<Result<u64, PayloadBuilderError>> {
-        if let Some((cached_id, timestamp, _)) = *self.cached_payload_rx.borrow() &&
-            cached_id == id
+        if let Some((cached_id, timestamp, _)) = *self.cached_payload_rx.borrow()
+            && cached_id == id
         {
             return Some(Ok(timestamp));
         }
@@ -452,7 +452,7 @@ where
                             let attributes = input.attributes.clone();
                             let job_result = {
                                 let _entered = job_span.enter();
-                                this.generator.new_payload_job(*input, id)
+                                this.generator.new_payload_job(attributes.clone())
                             };
 
                             match job_result {
@@ -511,7 +511,7 @@ where
             }
 
             if !new_job {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }

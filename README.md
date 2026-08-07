@@ -350,13 +350,13 @@ nature of the work.
 | Metric | Value |
 | --- | --- |
 | Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days |
-| LLM models used | Claude Sonnet 5 (primary), GPT-5.4 (secondary/delegated sub-agent work) |
-| Approx. input tokens consumed (latest session alone) | ~58.7M (Claude Sonnet 5) + ~38.5M (GPT-5.4) |
-| Approx. output tokens generated (latest session alone) | ~231K (Claude Sonnet 5) + ~78K (GPT-5.4) |
-| Approx. tool/agent turns (latest session alone) | ~800 |
+| LLM models used | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex (delegated/specialized passes) |
+| Approx. input tokens consumed (current session `a95758da`, snapshot 2026-08-07 04:12 UTC) | ~356.9M (Claude Sonnet 5) + ~135.4M (GPT-5.4) + ~88.4M (Claude Sonnet 4.6) + ~3.3M (GPT-5.3-Codex), total ~584.1M |
+| Approx. output tokens generated (current session `a95758da`, snapshot 2026-08-07 04:12 UTC) | ~1.162M (Claude Sonnet 5) + ~297.7K (GPT-5.4) + ~260.3K (Claude Sonnet 4.6) + ~3.5K (GPT-5.3-Codex), total ~1.725M |
+| Approx. interaction volume (current session `a95758da`) | 17 CLI turns, 5,188 model usage events |
 | Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch for the full, itemized commit history and messages, which double as a technical changelog of what was ported, what was fixed, and why |
 
-These figures cover the most recent working session and are illustrative of the scale of context/inference
+These figures are a session telemetry snapshot and are illustrative of the scale of context/inference
 required for this kind of large structural migration; total cumulative consumption across all sessions in
 this effort is higher. They are provided for transparency about the practical cost of AI-assisted
 maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency optimization was

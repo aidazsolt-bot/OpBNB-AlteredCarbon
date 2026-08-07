@@ -15,16 +15,22 @@ workspace = true
 # reth
 reth-chainspec.workspace = true
 reth-errors.workspace = true
+reth-ethereum-primitives.workspace = true
 reth-execution-types.workspace = true
 reth-metrics.workspace = true
 reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
 reth-storage-api.workspace = true
 reth-trie.workspace = true
 reth-revm.workspace = true
 
 # ethereum
+alloy-consensus.workspace = true
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
+
+# misc
+serde = { workspace = true, optional = true }
 
 # async
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
@@ -34,6 +40,7 @@ tokio-stream = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 
 # cache
+dashmap.workspace = true
 lazy_static = "1.5.0"
 quick_cache = "0.6.6"
 
@@ -43,13 +50,13 @@ derive_more.workspace = true
 metrics.workspace = true
 parking_lot.workspace = true
 pin-project.workspace = true
+reth-trie-sparse.workspace = true
+revm.workspace = true
 
 # optional deps for test-utils
 alloy-signer = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
-alloy-consensus = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
-revm = { workspace = true, optional = true }
 
 [dev-dependencies]
 reth-testing-utils.workspace = true
@@ -63,16 +70,19 @@ serial_test = "3.1.1"
 
 [features]
 serde = [
+    "dep:serde",
     "reth-execution-types/serde",
     "reth-trie/serde",
     "reth-storage-api/serde"
 ]
+# Declared only to satisfy `#[cfg(feature = "rayon")]` gates in
+# `state_trie_overlay.rs`; no `rayon` dependency is wired up in this fork, so
+# the feature is always inactive (parallel code paths there are dead for now).
+rayon = []
 test-utils = [
 	"alloy-signer",
 	"alloy-signer-local",
-	"alloy-consensus",
 	"rand",
-	"revm",
 	"reth-chainspec/test-utils",
 	"reth-primitives/test-utils",
 	"reth-trie/test-utils",
