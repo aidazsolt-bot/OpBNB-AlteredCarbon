@@ -1,10 +1,11 @@
 use crate::{ExExContextDyn, ExExEvent, ExExNotifications, ExExNotificationsStream};
 use alloy_eips::BlockNumHash;
 use reth_exex_types::ExExHead;
+use reth_evm::ConfigureEvm;
 use reth_node_api::{FullNodeComponents, NodePrimitives, NodeTypes, PrimitivesTy};
 use reth_node_core::node_config::NodeConfig;
 use reth_payload_builder::PayloadBuilderHandle;
-use reth_provider::BlockReader;
+use reth_provider::{BlockReader, HeaderProvider, StateProviderFactory};
 use reth_tasks::TaskExecutor;
 use std::fmt::Debug;
 use tokio::sync::mpsc::{error::SendError, UnboundedSender};
@@ -59,8 +60,11 @@ where
 impl<Node> ExExContext<Node>
 where
     Node: FullNodeComponents,
-    Node::Provider: Debug + BlockReader,
+    Node::Provider:
+        Debug + BlockReader + HeaderProvider + StateProviderFactory + Clone + Unpin + 'static,
     Node::Types: NodeTypes<Primitives: NodePrimitives>,
+    PrimitivesTy<Node::Types>: NodePrimitives<Block = <Node::Provider as BlockReader>::Block>,
+    Node::Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + Clone + Unpin + 'static,
 {
     /// Returns dynamic version of the context
     pub fn into_dyn(self) -> ExExContextDyn<PrimitivesTy<Node::Types>> {
@@ -72,6 +76,9 @@ impl<Node> ExExContext<Node>
 where
     Node: FullNodeComponents,
     Node::Types: NodeTypes<Primitives: NodePrimitives>,
+    Node::Provider: BlockReader + HeaderProvider + StateProviderFactory + Clone + Unpin + 'static,
+    PrimitivesTy<Node::Types>: NodePrimitives<Block = <Node::Provider as BlockReader>::Block>,
+    Node::Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + Clone + Unpin + 'static,
 {
     /// Returns the transaction pool of the node.
     pub fn pool(&self) -> &Node::Pool {
