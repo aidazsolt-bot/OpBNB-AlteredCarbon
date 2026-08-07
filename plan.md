@@ -168,7 +168,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Session | Zeitraum (UTC) | Modelle | Input-Tokens | Output-Tokens | Turns | Wichtigste Ergebnisse |
 | --- | --- | --- | --- | --- | --- | --- |
 | Frühere Sessions (kumulativ, s. README-Stand vor dieser Aktualisierung) | mehrere Tage, mehrere Sitzungen | Claude Sonnet 5 (primär), GPT-5.4 (Sub-Agenten) | ~58,7M (Sonnet 5) + ~38,5M (GPT-5.4) | ~231K (Sonnet 5) + ~78K (GPT-5.4) | ~800 | Merge/Rebase auf v2.4.1 abgeschlossen, Konflikte aufgelöst, Blockchain-Tree→Engine-Tree-Fund, Kona-Node-Evaluierung, README-Disclaimer |
-| Aktuelle Session `a95758da` | 2026-08-06 09:50 – 18:06 (laufend) | Claude Sonnet 5 (primär), GPT-5.4 (Sub-Agenten) | ~158,2M (Sonnet 5) + ~40,2M (GPT-5.4) | ~576K (Sonnet 5) + ~94K (GPT-5.4) | 14 Turns / 1273+321 Modell-Aufrufe | `crates/primitives`+`primitives-traits` komplett neu geschrieben (größter Einzel-Blocker der gesamten Portierung), `reth-bsc-chainspec`/`reth-chainspec` API-Drift behoben, mehrere Folgefixes (`execution-types`, `eth-wire`, etc.) |
+| Aktuelle Session `a95758da` (Snapshot 2026-08-07 04:12 UTC) | 2026-08-06 09:50 – laufend | Claude Sonnet 5 (primär), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex | ~356,9M (Sonnet 5) + ~135,4M (GPT-5.4) + ~88,4M (Sonnet 4.6) + ~3,3M (GPT-5.3-Codex) = ~584,1M | ~1,162M (Sonnet 5) + ~297,7K (GPT-5.4) + ~260,3K (Sonnet 4.6) + ~3,5K (GPT-5.3-Codex) = ~1,725M | 17 CLI-Turns / 5.188 Modell-Usage-Events | Portierungs-Loop bis `reth-node-core` und `reth-blockchain-tree` grün, `reth-beacon-consensus`/`reth-node-api` auf v2.4.1 API umgestellt, `reth-rpc-eth-types` + `reth-trie-prefetch` grün |
 
 > Hinweis: Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn, kein Maß für "sinnvolle" Ausgabe — dienen der Transparenz über den praktischen Ressourcen-
@@ -585,12 +585,12 @@ Background-Agent `port-prune-trieparallel-v2-4-1` delegiert, Ergebnis steht noch
 - `cae0c7058` — payload traits + basic-payload-builder
 
 ### Noch offen:
-- `reth-node-core` (~19 Fehler): fehlende Deps, verschobene Typen → Agent `port-nodecore-bctree`
-- `reth-blockchain-tree` (fehlende Submodul-Dateien) → gleicher Agent
-- Nach Agentenabschluss: `reth-stages`, `reth-node-builder`, `reth-bsc-node`
+- `reth-stages` (Restdrift nach Node/Payload-API-Umstellung)
+- `reth-node-builder` (größerer API-Drift-Cluster)
+- `reth-bsc-node` (abhängig von obigen Restclustern)
 
 ### Agent-Token-Verbrauch (geschätzt, Session 5):
 - `port-trie-prefetch`: ~85k Tokens, ~24 min
 - `port-rpc-eth-types`: ~120k Tokens, ~38 min
 - `port-node-api-beacon`: ~65k Tokens, ~16 min
-- `port-nodecore-bctree`: läuft noch
+- `port-nodecore-bctree`: ~35 min (abgeschlossen; node-core + blockchain-tree grün)
