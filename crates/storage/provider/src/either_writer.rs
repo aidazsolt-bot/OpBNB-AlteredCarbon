@@ -157,8 +157,6 @@ impl<'a> EitherWriter<'a, (), ()> {
         P: DBProvider + NodePrimitivesProvider + StorageSettingsCache + StaticFileProviderFactory,
         P::Tx: DbTxMut,
     {
-        // Keep changesets in MDBX until AccountChangeSets SF is ported. Do not route through
-        // Headers (previous stub corrupted header static files during genesis).
         if provider.cached_storage_settings().account_changesets_in_static_files() {
             Ok(EitherWriter::StaticFile(
                 provider
@@ -862,11 +860,11 @@ where
         match self {
             Self::StaticFile(provider, _) => {
                 let highest_static_block =
-                    provider.get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
+                    provider.get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
 
                 let Some(highest) = highest_static_block else {
                     return Err(ProviderError::MissingHighestStaticFileBlock(
-                        StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+                        StaticFileSegment::AccountChangeSets,
                     ))
                 };
 

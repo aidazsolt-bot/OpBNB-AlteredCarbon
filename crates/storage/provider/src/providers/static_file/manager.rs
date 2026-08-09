@@ -176,7 +176,14 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
 
     /// Set a custom number of blocks per file for all segments.
     pub fn with_blocks_per_file(mut self, blocks_per_file: u64) -> Self {
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter() {
+        for segment in [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+        ] {
             self.blocks_per_file.insert(segment, blocks_per_file);
         }
         self
@@ -405,7 +412,14 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
         };
 
         let mut blocks_per_file = StaticFileMap::default();
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter() {
+        for segment in [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+        ] {
             blocks_per_file.insert(segment, DEFAULT_BLOCKS_PER_STATIC_FILE);
         }
 
@@ -727,7 +741,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_account_changesets = ctx.write_account_changesets.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+                    StaticFileSegment::AccountChangeSets,
                     first_block_number,
                     |w| Self::write_account_changesets(w, blocks),
                 )
@@ -1467,8 +1481,16 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
-        [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter()
-            .filter(move |segment| self.should_check_segment(provider, *segment))
+        [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+        ]
+        .into_iter()
+        .filter(move |segment| self.should_check_segment(provider, *segment))
     }
 
     fn should_check_segment<Provider>(
@@ -2147,7 +2169,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+            StaticFileSegment::AccountChangeSets,
             block_number,
             None,
         ) {
@@ -2156,11 +2178,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        let _ = (provider, block_number);
-        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
-        // offsets for static-file access. Keep account changesets MDBX-backed until that support
-        // is ported coherently.
-        Ok(Vec::new())
+        provider.account_changeset(block_number)
     }
 
     fn get_account_before_block(
@@ -2169,7 +2187,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         address: Address,
     ) -> ProviderResult<Option<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+            StaticFileSegment::AccountChangeSets,
             block_number,
             None,
         ) {
@@ -2178,11 +2196,10 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        let _ = (provider, block_number, address);
-        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
-        // offsets for static-file access. Keep account changesets MDBX-backed until that support
-        // is ported coherently.
-        Ok(None)
+        Ok(provider
+            .account_changeset(block_number)?
+            .into_iter()
+            .find(|change| change.address == address))
     }
 
     fn account_changesets_range(
@@ -2193,8 +2210,16 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
     }
 
     fn account_changeset_count(&self) -> ProviderResult<usize> {
-        // Account changeset static files are not fully ported in this fork yet.
-        Ok(0)
+        let Some(highest) = self.get_highest_static_file_block(StaticFileSegment::AccountChangeSets)
+        else {
+            return Ok(0)
+        };
+
+        let mut count = 0usize;
+        for block in 0..=highest {
+            count += self.account_block_changeset(block)?.len();
+        }
+        Ok(count)
     }
 }
 

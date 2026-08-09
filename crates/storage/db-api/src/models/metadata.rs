@@ -17,12 +17,11 @@ pub struct StorageSettings {
     /// Whether this node uses v2 storage layout.
     ///
     /// When `true`, enables v2 storage features:
-    /// - Receipts and transaction senders in static files
+    /// - Receipts, transaction senders and account changesets in static files
     /// - History indices in `RocksDB` (accounts, storages, transaction hashes)
     /// - Hashed state tables as canonical state representation
     ///
-    /// Account changesets remain in MDBX until the AccountChangeSets SF segment is fully
-    /// ported ([`Self::account_changesets_in_static_files`]). Storage changesets stay in MDBX.
+    /// Storage changesets stay in MDBX until a `StorageChangeSets` SF segment is ported.
     ///
     /// When `false`, uses v1/legacy layout (everything in MDBX).
     pub storage_v2: bool,
@@ -35,11 +34,11 @@ impl StorageSettings {
     }
 
     /// Creates `StorageSettings` for v2 nodes:
-    /// - Receipts and transaction senders in static files
+    /// - Receipts, transaction senders and account changesets in static files
     /// - History indices in `RocksDB` (storages, accounts, transaction hashes)
     /// - Hashed state as canonical state representation
     ///
-    /// Account/storage changesets remain in MDBX until those SF segments are ported.
+    /// Storage changesets remain in MDBX until that SF segment is ported.
     ///
     /// Use this when the `--storage.v2` CLI flag is set.
     pub const fn v2() -> Self {
@@ -96,10 +95,11 @@ impl StorageSettings {
 
     /// Whether account changesets are stored in static files.
     ///
-    /// Always `false` in this fork: the AccountChangeSets static-file segment is not ported
-    /// yet. Upstream v2 writes these to a dedicated SF segment; our incomplete port reused
-    /// the Headers segment and broke genesis (`append Headers #0 but expected #1`).
+    /// Backed by the `AccountChangeSets` static-file segment, which tracks per-block
+    /// changeset offsets out-of-band in a `.csoff` sidecar file (see
+    /// [`reth_static_file_types::SegmentHeader::changeset_offsets_len`]). Storage changesets
+    /// remain MDBX-backed until a `StorageChangeSets` SF segment is ported.
     pub const fn account_changesets_in_static_files(&self) -> bool {
-        false
+        self.storage_v2
     }
 }
