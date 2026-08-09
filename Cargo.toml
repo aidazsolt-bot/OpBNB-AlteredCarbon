@@ -26,9 +26,12 @@ members = [
     "crates/optimism/chainspec/",
     "crates/optimism/consensus/",
     "crates/optimism/evm/",
+    "crates/optimism/flashblocks/",
     "crates/optimism/hardforks/",
     "crates/optimism/payload/",
+    "crates/optimism/post-exec-replay/",
     "crates/optimism/primitives/",
+    "crates/optimism/rpc/",
     "crates/optimism/storage/",
     "crates/optimism/txpool/",
     "crates/primitives/",
@@ -433,7 +436,9 @@ reth-optimism-consensus = { path = "crates/optimism/consensus" }
 reth-optimism-evm = { path = "crates/optimism/evm" }
 reth-optimism-forks = { path = "crates/optimism/hardforks" }
 reth-optimism-node = { path = "crates/optimism/node" }
+reth-optimism-flashblocks = { path = "crates/optimism/flashblocks" }
 reth-optimism-payload-builder = { path = "crates/optimism/payload" }
+reth-optimism-post-exec-replay = { path = "crates/optimism/post-exec-replay" }
 reth-optimism-primitives = { path = "crates/optimism/primitives" }
 reth-optimism-rpc = { path = "crates/optimism/rpc" }
 reth-optimism-storage = { path = "crates/optimism/storage" }
@@ -547,6 +552,7 @@ alloy-transport-ws = { version = "2.1.1", default-features = false }
 op-alloy-consensus = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/consensus", version = "2.0.0", default-features = false }
 op-alloy-flz = { version = "0.13.1", default-features = false }
 op-alloy-network = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/network", version = "2.0.0", default-features = false }
+op-alloy-rpc-jsonrpsee = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-jsonrpsee", version = "2.0.0", default-features = false }
 op-alloy-rpc-types = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types", version = "2.0.0", default-features = false }
 op-alloy-rpc-types-engine = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types-engine", version = "2.0.0", default-features = false }
 
@@ -642,6 +648,7 @@ hyper = "1.9"
 hyper-util = "0.1.5"
 pin-project = "1.1.12"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"] }
+rustls = { version = "0.23", default-features = false }
 tracing-futures = "0.2"
 tower = "0.5"
 tower-http = "0.6"

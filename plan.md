@@ -673,3 +673,9 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Verify: storage/txpool/payload + bsc-node + workspace `--no-default-features` green.
 - Next: optimism rpc / node / cli.
 
+### Session 8 cont. — flashblocks/rpc
+- Synced `post-exec-replay`, `flashblocks`, `rpc`; stubbed trie-backed `debug`/`state`/`proofs`.
+- Flashblocks: trail `BlockExecutionOutput.snapshot` + `recover_transactions::<T>`.
+- RPC: drop blanket-conflicting EthSubscriptions/GetBlockAccessList; align receipt/witness APIs.
+- Verify: post-exec-replay, flashblocks, rpc green. Next: optimism-node/cli.
+
