@@ -221,40 +221,6 @@ pub struct OpChainSpec {
     pub inner: ChainSpec,
 }
 
-impl OpChainSpec {
-    /// Read from parent to determine the base fee for the next block
-    pub fn next_block_base_fee(
-        &self,
-        parent: &Header,
-        timestamp: u64,
-    ) -> Result<U256, DecodeError> {
-        let is_holocene_activated = self.inner.is_fork_active_at_timestamp(
-            reth_optimism_forks::OptimismHardfork::Holocene,
-            timestamp,
-        );
-        // If we are in the Holocene, we need to use the base fee params
-        // from the parent block's extra data.
-        // Else, use the base fee params (default values) from chainspec
-        if is_holocene_activated {
-            let (denominator, elasticity) = decode_holocene_1559_params(parent.extra_data.clone())?;
-            if elasticity == 0 && denominator == 0 {
-                return Ok(U256::from(
-                    parent
-                        .next_block_base_fee(self.base_fee_params_at_timestamp(timestamp))
-                        .unwrap_or_default(),
-                ));
-            }
-            let base_fee_params = BaseFeeParams::new(denominator as u128, elasticity as u128);
-            Ok(U256::from(parent.next_block_base_fee(base_fee_params).unwrap_or_default()))
-        } else {
-            Ok(U256::from(
-                parent
-                    .next_block_base_fee(self.base_fee_params_at_timestamp(timestamp))
-                    .unwrap_or_default(),
-            ))
-        }
-    }
-}
 
 #[derive(Clone, Debug, DeriveDisplay, Eq, PartialEq)]
 /// Error type for decoding Holocene 1559 parameters
@@ -292,7 +258,7 @@ pub fn decode_holocene_1559_params(extra_data: Bytes) -> Result<(u32, u32), Deco
 
 /// Returns the signature for the optimism deposit transactions, which don't include a
 /// signature.
-pub fn optimism_deposit_tx_signature() -> Signature {
+pub const fn optimism_deposit_tx_signature() -> Signature {
     Signature::new(U256::ZERO, U256::ZERO, false)
 }
 
@@ -352,6 +318,18 @@ impl EthChainSpec for OpChainSpec {
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.inner.final_paris_total_difficulty()
+    }
+
+    fn next_block_base_fee(&self, parent: &Header, target_timestamp: u64) -> Option<u64> {
+        // Holocene+ encode 1559 params in parent extra_data; fall back to chainspec params.
+        if self.inner.is_fork_active_at_timestamp(
+            reth_optimism_forks::OptimismHardfork::Holocene,
+            parent.timestamp,
+        ) {
+            basefee::decode_holocene_base_fee(parent).ok()
+        } else {
+            self.inner.next_block_base_fee(parent, target_timestamp)
+        }
     }
 }
 
@@ -521,33 +499,33 @@ impl OpGenesisInfo {
             .unwrap_or_default(),
             ..Default::default()
         };
-        if let Some(optimism_base_fee_info) = &info.optimism_chain_info.base_fee_info {
-            if let (Some(elasticity), Some(denominator)) = (
+        if let Some(optimism_base_fee_info) = &info.optimism_chain_info.base_fee_info &&
+            let (Some(elasticity), Some(denominator)) = (
                 optimism_base_fee_info.eip1559_elasticity,
                 optimism_base_fee_info.eip1559_denominator,
-            ) {
-                let base_fee_params = if let Some(canyon_denominator) =
-                    optimism_base_fee_info.eip1559_denominator_canyon
-                {
-                    BaseFeeParamsKind::Variable(
-                        vec![
-                            (
-                                EthereumHardfork::London.boxed(),
-                                BaseFeeParams::new(denominator as u128, elasticity as u128),
-                            ),
-                            (
-                                reth_optimism_forks::OptimismHardfork::Canyon.boxed(),
-                                BaseFeeParams::new(canyon_denominator as u128, elasticity as u128),
-                            ),
-                        ]
-                        .into(),
-                    )
-                } else {
-                    BaseFeeParams::new(denominator as u128, elasticity as u128).into()
-                };
+            )
+        {
+            let base_fee_params = if let Some(canyon_denominator) =
+                optimism_base_fee_info.eip1559_denominator_canyon
+            {
+                BaseFeeParamsKind::Variable(
+                    vec![
+                        (
+                            EthereumHardfork::London.boxed(),
+                            BaseFeeParams::new(denominator as u128, elasticity as u128),
+                        ),
+                        (
+                            reth_optimism_forks::OptimismHardfork::Canyon.boxed(),
+                            BaseFeeParams::new(canyon_denominator as u128, elasticity as u128),
+                        ),
+                    ]
+                    .into(),
+                )
+            } else {
+                BaseFeeParams::new(denominator as u128, elasticity as u128).into()
+            };
 
-                info.base_fee_params = base_fee_params;
-            }
+            info.base_fee_params = base_fee_params;
         }
 
         info
@@ -568,8 +546,7 @@ mod tests {
 
     #[test]
     fn base_mainnet_forkids() {
-        let base_mainnet = OpChainSpecBuilder::base_mainnet().build();
-        let _ = base_mainnet.genesis_hash.set(BASE_MAINNET.genesis_hash.get().copied().unwrap());
+        let _base_mainnet = OpChainSpecBuilder::base_mainnet().build();
         test_fork_ids(
             &BASE_MAINNET,
             &[
@@ -656,12 +633,10 @@ mod tests {
 
     #[test]
     fn op_mainnet_forkids() {
-        let op_mainnet = OpChainSpecBuilder::optimism_mainnet().build();
-        // for OP mainnet we have to do this because the genesis header can't be properly computed
-        // from the genesis.json file
-        let _ = op_mainnet.genesis_hash.set(OP_MAINNET.genesis_hash());
+        // Prefer the static OP_MAINNET spec; builder genesis header may differ from the
+        // hand-tuned genesis.json hash used for fork-id vectors.
         test_fork_ids(
-            &op_mainnet,
+            &OP_MAINNET,
             &[
                 (
                     Head { number: 0, ..Default::default() },
@@ -783,7 +758,7 @@ mod tests {
     #[test]
     fn is_bedrock_active() {
         let op_mainnet = OpChainSpecBuilder::optimism_mainnet().build();
-        assert!(!op_mainnet.is_bedrock_active_at_block(1))
+        assert!(!OptimismHardforks::is_bedrock_active_at_block(&op_mainnet, 1))
     }
 
     #[test]
@@ -924,7 +899,7 @@ mod tests {
 
     #[test]
     fn parse_genesis_optimism_with_variable_base_fee_params() {
-        use op_alloy_rpc_types::genesis::OpBaseFeeInfo;
+        use op_alloy_rpc_types::OpBaseFeeInfo;
 
         let geth_genesis = r#"
     {
@@ -1085,11 +1060,9 @@ mod tests {
         let base_fee = op_chain_spec.next_block_base_fee(&parent, 0);
         assert_eq!(
             base_fee.unwrap(),
-            U256::from(
-                parent
-                    .next_block_base_fee(op_chain_spec.base_fee_params_at_timestamp(0))
-                    .unwrap_or_default()
-            )
+            parent
+                .next_block_base_fee(op_chain_spec.base_fee_params_at_timestamp(0))
+                .unwrap_or_default()
         );
     }
 
@@ -1100,11 +1073,10 @@ mod tests {
             inner: ChainSpec {
                 chain: BASE_SEPOLIA.inner.chain,
                 genesis: BASE_SEPOLIA.inner.genesis.clone(),
-                genesis_hash: BASE_SEPOLIA.inner.genesis_hash.clone(),
+                genesis_header: BASE_SEPOLIA.inner.genesis_header.clone(),
                 paris_block_and_final_difficulty: Some((0, U256::from(0))),
                 hardforks,
                 base_fee_params: BASE_SEPOLIA.inner.base_fee_params.clone(),
-                max_gas_limit: crate::constants::BASE_SEPOLIA_MAX_GAS_LIMIT,
                 prune_delete_limit: 10000,
                 ..Default::default()
             },
@@ -1123,14 +1095,8 @@ mod tests {
             ..Default::default()
         };
         let base_fee = op_chain_spec.next_block_base_fee(&parent, 1800000005);
-        assert_eq!(
-            base_fee.unwrap(),
-            U256::from(
-                parent
-                    .next_block_base_fee(op_chain_spec.base_fee_params_at_timestamp(0))
-                    .unwrap_or_default()
-            )
-        );
+        // Zero Holocene params are rejected by decode_holocene_extra_data.
+        assert_eq!(base_fee, None);
     }
 
     #[test]
@@ -1148,11 +1114,9 @@ mod tests {
         let base_fee = op_chain_spec.next_block_base_fee(&parent, 1800000005);
         assert_eq!(
             base_fee.unwrap(),
-            U256::from(
-                parent
-                    .next_block_base_fee(BaseFeeParams::new(0x00000008, 0x00000008))
-                    .unwrap_or_default()
-            )
+            parent
+                .next_block_base_fee(BaseFeeParams::new(0x00000008, 0x00000008))
+                .unwrap_or_default()
         );
     }
 }

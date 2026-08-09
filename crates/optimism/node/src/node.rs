@@ -712,16 +712,15 @@ where
         let eth_config =
             EthConfigHandler::new(ctx.node.provider().clone(), ctx.node.evm_config().clone());
 
+        let bedrock_block = ctx
+            .node
+            .provider()
+            .chain_spec()
+            .op_fork_activation(OpHardfork::Bedrock)
+            .block_number()
+            .filter(|activation| *activation > 0);
         let maybe_pre_bedrock_historical_rpc = historical_rpc
-            .and_then(|historical_rpc| {
-                ctx.node
-                    .provider()
-                    .chain_spec()
-                    .op_fork_activation(OpHardfork::Bedrock)
-                    .block_number()
-                    .filter(|activation| *activation > 0)
-                    .map(|bedrock_block| (historical_rpc, bedrock_block))
-            })
+            .zip(bedrock_block)
             .map(|(historical_rpc, bedrock_block)| -> eyre::Result<_> {
                 info!(target: "reth::cli", %bedrock_block, ?historical_rpc, "Using historical RPC endpoint pre bedrock");
                 let provider = ctx.node.provider().clone();
@@ -729,8 +728,7 @@ where
                 let layer = HistoricalRpc::new(provider, client, bedrock_block);
                 Ok(layer)
             })
-            .transpose()?
-            ;
+            .transpose()?;
 
         let rpc_add_ons = rpc_add_ons.option_layer_rpc_middleware(maybe_pre_bedrock_historical_rpc);
 
