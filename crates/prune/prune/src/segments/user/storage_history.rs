@@ -295,7 +295,8 @@ impl StorageHistory {
                 })
                 .collect();
 
-            let mut batch = provider.rocksdb_provider().batch();
+            let rocks = provider.rocksdb_provider();
+            let mut batch = rocks.batch();
             let outcomes = batch.prune_storage_history_batch(&targets)?;
             deleted_shards = outcomes.deleted;
             updated_shards = outcomes.updated;

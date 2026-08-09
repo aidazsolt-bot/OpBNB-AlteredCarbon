@@ -342,7 +342,7 @@ impl<TX, N: NodeTypes> RocksDBProviderFactory for DatabaseProvider<TX, N> {
         {
             let batches = std::mem::take(&mut *self.pending_rocksdb_batches.lock());
             for batch in batches {
-                self.rocksdb_provider.write(batch)?;
+                self.rocksdb_provider.commit_batch(batch)?;
             }
         }
         Ok(())

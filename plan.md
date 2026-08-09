@@ -51,8 +51,11 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CLI-002 | README empfiehlt noch `--enable-prefetch` / `--optimize.enable-execution-cache` | Alte BSC-Fork-Toggles; CLI + Engine-Gating beim Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache | 📝 docs: Flags als obsolet markiert; Runtime-Port von `TriePrefetch` bewusst nicht wiederbelebt |
 | PORT-CLI-003 | `--ipcpath /tmp/foo.ipc` wurde zu `/tmp/foo.ipc-1` | `NodeConfig.instance` war `u16` mit Default `1`; `adjust_instance_ports` hängte immer `-{instance}` an | ✅ fixed: `instance: Option<u16>` (None ohne `--instance`), wie Upstream |
 | PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
-| PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ fixed: `account_changesets_in_static_files` / `transaction_senders_in_static_files` always false; route changesets to MDBX until real SF segments ported |
-| PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; Aktivierung bricht aktuell den Compile (unvollständiger RocksDB-Port) | 🔓 open: Feature-Flags an `op-reth`/`optimism-cli` vorbereitet; Compile-Fix + Default-Enable separat |
+| PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ mitigated: flags off / MDBX for changesets; ⏳ Senders SF wired (see PORT-STOR-004); AccountChangeSets SF still pending |
+| PORT-STOR-004 | TransactionSenders SF stub reused Transactions/Receipts | Wrong segment literals + prune stub; v2 expected senders in SF | ✅ fixed: dedicated TransactionSenders writer/prune/readers; `transaction_senders_in_static_files() → storage_v2` |
+| PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
+| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 IPv6-only (Bootnodes IPv4) | ✅ code: op-geth Bootnodes + OpBNB discv4/IPv4-discv5 Defaults; ⏳ live: eth-Session/`peerCount>0` nach Rebuild noch verifizieren |
+| PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -752,5 +755,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Bug: fresh `op-reth node` crashed `append Headers #0 but expected #1`; no `rocksdb/` despite `--storage.v2` default true.
 - Cause: AccountChangeSets SF stub wrote into Headers during genesis `write_state`; RocksDB feature not enabled / does not compile.
 - Fix (001): disable SF account-changesets/senders accessors; route changesets to MDBX. Genesis + `Loaded storage settings { storage_v2: true }` verified.
-- Gap (002): `rocksdb` feature flags sketched on `op-reth`/`optimism-cli` but enabling fails compile — history stays in MDBX until that port lands.
+- Gap (002): ~~`rocksdb` feature flags sketched but enabling fails compile~~ → **closed (Session 8 YOLO):** provider rocksdb-API an v2.4.1; prune Batch-Lifetimes; `op-reth` default `rocksdb`; `cargo check -p op-reth` / `reth-provider --features rocksdb` grün. Live: nach maxperf-Rebuild muss `rocksdb/` unter Datadir erscheinen.
+
+### Session 8 YOLO — PORT-P2P-001 + PORT-STOR-002
+- P2P: op-geth EL-Bootnodes in `OPBNB_*_BOOTNODES`; OpBNB erzwingt discv4; bei RLPx `::` ohne `--discovery.v5.addr` → discv5 auf `0.0.0.0`.
+- Ops-Hinweis: bevorzugt `--addr 0.0.0.0` (+ optional IPv6 discv5), `--nat extip:<public>`; nach Rebuild `net_peerCount` / eth-Session gegen Bootnodes prüfen.
+- Offen danach: echte AccountChangeSets/TransactionSenders-SF-Segmente; EF/nextest; Archive-Sync.
 

@@ -176,7 +176,7 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
 
     /// Set a custom number of blocks per file for all segments.
     pub fn with_blocks_per_file(mut self, blocks_per_file: u64) -> Self {
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
+        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter() {
             self.blocks_per_file.insert(segment, blocks_per_file);
         }
         self
@@ -405,7 +405,7 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
         };
 
         let mut blocks_per_file = StaticFileMap::default();
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
+        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter() {
             blocks_per_file.insert(segment, DEFAULT_BLOCKS_PER_STATIC_FILE);
         }
 
@@ -712,7 +712,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_senders = ctx.write_senders.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                    StaticFileSegment::TransactionSenders,
                     first_block_number,
                     |w| Self::write_transaction_senders(w, blocks, tx_nums),
                 )
@@ -1467,7 +1467,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
-        [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
+        [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars, StaticFileSegment::TransactionSenders].into_iter()
             .filter(move |segment| self.should_check_segment(provider, *segment))
     }
 
@@ -2528,7 +2528,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
         range: impl RangeBounds<TxNumber>,
     ) -> ProviderResult<Vec<Address>> {
         self.fetch_range_with_predicate(
-            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+            StaticFileSegment::TransactionSenders,
             to_range(range),
             |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
             |_| true,
@@ -2536,7 +2536,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
     }
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
-        self.get_segment_provider_for_transaction(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */, id, None)
+        self.get_segment_provider_for_transaction(StaticFileSegment::TransactionSenders, id, None)
             .and_then(|provider| provider.transaction_sender(id))
             .or_else(|err| {
                 if let ProviderError::MissingStaticFileTx(_, _) = err {
@@ -2677,7 +2677,7 @@ impl<N: NodePrimitives> StatsReader for StaticFileProvider<N> {
                 .unwrap_or_default()
                 as usize),
             tables::TransactionSenders::NAME => Ok(self
-                .get_highest_static_file_tx(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */)
+                .get_highest_static_file_tx(StaticFileSegment::TransactionSenders)
                 .map(|txs| txs + 1)
                 .unwrap_or_default() as usize),
             _ => Err(ProviderError::UnsupportedProvider),
