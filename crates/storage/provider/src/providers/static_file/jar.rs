@@ -11,15 +11,12 @@ use alloy_eips::{eip2718::Encodable2718, BlockHashOrNumber};
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use reth_chainspec::ChainInfo;
 use reth_db::static_file::{
-    AccountChangesetMask, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-    StaticFileCursor, StorageChangesetMask, TDWithHashMask, TotalDifficultyMask, TransactionMask,
-    TransactionSenderMask,
+    BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask, StaticFileCursor, TDWithHashMask,
+    TotalDifficultyMask, TransactionMask, TransactionSenderMask,
 };
-use reth_db::models::{AccountBeforeTx, StorageBeforeTx};
 use reth_db_api::table::{Decompress, Value};
 use reth_node_types::NodePrimitives;
 use reth_primitives_traits::{SealedHeader, SignedTransaction};
-use reth_static_file_types::{ChangesetOffset, ChangesetOffsetReader};
 use reth_storage_api::range_size_hint;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use std::{
@@ -92,92 +89,6 @@ impl<'a, N: NodePrimitives> StaticFileJarProvider<'a, N> {
     /// Returns the total size of the data and offsets files (from the in-memory mmap).
     pub fn size(&self) -> usize {
         self.jar.value().size()
-    }
-
-    /// Reads the changeset offset entry for the given block from the `.csoff` sidecar file.
-    ///
-    /// Returns `None` if the block is not part of this jar's block range, or if the sidecar
-    /// does not have data for that block yet.
-    pub fn read_changeset_offset(
-        &self,
-        block: BlockNumber,
-    ) -> ProviderResult<Option<ChangesetOffset>> {
-        let Some(index) = self.user_header().changeset_offset_index(block) else {
-            return Ok(None)
-        };
-
-        let csoff_path = self.data_path().with_extension("csoff");
-        let reader = ChangesetOffsetReader::new(&csoff_path, self.user_header().changeset_offsets_len())
-            .map_err(ProviderError::other)?;
-        reader.get(index).map_err(ProviderError::other)
-    }
-
-    /// Reads changeset offset entries for a range of blocks from the `.csoff` sidecar file.
-    ///
-    /// Blocks outside of this jar's block range, or without sidecar data yet, are omitted from
-    /// the result.
-    pub fn read_changeset_offsets(
-        &self,
-        range: impl RangeBounds<BlockNumber>,
-    ) -> ProviderResult<Vec<(BlockNumber, ChangesetOffset)>> {
-        let Some(block_range) = self.user_header().block_range().copied() else {
-            return Ok(Vec::new())
-        };
-
-        let changeset_offsets_len = self.user_header().changeset_offsets_len();
-        if changeset_offsets_len == 0 {
-            return Ok(Vec::new())
-        }
-
-        let csoff_path = self.data_path().with_extension("csoff");
-        let reader = ChangesetOffsetReader::new(&csoff_path, changeset_offsets_len)
-            .map_err(ProviderError::other)?;
-
-        let mut result = Vec::new();
-        for block in to_range(range) {
-            if !block_range.contains(block) {
-                continue
-            }
-            let index = block - block_range.start();
-            if let Some(offset) = reader.get(index).map_err(ProviderError::other)? {
-                result.push((block, offset));
-            }
-        }
-        Ok(result)
-    }
-
-    /// Reads the account changeset for a given block using the `.csoff` sidecar offsets.
-    pub fn account_changeset(&self, block: BlockNumber) -> ProviderResult<Vec<AccountBeforeTx>> {
-        let Some(offset) = self.read_changeset_offset(block)? else { return Ok(Vec::new()) };
-        if offset.num_changes() == 0 {
-            return Ok(Vec::new())
-        }
-
-        let mut cursor = self.cursor()?;
-        let mut changes = Vec::with_capacity(offset.num_changes() as usize);
-        for row in offset.changeset_range() {
-            if let Some(change) = cursor.get_one::<AccountChangesetMask>(row.into())? {
-                changes.push(change);
-            }
-        }
-        Ok(changes)
-    }
-
-    /// Reads the storage changeset for a given block using the `.csoff` sidecar offsets.
-    pub fn storage_changeset(&self, block: BlockNumber) -> ProviderResult<Vec<StorageBeforeTx>> {
-        let Some(offset) = self.read_changeset_offset(block)? else { return Ok(Vec::new()) };
-        if offset.num_changes() == 0 {
-            return Ok(Vec::new())
-        }
-
-        let mut cursor = self.cursor()?;
-        let mut changes = Vec::with_capacity(offset.num_changes() as usize);
-        for row in offset.changeset_range() {
-            if let Some(change) = cursor.get_one::<StorageChangesetMask>(row.into())? {
-                changes.push(change);
-            }
-        }
-        Ok(changes)
     }
 }
 

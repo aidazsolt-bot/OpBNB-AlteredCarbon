@@ -606,15 +606,10 @@ mod tests {
         let actual_root = runner
             .db
             .query_with_provider(|provider| {
-                Ok(reth_trie_db::with_adapter!(provider, |A| {
-                    StateRoot::<
-                        reth_trie_db::DatabaseTrieCursorFactory<&_, A>,
-                        reth_trie_db::DatabaseHashedCursorFactory<&_>,
-                    >::incremental_root_with_updates(
-                        &provider,
-                        stage_progress + 1..=previous_stage,
-                    )
-                }))
+                Ok(StateRoot::incremental_root_with_updates(
+                    &provider,
+                    stage_progress + 1..=previous_stage,
+                ))
             })
             .unwrap();
 

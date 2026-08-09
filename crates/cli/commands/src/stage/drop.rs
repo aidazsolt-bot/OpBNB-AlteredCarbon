@@ -90,9 +90,6 @@ impl<C: ChainSpecParser> Command<C> {
                     StaticFileSegment::AccountChangeSets => {
                         writer.prune_account_changesets(highest_block)?;
                     }
-                    StaticFileSegment::StorageChangeSets => {
-                        writer.prune_storage_changesets(highest_block)?;
-                    }
                     StaticFileSegment::Sidecars => {
                         let to_delete = static_file_provider
                             .get_highest_static_file_tx(static_file_segment)

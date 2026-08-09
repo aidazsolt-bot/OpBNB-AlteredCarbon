@@ -28,8 +28,7 @@ pub use accounts::*;
 pub use blocks::*;
 pub use metadata::*;
 pub use reth_db_models::{
-    AccountBeforeTx, ClientVersion, StorageBeforeTx, StoredBlockBodyIndices,
-    StoredBlockWithdrawals,
+    AccountBeforeTx, ClientVersion, StoredBlockBodyIndices, StoredBlockWithdrawals,
 };
 pub use sharded_key::ShardedKey;
 
@@ -281,7 +280,6 @@ impl_compression_for_compact!(
     StoredBlockWithdrawals,
     Bytecode,
     AccountBeforeTx,
-    StorageBeforeTx,
     TransactionSigned,
     CompactU256,
     StageCheckpoint,

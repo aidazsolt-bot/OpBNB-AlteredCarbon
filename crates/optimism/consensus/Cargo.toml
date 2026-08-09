@@ -39,15 +39,9 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-reth-provider = { workspace = true, features = ["test-utils"] }
-reth-db-common.workspace = true
+reth-optimism-chainspec.workspace = true
+alloy-primitives.workspace = true
 reth-revm.workspace = true
-reth-trie.workspace = true
-reth-optimism-node.workspace = true
-
-alloy-chains.workspace = true
-
-op-alloy-consensus.workspace = true
 
 [features]
 default = ["std"]
@@ -70,6 +64,4 @@ std = [
 	"thiserror/std",
 	"revm/std",
 	"reth-revm/std",
-	"alloy-chains/std",
-	"op-alloy-consensus/std",
 ]

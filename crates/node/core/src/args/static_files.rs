@@ -32,10 +32,6 @@ pub struct StaticFilesArgs {
     #[arg(long = "static-files.blocks-per-file.account-change-sets")]
     pub blocks_per_file_account_change_sets: Option<u64>,
 
-    /// Number of blocks per file for the storage changesets segment.
-    #[arg(long = "static-files.blocks-per-file.storage-change-sets")]
-    pub blocks_per_file_storage_change_sets: Option<u64>,
-
     /// Store receipts in static files instead of the database.
     ///
     /// When enabled, receipts will be written to static files on disk instead of the database.
@@ -94,9 +90,6 @@ impl StaticFilesArgs {
                 account_change_sets: self
                     .blocks_per_file_account_change_sets
                     .or(config.blocks_per_file.account_change_sets),
-                storage_change_sets: self
-                    .blocks_per_file_storage_change_sets
-                    .or(config.blocks_per_file.storage_change_sets),
             },
         }
     }

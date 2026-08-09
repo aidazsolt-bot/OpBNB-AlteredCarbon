@@ -108,7 +108,6 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             Arc::new(RwLock::new(legacy_settings)),
             rocksdb_provider.clone(),
             ChangesetCache::new(),
-            db.path(),
         )
         .storage_settings()?
         .unwrap_or(legacy_settings);
@@ -214,7 +213,6 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             self.storage_settings.clone(),
             self.rocksdb_provider.clone(),
             self.changeset_cache.clone(),
-            self.db.path(),
         ))
     }
 
@@ -233,7 +231,6 @@ impl<N: ProviderNodeTypes> ProviderFactory<N> {
             self.storage_settings.clone(),
             self.rocksdb_provider.clone(),
             self.changeset_cache.clone(),
-            self.db.path(),
         )))
     }
 

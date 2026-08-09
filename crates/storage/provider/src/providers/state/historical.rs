@@ -191,13 +191,11 @@ where
         }
 
         self.provider.with_rocksdb_snapshot(|rocksdb_ref| {
-            let visible_tip = self.provider.best_block_number()?;
             let mut reader = EitherReader::new_accounts_history(self.provider, rocksdb_ref)?;
             reader.account_history_info(
                 address,
                 self.block_number,
                 self.lowest_available_blocks.account_history_block_number,
-                visible_tip,
             )
         })
     }
@@ -218,14 +216,12 @@ where
         }
 
         self.provider.with_rocksdb_snapshot(|rocksdb_ref| {
-            let visible_tip = self.provider.best_block_number()?;
             let mut reader = EitherReader::new_storages_history(self.provider, rocksdb_ref)?;
             reader.storage_history_info(
                 address,
                 lookup_key,
                 self.block_number,
                 self.lowest_available_blocks.storage_history_block_number,
-                visible_tip,
             )
         })
     }

@@ -415,7 +415,7 @@ mod tests {
     use alloy_genesis::Genesis;
     use alloy_primitives::{
         Address, B256, LogData, bytes,
-        map::HashMap,
+        map::{AddressMap, B256Map, HashMap},
     };
     use op_alloy_consensus::{SDMGasEntry, build_post_exec_tx};
     use op_revm::OpSpecId;
@@ -732,7 +732,6 @@ mod tests {
             receipts,
             requests: vec![],
             first_block: 10,
-            snapshots: vec![],
         };
 
         // Create a Chain object with a BTreeMap of blocks mapped to their block numbers,
@@ -749,7 +748,6 @@ mod tests {
             receipts: vec![vec![receipt1]],
             requests: vec![],
             first_block: 10,
-            snapshots: vec![],
         };
 
         // Assert that the execution outcome at the first block contains only the first receipt
@@ -788,7 +786,6 @@ mod tests {
             receipts: receipts.clone(),
             requests: requests.clone(),
             first_block,
-            snapshots: vec![],
         };
 
         // Assert that creating a new ExecutionOutcome using the constructor matches exec_res
@@ -798,12 +795,12 @@ mod tests {
         );
 
         // Create a BundleStateInit object and insert initial data
-        let mut state_init: BundleStateInit = HashMap::default();
+        let mut state_init: BundleStateInit = AddressMap::default();
         state_init
-            .insert(Address::new([2; 20]), (None, Some(Account::default()), HashMap::default()));
+            .insert(Address::new([2; 20]), (None, Some(Account::default()), B256Map::default()));
 
-        // Create a HashMap for account reverts and insert initial data
-        let mut revert_inner: HashMap<Address, AccountRevertInit> = HashMap::default();
+        // Create an AddressMap for account reverts and insert initial data
+        let mut revert_inner: AddressMap<AccountRevertInit> = AddressMap::default();
         revert_inner.insert(Address::new([2; 20]), (None, vec![]));
 
         // Create a RevertsInit object and insert the revert_inner data
@@ -844,7 +841,6 @@ mod tests {
             receipts,
             requests: vec![],
             first_block,
-            snapshots: vec![],
         };
 
         // Test before the first block
@@ -876,7 +872,6 @@ mod tests {
             receipts,
             requests: vec![],
             first_block,
-            snapshots: vec![],
         };
 
         // Get logs for block number 123
@@ -904,8 +899,7 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts,                   // Include the created receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number,
-            snapshots: vec![],
+            first_block,                // Set the first block number
         };
 
         // Get receipts for block number 123 and convert the result into a vector
@@ -943,8 +937,7 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts,                   // Include the created receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number,
-            snapshots: vec![],
+            first_block,                // Set the first block number
         };
 
         // Assert that the length of receipts in exec_res is 1
@@ -958,8 +951,7 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts: receipts_empty,   // Include the empty receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number,
-            snapshots: vec![],
+            first_block,                // Set the first block number
         };
 
         // Assert that the length of receipts in exec_res_empty_receipts is 0
@@ -994,9 +986,7 @@ mod tests {
         // Create a ExecutionOutcome object with the created bundle, receipts, requests, and
         // first_block
         let mut exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block,
-            snapshots: vec![],
-        };
+            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
 
         // Assert that the revert_to method returns true when reverting to the initial block number.
         assert!(exec_res.revert_to(123));
@@ -1039,9 +1029,7 @@ mod tests {
 
         // Create an ExecutionOutcome object.
         let mut exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block,
-            snapshots: vec![],
-        };
+            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
 
         // Extend the ExecutionOutcome object by itself.
         exec_res.extend(exec_res.clone());
@@ -1054,8 +1042,7 @@ mod tests {
                 receipts: vec![vec![Some(receipt.clone())], vec![Some(receipt)]],
                 requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
                 first_block: 123,
-            snapshots: vec![],
-        }
+            }
         );
     }
 
@@ -1091,9 +1078,7 @@ mod tests {
         // Create a ExecutionOutcome object with the created bundle, receipts, requests, and
         // first_block
         let exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block,
-            snapshots: vec![],
-        };
+            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
 
         // Split the ExecutionOutcome at block number 124
         let result = exec_res.clone().split_at(124);
@@ -1104,7 +1089,6 @@ mod tests {
             receipts: vec![vec![Some(receipt.clone())]],
             requests: vec![Requests::new(vec![request.clone()])],
             first_block,
-            snapshots: vec![],
         };
 
         // Define the expected higher ExecutionOutcome after splitting
@@ -1113,7 +1097,6 @@ mod tests {
             receipts: vec![vec![Some(receipt.clone())], vec![Some(receipt)]],
             requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
             first_block: 124,
-            snapshots: vec![],
         };
 
         // Assert that the split result matches the expected lower and higher outcomes

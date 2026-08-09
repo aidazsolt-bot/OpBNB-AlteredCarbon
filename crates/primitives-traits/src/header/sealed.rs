@@ -51,14 +51,6 @@ impl<H> SealedHeader<H> {
         &self.header
     }
 
-    /// Clone the header.
-    pub fn clone_header(&self) -> H
-    where
-        H: Clone,
-    {
-        self.header.clone()
-    }
-
     /// Consumes the type and returns the wrapped header.
     #[inline]
     pub fn into_header(self) -> H {

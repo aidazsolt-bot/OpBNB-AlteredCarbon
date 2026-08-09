@@ -286,8 +286,7 @@ impl AccountHistory {
                 .map(|(addr, highest)| (*addr, (*highest).min(last_changeset_pruned_block)))
                 .collect();
 
-            let rocks = provider.rocksdb_provider();
-            let mut batch = rocks.batch();
+            let mut batch = provider.rocksdb_provider().batch();
             let outcomes = batch.prune_account_history_batch(&targets)?;
             deleted_shards = outcomes.deleted;
             updated_shards = outcomes.updated;

@@ -11,7 +11,7 @@ use reth_db_api::{
     common::KeyValue,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
     database::Database,
-    models::{AccountBeforeTx, StorageBeforeTx, StoredBlockBodyIndices},
+    models::{AccountBeforeTx, StoredBlockBodyIndices},
     table::Table,
     tables,
     transaction::{DbTx, DbTxMut},
@@ -471,45 +471,6 @@ impl TestStageDB {
                 })
             })
         })
-    }
-
-    /// Insert collection of [`ChangeSet`] into the `AccountChangeSets` and `StorageChangeSets`
-    /// static file segments instead of the corresponding MDBX tables.
-    pub fn insert_changesets_to_static_files<I>(
-        &self,
-        changesets: I,
-        block_offset: Option<u64>,
-    ) -> ProviderResult<()>
-    where
-        I: IntoIterator<Item = ChangeSet>,
-    {
-        let offset = block_offset.unwrap_or_default();
-        let sf_provider = self.factory.static_file_provider();
-        let mut account_writer = sf_provider.latest_writer(StaticFileSegment::AccountChangeSets)?;
-        let mut storage_writer = sf_provider.latest_writer(StaticFileSegment::StorageChangeSets)?;
-
-        for (block, changeset) in changesets.into_iter().enumerate() {
-            let block = offset + block as u64;
-
-            let mut account_changeset = Vec::new();
-            let mut storage_changeset = Vec::new();
-            for (address, old_account, old_storage) in changeset {
-                account_changeset.push(AccountBeforeTx { address, info: Some(old_account) });
-                storage_changeset.extend(old_storage.into_iter().map(|entry| StorageBeforeTx {
-                    address,
-                    key: entry.key,
-                    value: entry.value,
-                }));
-            }
-
-            account_writer.append_account_changeset(account_changeset, block)?;
-            storage_writer.append_storage_changeset(storage_changeset, block)?;
-        }
-
-        account_writer.commit()?;
-        storage_writer.commit()?;
-
-        Ok(())
     }
 
     pub fn insert_history<I>(&self, changesets: I, _block_offset: Option<u64>) -> ProviderResult<()>

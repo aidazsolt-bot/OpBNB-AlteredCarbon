@@ -37,9 +37,9 @@ pub struct DatabaseArgs {
     ///
     /// Specifies the page size used by the MDBX database.
     ///
-    /// The page size determines the maximum database size. MDBX supports up to 2^31 pages,
-    /// so with the default 16KB page size the theoretical maximum is 32TB (geometry still
-    /// defaults to an 8TB map size unless `--db.max-size` is raised).
+    /// The page size determines the maximum database size.
+    /// MDBX supports up to 2^31 pages, so with the default 4KB page size, the maximum
+    /// database size is 8TB. To allow larger databases, increase this value to 8KB or higher.
     ///
     /// WARNING: This setting is only configurable at database creation; changing
     /// it later requires re-syncing.

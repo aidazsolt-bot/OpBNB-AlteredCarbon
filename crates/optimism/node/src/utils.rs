@@ -1,13 +1,13 @@
 use crate::{OpBuiltPayload, OpNode as OtherOpNode};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
+use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use reth_e2e_test_utils::{
     NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
 };
 use reth_node_api::NodeTypesWithDBAdapter;
 use reth_optimism_chainspec::OpChainSpecBuilder;
-use reth_optimism_payload_builder::OpPayloadBuilderAttributes;
-use reth_optimism_primitives::OpTransactionSigned;
+use reth_optimism_payload_builder::OpPayloadAttrs;
 use reth_provider::providers::BlockchainProvider;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -20,7 +20,7 @@ pub(crate) type OpNode =
 pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<OpNode>, Wallet)> {
     let genesis: Genesis =
         serde_json::from_str(include_str!("../tests/assets/genesis.json")).unwrap();
-    let (nodes, _runtime, wallet) = reth_e2e_test_utils::setup_engine(
+    reth_e2e_test_utils::setup_engine(
         num_nodes,
         Arc::new(
             OpChainSpecBuilder::optimism_sepolia().genesis(genesis).ecotone_activated().build(),
@@ -29,8 +29,7 @@ pub async fn setup(num_nodes: usize) -> eyre::Result<(Vec<OpNode>, Wallet)> {
         Default::default(),
         optimism_payload_attributes,
     )
-    .await?;
-    Ok((nodes, wallet))
+    .await
 }
 
 /// Advance the chain with sequential payloads returning them in the end.
@@ -55,15 +54,22 @@ pub async fn advance_chain(
     .await
 }
 
-/// Helper function to create optimism payload builder attributes
-pub fn optimism_payload_attributes(timestamp: u64) -> OpPayloadBuilderAttributes<OpTransactionSigned> {
-    OpPayloadBuilderAttributes {
-        timestamp,
-        prev_randao: B256::ZERO,
-        suggested_fee_recipient: Address::ZERO,
-        withdrawals: vec![].into(),
-        parent_beacon_block_root: Some(B256::ZERO),
+/// Helper function to create a new eth payload attributes
+pub const fn optimism_payload_attributes(timestamp: u64) -> OpPayloadAttrs {
+    OpPayloadAttrs(OpPayloadAttributes {
+        payload_attributes: alloy_rpc_types_engine::PayloadAttributes {
+            timestamp,
+            prev_randao: B256::ZERO,
+            suggested_fee_recipient: Address::ZERO,
+            withdrawals: Some(vec![]),
+            parent_beacon_block_root: Some(B256::ZERO),
+            slot_number: None,
+            target_gas_limit: None,
+        },
+        transactions: None,
+        no_tx_pool: None,
         gas_limit: Some(30_000_000),
-        ..Default::default()
-    }
+        eip_1559_params: None,
+        min_base_fee: None,
+    })
 }

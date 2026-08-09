@@ -189,17 +189,8 @@ impl<N: ProviderNodeTypes> RocksDBProviderFactory for BlockchainProvider<N> {
         self.database.rocksdb_provider()
     }
 
-    #[cfg(all(unix, feature = "rocksdb"))]
-    fn set_pending_rocksdb_batch(&self, _batch: rocksdb::WriteBatchWithTransaction<true>) {
-        unimplemented!(
-            "BlockchainProvider wraps ProviderFactory - use DatabaseProvider::set_pending_rocksdb_batch instead"
-        )
-    }
-
     fn commit_pending_rocksdb_batches(&self) -> ProviderResult<()> {
-        unimplemented!(
-            "BlockchainProvider wraps ProviderFactory - use DatabaseProvider::commit_pending_rocksdb_batches instead"
-        )
+        Ok(())
     }
 }
 

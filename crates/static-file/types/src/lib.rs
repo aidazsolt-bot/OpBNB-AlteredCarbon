@@ -45,23 +45,12 @@ pub struct HighestStaticFiles {
     pub transaction_senders: Option<BlockNumber>,
     /// Highest static file block of account changesets, inclusive.
     pub account_changesets: Option<BlockNumber>,
-    /// Highest static file block of storage changesets, inclusive.
-    pub storage_changesets: Option<BlockNumber>,
 }
 
 impl HighestStaticFiles {
     /// Returns `true` if all segments are either [`None`] or start at the next static file block.
     fn iter(&self) -> impl Iterator<Item = Option<BlockNumber>> {
-        [
-            self.headers,
-            self.receipts,
-            self.transactions,
-            self.sidecars,
-            self.transaction_senders,
-            self.account_changesets,
-            self.storage_changesets,
-        ]
-        .into_iter()
+        [self.headers, self.receipts, self.transactions, self.sidecars, self.transaction_senders, self.account_changesets].into_iter()
     }
 
     /// Returns the highest static file if it exists for a segment
@@ -73,7 +62,6 @@ impl HighestStaticFiles {
             StaticFileSegment::Sidecars => self.sidecars,
             StaticFileSegment::TransactionSenders => self.transaction_senders,
             StaticFileSegment::AccountChangeSets => self.account_changesets,
-            StaticFileSegment::StorageChangeSets => self.storage_changesets,
         }
     }
 
@@ -86,7 +74,6 @@ impl HighestStaticFiles {
             StaticFileSegment::Sidecars => &mut self.sidecars,
             StaticFileSegment::TransactionSenders => &mut self.transaction_senders,
             StaticFileSegment::AccountChangeSets => &mut self.account_changesets,
-            StaticFileSegment::StorageChangeSets => &mut self.storage_changesets,
         }
     }
 
@@ -169,9 +156,6 @@ mod tests {
             receipts: Some(200),
             transactions: None,
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Test for headers segment
@@ -208,9 +192,6 @@ mod tests {
             receipts: Some(100),
             transactions: None,
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Minimum value among the available segments
@@ -228,9 +209,6 @@ mod tests {
             receipts: Some(100),
             transactions: Some(500),
             sidecars: None,
-            transaction_senders: None,
-            account_changesets: None,
-            storage_changesets: None,
         };
 
         // Maximum value among the available segments

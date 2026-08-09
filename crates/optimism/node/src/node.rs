@@ -10,9 +10,7 @@ use alloy_primitives::Sealed;
 use op_alloy_consensus::{OpPooledTransaction, TxPostExec, interop::SafetyLevel};
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, ForkCondition, Hardforks,
-    NamedChain,
 };
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
     types::BasicNetworkPrimitives,
@@ -1610,47 +1608,31 @@ impl OpNetworkBuilder {
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<NetworkConfig<Node::Provider, NetworkP>>
     where
-        Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks + EthChainSpec>>,
+        Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>,
         NetworkP: NetworkPrimitives,
     {
         let disable_txpool_gossip = self.disable_txpool_gossip;
+        let disable_discovery_v4 = self.disable_discovery_v4;
         let args = &ctx.config().network;
-        // opBNB EL peers still bootstrap primarily via discv4 / IPv4 bootnodes from op-geth.
-        // Keep discv4 enabled for those chains even when `--rollup.discovery.v4` is unset.
-        let is_opbnb = matches!(
-            ctx.chain_spec().chain().named(),
-            Some(NamedChain::OpBNBMainnet | NamedChain::OpBNBTestnet)
-        );
-        let disable_discovery_v4 =
-            if is_opbnb { false } else { self.disable_discovery_v4 };
         let network_builder = ctx
             .network_config_builder()?
             // apply discovery settings
             .apply(|mut builder| {
-                let rlpx_socket = SocketAddr::new(args.addr, args.port);
+                let rlpx_socket = (args.addr, args.port).into();
                 if disable_discovery_v4 || args.discovery.disable_discovery {
                     builder = builder.disable_discv4_discovery();
                 }
                 if !args.discovery.disable_discovery {
-                    let boot_nodes = ctx
-                        .config()
-                        .network
-                        .resolved_bootnodes()
-                        .or_else(|| ctx.chain_spec().bootnodes())
-                        .unwrap_or_default();
-
-                    // `--addr ::` alone makes discv5 IPv6-only; opBNB bootnodes are IPv4.
-                    // Add an IPv4 discv5 bind so discovery can reach them.
-                    let mut discovery = args.discovery.clone();
-                    if is_opbnb
-                        && matches!(rlpx_socket.ip(), IpAddr::V6(_))
-                        && discovery.discv5_addr.is_none()
-                    {
-                        discovery.discv5_addr = Some(Ipv4Addr::UNSPECIFIED);
-                    }
-
-                    builder =
-                        builder.discovery_v5(discovery.discovery_v5_builder(rlpx_socket, boot_nodes));
+                    builder = builder.discovery_v5(
+                        args.discovery.discovery_v5_builder(
+                            rlpx_socket,
+                            ctx.config()
+                                .network
+                                .resolved_bootnodes()
+                                .or_else(|| ctx.chain_spec().bootnodes())
+                                .unwrap_or_default(),
+                        ),
+                    );
                 }
 
                 builder

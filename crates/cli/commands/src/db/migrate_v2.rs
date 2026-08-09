@@ -1,7 +1,6 @@
 //! `reth db migrate-v2` command for migrating v1 storage layout to v2.
 
 use crate::common::CliNodeTypes;
-use alloy_primitives::Address;
 use clap::Parser;
 use std::sync::Arc;
 use reth_db::{
@@ -11,7 +10,6 @@ use reth_db::{
 use reth_db_api::{
     cursor::DbCursorRO,
     database::Database,
-    models::{BlockNumberAddress, StorageBeforeTx},
     table::Table,
     tables,
     transaction::{DbTx, DbTxMut},
@@ -67,7 +65,7 @@ impl Command {
 
         let sf_provider = provider_factory.static_file_provider();
 
-        for segment in [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets] {
+        for segment in [StaticFileSegment::AccountChangeSets] {
             if sf_provider.get_highest_static_file_block(segment).is_some() {
                 eyre::bail!(
                     "Static file segment {segment:?} already contains data. \
@@ -172,53 +170,14 @@ impl Command {
     }
 
     fn migrate_storage_changesets<N: ProviderNodeTypes>(
-        factory: &ProviderFactory<N>,
-        tip: u64,
+        _factory: &ProviderFactory<N>,
+        _tip: u64,
     ) -> eyre::Result<()> {
-        info!(target: "reth::cli", "Migrating StorageChangeSets → static files");
-        let provider = factory.provider()?.disable_long_read_transaction_safety();
-        let sf_provider = factory.static_file_provider();
-
-        let mut cursor = provider.tx_ref().cursor_read::<tables::StorageChangeSets>()?;
-
-        let first_block = provider
-            .get_prune_checkpoint(PruneSegment::StorageHistory)?
-            .and_then(|cp| cp.block_number)
-            .map_or(0, |b| b + 1);
-
-        // The writer always starts at the fixed range boundary (e.g. 2500000) which may be
-        // earlier than first_block (e.g. 2603897 from prune checkpoint).
-        let mut writer = sf_provider.latest_writer(StaticFileSegment::StorageChangeSets)?;
-        if first_block > 0 {
-            writer.ensure_at_block(first_block - 1)?;
-        }
-
-        let mut count = 0u64;
-        let mut walker =
-            cursor.walk(Some(BlockNumberAddress::from((first_block, Address::ZERO))))?.peekable();
-
-        for block in first_block..=tip {
-            let mut entries = Vec::new();
-
-            while let Some(Ok((block_address, _))) = walker.peek() {
-                if block_address.block_number() != block {
-                    break;
-                }
-                let (block_address, entry) = walker.next().expect("peeked")?;
-                entries.push(StorageBeforeTx {
-                    address: block_address.address(),
-                    key: entry.key,
-                    value: entry.value,
-                });
-            }
-
-            count += entries.len() as u64;
-            writer.append_storage_changeset(entries, block)?;
-        }
-
-        writer.commit()?;
-
-        info!(target: "reth::cli", count, "StorageChangeSets migrated");
+        // Storage changesets remain in MDBX in this fork (no StorageChangeSets static file segment).
+        info!(
+            target: "reth::cli",
+            "Skipping StorageChangeSets static file migration (storage changesets stay in MDBX)"
+        );
         Ok(())
     }
 
@@ -328,7 +287,7 @@ impl Command {
 
         // Migrated changeset tables (now in static files)
         clear_table!(tables::AccountChangeSets);
-        clear_table!(tables::StorageChangeSets);
+        // StorageChangeSets stay in MDBX in this fork.
 
         // Senders — rebuilt by SenderRecovery
         clear_table!(tables::TransactionSenders);
