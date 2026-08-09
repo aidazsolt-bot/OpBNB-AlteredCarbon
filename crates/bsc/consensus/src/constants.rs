@@ -17,6 +17,11 @@ pub const BLS_PUBLIC_KEY_BYTES_LEN: usize = 48;
 pub const EXTRA_VALIDATOR_LEN_BEFORE_LUBAN: usize = ADDRESS_LENGTH;
 /// Fixed number of extra-data suffix bytes reserved for Luban validator
 pub const EXTRA_VALIDATOR_LEN: usize = EXTRA_VALIDATOR_LEN_BEFORE_LUBAN + BLS_PUBLIC_KEY_BYTES_LEN;
+use alloy_primitives::Address;
+
+/// BSC system address used for block rewards and system transactions.
+pub const SYSTEM_ADDRESS: Address = alloy_primitives::address!("fffffffffffffffffffffffffffffffffffffffe");
+
 /// Difficulty for INTURN block
 pub const DIFF_INTURN: U256 = U256::from_limbs([2u64, 0, 0, 0]);
 /// Difficulty for NOTURN block

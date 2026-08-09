@@ -65,8 +65,12 @@ pub enum PruneConfigKind {
 #[command(next_help_heading = "Pruning")]
 pub struct PruningArgs {
     /// Run full node. Only the most recent [`MINIMUM_PRUNING_DISTANCE`] block states are stored.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, conflicts_with = "minimal")]
     pub full: bool,
+
+    /// Run minimal storage mode with maximum pruning and smaller static files.
+    #[arg(long, default_value_t = false, conflicts_with = "full")]
+    pub minimal: bool,
 
     /// Minimum pruning interval measured in blocks.
     #[arg(long, value_parser = RangedU64ValueParser::<u64>::new().range(1..),)]
@@ -134,6 +138,17 @@ pub struct PruningArgs {
     #[arg(long = "prune.storagehistory.before", value_name = "BLOCK_NUMBER", conflicts_with_all = &["storage_history_full", "storage_history_distance"])]
     pub storage_history_before: Option<BlockNumber>,
 
+    // Bodies
+    /// Prune bodies before the merge block.
+    #[arg(long = "prune.bodies.pre-merge", value_name = "BLOCKS", conflicts_with_all = &["bodies_distance", "bodies_before"])]
+    pub bodies_pre_merge: bool,
+    /// Prune bodies before the `head-N` block number. In other words, keep last N + 1 blocks.
+    #[arg(long = "prune.bodies.distance", value_name = "BLOCKS", conflicts_with_all = &["bodies_pre_merge", "bodies_before"])]
+    pub bodies_distance: Option<u64>,
+    /// Prune bodies before the specified block number. The specified block number is not pruned.
+    #[arg(long = "prune.bodies.before", value_name = "BLOCK_NUMBER", conflicts_with_all = &["bodies_distance", "bodies_pre_merge"])]
+    pub bodies_before: Option<BlockNumber>,
+
     // Receipts Log Filter
     /// Configure receipts log filter. Format:
     /// <`address`>:<`prune_mode`>[,<`address`>:<`prune_mode`>...] Where <`prune_mode`> can be
@@ -152,7 +167,6 @@ impl PruningArgs {
         if self.full {
             config = PruneConfig {
                 block_interval: config.block_interval,
-                recent_sidecars_kept_blocks: 0,
                 segments: PruneModes {
                     sender_recovery: Some(PruneMode::Full),
                     transaction_lookup: None,
@@ -176,6 +190,22 @@ impl PruningArgs {
             }
         }
 
+        // If --minimal is set, use minimal storage mode with aggressive pruning.
+        if self.minimal {
+            config = PruneConfig {
+                block_interval: config.block_interval,
+                segments: PruneModes {
+                    sender_recovery: Some(PruneMode::Full),
+                    transaction_lookup: Some(PruneMode::Full),
+                    receipts: Some(PruneMode::Full),
+                    account_history: Some(PruneMode::Distance(10064)),
+                    storage_history: Some(PruneMode::Distance(10064)),
+                    bodies_history: Some(PruneMode::Distance(10064)),
+                    receipts_log_filter: Default::default(),
+                },
+            }
+        }
+
         // Override with any explicitly set prune.* flags.
         if let Some(block_interval) = self.block_interval {
             config.block_interval = block_interval as usize;
@@ -194,6 +224,11 @@ impl PruningArgs {
         }
         if let Some(mode) = self.storage_history_prune_mode() {
             config.segments.storage_history = Some(mode);
+        }
+        if let Some(distance) = self.bodies_distance {
+            config.segments.bodies_history = Some(PruneMode::Distance(distance));
+        } else if let Some(block_number) = self.bodies_before {
+            config.segments.bodies_history = Some(PruneMode::Before(block_number));
         }
 
         Some(config)

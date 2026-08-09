@@ -1,6 +1,5 @@
 /// The bodies stage.
 mod bodies;
-mod era;
 /// The execution stage that generates state diff.
 mod execution;
 /// The finish stage
@@ -37,7 +36,9 @@ pub use prune::*;
 pub use sender_recovery::*;
 pub use tx_lookup::*;
 
+mod era;
 mod utils;
+
 use utils::*;
 
 #[cfg(test)]

@@ -5,8 +5,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{Sealable, B256};
+use alloy_primitives::B256;
 use alloy_rpc_types::{engine::ForkchoiceState, BlockId, RpcBlockHash};
 use reth_beacon_consensus::{
     BeaconEngineMessage, EngineNodeTypes, ForkchoiceStatus, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -14,15 +15,14 @@ use reth_beacon_consensus::{
 use reth_bsc_consensus::Parlia;
 use reth_bsc_evm::SnapshotReader;
 use reth_chainspec::EthChainSpec;
-use reth_engine_primitives::EngineApiMessageVersion;
 use reth_network_api::events::EngineMessage;
 use reth_network_p2p::{
     headers::client::{HeadersClient, HeadersDirection, HeadersRequest},
     priority::Priority,
     BlockClient,
 };
-use reth_primitives::{Block, BlockBody, SealedHeader};
-use reth_provider::{BlockReaderIdExt, CanonChainTracker, ParliaProvider};
+use reth_primitives::{Block, BlockBody, Header, SealedHeader};
+use reth_provider::{BlockReaderIdExt, CanonChainTracker, HeaderProvider, ParliaProvider};
 use tokio::{
     signal,
     sync::{
@@ -64,10 +64,10 @@ struct BlockInfo {
 
 /// A Future that listens for new headers and puts into storage
 pub(crate) struct ParliaEngineTask<
-    N: EngineNodeTypes,
-    Provider: BlockReaderIdExt + CanonChainTracker,
-    SnapshotProvider: ParliaProvider,
-    Client: BlockClient,
+    N: EngineNodeTypes<ChainSpec: EthChainSpec<Header = Header>>,
+    Provider: BlockReaderIdExt<Header = Header> + CanonChainTracker<Header = Header>,
+    SnapshotProvider: ParliaProvider + HeaderProvider<Header = Header>,
+    Client: BlockClient<Block = Block>,
 > {
     /// The configured chain spec
     chain_spec: Arc<N::ChainSpec>,
@@ -84,7 +84,7 @@ pub(crate) struct ParliaEngineTask<
     /// Shared storage to insert new headers
     storage: Storage,
     /// The engine to send messages to the beacon engine
-    to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
+    to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
     /// The watch for the network block event receiver
     network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
     /// The channel to send fork choice messages
@@ -102,10 +102,10 @@ pub(crate) struct ParliaEngineTask<
 
 // === impl ParliaEngineTask ===
 impl<
-        N: EngineNodeTypes + 'static,
-        Provider: BlockReaderIdExt + CanonChainTracker + Clone + 'static,
-        SnapshotProvider: ParliaProvider + 'static,
-        Client: BlockClient + 'static,
+        N: EngineNodeTypes<ChainSpec: EthChainSpec<Header = Header>> + 'static,
+        Provider: BlockReaderIdExt<Header = Header> + CanonChainTracker<Header = Header> + Clone + 'static,
+        SnapshotProvider: ParliaProvider + HeaderProvider<Header = Header> + 'static,
+        Client: BlockClient<Block = Block> + 'static,
     > ParliaEngineTask<N, Provider, SnapshotProvider, Client>
 {
     /// Creates a new instance of the task
@@ -115,7 +115,7 @@ impl<
         consensus: Parlia,
         provider: Provider,
         snapshot_reader: SnapshotReader<SnapshotProvider>,
-        to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
+        to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
         network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
         storage: Storage,
         block_fetcher: ParliaClient<Client>,
@@ -199,13 +199,13 @@ impl<
                             .duration_since(UNIX_EPOCH)
                             .expect("Time went backwards")
                             .as_secs()
-                            - best_header.timestamp
-                            < 10 || best_header.number == 0
+                            - best_header.timestamp()
+                            < 10 || best_header.number() == 0
                         {
                             continue;
                         }
-                        info.block_hash = BlockHashOrNumber::Number(best_header.number+1);
-                        info.block_number = best_header.number+1;
+                        info.block_hash = BlockHashOrNumber::Number(best_header.number() + 1);
+                        info.block_number = best_header.number() + 1;
                     }
                     _ = signal::ctrl_c() => {
                         info!(target: "consensus::parlia", "block event listener shutting down...");
@@ -214,7 +214,7 @@ impl<
                 }
 
                 // skip if number is lower than best number
-                if info.block_number <= best_header.number {
+                if info.block_number <= best_header.number() {
                     continue;
                 }
 
@@ -260,7 +260,7 @@ impl<
                             chain_spec.genesis_hash(),
                         )
                     });
-                debug!(target: "consensus::parlia", { finalized_header_number = ?finalized_header.number, finalized_header_hash = ?finalized_header.hash() }, "Latest finalized header");
+                debug!(target: "consensus::parlia", { finalized_header_number = ?finalized_header.number(), finalized_header_hash = ?finalized_header.hash() }, "Latest finalized header");
                 let latest_unsafe_header =
                     client.latest_header().ok().flatten().unwrap_or_else(|| {
                         SealedHeader::new(
@@ -268,12 +268,12 @@ impl<
                             chain_spec.genesis_hash(),
                         )
                     });
-                debug!(target: "consensus::parlia", { latest_unsafe_header_number = ?latest_unsafe_header.number, latest_unsafe_header_hash = ?latest_unsafe_header.hash() }, "Latest unsafe header");
+                debug!(target: "consensus::parlia", { latest_unsafe_header_number = ?latest_unsafe_header.number(), latest_unsafe_header_hash = ?latest_unsafe_header.hash() }, "Latest unsafe header");
 
                 let mut trusted_header = latest_unsafe_header.clone();
                 // if parent hash is not equal to latest unsafe hash
                 // may be a fork chain detected, we need to trust the finalized header
-                if latest_header.number - 1 == latest_unsafe_header.number
+                if latest_header.number() - 1 == latest_unsafe_header.number()
                     && latest_header.parent_hash != latest_unsafe_header.hash()
                 {
                     trusted_header = finalized_header.clone();
@@ -284,11 +284,9 @@ impl<
                 // the difference between the latest header number and the trusted
                 // header number the timestamp of latest header should be bigger
                 // than the predicted timestamp and less than the current timestamp.
-                let predicted_timestamp = trusted_header.timestamp
-                    + block_interval * (latest_header.number - 1 - trusted_header.number);
-                let sealed = latest_header.clone().seal_slow();
-                let (header, seal) = sealed.into_parts();
-                let mut sealed_header = SealedHeader::new(header, seal);
+                let predicted_timestamp = trusted_header.timestamp()
+                    + block_interval * (latest_header.number() - 1 - trusted_header.number());
+                let mut sealed_header = SealedHeader::seal_slow(latest_header.clone());
                 let is_valid_header = match consensus
                     .validate_header_with_predicted_timestamp(&sealed_header, predicted_timestamp)
                 {
@@ -308,7 +306,7 @@ impl<
                     BlockHashOrNumber::Hash(hash) => hash,
                     BlockHashOrNumber::Number(number) => {
                         // trigger by the interval tick, can only trust the number
-                        if number != sealed_header.number {
+                        if number != sealed_header.number() {
                             continue;
                         }
                         sealed_header.hash_slow()
@@ -320,13 +318,13 @@ impl<
 
                 let mut disconnected_headers = Vec::new();
                 let pipeline_sync =
-                    (trusted_header.number + MIN_BLOCKS_FOR_PIPELINE_RUN) < sealed_header.number;
-                if !pipeline_sync && (sealed_header.number - 1) > trusted_header.number {
+                    (trusted_header.number() + MIN_BLOCKS_FOR_PIPELINE_RUN) < sealed_header.number();
+                if !pipeline_sync && (sealed_header.number() - 1) > trusted_header.number() {
                     let fetch_headers_result = match timeout(
                         fetch_header_timeout_duration,
                         block_fetcher.get_headers(HeadersRequest {
                             start: BlockHashOrNumber::Hash(sealed_header.parent_hash),
-                            limit: (sealed_header.number - 1) - trusted_header.number,
+                            limit: (sealed_header.number() - 1) - trusted_header.number(),
                             direction: HeadersDirection::Falling,
                         }),
                     )
@@ -349,9 +347,7 @@ impl<
                     }
                     let mut parent_hash = sealed_header.parent_hash;
                     for (i, _) in headers.iter().enumerate() {
-                        let sealed = headers[i].clone().seal_slow();
-                        let (header, seal) = sealed.into_parts();
-                        let sealed_header = SealedHeader::new(header, seal);
+                        let sealed_header = SealedHeader::seal_slow(headers[i].clone());
                         if sealed_header.hash_slow() != parent_hash {
                             break;
                         }
@@ -376,14 +372,14 @@ impl<
                 // if the target header is not far enough from the trusted header, make sure not to
                 // rebuild the merkle tree
                 if pipeline_sync
-                    && (sealed_header.number - trusted_header.number > merkle_clean_threshold
-                        && sealed_header.number - trusted_header.number
+                    && (sealed_header.number() - trusted_header.number() > merkle_clean_threshold
+                        && sealed_header.number() - trusted_header.number()
                             < MIN_BLOCKS_FOR_MERKLE_REBUILD)
                 {
                     let fetch_headers_result = match timeout(
                         fetch_header_timeout_duration,
                         block_fetcher.get_headers(HeadersRequest {
-                            start: (trusted_header.number + merkle_clean_threshold - 1).into(),
+                            start: (trusted_header.number() + merkle_clean_threshold - 1).into(),
                             limit: 1,
                             direction: HeadersDirection::Falling,
                         }),
@@ -406,9 +402,7 @@ impl<
                         continue;
                     }
 
-                    let sealed = headers[0].clone().seal_slow();
-                    let (header, seal) = sealed.into_parts();
-                    sealed_header = SealedHeader::new(header, seal);
+                    sealed_header = SealedHeader::seal_slow(headers[0].clone());
                 };
 
                 disconnected_headers.insert(0, sealed_header.clone());
@@ -490,7 +484,6 @@ impl<
                                     state,
                                     payload_attrs: None,
                                     tx,
-                                    version: EngineApiMessageVersion::default(),
                                 });
                                 debug!(target: "consensus::parlia", ?state, "Sent fork choice update");
 
@@ -554,7 +547,7 @@ impl<
                             ForkChoiceMessage::NewHeader(event) => {
                                 let new_header = event.local_header;
 
-                                let snap = match snapshot_reader.snapshot(&new_header, None) {
+                                let snap = match snapshot_reader.snapshot(new_header.header(), None) {
                                     Ok(snap) => snap,
                                     Err(err) => {
                                         error!(target: "consensus::parlia", %err, "Snapshot not found");
@@ -607,10 +600,10 @@ impl<
 }
 
 impl<
-        N: EngineNodeTypes,
-        Provider: BlockReaderIdExt + CanonChainTracker,
-        SnapshotProvider: ParliaProvider,
-        Client: BlockClient,
+        N: EngineNodeTypes<ChainSpec: EthChainSpec<Header = Header>>,
+        Provider: BlockReaderIdExt<Header = Header> + CanonChainTracker<Header = Header>,
+        SnapshotProvider: ParliaProvider + HeaderProvider<Header = Header>,
+        Client: BlockClient<Block = Block>,
     > fmt::Debug for ParliaEngineTask<N, Provider, SnapshotProvider, Client>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

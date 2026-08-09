@@ -90,4 +90,9 @@ impl StorageSettings {
     pub const fn any_in_rocksdb(&self) -> bool {
         self.storage_v2
     }
+
+    /// Whether account changesets are stored in static files.
+    pub const fn account_changesets_in_static_files(&self) -> bool {
+        self.storage_v2
+    }
 }

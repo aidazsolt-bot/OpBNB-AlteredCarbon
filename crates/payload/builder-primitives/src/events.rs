@@ -15,7 +15,7 @@ use tracing::debug;
 pub enum Events<T: PayloadTypes> {
     /// The payload attributes as
     /// they are received from the CL through the engine api.
-    Attributes(T::PayloadAttributes),
+    Attributes(T::PayloadBuilderAttributes),
     /// The built payload that has been just built.
     /// Triggered by the CL whenever it asks for an execution payload.
     /// This event is only thrown if the CL is a validator.
@@ -69,14 +69,14 @@ impl<T: PayloadTypes> Stream for BuiltPayloadStream<T> {
                 Some(Ok(Events::BuiltPayload(payload))) => Poll::Ready(Some(payload)),
                 Some(Ok(Events::Attributes(_))) => {
                     // ignoring attributes
-                    continue;
+                    continue
                 }
                 Some(Err(err)) => {
                     debug!(%err, "payload event stream lagging behind");
-                    continue;
+                    continue
                 }
                 None => Poll::Ready(None),
-            };
+            }
         }
     }
 }
@@ -91,7 +91,7 @@ pub struct PayloadAttributeStream<T: PayloadTypes> {
 }
 
 impl<T: PayloadTypes> Stream for PayloadAttributeStream<T> {
-    type Item = T::PayloadAttributes;
+    type Item = T::PayloadBuilderAttributes;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
@@ -99,14 +99,14 @@ impl<T: PayloadTypes> Stream for PayloadAttributeStream<T> {
                 Some(Ok(Events::Attributes(attr))) => Poll::Ready(Some(attr)),
                 Some(Ok(Events::BuiltPayload(_))) => {
                     // ignoring payloads
-                    continue;
+                    continue
                 }
                 Some(Err(err)) => {
                     debug!(%err, "payload event stream lagging behind");
-                    continue;
+                    continue
                 }
                 None => Poll::Ready(None),
-            };
+            }
         }
     }
 }

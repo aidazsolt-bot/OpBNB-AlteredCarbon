@@ -1529,6 +1529,24 @@ impl<N: ProviderNodeTypes> ChangeSetReader for ConsistentProvider<N> {
         Ok(changesets)
     }
 
+    fn account_changeset_count(&self) -> ProviderResult<usize> {
+        let mut count = 0;
+        if let Some(head_block) = &self.head_block {
+            for state in head_block.chain() {
+                count += state
+                    .block_ref()
+                    .execution_output
+                    .state
+                    .reverts
+                    .clone()
+                    .to_plain_state_reverts()
+                    .accounts
+                    .len();
+            }
+        }
+        count += self.storage_provider.account_changeset_count()?;
+        Ok(count)
+    }
 }
 
 impl<N: ProviderNodeTypes> AccountReader for ConsistentProvider<N> {
@@ -1906,6 +1924,7 @@ mod tests {
                                 gas_used: 0,
                                 blob_gas_used: 0,
                             },
+                            snapshot: None,
                         }),
                         ..Default::default()
                     }

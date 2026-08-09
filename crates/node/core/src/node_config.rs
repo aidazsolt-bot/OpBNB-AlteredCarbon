@@ -2,8 +2,9 @@
 
 use crate::{
     args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs,
-        PruningArgs, RpcServerArgs, TxPoolArgs,
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
+        NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StateDbArgs, StaticFilesArgs,
+        TxPoolArgs,
     },
     dirs::{ChainPath, DataDirPath},
     utils::get_single_header,
@@ -19,13 +20,13 @@ use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{BlockNumber, B256};
 use reth_ethereum_forks::Head;
-use reth_primitives::SealedHeader;
+use reth_primitives_traits::SealedHeader;
 use reth_stages_types::StageId;
 use reth_storage_api::{
     BlockHashReader, DatabaseProviderFactory, HeaderProvider, StageCheckpointReader,
 };
 use reth_storage_errors::provider::ProviderResult;
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 use tracing::*;
 
 pub use reth_engine_primitives::{
@@ -93,10 +94,8 @@ pub struct NodeConfig<ChainSpec> {
     /// Possible values are either a built-in chain or the path to a chain specification file.
     pub chain: Arc<ChainSpec>,
 
-    /// Enable Prometheus metrics.
-    ///
-    /// The metrics will be served at the given interface and port.
-    pub metrics: Option<SocketAddr>,
+    /// Enable to configure metrics export to endpoints
+    pub metrics: MetricArgs,
 
     /// Add a new instance of a node.
     ///
@@ -138,6 +137,18 @@ pub struct NodeConfig<ChainSpec> {
     /// All pruning related arguments
     pub pruning: PruningArgs,
 
+    /// All engine related arguments
+    pub engine: EngineArgs,
+
+    /// All ERA import related arguments with --era prefix
+    pub era: EraArgs,
+
+    /// All static files related arguments
+    pub static_files: StaticFilesArgs,
+
+    /// All state database related arguments
+    pub statedb: StateDbArgs,
+
     /// Enable prefetch when executing blocks.
     pub enable_prefetch: bool,
 
@@ -163,7 +174,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         Self {
             config: None,
             chain,
-            metrics: None,
+            metrics: MetricArgs::default(),
             instance: 1,
             network: NetworkArgs::default(),
             rpc: RpcServerArgs::default(),
@@ -174,6 +185,10 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             dev: DevArgs::default(),
             pruning: PruningArgs::default(),
             datadir: DatadirArgs::default(),
+            engine: EngineArgs::default(),
+            era: EraArgs::default(),
+            static_files: StaticFilesArgs::default(),
+            statedb: StateDbArgs::default(),
             enable_prefetch: false,
             skip_state_root_validation: false,
             enable_execution_cache: false,
@@ -218,8 +233,8 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     }
 
     /// Set the metrics address for the node
-    pub const fn with_metrics(mut self, metrics: SocketAddr) -> Self {
-        self.metrics = Some(metrics);
+    pub fn with_metrics(mut self, metrics: MetricArgs) -> Self {
+        self.metrics = metrics;
         self
     }
 
@@ -461,6 +476,10 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             db: self.db,
             dev: self.dev,
             pruning: self.pruning,
+            engine: self.engine,
+            era: self.era,
+            static_files: self.static_files,
+            statedb: self.statedb,
             enable_prefetch: self.enable_prefetch,
             skip_state_root_validation: self.skip_state_root_validation,
             enable_execution_cache: self.enable_execution_cache,
@@ -479,7 +498,7 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
         Self {
             chain: self.chain.clone(),
             config: self.config.clone(),
-            metrics: self.metrics,
+            metrics: self.metrics.clone(),
             instance: self.instance,
             network: self.network.clone(),
             rpc: self.rpc.clone(),
@@ -490,9 +509,13 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             dev: self.dev.clone(),
             pruning: self.pruning.clone(),
             datadir: self.datadir.clone(),
-            enable_prefetch: false,
-            skip_state_root_validation: false,
-            enable_execution_cache: false,
+            engine: self.engine.clone(),
+            era: self.era.clone(),
+            static_files: self.static_files,
+            statedb: self.statedb.clone(),
+            enable_prefetch: self.enable_prefetch,
+            skip_state_root_validation: self.skip_state_root_validation,
+            enable_execution_cache: self.enable_execution_cache,
         }
     }
 }

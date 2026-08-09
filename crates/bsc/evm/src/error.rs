@@ -6,7 +6,7 @@ use reth_errors::{BlockExecutionError, ProviderError};
 use reth_primitives::{GotExpected, GotExpectedBoxed};
 
 /// Bsc Block Executor Errors
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum BscBlockExecutionError {
     /// Error when the system txs are more than expected
     #[error("unexpected system tx")]

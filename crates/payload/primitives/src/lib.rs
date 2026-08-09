@@ -47,6 +47,10 @@ pub trait PayloadTypes: Send + Sync + Unpin + core::fmt::Debug + Clone + 'static
     /// These attributes typically come from external sources (e.g., consensus layer over RPC such
     /// as the Engine API) and contain parameters like timestamp, fee recipient, and randomness.
     type PayloadAttributes: PayloadAttributes + Unpin;
+    /// Internal attributes used by payload builders.
+    type PayloadBuilderAttributes: PayloadBuilderAttributes<RpcPayloadAttributes = Self::PayloadAttributes>
+        + Clone
+        + Unpin;
 
     /// Converts a sealed block into the execution payload format.
     fn block_to_payload(

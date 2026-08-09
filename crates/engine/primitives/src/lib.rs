@@ -12,10 +12,6 @@
 extern crate alloc;
 
 use alloy_consensus::BlockHeader;
-use reth_payload_primitives::{
-    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
-    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
-};
 use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock};
 use reth_storage_api::{errors::ProviderResult, StateProviderBox};
 use reth_trie_common::HashedPostState;
@@ -25,6 +21,10 @@ use serde::{de::DeserializeOwned, Serialize};
 #[cfg(feature = "std")]
 pub use reth_evm::{ConfigureEngineEvm, ConvertTx, ExecutableTxIterator, ExecutableTxTuple};
 pub use reth_payload_primitives::ExecutionPayload;
+pub use reth_payload_primitives::{
+    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
+    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
+};
 
 mod error;
 pub use error::*;
@@ -146,6 +146,9 @@ pub trait EngineApiValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static
         attributes: &Types::PayloadAttributes,
     ) -> Result<(), EngineObjectValidationError>;
 }
+
+/// Legacy alias for [`EngineApiValidator`].
+pub use EngineApiValidator as EngineValidator;
 
 /// Type that validates an [`ExecutionPayload`].
 ///

@@ -15,7 +15,7 @@ use crate::{
 #[cfg(feature = "bsc")]
 use crate::{UpgradeStatus, UpgradeStatusExtension};
 use alloy_primitives::bytes::{Bytes, BytesMut};
-use futures::{ready, Sink, SinkExt};
+use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
 use reth_eth_wire_types::{EthMessageID, NetworkPrimitives, RawCapabilityMessage};
 use reth_ethereum_forks::ForkFilter;
@@ -99,7 +99,7 @@ where
             if status.version > EthVersion::Eth66 {
                 self.inner
                     .send(
-                        alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(
+                        alloy_rlp::encode(ProtocolMessage::from(EthMessage::<N>::UpgradeStatus(
                             UpgradeStatus {
                                 extension: UpgradeStatusExtension {
                                     disable_peer_tx_broadcast: false,
@@ -132,7 +132,7 @@ where
                     }
                 };
 
-                if !matches!(msg.message, EthMessage::UpgradeStatus(_)) {
+                if !matches!(msg.message, EthMessage::<N>::UpgradeStatus(_)) {
                     self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
                     return Err(EthStreamError::EthHandshakeError(
                         EthHandshakeError::NonStatusMessageInHandshake,

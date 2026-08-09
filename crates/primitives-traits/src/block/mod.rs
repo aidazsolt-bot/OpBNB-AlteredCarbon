@@ -226,7 +226,7 @@ where
 ///
 /// This allows for modifying the block's header and body for testing purposes.
 #[cfg(any(test, feature = "test-utils"))]
-pub trait TestBlock: Block {
+pub trait TestBlock: Block<Header: crate::test_utils::TestHeader> {
     /// Returns mutable reference to block body.
     fn body_mut(&mut self) -> &mut Self::Body;
 
@@ -235,13 +235,38 @@ pub trait TestBlock: Block {
 
     /// Updates the block header.
     fn set_header(&mut self, header: Self::Header);
+
+    /// Updates the parent block hash.
+    fn set_parent_hash(&mut self, hash: alloy_primitives::BlockHash) {
+        crate::header::test_utils::TestHeader::set_parent_hash(self.header_mut(), hash);
+    }
+
+    /// Updates the block number.
+    fn set_block_number(&mut self, number: alloy_primitives::BlockNumber) {
+        crate::header::test_utils::TestHeader::set_block_number(self.header_mut(), number);
+    }
+
+    /// Updates the block timestamp.
+    fn set_timestamp(&mut self, timestamp: u64) {
+        crate::header::test_utils::TestHeader::set_timestamp(self.header_mut(), timestamp);
+    }
+
+    /// Updates the block state root.
+    fn set_state_root(&mut self, state_root: alloy_primitives::B256) {
+        crate::header::test_utils::TestHeader::set_state_root(self.header_mut(), state_root);
+    }
+
+    /// Updates the block difficulty.
+    fn set_difficulty(&mut self, difficulty: alloy_primitives::U256) {
+        crate::header::test_utils::TestHeader::set_difficulty(self.header_mut(), difficulty);
+    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 impl<T, H> TestBlock for alloy_consensus::Block<T, H>
 where
     T: SignedTransaction,
-    H: BlockHeader,
+    H: crate::test_utils::TestHeader,
 {
     fn body_mut(&mut self) -> &mut Self::Body {
         &mut self.body

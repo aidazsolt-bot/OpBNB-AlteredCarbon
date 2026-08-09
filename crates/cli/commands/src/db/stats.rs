@@ -16,7 +16,7 @@ use reth_provider::{
     RocksDBProviderFactory,
 };
 use reth_static_file_types::SegmentRangeInclusive;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 #[derive(Parser, Debug)]
 /// The arguments for the `reth db stats` command
@@ -48,7 +48,7 @@ impl Command {
     pub fn execute<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
         self,
         data_dir: ChainPath<DataDirPath>,
-        tool: &DbTool<NodeTypesWithDBAdapter<N, DatabaseEnv>>,
+        tool: &DbTool<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
     ) -> eyre::Result<()> {
         if self.checksum {
             let checksum_report = self.checksum_report(tool)?;
@@ -72,7 +72,7 @@ impl Command {
         Ok(())
     }
 
-    fn db_stats_table<N: NodeTypesWithDB<DB = DatabaseEnv>>(
+    fn db_stats_table<N: NodeTypesWithDB<DB = Arc<DatabaseEnv>>>(
         &self,
         tool: &DbTool<N>,
     ) -> eyre::Result<ComfyTable> {
@@ -156,7 +156,23 @@ impl Command {
         Ok(table)
     }
 
-    fn rocksdb_stats_table<N: NodeTypesWithDB>(&self, tool: &DbTool<N>) -> ComfyTable {
+    fn rocksdb_stats_table<N: NodeTypesWithDB>(&self, _tool: &DbTool<N>) -> ComfyTable {
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            return self.rocksdb_stats_table_impl(_tool);
+        }
+        #[cfg(not(all(unix, feature = "rocksdb")))]
+        {
+            let mut table = ComfyTable::new();
+            table.load_preset(comfy_table::presets::ASCII_MARKDOWN);
+            table.set_header(["RocksDB Table Name"]);
+            table.add_row(Row::from(["RocksDB support not enabled"]));
+            table
+        }
+    }
+
+    #[cfg(all(unix, feature = "rocksdb"))]
+    fn rocksdb_stats_table_impl<N: NodeTypesWithDB>(&self, tool: &DbTool<N>) -> ComfyTable {
         let mut table = ComfyTable::new();
         table.load_preset(comfy_table::presets::ASCII_MARKDOWN);
         table.set_header([
@@ -250,7 +266,8 @@ impl Command {
         }
 
         let static_files = iter_static_files(&data_dir.static_files())?;
-        let static_file_provider = StaticFileProvider::<N>::read_only(data_dir.static_files())?;
+        let static_file_provider =
+            StaticFileProvider::<N>::read_only(data_dir.static_files(), false)?;
 
         let mut total_data_size = 0;
         let mut total_index_size = 0;

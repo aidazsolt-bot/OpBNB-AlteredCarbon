@@ -15,18 +15,18 @@ use reth_primitives::{
     parlia::{Snapshot, VoteAddress, MAX_ATTESTATION_EXTRA_LENGTH},
     GotExpected, Header,
 };
-use reth_provider::ParliaProvider;
-use revm::Database;
+use reth_provider::{HeaderProvider, ParliaProvider};
+use revm::{Database, DatabaseCommit};
+use std::fmt::Debug;
 
 use crate::{BscBlockExecutionError, BscBlockExecutor, SnapshotReader};
 
 const BLST_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 
-impl<EvmConfig, DB, P> BscBlockExecutor<EvmConfig, DB, P>
+impl<DB, P> BscBlockExecutor<DB, P>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
-    DB: Database<Error: Into<ProviderError> + Display>,
-    P: ParliaProvider,
+    DB: Database<Error: Into<ProviderError> + Display> + DatabaseCommit + Debug,
+    P: ParliaProvider + HeaderProvider<Header = Header>,
 {
     /// Apply settings and verify headers before a new block is executed.
     pub(crate) fn on_new_block(
@@ -37,8 +37,9 @@ where
         snap: &Snapshot,
     ) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
-        let state_clear_flag = self.chain_spec().is_spurious_dragon_active_at_block(header.number);
-        self.state.set_state_clear_flag(state_clear_flag);
+        // State clear semantics are handled by the EVM journal from the active spec (post-EIP-161).
+        let _state_clear_flag =
+            self.chain_spec().is_spurious_dragon_active_at_block(header.number);
 
         self.verify_cascading_fields(header, parent, ancestor, snap)
     }

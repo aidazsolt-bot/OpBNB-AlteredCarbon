@@ -8,8 +8,7 @@ use reth_node_api::{FullNodeComponents, NodePrimitives, PrimitivesTy};
 use reth_primitives_traits::{BlockTy, HeaderTy, ReceiptTy, TxTy};
 use reth_rpc_eth_types::EthStateCache;
 use reth_storage_api::{
-    BalProvider, BlockReader, BlockReaderIdExt, PruneCheckpointReader, StageCheckpointReader,
-    StateProviderFactory,
+    BlockReader, BlockReaderIdExt, PruneCheckpointReader, StageCheckpointReader, StateProviderFactory,
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 
@@ -39,7 +38,6 @@ pub trait RpcNodeCore: Clone + Send + Sync + Unpin + 'static {
         + CanonStateSubscriptions<Primitives = Self::Primitives>
         + StageCheckpointReader
         + PruneCheckpointReader
-        + BalProvider
         + Send
         + Sync
         + Clone
@@ -67,7 +65,15 @@ pub trait RpcNodeCore: Clone + Send + Sync + Unpin + 'static {
 
 impl<T> RpcNodeCore for T
 where
-    T: FullNodeComponents<Provider: ChainSpecProvider<ChainSpec: Hardforks + EthereumHardforks>>,
+    T: FullNodeComponents,
+    T::Provider: BlockReaderIdExt<
+            Block = BlockTy<PrimitivesTy<T::Types>>,
+            Receipt = ReceiptTy<PrimitivesTy<T::Types>>,
+            Header = HeaderTy<PrimitivesTy<T::Types>>,
+            Transaction = TxTy<PrimitivesTy<T::Types>>,
+        > + CanonStateSubscriptions<Primitives = PrimitivesTy<T::Types>>
+        + PruneCheckpointReader
+        + ChainSpecProvider<ChainSpec: Hardforks + EthereumHardforks>,
 {
     type Primitives = PrimitivesTy<T::Types>;
     type Provider = T::Provider;
@@ -101,6 +107,14 @@ where
 pub trait RpcNodeCoreExt: RpcNodeCore<Provider: BlockReader> {
     /// Returns handle to RPC cache service.
     fn cache(&self) -> &EthStateCache<Self::Primitives>;
+
+    /// Returns the current active validator count for the latest snapshot.
+    ///
+    /// Default implementation returns `None` to preserve behavior for non-parlia chains.
+    /// BSC-compatible chains should override this to provide an active validator count.
+    fn current_validators_len(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// An adapter that allows to construct [`RpcNodeCore`] from components.
@@ -134,7 +148,6 @@ where
         + CanonStateSubscriptions<Primitives = Evm::Primitives>
         + StageCheckpointReader
         + PruneCheckpointReader
-        + BalProvider
         + Send
         + Sync
         + Unpin

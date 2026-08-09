@@ -36,7 +36,7 @@ impl<'a, R> WriteStateInput<'a, R> {
     /// Returns true if the execution outcome is empty.
     pub const fn is_empty(&self) -> bool {
         match self {
-            Self::Single { outcome, .. } => outcome.receipts.is_empty(),
+            Self::Single { outcome, .. } => outcome.result.receipts.is_empty(),
             Self::Multiple(outcome) => outcome.is_empty(),
         }
     }
@@ -68,7 +68,7 @@ impl<'a, R> WriteStateInput<'a, R> {
     /// Returns an iterator over receipt sets for each block.
     pub fn receipts(&self) -> impl Iterator<Item = &Vec<R>> {
         match self {
-            Self::Single { outcome, .. } => Either::Left(core::iter::once(&outcome.receipts)),
+            Self::Single { outcome, .. } => Either::Left(core::iter::once(&outcome.result.receipts)),
             Self::Multiple(outcome) => Either::Right(outcome.receipts.iter()),
         }
     }

@@ -13,7 +13,7 @@ extern crate alloc;
 
 mod payload;
 use alloy_primitives::Bytes;
-pub use payload::{BlobSidecars, EthBuiltPayload};
+pub use payload::{payload_id, BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes};
 
 mod error;
 pub use error::*;
@@ -48,6 +48,7 @@ where
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
+    type PayloadBuilderAttributes = T::PayloadBuilderAttributes;
 
     fn block_to_payload(
         block: SealedBlock<
@@ -87,6 +88,7 @@ pub struct EthPayloadTypes;
 impl PayloadTypes for EthPayloadTypes {
     type BuiltPayload = EthBuiltPayload;
     type PayloadAttributes = EthPayloadAttributes;
+    type PayloadBuilderAttributes = EthPayloadBuilderAttributes;
     type ExecutionData = ExecutionData;
 
     fn block_to_payload(

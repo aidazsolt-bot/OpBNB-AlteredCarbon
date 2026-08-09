@@ -9,9 +9,7 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// Feature-only dep: activated by `reth-codec` feature for downstream consumers.
-#[cfg(feature = "reth-codec")]
-use reth_codecs as _;
+extern crate alloc;
 
 mod receipt;
 pub use receipt::*;
@@ -35,6 +33,13 @@ pub type Block = alloy_consensus::Block<TransactionSigned>;
 
 /// Type alias for the ethereum blockbody
 pub type BlockBody = alloy_consensus::BlockBody<TransactionSigned>;
+
+/// Bincode-compatible serde implementations.
+#[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
+pub mod serde_bincode_compat {
+    pub use super::receipt::serde_bincode_compat::*;
+    pub use alloy_consensus::serde_bincode_compat::transaction::*;
+}
 
 /// Helper struct that specifies the ethereum
 /// [`NodePrimitives`](reth_primitives_traits::NodePrimitives) types.

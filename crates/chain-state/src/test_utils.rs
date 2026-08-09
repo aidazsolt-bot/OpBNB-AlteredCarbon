@@ -190,7 +190,6 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                 transactions: transactions.into_iter().map(|tx| tx.into_inner()).collect(),
                 ommers: Vec::new(),
                 withdrawals: Some(vec![].into()),
-                sidecars: None,
             },
         )
     }
@@ -241,6 +240,7 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                         blob_gas_used: 0,
                     },
                     state: BundleState::default(),
+                    snapshot: None,
                 }),
                 ComputedTrieData::default(),
             );
@@ -329,6 +329,7 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                     blob_gas_used: 0,
                 },
                 state: bundle,
+                snapshot: None,
             }),
             trie_data,
         );

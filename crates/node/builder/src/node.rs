@@ -44,11 +44,6 @@ pub trait Node<N: FullNodeTypes>: NodeTypes + Clone {
 
     /// Returns the node add-ons.
     fn add_ons(&self) -> Self::AddOns;
-
-    /// Returns the stages that should be disabled for this node.
-    fn disabled_stages() -> &'static [reth_stages::StageId] {
-        &[]
-    }
 }
 
 /// A [`Node`] type builder
@@ -223,9 +218,9 @@ impl<Node: FullNodeComponents, AddOns: NodeAddOns<Node>> DerefMut for FullNode<N
 }
 
 /// Helper type alias to define [`FullNode`] for a given [`Node`].
-pub type FullNodeFor<N, DB = DatabaseEnv> =
+pub type FullNodeFor<N, DB = Arc<DatabaseEnv>> =
     FullNode<NodeAdapter<RethFullAdapter<DB, N>>, <N as Node<RethFullAdapter<DB, N>>>::AddOns>;
 
 /// Helper type alias to define [`NodeHandle`] for a given [`Node`].
-pub type NodeHandleFor<N, DB = DatabaseEnv> =
+pub type NodeHandleFor<N, DB = Arc<DatabaseEnv>> =
     NodeHandle<NodeAdapter<RethFullAdapter<DB, N>>, <N as Node<RethFullAdapter<DB, N>>>::AddOns>;

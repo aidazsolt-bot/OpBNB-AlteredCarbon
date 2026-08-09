@@ -68,6 +68,28 @@ impl From<DatabaseError> for InitDatabaseError {
     }
 }
 
+/// Storage initialization error type.
+pub type InitStorageError = InitDatabaseError;
+
+/// Write the genesis block if it has not already been written with [`StorageSettings`].
+pub fn init_genesis_with_settings<PF>(
+    factory: &PF,
+    _genesis_storage_settings: reth_storage_api::StorageSettings,
+) -> Result<B256, InitStorageError>
+where
+    PF: DatabaseProviderFactory + StaticFileProviderFactory + ChainSpecProvider + BlockHashReader,
+    PF::ProviderRW: StageCheckpointWriter
+        + HistoryWriter
+        + HeaderProvider
+        + HashingWriter
+        + StateWriter
+        + AsRef<PF::ProviderRW>,
+    PF::ChainSpec: EthChainSpec<Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader>,
+    <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader: reth_codecs::Compact,
+{
+    init_genesis(factory)
+}
+
 /// Write the genesis block if it has not already been written
 pub fn init_genesis<PF>(factory: &PF) -> Result<B256, InitDatabaseError>
 where

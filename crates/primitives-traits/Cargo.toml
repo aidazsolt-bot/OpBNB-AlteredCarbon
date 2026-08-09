@@ -14,7 +14,7 @@ workspace = true
 [dependencies]
 reth-codecs.workspace = true
 
-alloy-consensus = { workspace = true, features = ["serde"] }
+alloy-consensus = { workspace = true, features = ["serde", "k256"] }
 alloy-eips.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
@@ -89,7 +89,8 @@ serde-bincode-compat = [
 ]
 bsc = []
 secp256k1 = [
-    "revm/secp256k1"
+    "alloy-consensus/secp256k1",
+    "revm/secp256k1",
 ]
 rayon = []
 quanta = []

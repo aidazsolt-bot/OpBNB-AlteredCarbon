@@ -117,6 +117,28 @@ impl TaskSpawner for TokioTaskExecutor {
 /// A [`TaskExecutor`] is now an alias for [`Runtime`].
 pub type TaskExecutor = Runtime;
 
+impl TaskSpawner for Runtime {
+    fn spawn(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
+        self.spawn_task(fut)
+    }
+
+    fn spawn_critical(&self, name: &'static str, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
+        self.spawn_critical_task(name, fut)
+    }
+
+    fn spawn_blocking(&self, fut: BoxFuture<'static, ()>) -> JoinHandle<()> {
+        self.spawn_blocking_task(fut)
+    }
+
+    fn spawn_critical_blocking(
+        &self,
+        name: &'static str,
+        fut: BoxFuture<'static, ()>,
+    ) -> JoinHandle<()> {
+        self.spawn_critical_blocking_task(name, fut)
+    }
+}
+
 /// Spawns an OS thread with the current tokio runtime context propagated.
 ///
 /// This function captures the current tokio runtime handle (if available) and enters it
