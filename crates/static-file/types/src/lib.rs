@@ -156,6 +156,8 @@ mod tests {
             receipts: Some(200),
             transactions: None,
             sidecars: None,
+            transaction_senders: None,
+            account_changesets: None,
         };
 
         // Test for headers segment
@@ -192,6 +194,8 @@ mod tests {
             receipts: Some(100),
             transactions: None,
             sidecars: None,
+            transaction_senders: None,
+            account_changesets: None,
         };
 
         // Minimum value among the available segments
@@ -209,6 +213,8 @@ mod tests {
             receipts: Some(100),
             transactions: Some(500),
             sidecars: None,
+            transaction_senders: None,
+            account_changesets: None,
         };
 
         // Maximum value among the available segments
