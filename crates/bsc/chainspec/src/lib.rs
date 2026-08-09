@@ -13,7 +13,8 @@ extern crate alloc;
 use core::fmt::Display;
 
 use alloy_genesis::Genesis;
-use alloy_primitives::{B256, U256};
+use alloy_evm::eth::spec::EthExecutorSpec;
+use alloy_primitives::{Address, B256, U256};
 use derive_more::{Constructor, Deref, Into};
 use reth_bsc_forks::BscHardforks;
 use reth_chainspec::{BaseFeeParams, ChainSpec, DepositContract, EthChainSpec};
@@ -93,6 +94,12 @@ impl EthChainSpec for BscChainSpec {
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.inner.final_paris_total_difficulty()
+    }
+}
+
+impl EthExecutorSpec for BscChainSpec {
+    fn deposit_contract_address(&self) -> Option<Address> {
+        None
     }
 }
 

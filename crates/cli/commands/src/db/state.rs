@@ -143,19 +143,12 @@ impl Command {
         // Get account info at that block
         let account = provider.basic_account(&address)?;
 
-        // Check storage settings to determine where history is stored
-        let storage_settings = tool.provider_factory.cached_storage_settings();
-        let history_in_rocksdb = storage_settings.storage_v2;
-
         // For historical queries, enumerate keys from history indices only
         // (not PlainStorageState, which reflects current state)
         let mut storage_keys = BTreeSet::new();
 
-        if history_in_rocksdb {
-            self.collect_staticfile_storage_keys(tool, address, &mut storage_keys)?;
-        } else {
-            self.collect_mdbx_storage_keys_parallel(tool, address, &mut storage_keys)?;
-        }
+        // Storage changesets remain in MDBX in this fork (no StorageChangeSets static file segment).
+        self.collect_mdbx_storage_keys_parallel(tool, address, &mut storage_keys)?;
 
         info!(
             target: "reth::cli",
@@ -197,63 +190,6 @@ impl Command {
         }
 
         self.print_results(address, Some(block), account, &entries);
-
-        Ok(())
-    }
-
-    /// Collects storage keys from static file StorageChangeSets (storage_v2).
-    fn collect_staticfile_storage_keys<N: NodeTypesWithDB + ProviderNodeTypes>(
-        &self,
-        tool: &DbTool<N>,
-        address: Address,
-        keys: &mut BTreeSet<B256>,
-    ) -> eyre::Result<()> {
-        let tip = tool.provider_factory.provider()?.best_block_number()?;
-
-        if tip == 0 {
-            return Ok(());
-        }
-
-        info!(
-            target: "reth::cli",
-            address = %address,
-            tip,
-            "Scanning static file storage changesets"
-        );
-
-        let static_file_provider = tool.provider_factory.static_file_provider();
-        let walker = static_file_provider.walk_storage_changeset_range(0..=tip);
-
-        let mut total_scanned = 0usize;
-        let mut last_log = Instant::now();
-
-        for changeset_result in walker {
-            let (block_addr, storage_entry) = changeset_result?;
-            total_scanned += 1;
-
-            if block_addr.address() == address {
-                keys.insert(storage_entry.key);
-            }
-
-            if last_log.elapsed() >= LOG_INTERVAL {
-                info!(
-                    target: "reth::cli",
-                    address = %address,
-                    entries_scanned = total_scanned,
-                    unique_keys = keys.len(),
-                    "Scanning static file storage changesets"
-                );
-                last_log = Instant::now();
-            }
-        }
-
-        info!(
-            target: "reth::cli",
-            address = %address,
-            total_entries = total_scanned,
-            unique_keys = keys.len(),
-            "Finished static file storage changeset scan"
-        );
 
         Ok(())
     }

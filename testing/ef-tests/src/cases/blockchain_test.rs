@@ -5,7 +5,7 @@ use crate::{
     Case, Error, Suite,
 };
 use alloy_rlp::Decodable;
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, HeaderValidator};
 use reth_db_common::init::{insert_genesis_hashes, insert_genesis_history, insert_genesis_state};
@@ -13,7 +13,7 @@ use reth_ethereum_consensus::{validate_block_post_execution, EthBeaconConsensus}
 use reth_ethereum_primitives::Block;
 use reth_evm::{execute::Executor, ConfigureEvm};
 use reth_evm_ethereum::EthEvmConfig;
-use reth_primitives_traits::{ParallelBridgeBuffered, RecoveredBlock, SealedBlock};
+use reth_primitives_traits::{RecoveredBlock, SealedBlock};
 use reth_provider::{
     test_utils::create_test_provider_factory_with_chain_spec, BlockWriter, DatabaseProviderFactory,
     ExecutionOutcome, HistoryWriter, OriginalValuesKnown, StateWriteConfig, StateWriter,
@@ -172,9 +172,8 @@ impl Case for BlockchainTestCase {
         self.tests
             .into_iter()
             .filter(|(_, case)| !Self::excluded_fork(case.network))
-            .par_bridge_buffered()
-            .with_min_len(64)
-            .try_for_each(|(name, case)| Self::run_single_case(&name, &case).map(|_| ()))
+            .par_bridge()
+            .try_for_each(|(name, case)| Self::run_single_case(name.as_str(), &case).map(|_| ()))
     }
 }
 

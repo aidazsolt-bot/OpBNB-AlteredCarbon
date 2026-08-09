@@ -37,6 +37,12 @@ pub enum StaticFileSegment {
     #[strum(serialize = "sidecars")]
     /// Static File segment responsible for the `Sidecars` table.
     Sidecars,
+    #[strum(serialize = "transaction-senders")]
+    /// Static File segment responsible for the `TransactionSenders` table.
+    TransactionSenders,
+    #[strum(serialize = "account-change-sets")]
+    /// Static File segment responsible for the `AccountChangeSets` table.
+    AccountChangeSets,
 }
 
 impl StaticFileSegment {
@@ -47,7 +53,22 @@ impl StaticFileSegment {
             Self::Transactions => "transactions",
             Self::Receipts => "receipts",
             Self::Sidecars => "sidecars",
+            Self::TransactionSenders => "transaction-senders",
+            Self::AccountChangeSets => "account-change-sets",
         }
+    }
+
+    /// Returns an iterator over all segments.
+    pub fn iter() -> impl Iterator<Item = Self> {
+        [
+            Self::Headers,
+            Self::Transactions,
+            Self::Receipts,
+            Self::Sidecars,
+            Self::TransactionSenders,
+            Self::AccountChangeSets,
+        ]
+        .into_iter()
     }
 
     /// Returns the default configuration of the segment.
@@ -61,6 +82,7 @@ impl StaticFileSegment {
             Self::Headers => 3,
             Self::Transactions | Self::Receipts => 1,
             Self::Sidecars => 2,
+            Self::TransactionSenders | Self::AccountChangeSets => 1,
         }
     }
 
@@ -131,12 +153,46 @@ impl StaticFileSegment {
     /// Returns `true` if the segment is `StaticFileSegment::Receipts` or
     /// `StaticFileSegment::Transactions`.
     pub const fn is_tx_based(&self) -> bool {
-        matches!(self, Self::Receipts | Self::Transactions)
+        matches!(
+            self,
+            Self::Receipts | Self::Transactions | Self::TransactionSenders
+        )
     }
 
     /// Returns `true` if the segment is `StaticFileSegment::Sidecars`.
     pub const fn is_sidecars(&self) -> bool {
         matches!(self, Self::Sidecars)
+    }
+
+    /// Returns `true` if the segment stores per-block changeset rows.
+    pub const fn is_change_based(&self) -> bool {
+        matches!(self, Self::AccountChangeSets)
+    }
+}
+
+/// A changeset offset, also with the number of elements in the offset for convenience.
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Copy)]
+pub struct ChangesetOffset {
+    /// Offset for the row for this block.
+    offset: u64,
+    /// Number of changes in this changeset.
+    num_changes: u64,
+}
+
+impl ChangesetOffset {
+    /// Creates a new changeset offset.
+    pub const fn new(offset: u64, num_changes: u64) -> Self {
+        Self { offset, num_changes }
+    }
+
+    /// Returns the start offset for the row for this block.
+    pub const fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    /// Returns the number of changes in this changeset.
+    pub const fn num_changes(&self) -> u64 {
+        self.num_changes
     }
 }
 
@@ -240,7 +296,10 @@ impl SegmentHeader {
     pub fn increment_tx(&mut self) {
         match self.segment {
             StaticFileSegment::Headers | StaticFileSegment::Sidecars => (),
-            StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Receipts |
+            StaticFileSegment::TransactionSenders |
+            StaticFileSegment::AccountChangeSets => {
                 if let Some(tx_range) = &mut self.tx_range {
                     tx_range.end += 1;
                 } else {
@@ -262,7 +321,10 @@ impl SegmentHeader {
                     }
                 };
             }
-            StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Receipts |
+            StaticFileSegment::TransactionSenders |
+            StaticFileSegment::AccountChangeSets => {
                 if let Some(range) = &mut self.tx_range {
                     if num > range.end - range.start {
                         self.tx_range = None;
@@ -298,7 +360,10 @@ impl SegmentHeader {
     pub fn start(&self) -> Option<u64> {
         match self.segment {
             StaticFileSegment::Headers | StaticFileSegment::Sidecars => self.block_start(),
-            StaticFileSegment::Transactions | StaticFileSegment::Receipts => self.tx_start(),
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Receipts |
+            StaticFileSegment::TransactionSenders |
+            StaticFileSegment::AccountChangeSets => self.tx_start(),
         }
     }
 }

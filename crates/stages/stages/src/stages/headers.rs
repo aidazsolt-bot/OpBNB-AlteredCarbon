@@ -1,6 +1,5 @@
 use alloy_consensus::BlockHeader;
-use alloy_primitives::{BlockHash, BlockNumber, Bytes, B256};
-use alloy_rlp::Decodable;
+use alloy_primitives::{BlockHash, BlockNumber, Bytes, B256, U256};
 use futures_util::StreamExt;
 use reth_config::config::EtlConfig;
 use reth_db_api::{
@@ -15,10 +14,12 @@ use reth_network_p2p::headers::{
     downloader::{HeaderDownloader, HeaderSyncGap, SyncTarget},
     error::HeadersDownloaderError,
 };
-use reth_primitives_traits::{FullBlockHeader, HeaderTy, NodePrimitives, SealedHeader};
+use reth_primitives_traits::{
+    serde_bincode_compat, FullBlockHeader, HeaderTy, NodePrimitives, SealedHeader,
+};
 use reth_provider::{
-    providers::StaticFileWriter, BlockHashReader, DBProvider, HeaderSyncGapProvider,
-    StaticFileProviderFactory,
+    providers::StaticFileWriter, BlockHashReader, DBProvider, HeaderProvider,
+    HeaderSyncGapProvider, StaticFileProviderFactory,
 };
 use reth_stages_api::{
     CheckpointBlockRange, EntitiesCheckpoint, ExecInput, ExecOutput, HeadersCheckpoint, Stage,
@@ -55,7 +56,7 @@ pub struct HeaderStage<Provider, Downloader: HeaderDownloader> {
     sync_gap: Option<HeaderSyncGap<Downloader::Header>>,
     /// ETL collector with `HeaderHash` -> `BlockNumber`
     hash_collector: Collector<BlockHash, BlockNumber>,
-    /// ETL collector with `BlockNumber` -> `RLP-encoded SealedHeader`
+    /// ETL collector with `BlockNumber` -> `BincodeSealedHeader`
     header_collector: Collector<BlockNumber, Bytes>,
     /// Returns true if the ETL collector has all necessary headers to fill the gap.
     is_etl_ready: bool,
@@ -85,14 +86,6 @@ where
         }
     }
 
-    /// Clear all ETL state. Called on error paths to prevent buffer pollution on retry.
-    fn clear_etl_state(&mut self) {
-        self.sync_gap = None;
-        self.hash_collector.clear();
-        self.header_collector.clear();
-        self.is_etl_ready = false;
-    }
-
     /// Write downloaded headers to storage from ETL.
     ///
     /// Writes to static files ( `Header | HeaderTD | HeaderHash` ) and [`tables::HeaderNumbers`]
@@ -115,6 +108,10 @@ where
             .get_highest_static_file_block(StaticFileSegment::Headers)
             .unwrap_or_default();
 
+        // Get the total difficulty of the last header to continue accumulating TD
+        let mut current_td =
+            static_file_provider.header_td_by_number(last_header_number)?.unwrap_or(U256::ZERO);
+
         // Although headers were downloaded in reverse order, the collector iterates it in ascending
         // order
         let mut writer = static_file_provider.latest_writer(StaticFileSegment::Headers)?;
@@ -126,19 +123,22 @@ where
                 info!(target: "sync::stages::headers", progress = %format!("{:.2}%", (index as f64 / total_headers as f64) * 100.0), "Writing headers");
             }
 
-            let sealed_header: SealedHeader<Downloader::Header> = SealedHeader::new_unhashed(
-                Decodable::decode(&mut header_buf.as_slice())
-                    .map_err(|err| StageError::Fatal(Box::new(err)))?,
-            );
+            let sealed_header: SealedHeader<Downloader::Header> =
+                bincode::deserialize::<serde_bincode_compat::SealedHeader<'_, _>>(&header_buf)
+                    .map_err(|err| StageError::Fatal(Box::new(err)))?
+                    .into();
 
             let (header, header_hash) = sealed_header.split_ref();
             if header.number() == 0 {
-                continue;
+                continue
             }
             last_header_number = header.number();
 
-            // Append to Headers segment
-            writer.append_header(header, header_hash)?;
+            // Calculate the new total difficulty: parent_td + block_difficulty
+            current_td = current_td.saturating_add(header.difficulty());
+
+            // Append to Headers segment with total difficulty
+            writer.append_header_with_td(header, current_td, header_hash)?;
         }
 
         info!(target: "sync::stages::headers", total = total_headers, "Writing headers hash index");
@@ -147,9 +147,9 @@ where
             provider.tx_ref().cursor_write::<RawTable<tables::HeaderNumbers>>()?;
         // If we only have the genesis block hash, then we are at first sync, and we can remove it,
         // add it to the collector and use tx.append on all hashes.
-        let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1
-            && let Some((hash, block_number)) = cursor_header_numbers.last()?
-            && block_number.value()? == 0
+        let first_sync = if provider.tx_ref().entries::<RawTable<tables::HeaderNumbers>>()? == 1 &&
+            let Some((hash, block_number)) = cursor_header_numbers.last()? &&
+            block_number.value()? == 0
         {
             self.hash_collector.insert(hash.key()?, 0)?;
             cursor_header_numbers.delete_current()?;
@@ -205,7 +205,7 @@ where
 
         // Return if stage has already completed the gap on the ETL files
         if self.is_etl_ready {
-            return Poll::Ready(Ok(()));
+            return Poll::Ready(Ok(()))
         }
 
         // Lookup the head and tip of the sync range
@@ -224,7 +224,7 @@ where
             );
             self.is_etl_ready = true;
             self.sync_gap = Some(gap);
-            return Poll::Ready(Ok(()));
+            return Poll::Ready(Ok(()))
         }
 
         debug!(target: "sync::stages::headers", ?tip, head = ?gap.local_head.hash(), "Commencing sync");
@@ -245,29 +245,36 @@ where
                         let header_number = header.number();
 
                         self.hash_collector.insert(header.hash(), header_number)?;
-                        self.header_collector
-                            .insert(header_number, Bytes::from(alloy_rlp::encode(&*header)))?;
+                        self.header_collector.insert(
+                            header_number,
+                            Bytes::from(
+                                bincode::serialize(&serde_bincode_compat::SealedHeader::from(
+                                    &header,
+                                ))
+                                .map_err(|err| StageError::Fatal(Box::new(err)))?,
+                            ),
+                        )?;
 
                         // Headers are downloaded in reverse, so if we reach here, we know we have
                         // filled the gap.
                         if header_number == local_head_number + 1 {
                             self.is_etl_ready = true;
-                            return Poll::Ready(Ok(()));
+                            return Poll::Ready(Ok(()))
                         }
                     }
                 }
                 Some(Err(HeadersDownloaderError::DetachedHead { local_head, header, error })) => {
                     error!(target: "sync::stages::headers", %error, "Cannot attach header to head");
-                    self.clear_etl_state();
+                    self.sync_gap = None;
                     return Poll::Ready(Err(StageError::DetachedHead {
                         local_head: Box::new(local_head.block_with_parent()),
                         header: Box::new(header.block_with_parent()),
                         error,
-                    }));
+                    }))
                 }
                 None => {
-                    self.clear_etl_state();
-                    return Poll::Ready(Err(StageError::ChannelClosed));
+                    self.sync_gap = None;
+                    return Poll::Ready(Err(StageError::ChannelClosed))
                 }
             }
         }
@@ -280,12 +287,12 @@ where
 
         if self.sync_gap.take().ok_or(StageError::MissingSyncGap)?.is_closed() {
             self.is_etl_ready = false;
-            return Ok(ExecOutput::done(current_checkpoint));
+            return Ok(ExecOutput::done(current_checkpoint))
         }
 
         // We should be here only after we have downloaded all headers into the disk buffer (ETL).
         if !self.is_etl_ready {
-            return Err(StageError::MissingDownloadBuffer);
+            return Err(StageError::MissingDownloadBuffer)
         }
 
         // Reset flag
@@ -324,7 +331,7 @@ where
         provider: &Provider,
         input: UnwindInput,
     ) -> Result<UnwindOutput, StageError> {
-        self.clear_etl_state();
+        self.sync_gap.take();
 
         // First unwind the db tables, until the unwind_to block number. use the walker to unwind
         // HeaderNumbers based on the index in CanonicalHeaders
@@ -335,9 +342,8 @@ where
                 (input.unwind_to + 1)..,
             )?;
         provider.tx_ref().unwind_table_by_num::<tables::CanonicalHeaders>(input.unwind_to)?;
-        let unfinalized_headers_unwound = provider.tx_ref().unwind_table_by_num::<tables::Headers<
-            HeaderTy<Provider::Primitives>,
-        >>(input.unwind_to)?;
+        let unfinalized_headers_unwound =
+            provider.tx_ref().unwind_table_by_num::<tables::Headers>(input.unwind_to)?;
 
         // determine how many headers to unwind from the static files based on the highest block and
         // the unwind_to block
@@ -466,7 +472,7 @@ mod tests {
                 let end = input.target.unwrap_or_default() + 1;
 
                 if start + 1 >= end {
-                    return Ok(Vec::default());
+                    return Ok(Vec::default())
                 }
 
                 let mut headers = random_header_range(&mut rng, start + 1..end, head.hash());

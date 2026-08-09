@@ -1,7 +1,9 @@
 //! Node primitives abstraction: bundles the concrete types a node implementation uses to
 //! represent blockchain data (block, header, body, signed transaction, receipt).
 
-use crate::{Block, BlockBody, Receipt};
+use crate::{
+    FullBlock, FullBlockBody, FullBlockHeader, FullReceipt, FullSignedTx, MaybeSerdeBincodeCompat,
+};
 use core::fmt;
 
 /// Configures all the primitive types of the node.
@@ -13,26 +15,19 @@ pub trait NodePrimitives:
     Send + Sync + Unpin + Clone + Default + fmt::Debug + PartialEq + Eq + 'static
 {
     /// Block primitive.
-    type Block: Block<Header = Self::BlockHeader, Body = Self::BlockBody>;
+    type Block: FullBlock<Header = Self::BlockHeader, Body = Self::BlockBody>
+        + MaybeSerdeBincodeCompat;
     /// Block header primitive.
-    type BlockHeader: crate::BlockHeader
-        + alloy_primitives::Sealable
-        + Clone
-        + fmt::Debug
-        + Default
-        + PartialEq
-        + Eq
-        + Send
-        + Sync;
+    type BlockHeader: FullBlockHeader;
     /// Block body primitive.
-    type BlockBody: BlockBody<Transaction = Self::SignedTx>;
+    type BlockBody: FullBlockBody<Transaction = Self::SignedTx, OmmerHeader = Self::BlockHeader>;
     /// Signed version of the transaction type.
     ///
     /// This represents the transaction as it exists in the blockchain - the consensus
     /// format that includes the signature and can be included in a block.
-    type SignedTx: crate::SignedTransaction;
+    type SignedTx: FullSignedTx;
     /// A receipt.
-    type Receipt: Receipt;
+    type Receipt: FullReceipt;
 }
 
 /// Helper adapter type for accessing [`NodePrimitives`] block header types.

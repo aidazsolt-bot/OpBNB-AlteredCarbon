@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, Bytes, B256, U256, U64};
 use alloy_rpc_types_eth::{
@@ -53,7 +55,7 @@ where
             RpcHeader<Eth::NetworkTypes>,
             TxTy<Eth::Primitives>,
         > + FullEthApiTypes,
-    EthFilter: EngineEthFilter,
+    EthFilter: EngineEthFilter<Log>,
 {
     /// Handler for: `eth_syncing`
     fn syncing(&self) -> Result<SyncStatus> {
@@ -155,9 +157,9 @@ where
     /// Handler for `eth_getBlockAccessListByBlockNumber`
     async fn block_access_list_by_block_number(
         &self,
-        block_number: BlockNumberOrTag,
+        number: BlockNumberOrTag,
     ) -> Result<Option<Value>> {
-        self.eth.block_access_list_by_block_number(block_number).instrument(engine_span!()).await
+        self.eth.block_access_list_by_block_number(number).instrument(engine_span!()).await
     }
 
     /// Handler for `eth_getBlockAccessList`
@@ -165,7 +167,7 @@ where
         self.eth.block_access_list(block_id).instrument(engine_span!()).await
     }
 
-    /// Handler for `getBlockAccessListRaw`
+    /// Handler for `eth_getBlockAccessListRaw`
     async fn block_access_list_raw(&self, block: BlockId) -> Result<Option<Bytes>> {
         self.eth.block_access_list_raw(block).instrument(engine_span!()).await
     }

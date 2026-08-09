@@ -1,12 +1,12 @@
 use crate::{
     error::{RpcError, ServerKind},
-    middleware::{RethAuthHttpMiddleware, RethRpcMiddleware},
+    middleware::RethRpcMiddleware,
 };
 use http::header::AUTHORIZATION;
 use jsonrpsee::{
     core::{client::SubscriptionClientT, RegisterMethodError},
     http_client::HeaderMap,
-    server::{AlreadyStoppedError, RpcModule, ServerConfig, ServerConfigBuilder},
+    server::{AlreadyStoppedError, RpcModule},
     ws_client::RpcServiceBuilder,
     Methods,
 };
@@ -20,11 +20,12 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tower::layer::util::Identity;
 
 pub use jsonrpsee::server::ServerBuilder;
+use jsonrpsee::server::{ServerConfig, ServerConfigBuilder};
 pub use reth_ipc::server::Builder as IpcServerBuilder;
 
 /// Server configuration for the auth server.
 #[derive(Debug)]
-pub struct AuthServerConfig<RpcMiddleware = Identity, HttpMiddleware = Identity> {
+pub struct AuthServerConfig<RpcMiddleware = Identity> {
     /// Where the server should listen.
     pub(crate) socket_addr: SocketAddr,
     /// The secret for the auth layer of the server.
@@ -37,8 +38,6 @@ pub struct AuthServerConfig<RpcMiddleware = Identity, HttpMiddleware = Identity>
     pub(crate) ipc_endpoint: Option<String>,
     /// Configurable RPC middleware
     pub(crate) rpc_middleware: RpcMiddleware,
-    /// Configurable HTTP transport middleware, applied after JWT authentication.
-    pub(crate) http_middleware: HttpMiddleware,
 }
 
 // === impl AuthServerConfig ===
@@ -49,23 +48,15 @@ impl AuthServerConfig {
         AuthServerConfigBuilder::new(secret)
     }
 }
-impl<RpcMiddleware, HttpMiddleware> AuthServerConfig<RpcMiddleware, HttpMiddleware> {
+impl<RpcMiddleware> AuthServerConfig<RpcMiddleware> {
     /// Returns the address the server will listen on.
     pub const fn address(&self) -> SocketAddr {
         self.socket_addr
     }
 
     /// Configures the rpc middleware.
-    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> AuthServerConfig<T, HttpMiddleware> {
-        let Self {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            http_middleware,
-            ..
-        } = self;
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> AuthServerConfig<T> {
+        let Self { socket_addr, secret, server_config, ipc_server_config, ipc_endpoint, .. } = self;
         AuthServerConfig {
             socket_addr,
             secret,
@@ -73,44 +64,13 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfig<RpcMiddleware, HttpMiddlewa
             ipc_server_config,
             ipc_endpoint,
             rpc_middleware,
-            http_middleware,
-        }
-    }
-
-    /// Configures the HTTP transport middleware.
-    ///
-    /// This middleware is applied after JWT authentication and before JSON-RPC parsing,
-    /// giving access to the raw HTTP request (headers, body, etc.).
-    pub fn with_http_middleware<T>(self, http_middleware: T) -> AuthServerConfig<RpcMiddleware, T> {
-        let Self {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            rpc_middleware,
-            ..
-        } = self;
-        AuthServerConfig {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            rpc_middleware,
-            http_middleware,
         }
     }
 
     /// Convenience function to start a server in one step.
-    ///
-    /// The `HttpMiddleware` type parameter configures additional HTTP transport middleware
-    /// that runs after JWT authentication. When set to `Identity` (the default), only JWT
-    /// authentication is applied.
     pub async fn start(self, module: AuthRpcModule) -> Result<AuthServerHandle, RpcError>
     where
         RpcMiddleware: RethRpcMiddleware,
-        HttpMiddleware: RethAuthHttpMiddleware<RpcMiddleware>,
     {
         let Self {
             socket_addr,
@@ -119,13 +79,11 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfig<RpcMiddleware, HttpMiddlewa
             ipc_server_config,
             ipc_endpoint,
             rpc_middleware,
-            http_middleware,
         } = self;
 
-        // Create auth middleware with JWT authentication in front of the user-provided
-        // transport middleware.
+        // Create auth middleware.
         let middleware =
-            tower::ServiceBuilder::new().layer(AuthHttpLayer::new(secret, http_middleware));
+            tower::ServiceBuilder::new().layer(AuthLayer::new(JwtAuthValidator::new(secret)));
 
         let rpc_middleware = RpcServiceBuilder::default().layer(rpc_middleware);
 
@@ -159,47 +117,15 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfig<RpcMiddleware, HttpMiddlewa
     }
 }
 
-/// A combined tower layer that applies JWT authentication before custom HTTP middleware.
-///
-/// This composes `AuthLayer<JwtAuthValidator>` around a user-provided `HttpMiddleware` into a
-/// single `tower::Layer`. Requests first pass through JWT validation and only authenticated
-/// requests are forwarded into the custom middleware.
-struct AuthHttpLayer<HttpMiddleware> {
-    auth_layer: AuthLayer<JwtAuthValidator>,
-    http_middleware: HttpMiddleware,
-}
-
-impl<HttpMiddleware> AuthHttpLayer<HttpMiddleware> {
-    const fn new(secret: JwtSecret, http_middleware: HttpMiddleware) -> Self {
-        Self { auth_layer: AuthLayer::new(JwtAuthValidator::new(secret)), http_middleware }
-    }
-}
-
-impl<S, HttpMiddleware> tower::Layer<S> for AuthHttpLayer<HttpMiddleware>
-where
-    HttpMiddleware: tower::Layer<S> + Clone,
-    AuthLayer<JwtAuthValidator>: tower::Layer<<HttpMiddleware as tower::Layer<S>>::Service>,
-{
-    type Service = <AuthLayer<JwtAuthValidator> as tower::Layer<
-        <HttpMiddleware as tower::Layer<S>>::Service,
-    >>::Service;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        let http_service = self.http_middleware.layer(inner);
-        self.auth_layer.layer(http_service)
-    }
-}
-
 /// Builder type for configuring an `AuthServerConfig`.
 #[derive(Debug)]
-pub struct AuthServerConfigBuilder<RpcMiddleware = Identity, HttpMiddleware = Identity> {
+pub struct AuthServerConfigBuilder<RpcMiddleware = Identity> {
     socket_addr: Option<SocketAddr>,
     secret: JwtSecret,
     server_config: Option<ServerConfigBuilder>,
     ipc_server_config: Option<IpcServerBuilder<Identity, Identity>>,
     ipc_endpoint: Option<String>,
     rpc_middleware: RpcMiddleware,
-    http_middleware: HttpMiddleware,
 }
 
 // === impl AuthServerConfigBuilder ===
@@ -214,26 +140,14 @@ impl AuthServerConfigBuilder {
             ipc_server_config: None,
             ipc_endpoint: None,
             rpc_middleware: Identity::new(),
-            http_middleware: Identity::new(),
         }
     }
 }
 
-impl<RpcMiddleware, HttpMiddleware> AuthServerConfigBuilder<RpcMiddleware, HttpMiddleware> {
+impl<RpcMiddleware> AuthServerConfigBuilder<RpcMiddleware> {
     /// Configures the rpc middleware.
-    pub fn with_rpc_middleware<T>(
-        self,
-        rpc_middleware: T,
-    ) -> AuthServerConfigBuilder<T, HttpMiddleware> {
-        let Self {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            http_middleware,
-            ..
-        } = self;
+    pub fn with_rpc_middleware<T>(self, rpc_middleware: T) -> AuthServerConfigBuilder<T> {
+        let Self { socket_addr, secret, server_config, ipc_server_config, ipc_endpoint, .. } = self;
         AuthServerConfigBuilder {
             socket_addr,
             secret,
@@ -241,35 +155,6 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfigBuilder<RpcMiddleware, HttpM
             ipc_server_config,
             ipc_endpoint,
             rpc_middleware,
-            http_middleware,
-        }
-    }
-
-    /// Configures the HTTP transport middleware.
-    ///
-    /// This middleware is applied after JWT authentication and before JSON-RPC parsing,
-    /// giving access to the raw HTTP request (headers, body, etc.).
-    pub fn with_http_middleware<T>(
-        self,
-        http_middleware: T,
-    ) -> AuthServerConfigBuilder<RpcMiddleware, T> {
-        let Self {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            rpc_middleware,
-            ..
-        } = self;
-        AuthServerConfigBuilder {
-            socket_addr,
-            secret,
-            server_config,
-            ipc_server_config,
-            ipc_endpoint,
-            rpc_middleware,
-            http_middleware,
         }
     }
 
@@ -315,7 +200,7 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfigBuilder<RpcMiddleware, HttpM
     }
 
     /// Build the `AuthServerConfig`.
-    pub fn build(self) -> AuthServerConfig<RpcMiddleware, HttpMiddleware> {
+    pub fn build(self) -> AuthServerConfig<RpcMiddleware> {
         AuthServerConfig {
             socket_addr: self.socket_addr.unwrap_or_else(|| {
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), constants::DEFAULT_AUTH_PORT)
@@ -348,7 +233,6 @@ impl<RpcMiddleware, HttpMiddleware> AuthServerConfigBuilder<RpcMiddleware, HttpM
             }),
             ipc_endpoint: self.ipc_endpoint,
             rpc_middleware: self.rpc_middleware,
-            http_middleware: self.http_middleware,
         }
     }
 }
@@ -405,14 +289,10 @@ impl AuthRpcModule {
     }
 
     /// Convenience function for starting a server
-    pub async fn start_server<RpcMiddleware, HttpMiddleware>(
+    pub async fn start_server(
         self,
-        config: AuthServerConfig<RpcMiddleware, HttpMiddleware>,
-    ) -> Result<AuthServerHandle, RpcError>
-    where
-        RpcMiddleware: RethRpcMiddleware,
-        HttpMiddleware: RethAuthHttpMiddleware<RpcMiddleware>,
-    {
+        config: AuthServerConfig,
+    ) -> Result<AuthServerHandle, RpcError> {
         config.start(self).await
     }
 }
@@ -455,22 +335,10 @@ impl AuthServerHandle {
         self.local_addr
     }
 
-    /// Returns the JWT secret used by the auth server.
-    pub const fn jwt_secret(&self) -> &JwtSecret {
-        &self.secret
-    }
-
     /// Tell the server to stop without waiting for the server to stop.
     pub fn stop(self) -> Result<(), AlreadyStoppedError> {
-        if let Some(handle) = self.handle {
-            handle.stop()?;
-        }
-
-        if let Some(ipc_handle) = self.ipc_handle {
-            ipc_handle.stop()?;
-        }
-
-        Ok(())
+        let Some(handle) = self.handle else { return Ok(()) };
+        handle.stop()
     }
 
     /// Returns the url to the http server
@@ -522,7 +390,7 @@ impl AuthServerHandle {
                     .build(ipc_endpoint)
                     .await
                     .expect("Failed to create ipc client"),
-            );
+            )
         }
         None
     }

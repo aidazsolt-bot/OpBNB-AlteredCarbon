@@ -9,14 +9,16 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 mod compression;
+mod changeset_offsets;
 mod event;
 mod segment;
 
 use alloy_primitives::BlockNumber;
+pub use changeset_offsets::{ChangesetOffsetReader, ChangesetOffsetWriter};
 pub use compression::Compression;
 use core::ops::RangeInclusive;
 pub use event::StaticFileProducerEvent;
-pub use segment::{SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
+pub use segment::{ChangesetOffset, SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
 
 /// Map keyed by [`StaticFileSegment`].
 pub type StaticFileMap<T> = std::collections::HashMap<StaticFileSegment, T>;
@@ -39,12 +41,16 @@ pub struct HighestStaticFiles {
     /// Highest static file block of sidecars, inclusive.
     /// If [`None`], no static file is available.
     pub sidecars: Option<BlockNumber>,
+    /// Highest static file block of transaction senders, inclusive.
+    pub transaction_senders: Option<BlockNumber>,
+    /// Highest static file block of account changesets, inclusive.
+    pub account_changesets: Option<BlockNumber>,
 }
 
 impl HighestStaticFiles {
     /// Returns `true` if all segments are either [`None`] or start at the next static file block.
     fn iter(&self) -> impl Iterator<Item = Option<BlockNumber>> {
-        [self.headers, self.receipts, self.transactions, self.sidecars].into_iter()
+        [self.headers, self.receipts, self.transactions, self.sidecars, self.transaction_senders, self.account_changesets].into_iter()
     }
 
     /// Returns the highest static file if it exists for a segment
@@ -54,6 +60,8 @@ impl HighestStaticFiles {
             StaticFileSegment::Transactions => self.transactions,
             StaticFileSegment::Receipts => self.receipts,
             StaticFileSegment::Sidecars => self.sidecars,
+            StaticFileSegment::TransactionSenders => self.transaction_senders,
+            StaticFileSegment::AccountChangeSets => self.account_changesets,
         }
     }
 
@@ -64,12 +72,19 @@ impl HighestStaticFiles {
             StaticFileSegment::Transactions => &mut self.transactions,
             StaticFileSegment::Receipts => &mut self.receipts,
             StaticFileSegment::Sidecars => &mut self.sidecars,
+            StaticFileSegment::TransactionSenders => &mut self.transaction_senders,
+            StaticFileSegment::AccountChangeSets => &mut self.account_changesets,
         }
     }
 
     /// Returns the minimum block of all segments.
     pub fn min(&self) -> Option<u64> {
         self.iter().flatten().min()
+    }
+
+    /// Returns the minimum block of all segments.
+    pub fn min_block_num(&self) -> Option<u64> {
+        self.min()
     }
 
     /// Returns the maximum block of all segments.

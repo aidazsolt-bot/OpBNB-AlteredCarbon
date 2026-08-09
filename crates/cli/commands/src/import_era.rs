@@ -6,8 +6,7 @@ use eyre::eyre;
 use reqwest::{Client, Url};
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
-use reth_era::common::file_ops::EraFileType;
-use reth_era_downloader::{read_dir, read_era_dir, EraClient, EraStream, EraStreamConfig};
+use reth_era_downloader::{read_dir, EraClient, EraStream, EraStreamConfig};
 use reth_era_utils as era;
 use reth_etl::Collector;
 use reth_fs_util as fs;
@@ -25,13 +24,6 @@ pub struct ImportEraCommand<C: ChainSpecParser> {
 
     #[clap(flatten)]
     import: ImportArgs,
-
-    /// Stop the import after this block height has been reached.
-    ///
-    /// The file containing the block is imported up to and including this height, then the
-    /// import ends. By default all available blocks are imported.
-    #[arg(long, value_name = "TO_BLOCK", verbatim_doc_comment)]
-    to_block: Option<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -72,97 +64,51 @@ impl TryFromChain for ChainKind {
 
 impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> ImportEraCommand<C> {
     /// Execute `import-era` command
-    pub async fn execute<N>(self, runtime: reth_tasks::Runtime) -> eyre::Result<()>
+    pub async fn execute<N>(self) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
     {
         info!(target: "reth::cli", "reth {} starting", version_metadata().short_version);
 
-        let Environment { provider_factory, config, .. } =
-            self.env.init::<N>(AccessRights::RW, runtime)?;
+        let Environment { provider_factory, config, .. } = self.env.init::<N>(AccessRights::RW)?;
 
         let mut hash_collector = Collector::new(config.stages.etl.file_size, config.stages.etl.dir);
 
         let next_block = provider_factory
             .static_file_provider()
             .get_highest_static_file_block(StaticFileSegment::Headers)
-            .unwrap_or_default()
-            + 1;
+            .unwrap_or_default() +
+            1;
 
         if let Some(path) = self.import.path {
-            let era_type = EraFileType::from_dir(&path)?.ok_or_else(|| {
-                eyre!(
-                    "No ERA (.era), ERA1 (.era1) or ERE (.ere, .erae) files found in {}",
-                    path.display()
-                )
-            })?;
+            let stream = read_dir(path, next_block)?;
 
-            info!(target: "reth::cli", ?era_type, path = %path.display(), to_block = ?self.to_block, "Starting ERA import");
-
-            match era_type {
-                EraFileType::Era => era::import::<era::Era, _, _, _, _, _, _>(
-                    read_era_dir(path)?,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-                EraFileType::Ere => era::import::<era::Ere, _, _, _, _, _, _>(
-                    read_dir(path, next_block)?,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-                EraFileType::Era1 => era::import::<era::Era1, _, _, _, _, _, _>(
-                    read_dir(path, next_block)?,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-            };
+            era::import::<reth_era_utils::Era1, _, _, _, _, _, _>(
+                stream,
+                &provider_factory,
+                &mut hash_collector,
+                None,
+            )?;
         } else {
             let url = match self.import.url {
                 Some(url) => url,
                 None => self.env.chain.chain().kind().try_to_url()?,
             };
-            let era_type = EraFileType::from_url(url.as_str());
-
-            info!(target: "reth::cli", ?era_type, %url, to_block = ?self.to_block, "Starting ERA import");
-
             let folder =
                 self.env.datadir.resolve_datadir(self.env.chain.chain()).data_dir().join("era");
 
             fs::create_dir_all(&folder)?;
 
-            let mut config = EraStreamConfig::default();
-            // `start_from` maps a block number to a file index as `block / BLOCKS_PER_FILE`, valid
-            // only for execution-layer files (era1/ere). Consensus `.era` files are slot-indexed,
-            // so stream from 0 and let the pipeline skip already-imported blocks.
-            if !matches!(era_type, EraFileType::Era) {
-                config = config.start_from(next_block);
-            }
-            let client = EraClient::new(Client::new(), url, folder).with_era_type(era_type);
+            let config = EraStreamConfig::default().start_from(next_block);
+            let client = EraClient::new(Client::new(), url, folder);
             let stream = EraStream::new(client, config);
 
-            match era_type {
-                EraFileType::Ere => era::import::<era::Ere, _, _, _, _, _, _>(
-                    stream,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-                EraFileType::Era1 => era::import::<era::Era1, _, _, _, _, _, _>(
-                    stream,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-                EraFileType::Era => era::import::<era::Era, _, _, _, _, _, _>(
-                    stream,
-                    &provider_factory,
-                    &mut hash_collector,
-                    self.to_block,
-                )?,
-            };
+            era::import::<reth_era_utils::Era1, _, _, _, _, _, _>(
+                stream,
+                &provider_factory,
+                &mut hash_collector,
+                None,
+            )?;
         }
 
         Ok(())

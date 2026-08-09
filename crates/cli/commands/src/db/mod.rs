@@ -27,6 +27,17 @@ mod stats;
 /// DB List TUI
 mod tui;
 
+/// Initializes a provider factory with specified access rights, and then executes the
+/// provided command.
+macro_rules! db_exec {
+    ($env:expr, $tool:ident, $N:ident, $access_rights:expr, $command:block) => {
+        let Environment { provider_factory, .. } = $env.init::<$N>($access_rights)?;
+
+        let $tool = DbTool::new(provider_factory.clone())?;
+        $command;
+    };
+}
+
 /// `reth db` command
 #[derive(Debug, Parser)]
 pub struct Command<C: ChainSpecParser> {
@@ -89,18 +100,6 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
         self,
         ctx: CliContext,
     ) -> eyre::Result<()> {
-        /// Initializes a provider factory with specified access rights, and then executes the
-        /// provided command.
-        macro_rules! db_exec {
-            ($env:expr, $tool:ident, $N:ident, $access_rights:expr, $command:block) => {
-                let Environment { provider_factory, .. } =
-                    $env.init::<$N>($access_rights, ctx.task_executor.clone())?;
-
-                let $tool = DbTool::new(provider_factory)?;
-                $command;
-            };
-        }
-
         let data_dir = self.env.datadir.clone().resolve_datadir(self.env.chain.chain());
         let db_path = data_dir.db();
         let static_files_path = data_dir.static_files();
@@ -236,8 +235,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
                 });
             }
             Subcommands::MigrateV2(command) => {
-                let Environment { provider_factory, .. } =
-                    self.env.init::<N>(AccessRights::RW, ctx.task_executor.clone())?;
+                let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RW)?;
 
                 // Migrate changesets+receipts, clear tables, compact MDBX
                 command.execute::<N>(provider_factory).await?;

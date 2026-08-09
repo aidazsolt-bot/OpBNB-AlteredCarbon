@@ -19,20 +19,20 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
-3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** 🔄 in Arbeit (aktueller Fokus)
-4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** ⏳ ausstehend
-5. **Phase 5 — Build/Lint/Test/EF-Tests** ⏳ ausstehend
+3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
+4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardfork-Enum/Schedules ✅; forks/chainspec/primitives/consensus compile; op-evm/node noch architektonisch (revm-41 → `op-revm`)
+5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 angelaufen (`cargo check --workspace --no-default-features` ✅ 0 errors 2026-08-09; Clippy/nextest/EF noch offen)
 6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
 
-## Todo-Status (aus Session-DB, Stand 2026-08-06 18:06)
+## Todo-Status (Stand 2026-08-09)
 
 | ID | Titel | Status |
 | --- | --- | --- |
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
-| bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | 🔄 in_progress |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | ⏳ pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | ⏳ pending |
+| bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks ✅; op-evm/node pending |
+| build-test-validate | Build, Lint, Tests, EF-Tests | ⏳ pending (workspace check grün) |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | ⏳ pending |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
@@ -165,14 +165,17 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 
 ## Aufwandsprotokoll (für README "About This Fork" — wird bei jedem Meilenstein nachgeführt)
 
-| Session | Zeitraum (UTC) | Modelle | Input-Tokens | Output-Tokens | Turns | Wichtigste Ergebnisse |
+| Session | Zeitraum (UTC) | Modelle | Input-Tokens | Output-Tokens | Turns / Events | Wichtigste Ergebnisse |
 | --- | --- | --- | --- | --- | --- | --- |
-| Frühere Sessions (kumulativ, s. README-Stand vor dieser Aktualisierung) | mehrere Tage, mehrere Sitzungen | Claude Sonnet 5 (primär), GPT-5.4 (Sub-Agenten) | ~58,7M (Sonnet 5) + ~38,5M (GPT-5.4) | ~231K (Sonnet 5) + ~78K (GPT-5.4) | ~800 | Merge/Rebase auf v2.4.1 abgeschlossen, Konflikte aufgelöst, Blockchain-Tree→Engine-Tree-Fund, Kona-Node-Evaluierung, README-Disclaimer |
-| Aktuelle Session `a95758da` (Snapshot 2026-08-07 04:12 UTC) | 2026-08-06 09:50 – laufend | Claude Sonnet 5 (primär), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex | ~356,9M (Sonnet 5) + ~135,4M (GPT-5.4) + ~88,4M (Sonnet 4.6) + ~3,3M (GPT-5.3-Codex) = ~584,1M | ~1,162M (Sonnet 5) + ~297,7K (GPT-5.4) + ~260,3K (Sonnet 4.6) + ~3,5K (GPT-5.3-Codex) = ~1,725M | 17 CLI-Turns / 5.188 Modell-Usage-Events | Portierungs-Loop bis `reth-node-core` und `reth-blockchain-tree` grün, `reth-beacon-consensus`/`reth-node-api` auf v2.4.1 API umgestellt, `reth-rpc-eth-types` + `reth-trie-prefetch` grün |
+| Frühere Sessions (kumulativ, vor `a95758da`) | mehrere Tage | Claude Sonnet 5 (primär), GPT-5.4 | ~58,7M (Sonnet 5) + ~38,5M (GPT-5.4) | ~231K (Sonnet 5) + ~78K (GPT-5.4) | ~800 | Merge/Rebase auf v2.4.1, Konflikte, Blockchain-Tree→Engine-Tree, Kona-Node-Eval, README-Disclaimer |
+| Copilot CLI `a95758da` (Snapshot **2026-08-09**, final DB) | 2026-08-06 09:50 – 2026-08-07 18:05 | Sonnet 5, GPT-5.4, Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini | ~356,9M + ~135,4M + ~88,4M + ~63,1M + ~6,4M = **~650,1M** (+ ~636M cache-read) | ~1,163K + ~298K + ~260K + ~124K + ~16K = **~1,861K** | 32 Turns / 5.803 Events / ~8,1h request-wall | Compile-Loop bis node-core/stages/rpc-Typen; Phase-2/3 Vorarbeit |
+| Cursor Composer YOLO (Session 6, Chat `42f88fe7…`, Snapshot **2026-08-09 12:05 UTC**) | 06:45 – ~12:05 UTC (**~5,34 h** Wall) | **composer-2.5-fast** (4.986 `modelName`-Hits) + **cursor-grok-4.5-high-fast** (178); Parent `default` | **Kein lokaler Billed-Token-Ledger.** Content-Proxy: Transcripts ~2,34M chars ≈ **~0,58M Tokens** (÷4); Cleartext-Chat-JSON ≈ **~0,33M Tokens** (Untergrenze, Tool/Context unterzählt). Erwartete billed/context-Wiederholung deutlich höher | (Proxy, s. Input-Spalte) | **15 Agents** (1 Parent + 14 Subs); 2.582 Assistant-Msgs; 5.861 Tool-Blobs; ~11.722 Tool-Calls; 74.482 `ai_code_hashes` | **`reth-bsc-node --features bsc` + workspace `--no-default-features` grün**; Phase-4 op-forks/chainspec/primitives/consensus; Details: `files/cursor-session-metrics.json` |
 
-> Hinweis: Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
-> Turn, kein Maß für "sinnvolle" Ausgabe — dienen der Transparenz über den praktischen Ressourcen-
-> Aufwand dieser Art von KI-gestützter Modernisierung, nicht als Effizienz-Benchmark.
+> Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
+> Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
+> verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
+> Quellen: Copilot `/root/.copilot/session-store.db`; Cursor `~/.cursor/chats/3ad71c6c…/` +
+> `agent-transcripts/` + `~/.cursor/ai-tracking/ai-code-tracking.db`.
 
 ## Nächste Schritte (unmittelbar, in Reihenfolge)
 
@@ -594,3 +597,57 @@ Background-Agent `port-prune-trieparallel-v2-4-1` delegiert, Ergebnis steht noch
 - `port-rpc-eth-types`: ~120k Tokens, ~38 min
 - `port-node-api-beacon`: ~65k Tokens, ~16 min
 - `port-nodecore-bctree`: ~35 min (abgeschlossen; node-core + blockchain-tree grün)
+
+---
+
+## Session-Log: Sitzung 6 (2026-08-09, YOLO Compile-Loop → `reth-bsc-node` grün)
+
+**Zeitraum:** 2026-08-09 ~06:46–~10:45 UTC (Cursor/Composer YOLO-Session)
+**Branch:** `rebase/reth-v2.4.1`
+**Meilenstein:** `cargo check -p reth-bsc-node --features bsc` → **0 errors** (verifiziert).
+Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
+**Aufwand:** ~12 Composer-Sub-Agents, ~3–4h Wall; Token-Meter nicht in Copilot-DB (README aktualisiert 2026-08-09 mit finalem Copilot-`a95758da`-Snapshot ~650.1M in / ~1.861M out).
+
+### Grün geschaltet (Kette, chronologisch):
+- `reth-rpc-eth-api` — HeaderMut, RpcNodeCore-Bounds, nested `BlockExecutionOutput.result`, Trace::inspect generic DB
+- `reth-ethereum-payload-builder` / `reth-bsc-payload-builder --features bsc` — BlockBuilder-Pattern (v2.4.1)
+- `reth-engine-tree` — monolithic tree/mod.rs → v2.4.1 EngineValidator-Handler; nested `BlockExecutionOutput`
+- `reth-engine-service` — fehlendes `service.rs` wiederhergestellt; `reth-engine-util` Reorg auf BlockBuilder
+- `reth-bsc-evm --features bsc` — ConfigureEvm/ExecuteEvm-Port, revm-41 Account-API, Parlia-Executor
+- `reth-eth-wire` — StreamExt/`EthMessage::<N>`
+- `reth-bsc-engine --features bsc` — ParliaClient BlockClient, SealedHeader/FCU ohne version
+- `reth-rpc` — Sync + lokale Anpassungen (ExecutionWitnessMode, EthBuiltPayload-Signatur)
+- `reth-rpc-builder` — v2.4.1 RpcModuleBuilder; BSC `with_bsc_trace_helper` erhalten
+- `reth-stages` — Provider/StaticFile/HashedPostState-Brücken (34→0)
+- `reth-node-builder` — Reference-Port + Trail-Engine-API-Anpassung; PayloadBuilderService nutzt `T::PayloadBuilderAttributes`; FullProvider-Sync
+- `reth-node-ethereum` / **`reth-bsc-node --features bsc`** — EthExecutorSpec für BscChainSpec, ConfigureEngineEvm, TryIntoTxEnv→BscTxEnv, NodeComponentsBuilder-Wiring
+
+### Wichtige Root Causes / Lektionen:
+1. **`PayloadBuilderService`** muss `PayloadJob<PayloadAttributes = T::PayloadBuilderAttributes>` bounden (nicht RPC-`PayloadAttributes`) — sonst ~6 E0271 in node-builder.
+2. **`BlockExecutionOutput`** ist nested (`result` + `state` + `snapshot`); flache Feldzugriffe brechen RPC/pending_block.
+3. Reference-Copy von `node-builder`/`stages` ohne Angleich an Trail-Engine (2-param `EngineApiRequest`, 17-arg `EngineService::new`) erzeugt große E0271/E0277-Wellen — Bounds/Service-Signaturen lokal halten oder Engine auf Reference zurückziehen.
+4. Scratch/Logs nur unter `files/` (nicht `/tmp`).
+
+### Arbeitsbaum:
+- Session-7 WIP-Snapshot committed (Code + `plan.md`/`README.md`; Scratch-Logs unter `files/` bleiben untracked).
+- Logs: `files/verify-bsc-node-final.log`, `files/bsc-node-check-final.log`, diverse `files/*-check*.log`
+
+### Session 7 (2026-08-09 ~14:10 UTC) — Snow/Volta/Fourier
+- `OptimismHardfork::{Snow,Volta,Fourier}` + Schedules aus `bnb-chain/opbnb` `op-node/chaincfg/chains.go`
+  (Mainnet/Testnet/QA/Dev). Helpers: `is_*_active_at_timestamp`, `opbnb_block_interval_ms_at_timestamp`.
+- Semantik: Snow = L1-Gaspreis-Median (op-node); Volta = 500ms; Fourier = 250ms — keine eigenen revm-`SpecId`s.
+- Verify: `reth-optimism-{forks,chainspec,consensus,primitives}`, `reth-bsc-node --features bsc`, workspace `--no-default-features` → grün.
+- **op-evm Hard Wall:** lokal noch v1.1.1 (`#![cfg(feature = "optimism")]`, `EvmBuilder::optimism()`, `OptimismFields`); revm 41 hat kein `optimism`-Feature. Referenz `bnb-chain_reth` nutzt `op-revm` 15 — Port = Rewrite, nicht Quick-Fix. Noch nicht in Workspace-Members.
+
+### Nächste Schritte:
+1. Großen WIP-Diff reviewen und in sinnvolle Commits splitten (rpc / engine / stages / bsc / node-builder / optimism-forks).
+2. ~~`cargo check --workspace --no-default-features`~~ ✅ grün (stale examples excluded: custom-state-root, custom-engine-types, custom-payload-builder, custom-auth-http-middleware, custom-beacon-withdrawals, custom-node-components).
+3. Phase 4: `reth-optimism-evm` auf `op-revm`/`ConfigureEvm` v2.4.1 porten (Reference: `bnb-chain_reth.git/crates/optimism/evm`), dann payload/rpc/node.
+4. Phase 5: Clippy, nextest, EF-Tests; Default-Features/`bsc`-Workspace; Phase 6: Live-Tests + finale Token-Zahlen.
+
+### Session 6 Docs-Update (2026-08-09 ~10:45–12:45 UTC):
+- README Effort-Log: Copilot `a95758da` final **~650.1M in / ~1.861M out / 5803 events**.
+- Cursor-Metriken ergänzt (nicht mehr nur „unmetered“): Wall **~5.34 h**, 15 Agents, Models **composer-2.5-fast** / **cursor-grok-4.5-high-fast**, Activity (Msgs/Tool-Calls), Content-Token-Proxies (~0.58M / ~0.33M), **74.482** AI-code hashes; Snapshot `files/cursor-session-metrics.json`.
+- plan.md Aufwandsprotokoll-Tabelle synchronisiert.
+- Phase 4 Start: `reth-optimism-{forks,chainspec,primitives,consensus}` compile-fähig.
+- Phase 5: Workspace `--no-default-features` **0 errors**; WIP weiterhin uncommitted.

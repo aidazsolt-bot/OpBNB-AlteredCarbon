@@ -43,6 +43,8 @@ impl PayloadTypes for BbPayloadTypes {
     type ExecutionData = BigBlockData<ExecutionData>;
     type BuiltPayload = <EthPayloadTypes as PayloadTypes>::BuiltPayload;
     type PayloadAttributes = <EthPayloadTypes as PayloadTypes>::PayloadAttributes;
+    type PayloadBuilderAttributes =
+        <EthPayloadTypes as PayloadTypes>::PayloadBuilderAttributes;
 
     fn block_to_payload(
         _block: SealedBlock<

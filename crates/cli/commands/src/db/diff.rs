@@ -16,6 +16,7 @@ use std::{
     hash::Hash,
     io::Write,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tracing::{info, warn};
 
@@ -55,7 +56,7 @@ impl Command {
     /// then written to a file in the output directory.
     pub fn execute<T: NodeTypes>(
         self,
-        tool: &DbTool<NodeTypesWithDBAdapter<T, DatabaseEnv>>,
+        tool: &DbTool<NodeTypesWithDBAdapter<T, Arc<DatabaseEnv>>>,
     ) -> eyre::Result<()> {
         warn!("Make sure the node is not running when running `reth db diff`!");
         // open second db
@@ -308,12 +309,12 @@ where
     ) {
         // do not bother comparing if the key is already in the discrepancies map
         if self.discrepancies.contains_key(&key) {
-            return;
+            return
         }
 
         // do not bother comparing if the key is already in the extra elements map
         if self.extra_elements.contains_key(&key) {
-            return;
+            return
         }
 
         match (first, second) {

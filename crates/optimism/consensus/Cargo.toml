@@ -13,10 +13,11 @@ workspace = true
 
 [dependencies]
 # reth
+reth-execution-types.workspace = true
 reth-chainspec.workspace = true
 reth-consensus-common.workspace = true
 reth-consensus.workspace = true
-reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
 reth-trie-common.workspace = true
 
 # op-reth
@@ -24,19 +25,32 @@ reth-optimism-forks.workspace = true
 reth-optimism-chainspec.workspace = true
 
 # ethereum
+alloy-eips.workspace = true
 alloy-primitives.workspace = true
 alloy-consensus.workspace = true
+alloy-trie.workspace = true
 
+# misc
 tracing.workspace = true
 
 [dev-dependencies]
-alloy-primitives.workspace = true
 reth-optimism-chainspec.workspace = true
+alloy-primitives.workspace = true
 
 [features]
-optimism = [
-	"reth-primitives/optimism",
-	"reth-chainspec/optimism"
+default = ["std"]
+std = [
+    "reth-chainspec/std",
+    "reth-consensus/std",
+    "reth-consensus-common/std",
+    "reth-primitives-traits/std",
+    "reth-optimism-forks/std",
+    "reth-optimism-chainspec/std",
+    "reth-trie-common/std",
+    "alloy-eips/std",
+    "alloy-primitives/std",
+    "alloy-consensus/std",
+    "alloy-trie/std",
+    "reth-execution-types/std",
+    "tracing/std",
 ]
-
-opbnb = ["reth-primitives/opbnb"]

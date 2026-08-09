@@ -1,21 +1,26 @@
 //! Database debugging tool
-use crate::common::{AccessRights, Environment, EnvironmentArgs};
+use crate::common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs};
 use clap::Parser;
-use itertools::Itertools;
-use reth_chainspec::{EthChainSpec, EthereumHardforks};
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
-use reth_db::{mdbx::tx::Tx, static_file::iter_static_files, tables, DatabaseError};
-use reth_db_api::transaction::{DbTx, DbTxMut};
+use reth_db::{mdbx::tx::Tx, DatabaseError};
+use reth_db_api::{
+    tables,
+    transaction::{DbTx, DbTxMut},
+};
 use reth_db_common::{
     init::{insert_genesis_header, insert_genesis_history, insert_genesis_state},
     DbTool,
 };
-use reth_node_builder::NodeTypesWithEngine;
+use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_core::args::StageEnum;
-use reth_provider::{writer::UnifiedStorageWriter, StaticFileProviderFactory};
+use reth_provider::{
+    DBProvider, DatabaseProviderFactory, StaticFileProviderFactory, StaticFileWriter,
+};
 use reth_prune::PruneSegment;
 use reth_stages::StageId;
 use reth_static_file_types::StaticFileSegment;
+use std::sync::Arc;
 
 /// `reth drop-stage` command
 #[derive(Debug, Parser)]
@@ -26,14 +31,13 @@ pub struct Command<C: ChainSpecParser> {
     stage: StageEnum,
 }
 
-impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C> {
+impl<C: ChainSpecParser> Command<C> {
     /// Execute `db` command
-    pub async fn execute<N: NodeTypesWithEngine<ChainSpec = C::ChainSpec>>(
-        self,
-    ) -> eyre::Result<()> {
+    pub async fn execute<N: CliNodeTypes>(self) -> eyre::Result<()>
+    where
+        C: ChainSpecParser<ChainSpec = N::ChainSpec>,
+    {
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RW)?;
-
-        let static_file_provider = provider_factory.static_file_provider();
 
         let tool = DbTool::new(provider_factory)?;
 
@@ -41,50 +45,85 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
             StageEnum::Headers => Some(StaticFileSegment::Headers),
             StageEnum::Bodies => Some(StaticFileSegment::Transactions),
             StageEnum::Execution => Some(StaticFileSegment::Receipts),
+            StageEnum::Senders => Some(StaticFileSegment::TransactionSenders),
             _ => None,
         };
 
-        // Delete static file segment data before inserting the genesis header below
+        // Calling `StaticFileProviderRW::prune_*` will instruct the writer to prune rows only
+        // when `StaticFileProviderRW::commit` is called. We need to do that instead of
+        // deleting the jar files, otherwise if the task were to be interrupted after we
+        // have deleted them, BUT before we have committed the checkpoints to the database, we'd
+        // lose essential data.
         if let Some(static_file_segment) = static_file_segment {
             let static_file_provider = tool.provider_factory.static_file_provider();
-            let static_files = iter_static_files(static_file_provider.directory())?;
-            if let Some(segment_static_files) = static_files.get(&static_file_segment) {
-                // Delete static files from the highest to the lowest block range
-                for (block_range, _) in segment_static_files
-                    .iter()
-                    .sorted_by_key(|(block_range, _)| block_range.start())
-                    .rev()
-                {
-                    static_file_provider.delete_jar(static_file_segment, block_range.start())?;
+            if let Some(highest_block) =
+                static_file_provider.get_highest_static_file_block(static_file_segment)
+            {
+                let mut writer = static_file_provider.latest_writer(static_file_segment)?;
+
+                match static_file_segment {
+                    StaticFileSegment::Headers => {
+                        // Prune all headers leaving genesis intact.
+                        writer.prune_headers(highest_block)?;
+                    }
+                    StaticFileSegment::Transactions => {
+                        let to_delete = static_file_provider
+                            .get_highest_static_file_tx(static_file_segment)
+                            .map(|tx_num| tx_num + 1)
+                            .unwrap_or_default();
+                        writer.prune_transactions(to_delete, 0)?;
+                    }
+                    StaticFileSegment::Receipts => {
+                        let to_delete = static_file_provider
+                            .get_highest_static_file_tx(static_file_segment)
+                            .map(|tx_num| tx_num + 1)
+                            .unwrap_or_default();
+                        writer.prune_receipts(to_delete, 0)?;
+                    }
+                    StaticFileSegment::TransactionSenders => {
+                        let to_delete = static_file_provider
+                            .get_highest_static_file_tx(static_file_segment)
+                            .map(|tx_num| tx_num + 1)
+                            .unwrap_or_default();
+                        writer.prune_transaction_senders(to_delete, 0)?;
+                    }
+                    StaticFileSegment::AccountChangeSets => {
+                        writer.prune_account_changesets(highest_block)?;
+                    }
+                    StaticFileSegment::Sidecars => {
+                        let to_delete = static_file_provider
+                            .get_highest_static_file_tx(static_file_segment)
+                            .map(|tx_num| tx_num + 1)
+                            .unwrap_or_default();
+                        writer.prune_transactions(to_delete, 0)?;
+                    }
                 }
             }
         }
 
-        let provider_rw = tool.provider_factory.provider_rw()?;
+        let provider_rw = tool.provider_factory.database_provider_rw()?;
+        let static_file_provider = tool.provider_factory.static_file_provider();
         let tx = provider_rw.tx_ref();
 
         match self.stage {
             StageEnum::Headers => {
                 tx.clear::<tables::CanonicalHeaders>()?;
                 tx.clear::<tables::Headers>()?;
-                tx.clear::<tables::HeaderTerminalDifficulties>()?;
                 tx.clear::<tables::HeaderNumbers>()?;
                 reset_stage_checkpoint(tx, StageId::Headers)?;
 
-                insert_genesis_header(&provider_rw.0, &static_file_provider, &self.env.chain)?;
+                insert_genesis_header(&provider_rw, &static_file_provider, &self.env.chain)?;
             }
             StageEnum::Bodies => {
                 tx.clear::<tables::BlockBodyIndices>()?;
                 tx.clear::<tables::Transactions>()?;
-                reset_prune_checkpoint(tx, PruneSegment::Transactions)?;
 
                 tx.clear::<tables::TransactionBlocks>()?;
                 tx.clear::<tables::BlockOmmers>()?;
                 tx.clear::<tables::BlockWithdrawals>()?;
-                tx.clear::<tables::Sidecars>()?;
                 reset_stage_checkpoint(tx, StageId::Bodies)?;
 
-                insert_genesis_header(&provider_rw.0, &static_file_provider, &self.env.chain)?;
+                insert_genesis_header(&provider_rw, &static_file_provider, &self.env.chain)?;
             }
             StageEnum::Senders => {
                 tx.clear::<tables::TransactionSenders>()?;
@@ -99,14 +138,13 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
                 tx.clear::<tables::StorageChangeSets>()?;
                 tx.clear::<tables::Bytecodes>()?;
                 tx.clear::<tables::Receipts>()?;
-                tx.clear::<tables::ParliaSnapshot>()?;
 
                 reset_prune_checkpoint(tx, PruneSegment::Receipts)?;
                 reset_prune_checkpoint(tx, PruneSegment::ContractLogs)?;
                 reset_stage_checkpoint(tx, StageId::Execution)?;
 
                 let alloc = &self.env.chain.genesis().alloc;
-                insert_genesis_state(&provider_rw.0, alloc.iter())?;
+                insert_genesis_state(&provider_rw, alloc.iter())?;
             }
             StageEnum::AccountHashing => {
                 tx.clear::<tables::HashedAccounts>()?;
@@ -144,22 +182,26 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
                 reset_stage_checkpoint(tx, StageId::IndexAccountHistory)?;
                 reset_stage_checkpoint(tx, StageId::IndexStorageHistory)?;
 
-                insert_genesis_history(&provider_rw.0, self.env.chain.genesis().alloc.iter())?;
+                insert_genesis_history(&provider_rw, self.env.chain.genesis().alloc.iter())?;
             }
             StageEnum::TxLookup => {
                 tx.clear::<tables::TransactionHashNumbers>()?;
                 reset_prune_checkpoint(tx, PruneSegment::TransactionLookup)?;
 
                 reset_stage_checkpoint(tx, StageId::TransactionLookup)?;
-                insert_genesis_header(&provider_rw.0, &static_file_provider, &self.env.chain)?;
+                insert_genesis_header(&provider_rw, &static_file_provider, &self.env.chain)?;
             }
         }
 
         tx.put::<tables::StageCheckpoints>(StageId::Finish.to_string(), Default::default())?;
 
-        UnifiedStorageWriter::commit_unwind(provider_rw, static_file_provider)?;
+        provider_rw.commit()?;
 
         Ok(())
+    }
+    /// Returns the underlying chain being used to run this command
+    pub fn chain_spec(&self) -> Option<&Arc<C::ChainSpec>> {
+        Some(&self.env.chain)
     }
 }
 

@@ -72,6 +72,16 @@ impl Account {
     }
 }
 
+impl From<alloy_trie::TrieAccount> for Account {
+    fn from(account: alloy_trie::TrieAccount) -> Self {
+        Self {
+            nonce: account.nonce,
+            balance: account.balance,
+            bytecode_hash: (account.code_hash != KECCAK_EMPTY).then_some(account.code_hash),
+        }
+    }
+}
+
 /// Bytecode for an account.
 ///
 /// A wrapper around [`revm::primitives::Bytecode`][RevmBytecode] with encoding/decoding support.

@@ -16,10 +16,10 @@ mod dev;
 pub use dev::DEV_HARDFORKS;
 pub use hardfork::OptimismHardfork;
 
-use reth_ethereum_forks::EthereumHardforks;
+use reth_ethereum_forks::{EthereumHardforks, Hardforks};
 
 /// Extends [`EthereumHardforks`] with optimism helper methods.
-pub trait OptimismHardforks: EthereumHardforks {
+pub trait OptimismHardforks: EthereumHardforks + Hardforks {
     /// Convenience method to check if [`OptimismHardfork::Bedrock`] is active at a given block
     /// number.
     fn is_bedrock_active_at_block(&self, block_number: u64) -> bool {
@@ -58,9 +58,36 @@ pub trait OptimismHardforks: EthereumHardforks {
         self.fork(OptimismHardfork::Regolith).active_at_timestamp(timestamp)
     }
 
-    /// Convenience method to check if [`OptimismHardfork::Wright`] is active at a given block
-    /// number.
+    /// Convenience method to check if [`OptimismHardfork::Wright`] is active at a given timestamp.
     fn is_wright_active_at_timestamp(&self, timestamp: u64) -> bool {
         self.fork(OptimismHardfork::Wright).active_at_timestamp(timestamp)
+    }
+
+    /// Returns `true` if [`Snow`](OptimismHardfork::Snow) is active at given block timestamp.
+    fn is_snow_active_at_timestamp(&self, timestamp: u64) -> bool {
+        self.fork(OptimismHardfork::Snow).active_at_timestamp(timestamp)
+    }
+
+    /// Returns `true` if [`Volta`](OptimismHardfork::Volta) is active at given block timestamp.
+    fn is_volta_active_at_timestamp(&self, timestamp: u64) -> bool {
+        self.fork(OptimismHardfork::Volta).active_at_timestamp(timestamp)
+    }
+
+    /// Returns `true` if [`Fourier`](OptimismHardfork::Fourier) is active at given block timestamp.
+    fn is_fourier_active_at_timestamp(&self, timestamp: u64) -> bool {
+        self.fork(OptimismHardfork::Fourier).active_at_timestamp(timestamp)
+    }
+
+    /// opBNB L2 block interval in milliseconds for the active hardfork at `timestamp`.
+    ///
+    /// Pre-Volta: 1000ms, Volta: 500ms, Fourier: 250ms (bnb-chain/opbnb rollup config).
+    fn opbnb_block_interval_ms_at_timestamp(&self, timestamp: u64) -> u64 {
+        if self.is_fourier_active_at_timestamp(timestamp) {
+            250
+        } else if self.is_volta_active_at_timestamp(timestamp) {
+            500
+        } else {
+            1000
+        }
     }
 }

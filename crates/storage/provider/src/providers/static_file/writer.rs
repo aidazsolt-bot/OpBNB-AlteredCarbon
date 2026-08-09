@@ -56,6 +56,7 @@ pub(crate) struct StaticFileWriters<N> {
     headers: RwLock<Option<StaticFileProviderRW<N>>>,
     transactions: RwLock<Option<StaticFileProviderRW<N>>>,
     receipts: RwLock<Option<StaticFileProviderRW<N>>>,
+    transaction_senders: RwLock<Option<StaticFileProviderRW<N>>>,
 }
 
 impl<N> Default for StaticFileWriters<N> {
@@ -64,6 +65,7 @@ impl<N> Default for StaticFileWriters<N> {
             headers: Default::default(),
             transactions: Default::default(),
             receipts: Default::default(),
+            transaction_senders: Default::default(),
         }
     }
 }
@@ -79,6 +81,8 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
             StaticFileSegment::Sidecars => self.transactions.write(),
+            StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
+            StaticFileSegment::AccountChangeSets => self.transactions.write(),
         };
 
         if write_guard.is_none() {
@@ -1210,7 +1214,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Helper function to override block range for testing.
     #[cfg(any(test, feature = "test-utils"))]
-    pub const fn set_block_range(&mut self, block_range: std::ops::RangeInclusive<BlockNumber>) {
+    pub fn set_block_range(&mut self, block_range: std::ops::RangeInclusive<BlockNumber>) {
         self.writer.user_header_mut().set_block_range(*block_range.start(), *block_range.end())
     }
 

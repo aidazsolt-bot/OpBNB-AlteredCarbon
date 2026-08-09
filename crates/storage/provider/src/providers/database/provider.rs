@@ -1175,7 +1175,7 @@ impl<TX: DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
                     match known_senders.get(&tx_num) {
                         None => {
                             // recover the sender from the transaction if not found
-                            let sender = tx.recover_signer_unchecked().ok_or_else(|| {
+                            let sender = SignedTransaction::recover_signer_unchecked(tx).ok_or_else(|| {
                                 ProviderError::Database(DatabaseError::Other(
                                     "failed to recover transaction signer".to_string(),
                                 ))
@@ -1519,6 +1519,13 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         Ok(changesets)
     }
 
+    fn account_changeset_count(&self) -> ProviderResult<usize> {
+        if self.cached_storage_settings().account_changesets_in_static_files() {
+            self.static_file_provider.account_changeset_count()
+        } else {
+            Ok(self.tx.entries::<tables::AccountChangeSets>()?)
+        }
+    }
 }
 
 impl<TX: DbTx + 'static, N: NodeTypesForProvider> HeaderSyncGapProvider
@@ -2946,14 +2953,12 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HashingWriter for DatabaseProvi
 
     fn unwind_storage_hashing_range(
         &self,
-        range: impl RangeBounds<BlockNumber>,
+        range: impl RangeBounds<BlockNumberAddress>,
     ) -> ProviderResult<HashMap<B256, BTreeSet<B256>, alloy_primitives::map::FbBuildHasher<32>>> {
-        let r = to_range(range);
-        let range = r.start..=r.end.saturating_sub(1);
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
-            .walk_range(BlockNumberAddress::range(range))?
+            .walk_range(range)?
             .collect::<Result<Vec<_>, _>>()?;
         self.unwind_storage_hashing(changesets.into_iter())
     }
@@ -3097,14 +3102,12 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HistoryWriter for DatabaseProvi
 
     fn unwind_storage_history_indices_range(
         &self,
-        range: impl RangeBounds<BlockNumber>,
+        range: impl RangeBounds<BlockNumberAddress>,
     ) -> ProviderResult<usize> {
-        let r = to_range(range);
-        let range = r.start..=r.end.saturating_sub(1);
         let changesets = self
             .tx
             .cursor_read::<tables::StorageChangeSets>()?
-            .walk_range(BlockNumberAddress::range(range))?
+            .walk_range(range)?
             .collect::<Result<Vec<_>, _>>()?;
         self.unwind_storage_history_indices(changesets.into_iter())
     }
@@ -3202,10 +3205,8 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> BlockWriter
             Arc::new(block.clone()),
             Arc::new(BlockExecutionOutput {
                 state: Default::default(),
-                receipts: Default::default(),
-                requests: Default::default(),
-                gas_used: 0,
-                snapshot: Default::default(),
+                result: Default::default(),
+                snapshot: None,
             }),
             ComputedTrieData::default(),
         );

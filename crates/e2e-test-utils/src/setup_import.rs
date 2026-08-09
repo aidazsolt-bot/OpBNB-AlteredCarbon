@@ -1,7 +1,6 @@
 //! Setup utilities for importing RLP chain data before starting nodes.
 
 use crate::{node::NodeTestContext, NodeHelperType, Wallet};
-use alloy_rpc_types_engine::PayloadAttributes;
 use reth_chainspec::ChainSpec;
 use reth_cli_commands::import_core::{import_blocks_from_file, ImportConfig};
 use reth_config::Config;
@@ -16,6 +15,7 @@ use reth_provider::{
 };
 use reth_rpc_server_types::RpcModuleSelection;
 use reth_stages_types::StageId;
+use reth_tasks::Runtime;
 use std::{path::Path, sync::Arc};
 use tempfile::TempDir;
 use tracing::{debug, info, span, Level};
@@ -24,6 +24,8 @@ use tracing::{debug, info, span, Level};
 pub struct ChainImportResult {
     /// The nodes that were created
     pub nodes: Vec<NodeHelperType<EthereumNode>>,
+    /// The task manager
+    pub task_manager: Runtime,
     /// The wallet for testing
     pub wallet: Wallet,
     /// Temporary directories that must be kept alive for the duration of the test
@@ -60,9 +62,14 @@ pub async fn setup_engine_with_chain_import(
     is_dev: bool,
     tree_config: TreeConfig,
     rlp_path: &Path,
-    attributes_generator: impl Fn(u64) -> PayloadAttributes + Send + Sync + Copy + 'static,
+    attributes_generator: impl Fn(u64) -> reth_payload_builder::EthPayloadBuilderAttributes
+        + Send
+        + Sync
+        + Copy
+        + 'static,
 ) -> eyre::Result<ChainImportResult> {
-    let runtime = reth_tasks::Runtime::test();
+    let runtime = Runtime::test();
+    let exec = runtime.clone();
 
     let network_config = NetworkArgs {
         discovery: DiscoveryArgs { disable_discovery: true, ..DiscoveryArgs::default() },
@@ -107,23 +114,19 @@ pub async fn setup_engine_with_chain_import(
 
         // Initialize the database using init_db (same as CLI import command)
         let db_args = reth_node_core::args::DatabaseArgs::default().database_args();
-        let db = reth_db::init_db(&db_path, db_args)?;
+        let db_env = reth_db::init_db(&db_path, db_args)?;
+        let db = Arc::new(db_env);
 
         // Create a provider factory with the initialized database (use regular DB, not
         // TempDatabase) We need to specify the node types properly for the adapter
-        let provider_factory =
-            ProviderFactory::<NodeTypesWithDBAdapter<EthereumNode, DatabaseEnv>>::new(
-                db.clone(),
-                chain_spec.clone(),
-                reth_provider::providers::StaticFileProvider::read_write(
-                    static_files_path.clone(),
-                )?,
-                reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path)
-                    .with_default_tables()
-                    .build()
-                    .unwrap(),
-                reth_tasks::Runtime::test(),
-            )?;
+        let provider_factory = ProviderFactory::<
+            NodeTypesWithDBAdapter<EthereumNode, Arc<DatabaseEnv>>,
+        >::new(
+            db.clone(),
+            chain_spec.clone(),
+            reth_provider::providers::StaticFileProvider::read_write(static_files_path.clone())?,
+            reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path).build().unwrap(),
+        )?;
 
         // Initialize genesis if needed
         reth_db_common::init::init_genesis(&provider_factory)?;
@@ -145,7 +148,6 @@ pub async fn setup_engine_with_chain_import(
             &config,
             evm_config,
             consensus,
-            runtime.clone(),
         )
         .await?;
 
@@ -216,7 +218,7 @@ pub async fn setup_engine_with_chain_import(
         let node = EthereumNode::default();
 
         let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config.clone())
-            .testing_node_with_datadir(runtime.clone(), datadir.clone())
+            .testing_node_with_datadir(exec.clone(), datadir.clone())
             .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
             .with_components(node.components_builder())
             .with_add_ons(node.add_ons())
@@ -238,6 +240,7 @@ pub async fn setup_engine_with_chain_import(
 
     Ok(ChainImportResult {
         nodes,
+        task_manager: runtime,
         wallet: crate::Wallet::default().with_chain_id(chain_spec.chain.id()),
         _temp_dirs: temp_dirs,
     })
@@ -270,11 +273,10 @@ pub fn load_forkchoice_state(path: &Path) -> eyre::Result<alloy_rpc_types_engine
 mod tests {
     use super::*;
     use crate::test_rlp_utils::{create_fcu_json, generate_test_blocks, write_blocks_to_rlp};
-    use alloy_rpc_types_engine::PayloadAttributes;
     use reth_chainspec::{ChainSpecBuilder, MAINNET};
     use reth_db::mdbx::DatabaseArguments;
-    use reth_ethereum_primitives::Block;
-    use reth_primitives_traits::SealedBlock;
+    use reth_payload_builder::EthPayloadBuilderAttributes;
+    use reth_primitives::SealedBlock;
     use reth_provider::{
         test_utils::MockNodeTypesWithDB, BlockHashReader, BlockNumReader, BlockReaderIdExt,
     };
@@ -315,20 +317,19 @@ mod tests {
         // Import the chain
         {
             let db_args = reth_node_core::args::DatabaseArgs::default().database_args();
-            let db = reth_db::init_db(&db_path, db_args).unwrap();
+            let db_env = reth_db::init_db(&db_path, db_args).unwrap();
+            let db = Arc::new(db_env);
 
             let provider_factory: ProviderFactory<
-                NodeTypesWithDBAdapter<reth_node_ethereum::EthereumNode, DatabaseEnv>,
+                NodeTypesWithDBAdapter<reth_node_ethereum::EthereumNode, Arc<DatabaseEnv>>,
             > = ProviderFactory::new(
                 db.clone(),
                 chain_spec.clone(),
                 reth_provider::providers::StaticFileProvider::read_write(static_files_path.clone())
                     .unwrap(),
                 reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path.clone())
-                    .with_default_tables()
                     .build()
                     .unwrap(),
-                reth_tasks::Runtime::test(),
             )
             .expect("failed to create provider factory");
 
@@ -341,7 +342,6 @@ mod tests {
             let evm_config = reth_node_ethereum::EthEvmConfig::new(chain_spec.clone());
             // Use NoopConsensus to skip gas limit validation for test imports
             let consensus = reth_consensus::noop::NoopConsensus::arc();
-            let runtime = reth_tasks::Runtime::test();
 
             let result = import_blocks_from_file(
                 &rlp_path,
@@ -350,7 +350,6 @@ mod tests {
                 &config,
                 evm_config,
                 consensus,
-                runtime,
             )
             .await
             .unwrap();
@@ -382,19 +381,19 @@ mod tests {
 
         // Now reopen the database and verify checkpoints are still there
         {
-            let db = reth_db::init_db(&db_path, DatabaseArguments::default()).unwrap();
+            let db_env = reth_db::init_db(&db_path, DatabaseArguments::default()).unwrap();
+            let db = Arc::new(db_env);
 
             let provider_factory: ProviderFactory<
-                NodeTypesWithDBAdapter<reth_node_ethereum::EthereumNode, DatabaseEnv>,
+                NodeTypesWithDBAdapter<reth_node_ethereum::EthereumNode, Arc<DatabaseEnv>>,
             > = ProviderFactory::new(
                 db,
                 chain_spec.clone(),
-                reth_provider::providers::StaticFileProvider::read_only(static_files_path).unwrap(),
+                reth_provider::providers::StaticFileProvider::read_only(static_files_path, false)
+                    .unwrap(),
                 reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path)
-                    .with_default_tables()
                     .build()
                     .unwrap(),
-                reth_tasks::Runtime::test(),
             )
             .expect("failed to create provider factory");
 
@@ -445,7 +444,7 @@ mod tests {
         chain_spec: &ChainSpec,
         block_count: u64,
         temp_dir: &Path,
-    ) -> (Vec<SealedBlock<Block>>, PathBuf) {
+    ) -> (Vec<SealedBlock>, PathBuf) {
         let test_blocks = generate_test_blocks(chain_spec, block_count);
         assert_eq!(
             test_blocks.len(),
@@ -491,11 +490,7 @@ mod tests {
             db.clone(),
             chain_spec.clone(),
             reth_provider::providers::StaticFileProvider::read_write(static_files_path).unwrap(),
-            reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path)
-                .with_default_tables()
-                .build()
-                .unwrap(),
-            reth_tasks::Runtime::test(),
+            reth_provider::providers::RocksDBProvider::builder(rocksdb_dir_path).build().unwrap(),
         )
         .expect("failed to create provider factory");
 
@@ -508,7 +503,6 @@ mod tests {
         let evm_config = reth_node_ethereum::EthEvmConfig::new(chain_spec.clone());
         // Use NoopConsensus to skip gas limit validation for test imports
         let consensus = reth_consensus::noop::NoopConsensus::arc();
-        let runtime = reth_tasks::Runtime::test();
 
         let result = import_blocks_from_file(
             &rlp_path,
@@ -517,7 +511,6 @@ mod tests {
             &config,
             evm_config,
             consensus,
-            runtime,
         )
         .await
         .unwrap();
@@ -565,7 +558,7 @@ mod tests {
             false,
             TreeConfig::default(),
             &rlp_path,
-            |_| PayloadAttributes::default(),
+            |_| EthPayloadBuilderAttributes::default(),
         )
         .await
         .expect("Failed to setup nodes with chain import");

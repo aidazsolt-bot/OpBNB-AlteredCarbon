@@ -151,11 +151,31 @@ impl<T> ExecutionOutcome<T> {
     pub fn single(block_number: u64, output: BlockExecutionOutput<T>) -> Self {
         Self {
             bundle: output.state,
-            receipts: vec![output.receipts],
+            receipts: vec![output.result.receipts],
             first_block: block_number,
-            requests: vec![output.requests],
+            requests: vec![output.result.requests],
             snapshots: vec![output.snapshot.unwrap_or_default()],
         }
+    }
+
+    /// Creates a new `ExecutionOutcome` from multiple [`BlockExecutionResult`]s.
+    pub fn from_blocks(
+        first_block: u64,
+        bundle: BundleState,
+        results: Vec<crate::BlockExecutionResult<T>>,
+    ) -> Self {
+        let mut value = Self {
+            bundle,
+            first_block,
+            receipts: Vec::with_capacity(results.len()),
+            requests: Vec::with_capacity(results.len()),
+            snapshots: vec![],
+        };
+        for result in results {
+            value.receipts.push(result.receipts);
+            value.requests.push(result.requests);
+        }
+        value
     }
 
     /// Return revm bundle state.

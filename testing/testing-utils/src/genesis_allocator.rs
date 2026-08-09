@@ -2,16 +2,16 @@
 //! signers to the genesis block.
 
 use alloy_genesis::GenesisAccount;
-use alloy_primitives::{
-    map::{AddressMap, Entry},
-    Address, Bytes, B256, U256,
-};
+use alloy_primitives::{Address, Bytes, B256, U256};
 use reth_primitives_traits::crypto::secp256k1::public_key_to_address;
 use secp256k1::{
     rand::{thread_rng, RngCore},
     Keypair, Secp256k1,
 };
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{hash_map::Entry, BTreeMap, HashMap},
+    fmt,
+};
 
 /// This helps create a custom genesis alloc by making it easy to add funded accounts with known
 /// signers to the genesis block.
@@ -43,7 +43,7 @@ use std::{collections::BTreeMap, fmt};
 /// ```
 pub struct GenesisAllocator<'a> {
     /// The genesis alloc to be built.
-    alloc: AddressMap<GenesisAccount>,
+    alloc: HashMap<Address, GenesisAccount>,
     /// The rng to use for generating key pairs.
     rng: Box<dyn RngCore + 'a>,
 }
@@ -54,7 +54,7 @@ impl<'a> GenesisAllocator<'a> {
     where
         R: RngCore,
     {
-        Self { alloc: AddressMap::default(), rng: Box::new(rng) }
+        Self { alloc: HashMap::default(), rng: Box::new(rng) }
     }
 
     /// Use the provided rng for generating key pairs.
@@ -189,14 +189,14 @@ impl<'a> GenesisAllocator<'a> {
     }
 
     /// Build the genesis alloc.
-    pub fn build(self) -> AddressMap<GenesisAccount> {
+    pub fn build(self) -> HashMap<Address, GenesisAccount> {
         self.alloc
     }
 }
 
 impl Default for GenesisAllocator<'_> {
     fn default() -> Self {
-        Self { alloc: AddressMap::default(), rng: Box::new(thread_rng()) }
+        Self { alloc: HashMap::default(), rng: Box::new(thread_rng()) }
     }
 }
 

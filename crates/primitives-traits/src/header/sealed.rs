@@ -1,6 +1,6 @@
 use super::{BlockHeader, Header};
 use crate::InMemorySize;
-use alloy_eips::BlockNumHash;
+use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
 use alloy_primitives::{BlockNumber, B256, U256};
@@ -82,12 +82,46 @@ impl<H: Sealable> SealedHeader<H> {
         let hash = self.hash();
         (self.header, hash)
     }
+
+    /// Returns a reference to the block hash, computing and caching it if not already available.
+    #[inline]
+    pub fn hash_ref(&self) -> &BlockHash {
+        self.hash.get_or_init(|| self.header.hash_slow())
+    }
+
+    /// Returns references to both the header and hash without taking ownership.
+    pub fn split_ref(&self) -> (&H, &BlockHash) {
+        (self.header(), self.hash_ref())
+    }
+}
+
+impl<H: Sealable> SealedHeader<&H> {
+    /// Maps a `SealedHeader<&H>` to a `SealedHeader<H>` by cloning the header.
+    pub fn cloned(self) -> SealedHeader<H>
+    where
+        H: Clone,
+    {
+        let Self { hash, header } = self;
+        SealedHeader { hash, header: header.clone() }
+    }
+}
+
+impl<H: Sealable> SealedHeader<H> {
+    /// Converts from &`SealedHeader<H>` to `SealedHeader<&H>`.
+    pub fn sealed_ref(&self) -> SealedHeader<&H> {
+        SealedHeader { hash: self.hash.clone(), header: &self.header }
+    }
 }
 
 impl<H: BlockHeader + Sealable> SealedHeader<H> {
     /// Return the number hash tuple.
     pub fn num_hash(&self) -> BlockNumHash {
         BlockNumHash::new(self.header.number(), self.hash())
+    }
+
+    /// Return a [`BlockWithParent`] for this header.
+    pub fn block_with_parent(&self) -> BlockWithParent {
+        BlockWithParent { parent: self.parent_hash(), block: self.num_hash() }
     }
 }
 
@@ -208,46 +242,37 @@ impl<'a> arbitrary::Arbitrary<'a> for SealedHeader {
 /// Bincode-compatible [`SealedHeader`] serde implementation.
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
-    use alloy_consensus::serde_bincode_compat::Header;
-    use alloy_primitives::BlockHash;
+    use crate::serde_bincode_compat::SerdeBincodeCompat;
+    use alloy_primitives::{BlockHash, Sealable};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
     /// Bincode-compatible [`super::SealedHeader`] serde implementation.
-    ///
-    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
-    /// ```rust
-    /// use reth_primitives_traits::{serde_bincode_compat, SealedHeader};
-    /// use serde::{Deserialize, Serialize};
-    /// use serde_with::serde_as;
-    ///
-    /// #[serde_as]
-    /// #[derive(Serialize, Deserialize)]
-    /// struct Data {
-    ///     #[serde_as(as = "serde_bincode_compat::SealedHeader")]
-    ///     header: SealedHeader,
-    /// }
-    /// ```
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct SealedHeader<'a> {
+    #[derive(derive_more::Debug, Serialize, Deserialize)]
+    #[debug(bound(H::BincodeRepr<'a>: core::fmt::Debug))]
+    pub struct SealedHeader<'a, H: Sealable + SerdeBincodeCompat = super::Header> {
         hash: BlockHash,
-        header: Header<'a>,
+        header: H::BincodeRepr<'a>,
     }
 
-    impl<'a> From<&'a super::SealedHeader> for SealedHeader<'a> {
-        fn from(value: &'a super::SealedHeader) -> Self {
-            Self { hash: value.hash(), header: Header::from(&value.header) }
+    impl<'a, H: Sealable + SerdeBincodeCompat> From<&'a super::SealedHeader<H>>
+        for SealedHeader<'a, H>
+    {
+        fn from(value: &'a super::SealedHeader<H>) -> Self {
+            Self { hash: value.hash(), header: value.header.as_repr() }
         }
     }
 
-    impl<'a> From<SealedHeader<'a>> for super::SealedHeader {
-        fn from(value: SealedHeader<'a>) -> Self {
-            super::SealedHeader::new(value.header.into(), value.hash)
+    impl<'a, H: Sealable + SerdeBincodeCompat> From<SealedHeader<'a, H>> for super::SealedHeader<H> {
+        fn from(value: SealedHeader<'a, H>) -> Self {
+            Self::new(SerdeBincodeCompat::from_repr(value.header), value.hash)
         }
     }
 
-    impl SerializeAs<super::SealedHeader> for SealedHeader<'_> {
-        fn serialize_as<S>(source: &super::SealedHeader, serializer: S) -> Result<S::Ok, S::Error>
+    impl<H: Sealable + SerdeBincodeCompat> SerializeAs<super::SealedHeader<H>>
+        for SealedHeader<'_, H>
+    {
+        fn serialize_as<S>(source: &super::SealedHeader<H>, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
@@ -255,8 +280,10 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<'de> DeserializeAs<'de, super::SealedHeader> for SealedHeader<'de> {
-        fn deserialize_as<D>(deserializer: D) -> Result<super::SealedHeader, D::Error>
+    impl<'de, H: Sealable + SerdeBincodeCompat> DeserializeAs<'de, super::SealedHeader<H>>
+        for SealedHeader<'de, H>
+    {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::SealedHeader<H>, D::Error>
         where
             D: Deserializer<'de>,
         {
@@ -264,10 +291,20 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
+    impl<H: Sealable + SerdeBincodeCompat> SerdeBincodeCompat for super::SealedHeader<H> {
+        type BincodeRepr<'a> = SealedHeader<'a, H>;
+        fn as_repr(&self) -> Self::BincodeRepr<'_> {
+            self.into()
+        }
+
+        fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
+            repr.into()
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::super::{serde_bincode_compat, SealedHeader};
-
         use arbitrary::Arbitrary;
         use rand::Rng;
         use reth_testing_utils::generators;

@@ -1,13 +1,10 @@
 //! Trait abstractions used by the payload crate.
 
-use alloy_rpc_types::engine::PayloadId;
 use reth_chain_state::CanonStateNotification;
 use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_payload_primitives::{BuiltPayload, PayloadAttributes, PayloadBuilderAttributes, PayloadKind};
+use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind};
 use reth_primitives_traits::NodePrimitives;
 use std::future::Future;
-
-use crate::service::BuildNewPayload;
 
 /// A type that can build a payload.
 ///
@@ -65,13 +62,6 @@ pub trait PayloadJob: Future<Output = Result<(), PayloadBuilderError>> {
     /// If this returns [`KeepPayloadJobAlive::Yes`], then the [`PayloadJob`] will be polled
     /// once more. If this returns [`KeepPayloadJobAlive::No`] then the [`PayloadJob`] will be
     /// dropped after this call.
-    ///
-    /// # Cancellation safety
-    ///
-    /// The returned [`ResolvePayloadFuture`](Self::ResolvePayloadFuture) is not
-    /// cancellation-safe. Dropping it cancels resolving the payload and, when the corresponding
-    /// handle resolve call has removed the payload job, cancels the job identified by that
-    /// `payload_id`.
     ///
     /// The [`PayloadKind`] determines how the payload should be resolved in the
     /// `ResolvePayloadFuture`. [`PayloadKind::Earliest`] should return the earliest available

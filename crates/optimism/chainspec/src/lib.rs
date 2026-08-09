@@ -23,13 +23,12 @@ mod opbnb_testnet;
 use alloc::{boxed::Box, vec, vec::Vec};
 use alloy_chains::Chain;
 use alloy_genesis::Genesis;
-use alloy_primitives::{Bytes, Parity, Signature, B256, U256};
+use alloy_primitives::{Bytes, Signature, B256, U256};
 pub use base::BASE_MAINNET;
 pub use base_sepolia::BASE_SEPOLIA;
-use derive_more::{Constructor, Deref, Display, From, Into};
+use core::fmt::Display;
+use derive_more::{Constructor, Deref, Display as DeriveDisplay, From, Into};
 pub use dev::OP_DEV;
-#[cfg(not(feature = "std"))]
-pub(crate) use once_cell::sync::Lazy as LazyLock;
 pub use op::OP_MAINNET;
 pub use op_sepolia::OP_SEPOLIA;
 pub use opbnb::OPBNB_MAINNET;
@@ -38,14 +37,12 @@ pub use opbnb_testnet::OPBNB_TESTNET;
 
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, DepositContract, EthChainSpec,
-    EthereumHardforks, ForkFilter, ForkId, Hardforks, Head,
+    EthereumHardforks, ForkFilter, ForkId, Hardforks, Head, make_genesis_header,
 };
-use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition, Hardfork};
+use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
 use reth_network_peers::NodeRecord;
-use reth_optimism_forks::OptimismHardforks;
-use reth_primitives_traits::Header;
-#[cfg(feature = "std")]
-pub(crate) use std::sync::LazyLock;
+use reth_optimism_forks::{OptimismHardfork, OptimismHardforks};
+use reth_primitives_traits::{Header, SealedHeader};
 
 /// Chain spec builder for a OP stack chain.
 #[derive(Debug, Default, From)]
@@ -229,7 +226,7 @@ impl OpChainSpec {
     }
 }
 
-#[derive(Clone, Debug, Display, Eq, PartialEq)]
+#[derive(Clone, Debug, DeriveDisplay, Eq, PartialEq)]
 /// Error type for decoding Holocene 1559 parameters
 pub enum DecodeError {
     #[display("Insufficient data to decode")]
@@ -266,20 +263,22 @@ pub fn decode_holocene_1559_params(extra_data: Bytes) -> Result<(u32, u32), Deco
 /// Returns the signature for the optimism deposit transactions, which don't include a
 /// signature.
 pub fn optimism_deposit_tx_signature() -> Signature {
-    Signature::new(U256::ZERO, U256::ZERO, Parity::Parity(false))
+    Signature::new(U256::ZERO, U256::ZERO, false)
 }
 
 impl EthChainSpec for OpChainSpec {
-    fn chain(&self) -> alloy_chains::Chain {
-        self.inner.chain()
-    }
+    type Header = Header;
 
-    fn base_fee_params_at_block(&self, block_number: u64) -> BaseFeeParams {
-        self.inner.base_fee_params_at_block(block_number)
+    fn chain(&self) -> Chain {
+        self.inner.chain()
     }
 
     fn base_fee_params_at_timestamp(&self, timestamp: u64) -> BaseFeeParams {
         self.inner.base_fee_params_at_timestamp(timestamp)
+    }
+
+    fn blob_params_at_timestamp(&self, timestamp: u64) -> Option<alloy_eips::eip7840::BlobParams> {
+        self.inner.blob_params_at_timestamp(timestamp)
     }
 
     fn deposit_contract(&self) -> Option<&DepositContract> {
@@ -295,7 +294,10 @@ impl EthChainSpec for OpChainSpec {
     }
 
     fn display_hardforks(&self) -> Box<dyn Display> {
-        Box::new(ChainSpec::display_hardforks(self))
+        Box::new(DisplayHardforks::new(
+            &self.inner,
+            self.inner.paris_block_and_final_difficulty.map(|(block, _)| block),
+        ))
     }
 
     fn genesis_header(&self) -> &Header {
@@ -304,10 +306,6 @@ impl EthChainSpec for OpChainSpec {
 
     fn genesis(&self) -> &Genesis {
         self.inner.genesis()
-    }
-
-    fn max_gas_limit(&self) -> u64 {
-        self.inner.max_gas_limit()
     }
 
     fn bootnodes(&self) -> Option<Vec<NodeRecord>> {
@@ -320,6 +318,10 @@ impl EthChainSpec for OpChainSpec {
 
     fn is_bsc(&self) -> bool {
         false
+    }
+
+    fn final_paris_total_difficulty(&self) -> Option<U256> {
+        self.inner.final_paris_total_difficulty()
     }
 }
 
@@ -348,12 +350,11 @@ impl Hardforks for OpChainSpec {
 }
 
 impl EthereumHardforks for OpChainSpec {
-    fn get_final_paris_total_difficulty(&self) -> Option<U256> {
-        self.inner.get_final_paris_total_difficulty()
-    }
-
-    fn final_paris_total_difficulty(&self, block_number: u64) -> Option<U256> {
-        self.inner.final_paris_total_difficulty(block_number)
+    fn ethereum_fork_activation(
+        &self,
+        fork: EthereumHardfork,
+    ) -> ForkCondition {
+        self.inner.ethereum_fork_activation(fork)
     }
 }
 
@@ -393,6 +394,7 @@ impl From<Genesis> for OpChainSpec {
                 block_hardforks.push((
                     EthereumHardfork::Paris.boxed(),
                     ForkCondition::TTD {
+                        activation_block_number: genesis.config.merge_netsplit_block.unwrap_or(0),
                         total_difficulty: ttd,
                         fork_block: genesis.config.merge_netsplit_block,
                     },
@@ -438,11 +440,16 @@ impl From<Genesis> for OpChainSpec {
         // append the remaining unknown hardforks to ensure we don't filter any out
         ordered_hardforks.append(&mut block_hardforks);
 
+        let hardforks = ChainHardforks::new(ordered_hardforks);
+        let genesis_header =
+            SealedHeader::seal_slow(make_genesis_header(&genesis, &hardforks));
+
         Self {
             inner: ChainSpec {
                 chain: genesis.config.chain_id.into(),
                 genesis,
-                hardforks: ChainHardforks::new(ordered_hardforks),
+                genesis_header,
+                hardforks,
                 paris_block_and_final_difficulty,
                 base_fee_params: optimism_genesis_info.base_fee_params,
                 ..Default::default()
@@ -453,14 +460,14 @@ impl From<Genesis> for OpChainSpec {
 
 #[derive(Default, Debug)]
 struct OpGenesisInfo {
-    optimism_chain_info: op_alloy_rpc_types::genesis::OpChainInfo,
+    optimism_chain_info: op_alloy_rpc_types::OpChainInfo,
     base_fee_params: BaseFeeParamsKind,
 }
 
 impl OpGenesisInfo {
     fn extract_from(genesis: &Genesis) -> Self {
         let mut info = Self {
-            optimism_chain_info: op_alloy_rpc_types::genesis::OpChainInfo::extract_from(
+            optimism_chain_info: op_alloy_rpc_types::OpChainInfo::extract_from(
                 &genesis.config.extra_fields,
             )
             .unwrap_or_default(),

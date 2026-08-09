@@ -338,32 +338,43 @@ or officially supported client.
 
 ### Method
 
-Work was performed interactively with an AI coding agent (GitHub Copilot CLI) across multiple sessions,
-using a mix of direct agent-driven edits and delegated background sub-agents supervising/verifying each
-other's changes (given the scale of the merge — 200+ conflicting files across the initial rebase alone).
-Progress was checkpointed via small, incrementally verified git commits rather than large unreviewed
-batches, specifically to keep the change history auditable and revertible given the semi-autonomous
-nature of the work.
+Work was performed interactively with AI coding agents across multiple sessions — primarily
+**GitHub Copilot CLI** (session `a95758da`, 2026-08-06–07) and a follow-on **Cursor Composer** YOLO
+session (2026-08-09) — using a mix of direct agent-driven edits and delegated background sub-agents
+supervising/verifying each other's changes (given the scale of the merge — 200+ conflicting files
+across the initial rebase alone). Progress was checkpointed via small, incrementally verified git
+commits where possible, specifically to keep the change history auditable and revertible given the
+semi-autonomous nature of the work. Large mid-session compile loops may leave uncommitted working-tree
+diffs until explicitly reviewed (see `plan.md`).
 
 ### Effort log (approximate, based on available session telemetry)
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days |
-| LLM models used | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex (delegated/specialized passes) |
-| Approx. input tokens consumed (current session `a95758da`, snapshot 2026-08-07 04:12 UTC) | ~356.9M (Claude Sonnet 5) + ~135.4M (GPT-5.4) + ~88.4M (Claude Sonnet 4.6) + ~3.3M (GPT-5.3-Codex), total ~584.1M |
-| Approx. output tokens generated (current session `a95758da`, snapshot 2026-08-07 04:12 UTC) | ~1.162M (Claude Sonnet 5) + ~297.7K (GPT-5.4) + ~260.3K (Claude Sonnet 4.6) + ~3.5K (GPT-5.3-Codex), total ~1.725M |
-| Approx. interaction volume (current session `a95758da`) | 17 CLI turns, 5,188 model usage events |
-| Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch for the full, itemized commit history and messages, which double as a technical changelog of what was ported, what was fixed, and why |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor YOLO parent chat: **2026-08-09 06:45 – ~12:05 UTC, ~5.34 h** wall) |
+| LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
+| LLM models used (Cursor session `42f88fe7…`, snapshot **2026-08-09**) | **composer-2.5-fast** (dominant: 4,986 cleartext `modelName` hits) + **cursor-grok-4.5-high-fast** (178 hits); parent model label `default` |
+| Approx. input tokens (Copilot `a95758da`, snapshot **2026-08-09**) | ~356.9M (Sonnet 5) + ~135.4M (GPT-5.4) + ~88.4M (Sonnet 4.6) + ~63.1M (GPT-5.3-Codex) + ~6.4M (GPT-5.4-mini) = **~650.1M** |
+| Approx. output tokens (Copilot `a95758da`, snapshot **2026-08-09**) | ~1.163M (Sonnet 5) + ~297.7K (GPT-5.4) + ~260.3K (Sonnet 4.6) + ~123.9K (GPT-5.3-Codex) + ~16.4K (GPT-5.4-mini) = **~1.861M** |
+| Cache-read tokens (Copilot `a95758da`) | ~636.2M (prompt-cache hits; included in billed/context scale, listed separately) |
+| Approx. model wall time (sum of request durations, Copilot `a95758da`) | ~8.1 hours across 5,803 usage events / 32 turns |
+| Cursor YOLO activity (local telemetry, chat `42f88fe7…` + 14 sub-agents) | **15 agents**; **2,582** assistant msgs; **5,861** tool-role blobs; **~11,722** tool-call records; **8,522** cleartext JSON blobs in chat stores |
+| Cursor token estimate (content-size, **not** billed API meter) | Official per-request token meter is **not stored locally** (many chat blobs encrypted). Proxies: agent-transcript UTF-8 ≈ **~2.34M chars → ~0.58M tokens** (÷4); cleartext chat JSON text ≈ **~1.32M chars → ~0.33M tokens** (undercounts tool/context). Billed/context-with-repetition is expected **much higher** than these content proxies — unlike Copilot, Cursor does not expose an `assistant_usage_events`-style ledger on disk here |
+| Cursor AI-code attribution (`ai-code-tracking.db`) | **74,482** `ai_code_hashes` rows attributed to this session’s agent conversation IDs (model field recorded as `default`) |
+| Compile milestone (2026-08-09) | `reth-bsc-node --features bsc`, `reth-node-ethereum`, and **`cargo check --workspace --no-default-features`** all **0 errors**; Phase 4 op-forks/chainspec/primitives/consensus compile; op-evm/node + Snow/Volta/Fourier + live sync still open |
+| Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch; Cursor session may still have a large **uncommitted** working tree — see `plan.md` Session 6 |
+| Cursor metrics snapshot file | `files/cursor-session-metrics.json` (regenerable from `~/.cursor/chats/…/store.db` + agent-transcripts + `ai-tracking`) |
 
-These figures are a session telemetry snapshot and are illustrative of the scale of context/inference
-required for this kind of large structural migration; total cumulative consumption across all sessions in
-this effort is higher. They are provided for transparency about the practical cost of AI-assisted
-maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency optimization was
-attempted.
+These figures are session telemetry snapshots and are illustrative of the scale of context/inference
+required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
+consumption (see historical rows in `plan.md`). They are provided for transparency about the practical
+cost of AI-assisted maintenance at this scale, not as a benchmark claim — no rigorous token-efficiency
+optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
+figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
 > **TODO:** Update this effort log once the port has been validated against live BSC/opBNB testnet (or
-> mainnet) sync, including final cumulative token/time figures and the outcome of live testing.
+> mainnet) sync, including final cumulative token/time figures (replace Cursor proxies with account
+> billing export if/when available), workspace/`--all-features` compile status, and live-test outcome.
 
 ### Side-evaluation: `kona-node` as an alternative to `op-node` for opBNB
 

@@ -88,7 +88,10 @@ pub struct PipelineSync<N: ProviderNodeTypes> {
     pending_pipeline_target: Option<PipelineTarget>,
 }
 
-impl<N: ProviderNodeTypes> PipelineSync<N> {
+impl<N> PipelineSync<N>
+where
+    N: ProviderNodeTypes,
+{
     /// Create a new instance.
     pub fn new(pipeline: Pipeline<N>, pipeline_task_spawner: Runtime) -> Self {
         Self {
@@ -177,7 +180,10 @@ impl<N: ProviderNodeTypes> PipelineSync<N> {
     }
 }
 
-impl<N: ProviderNodeTypes> BackfillSync for PipelineSync<N> {
+impl<N> BackfillSync for PipelineSync<N>
+where
+    N: ProviderNodeTypes,
+{
     fn on_action(&mut self, event: BackfillAction) {
         match event {
             BackfillAction::Start(target) => self.set_pipeline_sync_target(target),

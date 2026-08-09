@@ -1,16 +1,29 @@
 //! Receipt abstraction
 
+use crate::{InMemorySize, MaybeCompact, MaybeSerde, MaybeSerdeBincodeCompat};
+use alloc::vec::Vec;
 use alloy_consensus::{
     Eip2718EncodableReceipt, RlpDecodableReceipt, RlpEncodableReceipt, TxReceipt, Typed2718,
 };
 use alloy_rlp::{Decodable, Encodable};
-use reth_codecs::Compact;
-use serde::{Deserialize, Serialize};
+use core::fmt;
 
 /// Helper trait that unifies all behaviour required by receipt to support full node operations.
-pub trait FullReceipt: Receipt + Compact {}
+pub trait FullReceipt: Receipt + MaybeCompact {}
 
-impl<T> FullReceipt for T where T: Receipt + Compact {}
+impl<T> FullReceipt for T where T: Receipt + MaybeCompact {}
+
+/// Converts receipts read from database storage to a chain's receipt type.
+pub trait ReceiptFromStorage<Stored>: Sized {
+    /// Converts a receipt read from storage.
+    fn receipt_from_storage(stored: Stored) -> Self;
+}
+
+impl<T> ReceiptFromStorage<T> for T {
+    fn receipt_from_storage(stored: T) -> Self {
+        stored
+    }
+}
 
 /// Abstraction of a receipt.
 pub trait Receipt:
@@ -18,24 +31,18 @@ pub trait Receipt:
     + Sync
     + Unpin
     + Clone
-    + core::fmt::Debug
-    + PartialEq
-    + Eq
+    + fmt::Debug
     + TxReceipt<Log = alloy_primitives::Log>
-    + Typed2718
-    + Default
     + RlpEncodableReceipt
     + RlpDecodableReceipt
     + Encodable
     + Decodable
     + Eip2718EncodableReceipt
-    + Serialize
-    + for<'de> Deserialize<'de>
+    + Typed2718
+    + MaybeSerde
+    + InMemorySize
+    + MaybeSerdeBincodeCompat
 {
-    /// Returns transaction type.
-    fn tx_type(&self) -> u8 {
-        self.ty()
-    }
 }
 
 impl<T> Receipt for T where
@@ -43,24 +50,22 @@ impl<T> Receipt for T where
         + Sync
         + Unpin
         + Clone
-        + core::fmt::Debug
-        + PartialEq
-        + Eq
+        + fmt::Debug
         + TxReceipt<Log = alloy_primitives::Log>
-        + Typed2718
-        + Default
         + RlpEncodableReceipt
         + RlpDecodableReceipt
         + Encodable
         + Decodable
         + Eip2718EncodableReceipt
-        + Serialize
-        + for<'de> Deserialize<'de>
+        + Typed2718
+        + MaybeSerde
+        + InMemorySize
+        + MaybeSerdeBincodeCompat
 {
 }
 
 /// Retrieves gas spent by transactions as a vector of tuples (transaction index, gas used).
-pub fn gas_spent_by_transactions<I, T>(receipts: I) -> alloc::vec::Vec<(u64, u64)>
+pub fn gas_spent_by_transactions<I, T>(receipts: I) -> Vec<(u64, u64)>
 where
     I: IntoIterator<Item = T>,
     T: TxReceipt,

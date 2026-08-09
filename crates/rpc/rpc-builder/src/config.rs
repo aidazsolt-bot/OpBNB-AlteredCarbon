@@ -116,7 +116,12 @@ impl RethRpcServerConfig for RpcServerArgs {
 
     fn flashbots_config(&self) -> ValidationApiConfig {
         ValidationApiConfig {
-            disallow: self.builder_disallow.clone().unwrap_or_default(),
+            disallow: self
+                .builder_disallow
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
             validation_window: self.rpc_eth_proof_window,
         }
     }

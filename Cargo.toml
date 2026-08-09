@@ -23,6 +23,10 @@ members = [
     "crates/bsc/node/",
     "crates/bsc/payload/",
     "crates/bsc/primitives/",
+    "crates/optimism/chainspec/",
+    "crates/optimism/consensus/",
+    "crates/optimism/hardforks/",
+    "crates/optimism/primitives/",
     "crates/primitives/",
     "crates/primitives-traits/",
     "crates/chainspec/",
@@ -135,15 +139,16 @@ members = [
     "examples/beacon-api-sse/",
     "examples/bsc-p2p",
     "examples/custom-dev-node/",
-    "examples/custom-state-root/",
-    "examples/custom-engine-types/",
+    # Excluded: stale API drift (EngineTypes/PayloadBuilder/ExecutorBuilder/AddOns middleware)
+    # "examples/custom-state-root/",
+    # "examples/custom-engine-types/",
     "examples/custom-evm/",
     "examples/custom-hardforks/",
     "examples/custom-inspector/",
-    "examples/custom-node-components/",
-    "examples/custom-payload-builder/",
+    # "examples/custom-node-components/",  # stale: PoolBuilder/TransactionValidationTaskExecutor API drift
+    # "examples/custom-payload-builder/",
     "examples/custom-rlpx-subprotocol",
-    "examples/custom-auth-http-middleware",
+    # "examples/custom-auth-http-middleware",
     "examples/custom-rpc-middleware",
     "examples/db-access",
     "examples/exex-subscription",
@@ -160,7 +165,7 @@ members = [
     "examples/rpc-db/",
     "examples/precompile-cache/",
     "examples/txpool-tracing/",
-    "examples/custom-beacon-withdrawals",
+    # "examples/custom-beacon-withdrawals",
     "testing/ef-tests/",
     "testing/testing-utils",
     "testing/runner",
@@ -475,10 +480,15 @@ reth-trie-prefetch = { path = "crates/trie/prefetch" }
 reth-trie-sparse = { path = "crates/trie/sparse", default-features = false }
 reth-zstd-compressors = { version = "0.5.0", default-features = false }
 
+# Note: To enable io-uring support, add `io-uring = ["rust-eth-triedb/io-uring"]` to the [features] section
+# of any crate that depends on rust-eth-triedb. Then enable the io-uring feature at the root (bin/reth).
+rust-eth-triedb = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", tag = "v0.0.2" }
+rust-eth-triedb-state-trie = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", tag = "v0.0.2", package = "rust-eth-triedb-state-trie" }
+
 # revm
 revm = { version = "41.0.0", default-features = false }
 revm-primitives = { version = "20.0.0", features = ["std"], default-features = false }
-revmc = { git = "https://github.com/paradigmxyz/revmc", branch = "main", default-features = false, features = ["llvm-prefer-static"] }
+revmc = { git = "https://github.com/paradigmxyz/revmc", rev = "520462a463523a3bcd0a47226ddbc3200d62232e", default-features = false, features = ["llvm-prefer-static"] }
 revm-inspectors = "0.41.0"
 
 # eth

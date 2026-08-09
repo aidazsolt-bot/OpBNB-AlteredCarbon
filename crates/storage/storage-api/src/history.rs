@@ -44,7 +44,7 @@ pub trait HistoryWriter: Send {
     /// Returns number of changesets walked.
     fn unwind_storage_history_indices_range(
         &self,
-        range: impl RangeBounds<BlockNumber>,
+        range: impl RangeBounds<BlockNumberAddress>,
     ) -> ProviderResult<usize>;
 
     /// Insert storage change index to database. Used inside `StorageHistoryIndex` stage

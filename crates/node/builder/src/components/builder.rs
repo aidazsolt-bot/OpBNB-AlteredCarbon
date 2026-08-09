@@ -1,19 +1,23 @@
 //! A generic [`NodeComponentsBuilder`]
 
-use std::{future::Future, marker::PhantomData};
-
-use reth_consensus::Consensus;
-use reth_evm::execute::BlockExecutorProvider;
-use reth_primitives::Header;
-use reth_transaction_pool::TransactionPool;
-
 use crate::{
     components::{
         Components, ConsensusBuilder, ExecutorBuilder, NetworkBuilder, NodeComponents,
-        ParliaBuilder, PayloadServiceBuilder, PoolBuilder,
+        PayloadServiceBuilder, PoolBuilder,
     },
     BuilderContext, ConfigureEvm, FullNodeTypes,
 };
+use reth_chainspec::EthChainSpec;
+use reth_consensus::{noop::NoopConsensus, FullConsensus};
+use reth_network::{types::NetPrimitivesFor, EthNetworkPrimitives, NetworkPrimitives};
+use reth_network_api::{noop::NoopNetwork, FullNetwork};
+use reth_node_api::{BlockTy, BodyTy, HeaderTy, NodeTypes, PrimitivesTy, ReceiptTy, TxTy};
+use reth_payload_builder::PayloadBuilderHandle;
+use reth_transaction_pool::{
+    noop::NoopTransactionPool, EthPoolTransaction, EthPooledTransaction, PoolPooledTx,
+    PoolTransaction, TransactionPool,
+};
+use std::{future::Future, marker::PhantomData};
 
 /// A generic, general purpose and customizable [`NodeComponentsBuilder`] implementation.
 ///
@@ -35,23 +39,22 @@ use crate::{
 /// All component builders are captured in the builder state and will be consumed once the node is
 /// launched.
 #[derive(Debug)]
-pub struct ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB> {
+pub struct ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB> {
     pool_builder: PoolB,
     payload_builder: PayloadB,
     network_builder: NetworkB,
     executor_builder: ExecB,
     consensus_builder: ConsB,
-    parlia_builder: ParliaB,
     _marker: PhantomData<Node>,
 }
 
-impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
-    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
+    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
 {
     /// Configures the node types.
     pub fn node_types<Types>(
         self,
-    ) -> ComponentsBuilder<Types, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+    ) -> ComponentsBuilder<Types, PoolB, PayloadB, NetworkB, ExecB, ConsB>
     where
         Types: FullNodeTypes,
     {
@@ -61,7 +64,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         } = self;
         ComponentsBuilder {
@@ -70,7 +72,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             payload_builder,
             network_builder,
             consensus_builder,
-            parlia_builder,
             _marker: Default::default(),
         }
     }
@@ -83,7 +84,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder: self.network_builder,
             executor_builder: self.executor_builder,
             consensus_builder: self.consensus_builder,
-            parlia_builder: self.parlia_builder,
             _marker: self._marker,
         }
     }
@@ -96,7 +96,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder: self.network_builder,
             executor_builder: self.executor_builder,
             consensus_builder: self.consensus_builder,
-            parlia_builder: self.parlia_builder,
             _marker: self._marker,
         }
     }
@@ -109,7 +108,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder: f(self.network_builder),
             executor_builder: self.executor_builder,
             consensus_builder: self.consensus_builder,
-            parlia_builder: self.parlia_builder,
             _marker: self._marker,
         }
     }
@@ -122,7 +120,6 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder: self.network_builder,
             executor_builder: f(self.executor_builder),
             consensus_builder: self.consensus_builder,
-            parlia_builder: self.parlia_builder,
             _marker: self._marker,
         }
     }
@@ -135,27 +132,13 @@ impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
             network_builder: self.network_builder,
             executor_builder: self.executor_builder,
             consensus_builder: f(self.consensus_builder),
-            parlia_builder: self.parlia_builder,
-            _marker: self._marker,
-        }
-    }
-
-    /// Apply a function to the parlia builder.
-    pub fn map_parlia(self, f: impl FnOnce(ParliaB) -> ParliaB) -> Self {
-        Self {
-            pool_builder: self.pool_builder,
-            payload_builder: self.payload_builder,
-            network_builder: self.network_builder,
-            executor_builder: self.executor_builder,
-            consensus_builder: self.consensus_builder,
-            parlia_builder: f(self.parlia_builder),
             _marker: self._marker,
         }
     }
 }
 
-impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
-    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
+    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
 where
     Node: FullNodeTypes,
 {
@@ -166,7 +149,7 @@ where
     pub fn pool<PB>(
         self,
         pool_builder: PB,
-    ) -> ComponentsBuilder<Node, PB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+    ) -> ComponentsBuilder<Node, PB, PayloadB, NetworkB, ExecB, ConsB>
     where
         PB: PoolBuilder<Node>,
     {
@@ -176,7 +159,6 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         } = self;
         ComponentsBuilder {
@@ -185,14 +167,28 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
+        }
+    }
+
+    /// Sets [`NoopTransactionPoolBuilder`].
+    pub fn noop_pool<Tx>(
+        self,
+    ) -> ComponentsBuilder<Node, NoopTransactionPoolBuilder<Tx>, PayloadB, NetworkB, ExecB, ConsB>
+    {
+        ComponentsBuilder {
+            pool_builder: NoopTransactionPoolBuilder::<Tx>::default(),
+            payload_builder: self.payload_builder,
+            network_builder: self.network_builder,
+            executor_builder: self.executor_builder,
+            consensus_builder: self.consensus_builder,
+            _marker: self._marker,
         }
     }
 }
 
-impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
-    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
+    ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
 where
     Node: FullNodeTypes,
     PoolB: PoolBuilder<Node>,
@@ -204,7 +200,7 @@ where
     pub fn network<NB>(
         self,
         network_builder: NB,
-    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NB, ExecB, ConsB, ParliaB>
+    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NB, ExecB, ConsB>
     where
         NB: NetworkBuilder<Node, PoolB::Pool>,
     {
@@ -214,7 +210,6 @@ where
             network_builder: _,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         } = self;
         ComponentsBuilder {
@@ -223,7 +218,6 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         }
     }
@@ -235,9 +229,10 @@ where
     pub fn payload<PB>(
         self,
         payload_builder: PB,
-    ) -> ComponentsBuilder<Node, PoolB, PB, NetworkB, ExecB, ConsB, ParliaB>
+    ) -> ComponentsBuilder<Node, PoolB, PB, NetworkB, ExecB, ConsB>
     where
-        PB: PayloadServiceBuilder<Node, PoolB::Pool>,
+        ExecB: ExecutorBuilder<Node>,
+        PB: PayloadServiceBuilder<Node, PoolB::Pool, ExecB::EVM>,
     {
         let Self {
             pool_builder,
@@ -245,7 +240,6 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         } = self;
         ComponentsBuilder {
@@ -254,7 +248,6 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         }
     }
@@ -266,7 +259,7 @@ where
     pub fn executor<EB>(
         self,
         executor_builder: EB,
-    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, EB, ConsB, ParliaB>
+    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, EB, ConsB>
     where
         EB: ExecutorBuilder<Node>,
     {
@@ -276,7 +269,6 @@ where
             network_builder,
             executor_builder: _,
             consensus_builder,
-            parlia_builder,
             _marker,
         } = self;
         ComponentsBuilder {
@@ -285,7 +277,6 @@ where
             network_builder,
             executor_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         }
     }
@@ -297,7 +288,7 @@ where
     pub fn consensus<CB>(
         self,
         consensus_builder: CB,
-    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, CB, ParliaB>
+    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, CB>
     where
         CB: ConsensusBuilder<Node>,
     {
@@ -307,7 +298,7 @@ where
             network_builder,
             executor_builder,
             consensus_builder: _,
-            parlia_builder,
+
             _marker,
         } = self;
         ComponentsBuilder {
@@ -316,55 +307,74 @@ where
             network_builder,
             executor_builder,
             consensus_builder,
-            parlia_builder,
             _marker,
         }
     }
 
-    /// Configures the parlia builder.
-    ///
-    /// This accepts a [`ParliaBuilder`] instance that will be used to create the node's components
-    /// for parlia.
-    pub fn parlia<PB>(
+    /// Sets [`NoopNetworkBuilder`].
+    pub fn noop_network<Net>(
         self,
-        parlia_builder: PB,
-    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, PB>
-    where
-        PB: ParliaBuilder<Node>,
-    {
-        let Self {
-            pool_builder,
-            payload_builder,
-            network_builder,
-            executor_builder,
-            consensus_builder,
-            parlia_builder: _,
-            _marker,
-        } = self;
+    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NoopNetworkBuilder<Net>, ExecB, ConsB> {
         ComponentsBuilder {
-            pool_builder,
-            payload_builder,
-            network_builder,
-            executor_builder,
-            consensus_builder,
-            parlia_builder,
-            _marker,
+            pool_builder: self.pool_builder,
+            payload_builder: self.payload_builder,
+            network_builder: NoopNetworkBuilder::<Net>::default(),
+            executor_builder: self.executor_builder,
+            consensus_builder: self.consensus_builder,
+            _marker: self._marker,
+        }
+    }
+
+    /// Sets [`NoopPayloadBuilder`].
+    pub fn noop_payload(
+        self,
+    ) -> ComponentsBuilder<Node, PoolB, NoopPayloadBuilder, NetworkB, ExecB, ConsB> {
+        ComponentsBuilder {
+            pool_builder: self.pool_builder,
+            payload_builder: NoopPayloadBuilder,
+            network_builder: self.network_builder,
+            executor_builder: self.executor_builder,
+            consensus_builder: self.consensus_builder,
+            _marker: self._marker,
+        }
+    }
+
+    /// Sets [`NoopConsensusBuilder`].
+    pub fn noop_consensus(
+        self,
+    ) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, NoopConsensusBuilder> {
+        ComponentsBuilder {
+            pool_builder: self.pool_builder,
+            payload_builder: self.payload_builder,
+            network_builder: self.network_builder,
+            executor_builder: self.executor_builder,
+            consensus_builder: NoopConsensusBuilder,
+            _marker: self._marker,
         }
     }
 }
 
-impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB> NodeComponentsBuilder<Node>
-    for ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB, ParliaB>
+impl<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB> NodeComponentsBuilder<Node>
+    for ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
 where
     Node: FullNodeTypes,
-    PoolB: PoolBuilder<Node>,
-    NetworkB: NetworkBuilder<Node, PoolB::Pool>,
-    PayloadB: PayloadServiceBuilder<Node, PoolB::Pool>,
+    PoolB: PoolBuilder<Node, Pool: TransactionPool>,
+    NetworkB: NetworkBuilder<
+        Node,
+        PoolB::Pool,
+        Network: FullNetwork<
+            Primitives: NetPrimitivesFor<
+                PrimitivesTy<Node::Types>,
+                PooledTransaction = PoolPooledTx<PoolB::Pool>,
+            >,
+        >,
+    >,
+    PayloadB: PayloadServiceBuilder<Node, PoolB::Pool, ExecB::EVM>,
     ExecB: ExecutorBuilder<Node>,
     ConsB: ConsensusBuilder<Node>,
-    ParliaB: ParliaBuilder<Node>,
 {
-    type Components = Components<Node, PoolB::Pool, ExecB::EVM, ExecB::Executor, ConsB::Consensus>;
+    type Components =
+        Components<Node, NetworkB::Network, PoolB::Pool, ExecB::EVM, ConsB::Consensus>;
 
     async fn build_components(
         self,
@@ -376,32 +386,28 @@ where
             network_builder,
             executor_builder: evm_builder,
             consensus_builder,
-            parlia_builder: _parlia_builder,
             _marker,
         } = self;
 
-        let (evm_config, executor) = evm_builder.build_evm(context).await?;
+        let evm_config = evm_builder.build_evm(context).await?;
         let pool = pool_builder.build_pool(context).await?;
         let network = network_builder.build_network(context, pool.clone()).await?;
-        let payload_builder = payload_builder.spawn_payload_service(context, pool.clone()).await?;
+        let payload_builder_handle = payload_builder
+            .spawn_payload_builder_service(context, pool.clone(), evm_config.clone())
+            .await?;
         let consensus = consensus_builder.build_consensus(context).await?;
-        #[cfg(feature = "bsc")]
-        let parlia = _parlia_builder.build_parlia(context).await?;
 
         Ok(Components {
             transaction_pool: pool,
             evm_config,
             network,
-            payload_builder,
-            executor,
+            payload_builder_handle,
             consensus,
-            #[cfg(feature = "bsc")]
-            parlia,
         })
     }
 }
 
-impl Default for ComponentsBuilder<(), (), (), (), (), (), ()> {
+impl Default for ComponentsBuilder<(), (), (), (), (), ()> {
     fn default() -> Self {
         Self {
             pool_builder: (),
@@ -409,7 +415,6 @@ impl Default for ComponentsBuilder<(), (), (), (), (), (), ()> {
             network_builder: (),
             executor_builder: (),
             consensus_builder: (),
-            parlia_builder: (),
             _marker: Default::default(),
         }
     }
@@ -435,22 +440,125 @@ pub trait NodeComponentsBuilder<Node: FullNodeTypes>: Send {
     ) -> impl Future<Output = eyre::Result<Self::Components>> + Send;
 }
 
-impl<Node, F, Fut, Pool, EVM, Executor, Cons> NodeComponentsBuilder<Node> for F
+impl<Node, Net, F, Fut, Pool, EVM, Cons> NodeComponentsBuilder<Node> for F
 where
+    Net: FullNetwork<
+        Primitives: NetPrimitivesFor<
+            PrimitivesTy<Node::Types>,
+            PooledTransaction = PoolPooledTx<Pool>,
+        >,
+    >,
     Node: FullNodeTypes,
     F: FnOnce(&BuilderContext<Node>) -> Fut + Send,
-    Fut: Future<Output = eyre::Result<Components<Node, Pool, EVM, Executor, Cons>>> + Send,
-    Pool: TransactionPool + Unpin + 'static,
-    EVM: ConfigureEvm<Header = Header>,
-    Executor: BlockExecutorProvider,
-    Cons: Consensus + Clone + Unpin + 'static,
+    Fut: Future<Output = eyre::Result<Components<Node, Net, Pool, EVM, Cons>>> + Send,
+    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
+        + Unpin
+        + 'static,
+    EVM: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>> + 'static,
+    Cons: FullConsensus<PrimitivesTy<Node::Types>> + Clone + Unpin + 'static,
 {
-    type Components = Components<Node, Pool, EVM, Executor, Cons>;
+    type Components = Components<Node, Net, Pool, EVM, Cons>;
 
     fn build_components(
         self,
         ctx: &BuilderContext<Node>,
     ) -> impl Future<Output = eyre::Result<Self::Components>> + Send {
         self(ctx)
+    }
+}
+
+/// Builds [`NoopTransactionPool`].
+#[derive(Debug, Clone)]
+pub struct NoopTransactionPoolBuilder<Tx = EthPooledTransaction>(PhantomData<Tx>);
+
+impl<N, Tx> PoolBuilder<N> for NoopTransactionPoolBuilder<Tx>
+where
+    N: FullNodeTypes,
+    Tx: EthPoolTransaction<Consensus = TxTy<N::Types>> + Unpin,
+{
+    type Pool = NoopTransactionPool<Tx>;
+
+    async fn build_pool(self, _ctx: &BuilderContext<N>) -> eyre::Result<Self::Pool> {
+        Ok(NoopTransactionPool::<Tx>::new())
+    }
+}
+
+impl<Tx> Default for NoopTransactionPoolBuilder<Tx> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+/// Builds [`NoopNetwork`].
+#[derive(Debug, Clone)]
+pub struct NoopNetworkBuilder<Net = EthNetworkPrimitives>(PhantomData<Net>);
+
+impl NoopNetworkBuilder {
+    /// Returns the instance with ethereum types.
+    pub fn eth() -> Self {
+        Self::default()
+    }
+}
+
+impl<N, Pool, Net> NetworkBuilder<N, Pool> for NoopNetworkBuilder<Net>
+where
+    N: FullNodeTypes,
+    Pool: TransactionPool,
+    Net: NetworkPrimitives<
+        BlockHeader = HeaderTy<N::Types>,
+        BlockBody = BodyTy<N::Types>,
+        Block = BlockTy<N::Types>,
+        Receipt = ReceiptTy<N::Types>,
+    >,
+{
+    type Network = NoopNetwork<Net>;
+
+    async fn build_network(
+        self,
+        ctx: &BuilderContext<N>,
+        _pool: Pool,
+    ) -> eyre::Result<Self::Network> {
+        Ok(NoopNetwork::new().with_chain_id(ctx.chain_spec().chain_id()))
+    }
+}
+
+impl<Net> Default for NoopNetworkBuilder<Net> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+/// Builds [`NoopConsensus`].
+#[derive(Debug, Clone, Default)]
+pub struct NoopConsensusBuilder;
+
+impl<N> ConsensusBuilder<N> for NoopConsensusBuilder
+where
+    N: FullNodeTypes,
+{
+    type Consensus = NoopConsensus;
+
+    async fn build_consensus(self, _ctx: &BuilderContext<N>) -> eyre::Result<Self::Consensus> {
+        Ok(NoopConsensus::default())
+    }
+}
+
+/// Builds [`PayloadBuilderHandle::noop`].
+#[derive(Debug, Clone, Default)]
+pub struct NoopPayloadBuilder;
+
+impl<N, Pool, EVM> PayloadServiceBuilder<N, Pool, EVM> for NoopPayloadBuilder
+where
+    N: FullNodeTypes,
+    Pool: TransactionPool,
+    EVM: ConfigureEvm<Primitives = PrimitivesTy<N::Types>> + 'static,
+{
+    async fn spawn_payload_builder_service(
+        self,
+        _ctx: &BuilderContext<N>,
+        _pool: Pool,
+        _evm_config: EVM,
+    ) -> eyre::Result<PayloadBuilderHandle<<N::Types as NodeTypes>::Payload>> {
+        Ok(PayloadBuilderHandle::<<N::Types as NodeTypes>::Payload>::noop())
     }
 }
