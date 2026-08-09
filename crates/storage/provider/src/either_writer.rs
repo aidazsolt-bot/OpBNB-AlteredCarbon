@@ -19,7 +19,7 @@ use reth_codecs::Compact;
 use reth_db::{
     cursor::{DbCursorRO, DbDupCursorRW},
     models::AccountBeforeTx,
-    static_file::TransactionMask,
+    static_file::{TransactionMask, TransactionSenderMask},
     table::Value,
     transaction::{CursorMutTy, CursorTy, DbTx, DbTxMut, DupCursorMutTy, DupCursorTy},
 };
@@ -138,7 +138,7 @@ impl<'a> EitherWriter<'a, (), ()> {
         if EitherWriterDestination::senders(provider).is_static_file() {
             Ok(EitherWriter::StaticFile(
                 provider
-                    .get_static_file_writer(block_number, StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */)?,
+                    .get_static_file_writer(block_number, StaticFileSegment::TransactionSenders)?,
             ))
         } else {
             Ok(EitherWriter::Database(
@@ -391,7 +391,7 @@ where
             Self::StaticFile(writer) => {
                 let static_file_transaction_sender_num = writer
                     .reader()
-                    .get_highest_static_file_tx(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
+                    .get_highest_static_file_tx(StaticFileSegment::TransactionSenders);
 
                 let to_delete = static_file_transaction_sender_num
                     .map(|static_num| (static_num + 1).saturating_sub(unwind_tx_from))
@@ -719,9 +719,9 @@ where
             Self::StaticFile(provider, _) => range
                 .clone()
                 .zip(provider.fetch_range_iter(
-                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                    StaticFileSegment::TransactionSenders,
                     range,
-                    |cursor, number| cursor.get_one::<TransactionMask<Address>>(number.into()),
+                    |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
                 )?)
                 .filter_map(|(tx_num, sender)| {
                     let result = sender.transpose()?;
@@ -956,11 +956,9 @@ mod tests {
             (4, Address::random()),
         ];
 
-        for transaction_senders_in_static_files in [false, true] {
-            factory.set_storage_settings_cache(
-                StorageSettings::legacy()
-                    .with_transaction_senders_in_static_files(transaction_senders_in_static_files),
-            );
+        for settings in [StorageSettings::v1(), StorageSettings::v2()] {
+            let transaction_senders_in_static_files = settings.transaction_senders_in_static_files();
+            factory.set_storage_settings_cache(settings);
 
             let provider = factory.database_provider_rw().unwrap();
             let mut writer = EitherWriter::new_senders(&provider, 0).unwrap();

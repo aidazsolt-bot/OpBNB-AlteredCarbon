@@ -44,7 +44,13 @@ enum PruneStrategy {
         /// The last block number after pruning.
         last_block: BlockNumber,
     },
-    // TODO(opbnb-port): this fork's StaticFileSegment/StorageSettings predates upstream's account-changeset/transaction-sender static-file support; revisit if/when that's backported.
+    /// Prune transaction senders by number of rows and last block.
+    TransactionSenders {
+        /// Number of sender rows to delete.
+        num_rows: u64,
+        /// The last block number after pruning.
+        last_block: BlockNumber,
+    },
 }
 
 /// Static file writers for every known [`StaticFileSegment`].
@@ -99,6 +105,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
+            &self.transaction_senders,
         ] {
             let mut writer = writer_lock.write();
             if let Some(writer) = writer.as_mut() {
@@ -115,6 +122,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
+            &self.transaction_senders,
         ] {
             let writer = writer_lock.read();
             if let Some(writer) = writer.as_ref() &&
@@ -137,6 +145,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             &self.headers,
             &self.transactions,
             &self.receipts,
+            &self.transaction_senders,
         ] {
             let mut writer = writer_lock.write();
             if let Some(writer) = writer.as_mut() {
@@ -363,6 +372,9 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
                 }
                 PruneStrategy::Receipts { num_rows, last_block } => {
                     self.prune_receipt_data(num_rows, last_block)?
+                }
+                PruneStrategy::TransactionSenders { num_rows, last_block } => {
+                    self.prune_transaction_sender_data(num_rows, last_block)?
                 }
             }
         }
@@ -920,12 +932,12 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let start = Instant::now();
         self.ensure_no_queued_prune()?;
 
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
         self.append_with_tx_number(tx_num, sender)?;
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
-                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                StaticFileSegment::TransactionSenders,
                 StaticFileProviderOperation::Append,
                 Some(start.elapsed()),
             );
@@ -939,7 +951,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     where
         I: Iterator<Item = (TxNumber, alloy_primitives::Address)>,
     {
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
 
         let mut senders_iter = senders.into_iter().peekable();
         // If senders are empty, we can simply return
@@ -959,7 +971,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operations(
-                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                StaticFileSegment::TransactionSenders,
                 StaticFileProviderOperation::Append,
                 count,
                 Some(start.elapsed()),
@@ -1039,10 +1051,8 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         to_delete: u64,
         last_block: BlockNumber,
     ) -> ProviderResult<()> {
-        let _ = (to_delete, last_block);
-        Err(ProviderError::other(StaticFileWriterError::new(
-            "transaction sender static-file support is not available in this fork",
-        )))
+        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::TransactionSenders);
+        self.queue_prune(PruneStrategy::TransactionSenders { num_rows: to_delete, last_block })
     }
 
     /// Adds an instruction to prune `to_delete` headers during commit.
@@ -1149,13 +1159,13 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     ) -> ProviderResult<()> {
         let start = Instant::now();
 
-        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */);
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::TransactionSenders);
 
         self.truncate(to_delete, Some(last_block))?;
 
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
-                StaticFileSegment::Receipts /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                StaticFileSegment::TransactionSenders,
                 StaticFileProviderOperation::Prune,
                 Some(start.elapsed()),
             );
@@ -1237,8 +1247,10 @@ fn create_jar(
     );
 
     // Transaction and Receipt already have the compression scheme used natively in its encoding.
-    // (zstd-dictionary)
-    if segment.is_headers() {
+    // (zstd-dictionary). Senders/changesets use Compact + lz4 like headers.
+    if segment.is_headers() ||
+        matches!(segment, StaticFileSegment::TransactionSenders | StaticFileSegment::AccountChangeSets)
+    {
         jar = jar.with_lz4();
     }
 
