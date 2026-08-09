@@ -20,7 +20,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
-4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardfork-Enum/Schedules ✅; forks/chainspec/primitives/consensus compile; op-evm/node noch architektonisch (revm-41 → `op-revm`)
+4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; live opBNB + trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 angelaufen (`cargo check --workspace --no-default-features` ✅ 0 errors 2026-08-09; Clippy/nextest/EF noch offen)
 6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
 
@@ -31,7 +31,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks ✅; op-evm/node pending |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ⏳ pending (workspace check grün) |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | ⏳ pending |
 
@@ -645,9 +645,61 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 3. Phase 4: `reth-optimism-evm` auf `op-revm`/`ConfigureEvm` v2.4.1 porten (Reference: `bnb-chain_reth.git/crates/optimism/evm`), dann payload/rpc/node.
 4. Phase 5: Clippy, nextest, EF-Tests; Default-Features/`bsc`-Workspace; Phase 6: Live-Tests + finale Token-Zahlen.
 
+
+### Session 7 cont. (2026-08-09 ~14:20 UTC) — op-evm compile milestone
+- Path-deps auf lokales `optimism.git/rust` (`op-revm`, `alloy-op-evm`, `alloy-op-hardforks`, `op-alloy-*`) für revm41/alloy-evm0.37.
+- `reth-optimism-{primitives,consensus,evm}` aus op-reth gesynct + `primitives-traits` Feature `op` (InMemorySize/SignedTransaction für OpTxEnvelope inkl. PostExec).
+- `OpHardforks` Bridge auf `OpChainSpec`; `basefee.rs` (`decode_holocene_base_fee`) ergänzt.
+- Verify: `cargo check -p reth-optimism-{forks,chainspec,primitives,consensus,evm}` + `reth-bsc-node --features bsc` → grün.
+- Snow/Volta/Fourier bleiben in `OptimismHardfork`; workspace member `crates/optimism/evm/` aktiv.
+
 ### Session 6 Docs-Update (2026-08-09 ~10:45–12:45 UTC):
 - README Effort-Log: Copilot `a95758da` final **~650.1M in / ~1.861M out / 5803 events**.
 - Cursor-Metriken ergänzt (nicht mehr nur „unmetered“): Wall **~5.34 h**, 15 Agents, Models **composer-2.5-fast** / **cursor-grok-4.5-high-fast**, Activity (Msgs/Tool-Calls), Content-Token-Proxies (~0.58M / ~0.33M), **74.482** AI-code hashes; Snapshot `files/cursor-session-metrics.json`.
 - plan.md Aufwandsprotokoll-Tabelle synchronisiert.
 - Phase 4 Start: `reth-optimism-{forks,chainspec,primitives,consensus}` compile-fähig.
 - Phase 5: Workspace `--no-default-features` **0 errors**; WIP weiterhin uncommitted.
+
+### Session 8 (Cursor YOLO) — op-evm green
+- Ported `reth-optimism-{primitives,consensus,evm,chainspec basefee}` from local op-reth + path deps (`op-revm`/`alloy-op-evm`/`op-alloy`/`alloy-op-hardforks`) for revm 41.
+- `primitives-traits` feature `op`: InMemorySize + SignedTransaction + SerdeBincodeCompat for Op types; reth-codec/serde-bincode-compat wire `op-alloy?/…` for workspace feature unification.
+- Verified: `reth-optimism-evm` + stack, `reth-bsc-node --features bsc`, `cargo check --workspace --no-default-features`.
+- Next: optimism payload / rpc / node / cli.
+
+### Session 8 cont. — payload/txpool/storage
+- Synced `reth-optimism-{storage,txpool,payload-builder}` from op-reth; workspace members + `op-alloy-flz`.
+- Adapted payload to trail v2.4.1 `PayloadConfig`/`BuildArguments`/`PayloadTypes::PayloadBuilderAttributes`.
+- Added `SignedTransaction::try_clone_into_recovered`.
+- Verify: storage/txpool/payload + bsc-node + workspace `--no-default-features` green.
+- Next: optimism rpc / node / cli.
+
+### Session 8 cont. — flashblocks/rpc
+- Synced `post-exec-replay`, `flashblocks`, `rpc`; stubbed trie-backed `debug`/`state`/`proofs`.
+- Flashblocks: trail `BlockExecutionOutput.snapshot` + `recover_transactions::<T>`.
+- RPC: drop blanket-conflicting EthSubscriptions/GetBlockAccessList; align receipt/witness APIs.
+- Verify: post-exec-replay, flashblocks, rpc green. Next: optimism-node/cli.
+
+### Session 8 cont. — optimism-node WIP
+- Synced `reth-optimism-node` from op-reth; stubbed `proof_history` (needs trie/exex).
+- Partial trail adapt: PayloadBuilderAttributes, pool-before-executor, RpcAddOns arity,
+  PoolBuilder without Evm generic, `OpHardfork` re-export, engine `Fn` (not `FnOnce`) for
+  post-exec hashed-state validation.
+- **Not green yet**: RpcConvert/SignableTxRequest/OpTransactionRequest + PayloadAttributes
+  mismatch (~38 errors). Next: wire OP RpcConverter / SignableTxRequest like ethereum path.
+
+### Session 8 cont. — optimism-node green
+- Added `reth-rpc-traits` feature `op` (SignableTxRequest/TryIntoSimTx/FromConsensusTx for Op types).
+- Constrained `OpNodeTypes` (Header/EthChainSpec) + PoolBuilder/PayloadBuilderAttributes bounds.
+- Verify: `reth-optimism-node`, `reth-bsc-node --features bsc`, workspace `--no-default-features` green.
+- Next: `reth-optimism-cli` + `op-reth` bin (opBNB-focused).
+
+### Session 8 cont. — optimism-cli + op-reth bin green
+- `SUPPORTED_CHAINS` / `generated_chain_value_parser` in chainspec (opBNB-first + OP/Base carriers).
+- Stripped `op_proofs` / slot-preimages seed (needs stages API not in trail yet).
+- Adapted CLI to trail command APIs (`env.init` without Runtime, `Arc<DatabaseEnv>`, import pipeline arity).
+- `reth-db-api` feature `optimism`: Compact→DB Compress bridge for `OpTxEnvelope`/`OpReceipt` (launch path).
+- `proof_history::launch_node` stub launches plain `OpNode` (trie/exex deferred).
+- New `crates/optimism/bin` binary package `op-reth` (bsc-reth pattern).
+- Verify: `reth-optimism-cli`, `op-reth`, `reth-bsc-node --features bsc` green.
+- Next: live opBNB smoke / Clippy / optional trie-proofs; keep BSC green.
+

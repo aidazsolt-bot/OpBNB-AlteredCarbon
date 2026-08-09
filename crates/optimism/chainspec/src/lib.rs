@@ -12,6 +12,7 @@ extern crate alloc;
 
 mod base;
 mod base_sepolia;
+mod basefee;
 pub mod constants;
 mod dev;
 mod op;
@@ -20,12 +21,13 @@ mod opbnb;
 mod opbnb_qa;
 mod opbnb_testnet;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use alloy_chains::Chain;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Bytes, Signature, B256, U256};
 pub use base::BASE_MAINNET;
 pub use base_sepolia::BASE_SEPOLIA;
+pub use basefee::*;
 use core::fmt::Display;
 use derive_more::{Constructor, Deref, Display as DeriveDisplay, From, Into};
 pub use dev::OP_DEV;
@@ -35,13 +37,41 @@ pub use opbnb::OPBNB_MAINNET;
 pub use opbnb_qa::OPBNB_QA;
 pub use opbnb_testnet::OPBNB_TESTNET;
 
+/// Named chains accepted by CLI / chain-spec parsers (opBNB-first, plus OP-Stack carriers).
+pub const SUPPORTED_CHAINS: &[&str] = &[
+    "opbnb",
+    "opbnb-mainnet",
+    "opbnb-testnet",
+    "opbnb-qa",
+    "optimism",
+    "optimism-sepolia",
+    "base",
+    "base-sepolia",
+    "dev",
+];
+
+/// Resolve a known chain name to an [`OpChainSpec`].
+pub fn generated_chain_value_parser(s: &str) -> Option<Arc<OpChainSpec>> {
+    Some(match s {
+        "opbnb" | "opbnb-mainnet" => OPBNB_MAINNET.clone(),
+        "opbnb-testnet" => OPBNB_TESTNET.clone(),
+        "opbnb-qa" => OPBNB_QA.clone(),
+        "optimism" => OP_MAINNET.clone(),
+        "optimism-sepolia" => OP_SEPOLIA.clone(),
+        "base" => BASE_MAINNET.clone(),
+        "base-sepolia" => BASE_SEPOLIA.clone(),
+        "dev" => OP_DEV.clone(),
+        _ => return None,
+    })
+}
+
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, DepositContract, EthChainSpec,
     EthereumHardforks, ForkFilter, ForkId, Hardforks, Head, make_genesis_header,
 };
 use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
 use reth_network_peers::NodeRecord;
-use reth_optimism_forks::{OptimismHardfork, OptimismHardforks};
+pub use reth_optimism_forks::{OpHardfork, OpHardforks, OptimismHardfork, OptimismHardforks};
 use reth_primitives_traits::{Header, SealedHeader};
 
 /// Chain spec builder for a OP stack chain.
@@ -359,6 +389,24 @@ impl EthereumHardforks for OpChainSpec {
 }
 
 impl OptimismHardforks for OpChainSpec {}
+
+impl OpHardforks for OpChainSpec {
+    fn op_fork_activation(&self, fork: OpHardfork) -> ForkCondition {
+        // Schedules store opBNB-specific [`OptimismHardfork`] variants; map the overlapping
+        // upstream [`OpHardfork`] names. Isthmus+ return Never until schedules grow.
+        let mapped = match fork {
+            OpHardfork::Bedrock => Some(OptimismHardfork::Bedrock),
+            OpHardfork::Regolith => Some(OptimismHardfork::Regolith),
+            OpHardfork::Canyon => Some(OptimismHardfork::Canyon),
+            OpHardfork::Ecotone => Some(OptimismHardfork::Ecotone),
+            OpHardfork::Fjord => Some(OptimismHardfork::Fjord),
+            OpHardfork::Granite => Some(OptimismHardfork::Granite),
+            OpHardfork::Holocene => Some(OptimismHardfork::Holocene),
+            _ => None,
+        };
+        mapped.map(|fork| self.fork(fork)).unwrap_or(ForkCondition::Never)
+    }
+}
 
 impl From<Genesis> for OpChainSpec {
     fn from(genesis: Genesis) -> Self {

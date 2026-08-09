@@ -119,6 +119,16 @@ pub trait SignedTransaction:
             None => Err(self),
         }
     }
+
+    /// Tries to recover signer and return a [`super::Recovered`] clone.
+    ///
+    /// Returns an error if recovery fails.
+    fn try_clone_into_recovered(&self) -> Result<super::Recovered<Self>, RecoveryError>
+    where
+        Self: Clone,
+    {
+        self.clone().try_into_recovered().map_err(|_| RecoveryError::default())
+    }
 }
 
 /// Helper trait that unifies all behaviour required by transaction to support full node
@@ -189,5 +199,90 @@ where
     ) -> Self {
         let _ = signature;
         transaction
+    }
+}
+
+#[cfg(feature = "op")]
+mod op {
+    use super::*;
+    use alloy_primitives::U256;
+    use op_alloy_consensus::{OpPooledTransaction, OpTxEnvelope};
+
+    /// Canonical empty signature for unsigned OP variants (deposit / post-exec).
+    const UNSIGNED_SIG: Signature = Signature::new(U256::ZERO, U256::ZERO, false);
+
+    impl SignedTransaction for OpTxEnvelope {
+        type Transaction = Self;
+
+        fn transaction(&self) -> &Self::Transaction {
+            self
+        }
+
+        fn signature(&self) -> &Signature {
+            OpTxEnvelope::signature(self).unwrap_or(&UNSIGNED_SIG)
+        }
+
+        fn recover_signer(&self) -> Option<Address> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self).ok()
+        }
+
+        fn try_recover(&self) -> Result<Address, RecoveryError> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self)
+        }
+
+        fn recover_signer_unchecked(&self) -> Option<Address> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer_unchecked(
+                self,
+            )
+            .ok()
+        }
+
+        fn from_transaction_and_signature(
+            transaction: Self::Transaction,
+            signature: Signature,
+        ) -> Self {
+            let _ = signature;
+            transaction
+        }
+    }
+
+    impl SignedTransaction for OpPooledTransaction {
+        type Transaction = Self;
+
+        fn transaction(&self) -> &Self::Transaction {
+            self
+        }
+
+        fn signature(&self) -> &Signature {
+            match self {
+                Self::Legacy(tx) => tx.signature(),
+                Self::Eip2930(tx) => tx.signature(),
+                Self::Eip1559(tx) => tx.signature(),
+                Self::Eip7702(tx) => tx.signature(),
+            }
+        }
+
+        fn recover_signer(&self) -> Option<Address> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self).ok()
+        }
+
+        fn try_recover(&self) -> Result<Address, RecoveryError> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer(self)
+        }
+
+        fn recover_signer_unchecked(&self) -> Option<Address> {
+            <Self as alloy_consensus::transaction::SignerRecoverable>::recover_signer_unchecked(
+                self,
+            )
+            .ok()
+        }
+
+        fn from_transaction_and_signature(
+            transaction: Self::Transaction,
+            signature: Signature,
+        ) -> Self {
+            let _ = signature;
+            transaction
+        }
     }
 }
