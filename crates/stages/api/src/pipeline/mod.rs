@@ -2,14 +2,18 @@ mod ctrl;
 mod event;
 pub use crate::pipeline::ctrl::ControlFlow;
 use crate::{PipelineTarget, StageCheckpoint, StageId};
-use alloy_primitives::{BlockNumber, B256};
+use alloy_eips::eip1898::BlockWithParent;
+use alloy_primitives::{BlockNumber, Sealable, B256};
 pub use event::*;
 use futures_util::Future;
-use reth_primitives_traits::constants::BEACON_CONSENSUS_REORG_UNWIND_DEPTH;
+use reth_errors::ProviderError;
+use reth_primitives_traits::{
+    constants::BEACON_CONSENSUS_REORG_UNWIND_DEPTH, AlloyBlockHeader as _,
+};
 use reth_provider::{
     providers::ProviderNodeTypes, BlockHashReader, BlockNumReader, ChainStateBlockReader,
-    ChainStateBlockWriter, DBProvider, DatabaseProviderFactory, ProviderFactory,
-    PruneCheckpointReader, StageCheckpointReader, StageCheckpointWriter, StorageSettingsCache,
+    ChainStateBlockWriter, DBProvider, DatabaseProviderFactory, HeaderProvider, ProviderFactory,
+    PruneCheckpointReader, StageCheckpointReader, StageCheckpointWriter,
 };
 use reth_prune::PrunerBuilder;
 use reth_static_file::StaticFileProducer;
@@ -129,11 +133,8 @@ impl<N: ProviderNodeTypes> Pipeline<N> {
     }
 }
 
-impl<N: ProviderNodeTypes> Pipeline<N>
-where
-    <N::Primitives as reth_primitives_traits::NodePrimitives>::Receipt:
-        From<reth_ethereum_primitives::Receipt>,
-{
+impl<N: ProviderNodeTypes> Pipeline<N> {
+    /// Registers progress metrics for each registered stage
     pub fn register_metrics(&mut self) -> Result<(), PipelineError> {
         let Some(metrics_tx) = &mut self.metrics_tx else { return Ok(()) };
         let provider = self.provider_factory.provider()?;
@@ -162,14 +163,14 @@ where
                     PipelineTarget::Sync(tip) => self.set_tip(tip),
                     PipelineTarget::Unwind(target) => {
                         if let Err(err) = self.move_to_static_files() {
-                            return (self, Err(err.into()));
+                            return (self, Err(err.into()))
                         }
                         if let Err(err) = self.unwind(target, None) {
-                            return (self, Err(err));
+                            return (self, Err(err))
                         }
                         self.progress.update(target);
 
-                        return (self, Ok(ControlFlow::Continue { block_number: target }));
+                        return (self, Ok(ControlFlow::Continue { block_number: target }))
                     }
                 }
             }
@@ -189,14 +190,13 @@ where
             let next_action = self.run_loop().await?;
 
             if next_action.is_unwind() && self.fail_on_unwind {
-                return Err(PipelineError::UnexpectedUnwind);
+                return Err(PipelineError::UnexpectedUnwind)
             }
 
             // Terminate the loop early if it's reached the maximum user
             // configured block.
-            if next_action.should_continue()
-                && self
-                    .progress
+            if next_action.should_continue() &&
+                self.progress
                     .minimum_block_number
                     .zip(self.max_block)
                     .is_some_and(|(progress, target)| progress >= target)
@@ -208,7 +208,7 @@ where
                     max_block = ?self.max_block,
                     "Terminating pipeline."
                 );
-                return Ok(());
+                return Ok(())
             }
         }
     }
@@ -246,7 +246,7 @@ where
                 ControlFlow::Continue { block_number } => self.progress.update(block_number),
                 ControlFlow::Unwind { target, bad_block } => {
                     self.unwind(target, Some(bad_block.block.number))?;
-                    return Ok(ControlFlow::Unwind { target, bad_block });
+                    return Ok(ControlFlow::Unwind { target, bad_block })
                 }
             }
 
@@ -273,19 +273,12 @@ where
     /// - [`StaticFileSegment::Transactions`](reth_static_file_types::StaticFileSegment::Transactions)
     ///   -> [`StageId::Bodies`]
     ///
-    /// This is a legacy storage.v1 backfill step. Storage.v2 writes directly to static files and
-    /// `RocksDB`, so there is no MDBX -> static-file migration to perform.
-    ///
     /// CAUTION: This method locks the static file producer Mutex, hence can block the thread if the
     /// lock is occupied.
     pub fn move_to_static_files(&self) -> RethResult<()> {
-        if self.provider_factory.cached_storage_settings().is_v2() {
-            return Ok(());
-        }
-
         // Copies data from database to static files
         let lowest_static_file_height =
-            self.static_file_producer.lock().copy_to_static_files()?.min();
+            self.static_file_producer.lock().copy_to_static_files()?.min_block_num();
 
         // Deletes data which has been copied to static files.
         if let Some(prune_tip) = lowest_static_file_height {
@@ -310,14 +303,13 @@ where
         bad_block: Option<BlockNumber>,
     ) -> Result<(), PipelineError> {
         // Add validation before starting unwind
-        let (latest_block, prune_modes, checkpoints) = {
-            let provider = self.provider_factory.provider()?;
-            (
-                provider.last_block_number()?,
-                provider.prune_modes_ref().clone(),
-                provider.get_prune_checkpoints()?,
-            )
-        };
+        let provider = self.provider_factory.provider()?;
+        let latest_block = provider.last_block_number()?;
+
+        // Get the actual pruning configuration
+        let prune_modes = provider.prune_modes_ref();
+
+        let checkpoints = provider.get_prune_checkpoints()?;
         prune_modes.ensure_unwind_target_unpruned(latest_block, to, &checkpoints)?;
 
         // Unwind stages in reverse order of execution
@@ -327,7 +319,8 @@ where
         // attempt to proceed with a finalized block which has been unwinded
         let _locked_sf_producer = self.static_file_producer.lock();
 
-        let mut provider_rw = self.provider_factory.provider_rw()?;
+        let mut provider_rw =
+            self.provider_factory.database_provider_rw()?.disable_long_read_transaction_safety();
 
         for stage in unwind_pipeline {
             let stage_id = stage.id();
@@ -344,7 +337,7 @@ where
                 );
                 self.event_sender.notify(PipelineEvent::Skipped { stage_id });
 
-                continue;
+                continue
             }
 
             info!(
@@ -389,26 +382,16 @@ where
                             });
                         }
 
-                        // update finalized and safe block if needed
+                        // update finalized block if needed
                         let last_saved_finalized_block_number =
                             provider_rw.last_finalized_block_number()?;
 
                         // If None, that means the finalized block is not written so we should
                         // always save in that case
-                        if last_saved_finalized_block_number.is_none()
-                            || Some(checkpoint.block_number) < last_saved_finalized_block_number
+                        if last_saved_finalized_block_number.is_none() ||
+                            Some(checkpoint.block_number) < last_saved_finalized_block_number
                         {
                             provider_rw.save_finalized_block_number(BlockNumber::from(
-                                checkpoint.block_number,
-                            ))?;
-                        }
-
-                        let last_saved_safe_block_number = provider_rw.last_safe_block_number()?;
-
-                        if last_saved_safe_block_number.is_none()
-                            || Some(checkpoint.block_number) < last_saved_safe_block_number
-                        {
-                            provider_rw.save_safe_block_number(BlockNumber::from(
                                 checkpoint.block_number,
                             ))?;
                         }
@@ -417,12 +400,12 @@ where
 
                         stage.post_unwind_commit()?;
 
-                        provider_rw = self.provider_factory.provider_rw()?.into();
+                        provider_rw = self.provider_factory.database_provider_rw()?;
                     }
                     Err(err) => {
                         self.event_sender.notify(PipelineEvent::Error { stage_id });
 
-                        return Err(PipelineError::Stage(StageError::Fatal(Box::new(err))));
+                        return Err(PipelineError::Stage(StageError::Fatal(Box::new(err))))
                     }
                 }
             }
@@ -461,7 +444,7 @@ where
                 // We reached the maximum block, so we skip the stage
                 return Ok(ControlFlow::NoProgress {
                     block_number: prev_checkpoint.map(|progress| progress.block_number),
-                });
+                })
             }
 
             let exec_input = ExecInput { target, checkpoint: prev_checkpoint };
@@ -534,7 +517,7 @@ where
                             ControlFlow::Continue { block_number }
                         } else {
                             ControlFlow::NoProgress { block_number: Some(block_number) }
-                        });
+                        })
                     }
                 }
                 Err(err) => {
@@ -542,7 +525,7 @@ where
                     self.event_sender.notify(PipelineEvent::Error { stage_id });
 
                     if let Some(ctrl) = self.on_stage_error(stage_id, prev_checkpoint, err)? {
-                        return Ok(ctrl);
+                        return Ok(ctrl)
                     }
                 }
             }
@@ -559,8 +542,8 @@ where
             warn!(target: "sync::pipeline", stage = %stage_id, ?local_head, ?header, %error, "Stage encountered detached head");
 
             if let Some(last_detached_head_unwind_target) = self.last_detached_head_unwind_target {
-                if local_head.block.hash == last_detached_head_unwind_target
-                    && header.block.number == local_head.block.number + 1
+                if local_head.block.hash == last_detached_head_unwind_target &&
+                    header.block.number == local_head.block.number + 1
                 {
                     self.detached_head_attempts += 1;
                 } else {
@@ -647,6 +630,31 @@ where
                 target: block.block.number.saturating_sub(1),
                 bad_block: block,
             }))
+        } else if let StageError::TrieDBBehind { triedb_block, execution_start_block } = err {
+            error!(
+                target: "sync::pipeline",
+                stage = %stage_id,
+                triedb_block = %triedb_block,
+                execution_start_block = %execution_start_block,
+                "TrieDB is behind execution stage. Unwinding to triedb checkpoint."
+            );
+
+            // Construct a BlockWithParent for the execution_start_block
+            // to identify the block that triggered the unwind
+            let header = self
+                .provider_factory
+                .header_by_number(execution_start_block)?
+                .ok_or(ProviderError::HeaderNotFound(execution_start_block.into()))?;
+            let bad_block = Box::new(BlockWithParent {
+                block: alloy_eips::eip1898::BlockNumHash {
+                    number: execution_start_block,
+                    hash: header.hash_slow(),
+                },
+                parent: header.parent_hash(),
+            });
+
+            // Unwind to the triedb checkpoint so execution can resume from there
+            Ok(Some(ControlFlow::Unwind { target: triedb_block, bad_block }))
         } else if err.is_fatal() {
             error!(target: "sync::pipeline", stage = %stage_id, "Stage encountered a fatal error: {err}");
             Err(err.into())

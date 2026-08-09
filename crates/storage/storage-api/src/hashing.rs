@@ -57,7 +57,7 @@ pub trait HashingWriter: Send {
     /// Mapping of hashed keys of updated accounts to their respective updated hashed slots.
     fn unwind_storage_hashing_range(
         &self,
-        range: impl RangeBounds<BlockNumber>,
+        range: impl RangeBounds<BlockNumberAddress>,
     ) -> ProviderResult<B256Map<BTreeSet<B256>>>;
 
     /// Iterates over storages and inserts them to hashing table.

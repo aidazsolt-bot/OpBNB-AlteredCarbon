@@ -27,7 +27,10 @@ use reth_primitives_traits::{Account, RecoveredBlock, SealedHeader, StorageEntry
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
-use reth_storage_api::{BlockBodyIndicesProvider, NodePrimitivesProvider, StorageChangeSetReader};
+use reth_storage_api::{
+    BlockBodyIndicesProvider, BalProvider, BalStoreHandle, NodePrimitivesProvider,
+    StorageChangeSetReader,
+};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{HashedPostState, KeccakKeyHasher};
 use revm::database::BundleState;
@@ -767,6 +770,9 @@ impl<N: ProviderNodeTypes> ChangeSetReader for BlockchainProvider<N> {
         self.consistent_provider()?.account_changesets_range(range)
     }
 
+    fn account_changeset_count(&self) -> ProviderResult<usize> {
+        self.consistent_provider()?.account_changeset_count()
+    }
 }
 
 impl<N: ProviderNodeTypes> AccountReader for BlockchainProvider<N> {
@@ -793,6 +799,14 @@ impl<N: ProviderNodeTypes> StateReader for BlockchainProvider<N> {
         block: BlockNumber,
     ) -> ProviderResult<Option<ExecutionOutcome<Self::Receipt>>> {
         StateReader::get_state(&self.consistent_provider()?, block)
+    }
+}
+
+impl<N: ProviderNodeTypes> BalProvider for BlockchainProvider<N> {
+    fn bal_store(&self) -> &BalStoreHandle {
+        static NOOP: std::sync::LazyLock<BalStoreHandle> =
+            std::sync::LazyLock::new(BalStoreHandle::noop);
+        &NOOP
     }
 }
 
@@ -947,6 +961,7 @@ mod tests {
                             blob_gas_used: 0,
                         },
                         state: BundleState::default(),
+                        snapshot: None,
                     };
 
                     ExecutedBlock {
@@ -1751,6 +1766,7 @@ mod tests {
                                 gas_used: 0,
                                 blob_gas_used: 0,
                             },
+                            snapshot: None,
                         }),
                         ..Default::default()
                     }

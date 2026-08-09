@@ -767,10 +767,8 @@ impl<N: NodePrimitives> Default for ExecutedBlock<N> {
             recovered_block: Default::default(),
             execution_output: Arc::new(BlockExecutionOutput {
                 state: Default::default(),
-                receipts: Default::default(),
-                requests: Default::default(),
-                gas_used: 0,
-                snapshot: Default::default(),
+                result: Default::default(),
+                snapshot: None,
             }),
             trie_data: LazyTrieData::ready(ComputedTrieData::default()),
         }

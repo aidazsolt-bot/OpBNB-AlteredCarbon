@@ -1416,6 +1416,20 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         highest_tx,
                         highest_block,
                     )?,
+                StaticFileSegment::TransactionSenders => self
+                    .ensure_invariants::<_, tables::TransactionSenders>(
+                        provider,
+                        segment,
+                        highest_tx,
+                        highest_block,
+                    )?,
+                StaticFileSegment::AccountChangeSets => self
+                    .ensure_invariants::<_, tables::AccountChangeSets>(
+                        provider,
+                        segment,
+                        highest_block,
+                        highest_block,
+                    )?,
             } {
                 debug!(target: "reth::providers::static_file", ?segment, unwind_target=unwind, "Invariants check returned unwind target");
                 update_unwind_target(unwind);
@@ -1469,8 +1483,6 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             StaticFileSegment::Headers | StaticFileSegment::Transactions | StaticFileSegment::Sidecars => true,
             StaticFileSegment::Receipts => {
                 if EitherWriter::receipts_destination(provider).is_database() {
-                    // Old pruned nodes (including full node) do not store receipts as static
-                    // files.
                     debug!(target: "reth::providers::static_file", ?segment, "Skipping receipts segment: receipts stored in database");
                     return false;
                 }
@@ -1478,16 +1490,18 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                 if NamedChain::Gnosis == provider.chain_spec().chain_id() ||
                     NamedChain::Chiado == provider.chain_spec().chain_id()
                 {
-                    // Gnosis and Chiado's historical import is broken and does not work with
-                    // this check. They are importing receipts along
-                    // with importing headers/bodies.
                     debug!(target: "reth::providers::static_file", ?segment, "Skipping receipts segment: broken historical import for gnosis/chiado");
                     return false;
                 }
 
                 true
             }
-            StaticFileSegment::Sidecars => true,
+            StaticFileSegment::TransactionSenders => {
+                !EitherWriterDestination::senders(provider).is_database()
+            }
+            StaticFileSegment::AccountChangeSets => {
+                !EitherWriterDestination::account_changesets(provider).is_database()
+            }
         }
     }
 
@@ -1620,7 +1634,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         let stage_id = match segment {
             StaticFileSegment::Headers => StageId::Headers,
             StaticFileSegment::Transactions => StageId::Bodies,
-            StaticFileSegment::Receipts | StaticFileSegment::Sidecars => StageId::Execution,
+            StaticFileSegment::Receipts |
+            StaticFileSegment::Sidecars |
+            StaticFileSegment::AccountChangeSets => StageId::Execution,
+            StaticFileSegment::TransactionSenders => StageId::SenderRecovery,
         };
         let checkpoint_block_number =
             provider.get_stage_checkpoint(stage_id)?.unwrap_or_default().block_number;
@@ -1657,7 +1674,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                     // TODO(joshie): is_block_meta
                     writer.prune_headers(prune_count)?;
                 }
-                StaticFileSegment::Transactions | StaticFileSegment::Receipts | StaticFileSegment::Sidecars => {
+                StaticFileSegment::Transactions |
+                StaticFileSegment::Receipts |
+                StaticFileSegment::Sidecars |
+                StaticFileSegment::TransactionSenders => {
                     if let Some(block) = provider.block_body_indices(checkpoint_block_number)? {
                         let number = highest_static_file_entry - block.last_tx_num();
                         debug!(target: "reth::providers::static_file", ?segment, prune_count = number, checkpoint_block_number, "Pruning transaction based segment");
@@ -1672,13 +1692,20 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                             StaticFileSegment::Sidecars => {
                                 writer.prune_receipts(number, checkpoint_block_number)?
                             }
-                            StaticFileSegment::Headers => {
+                            StaticFileSegment::TransactionSenders => {
+                                writer.prune_transaction_senders(number, checkpoint_block_number)?
+                            }
+                            StaticFileSegment::Headers |
+                            StaticFileSegment::AccountChangeSets => {
                                 unreachable!()
                             }
                         }
                     } else {
                         debug!(target: "reth::providers::static_file", ?segment, checkpoint_block_number, "No block body indices found for checkpoint block");
                     }
+                }
+                StaticFileSegment::AccountChangeSets => {
+                    writer.prune_account_changesets(checkpoint_block_number)?;
                 }
             }
             debug!(target: "reth::providers::static_file", ?segment, "Committing writer after pruning");
@@ -1751,6 +1778,10 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             receipts: self.get_highest_static_file_block(StaticFileSegment::Receipts),
             transactions: self.get_highest_static_file_block(StaticFileSegment::Transactions),
             sidecars: self.get_highest_static_file_block(StaticFileSegment::Sidecars),
+            transaction_senders: self
+                .get_highest_static_file_block(StaticFileSegment::TransactionSenders),
+            account_changesets: self
+                .get_highest_static_file_block(StaticFileSegment::AccountChangeSets),
         }
     }
 
@@ -1990,7 +2021,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     pub fn tx_index(&self, segment: StaticFileSegment) -> Option<SegmentRanges> {
         self.indexes
             .read()
-            .get(segment)
+            .get(&segment)
             .and_then(|index| index.available_block_ranges_by_max_tx.as_ref())
             .cloned()
     }
@@ -2000,7 +2031,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     pub fn expected_block_index(&self, segment: StaticFileSegment) -> Option<SegmentRanges> {
         self.indexes
             .read()
-            .get(segment)
+            .get(&segment)
             .map(|index| &index.expected_block_ranges_by_max_block)
             .cloned()
     }
@@ -2161,6 +2192,10 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         self.walk_account_changeset_range(range).collect()
     }
 
+    fn account_changeset_count(&self) -> ProviderResult<usize> {
+        // Account changeset static files are not fully ported in this fork yet.
+        Ok(0)
+    }
 }
 
 impl<N: NodePrimitives> StaticFileProvider<N> {

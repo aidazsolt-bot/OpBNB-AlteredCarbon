@@ -67,10 +67,8 @@ pub trait Executor<DB: Database>: Sized {
         let result = self.execute_one(block)?;
         let mut state = self.into_state();
         Ok(BlockExecutionOutput {
+            result,
             state: state.take_bundle(),
-            receipts: result.receipts,
-            requests: result.requests,
-            gas_used: result.gas_used,
             snapshot: None,
         })
     }
@@ -119,10 +117,8 @@ pub trait Executor<DB: Database>: Sized {
         let mut state = self.into_state();
         f(&state);
         Ok(BlockExecutionOutput {
+            result,
             state: state.take_bundle(),
-            receipts: result.receipts,
-            requests: result.requests,
-            gas_used: result.gas_used,
             snapshot: None,
         })
     }
@@ -142,10 +138,8 @@ pub trait Executor<DB: Database>: Sized {
         f(&state);
         let result = result?;
         Ok(BlockExecutionOutput {
+            result,
             state: state.take_bundle(),
-            receipts: result.receipts,
-            requests: result.requests,
-            gas_used: result.gas_used,
             snapshot: None,
         })
     }
@@ -163,10 +157,8 @@ pub trait Executor<DB: Database>: Sized {
         let result = self.execute_one_with_state_hook(block, state_hook)?;
         let mut state = self.into_state();
         Ok(BlockExecutionOutput {
+            result,
             state: state.take_bundle(),
-            receipts: result.receipts,
-            requests: result.requests,
-            gas_used: result.gas_used,
             snapshot: None,
         })
     }

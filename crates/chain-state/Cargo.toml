@@ -21,6 +21,7 @@ reth-metrics.workspace = true
 reth-primitives.workspace = true
 reth-primitives-traits.workspace = true
 reth-storage-api.workspace = true
+reth-tasks = { workspace = true, features = ["rayon"], optional = true }
 reth-trie.workspace = true
 reth-revm.workspace = true
 
@@ -50,6 +51,7 @@ derive_more.workspace = true
 metrics.workspace = true
 parking_lot.workspace = true
 pin-project.workspace = true
+rayon = { workspace = true, optional = true }
 reth-trie-sparse.workspace = true
 revm.workspace = true
 
@@ -75,10 +77,8 @@ serde = [
     "reth-trie/serde",
     "reth-storage-api/serde"
 ]
-# Declared only to satisfy `#[cfg(feature = "rayon")]` gates in
-# `state_trie_overlay.rs`; no `rayon` dependency is wired up in this fork, so
-# the feature is always inactive (parallel code paths there are dead for now).
-rayon = []
+# Enables parallel overlay flattening via rayon.
+rayon = ["dep:rayon", "dep:reth-tasks"]
 test-utils = [
 	"alloy-signer",
 	"alloy-signer-local",

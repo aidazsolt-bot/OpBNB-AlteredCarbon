@@ -25,6 +25,6 @@ where
     I: IntoIterator<Item = &'a T>,
 {
     txes.into_iter()
-        .map(|tx| tx.recover_signer_unchecked().ok_or_else(RecoveryError::new))
+        .map(|tx| SignedTransaction::recover_signer_unchecked(tx).ok_or_else(RecoveryError::new))
         .collect()
 }

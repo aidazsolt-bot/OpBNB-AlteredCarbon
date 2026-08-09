@@ -99,8 +99,6 @@ where
                 + BlockReader
                 + reth_provider::ChangeSetReader,
         >,
-    <<Provider::Provider as reth_provider::NodePrimitivesProvider>::Primitives as NodePrimitives>::Receipt:
-        From<<reth_db_api::tables::Receipts as reth_db_api::table::Table>::Value>,
 {
     /// Listen for events on the `static_file_producer`.
     pub fn events(&self) -> EventStream<StaticFileProducerEvent> {

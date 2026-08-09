@@ -30,6 +30,23 @@ pub struct BuiltPayloadExecutedBlock<N: NodePrimitives> {
     pub changed_paths: Option<Arc<TriePrefixSetsMut>>,
 }
 
+impl<N: NodePrimitives> BuiltPayloadExecutedBlock<N> {
+    /// Converts this into an [`reth_chain_state::ExecutedBlock`].
+    pub fn into_executed_payload(self) -> reth_chain_state::ExecutedBlock<N> {
+        use reth_trie_common::{updates::TrieUpdatesSorted, ComputedTrieData, HashedPostStateSorted};
+
+        reth_chain_state::ExecutedBlock::new(
+            self.recovered_block,
+            self.execution_output,
+            ComputedTrieData::new_with_changed_paths(
+                Arc::new(Arc::unwrap_or_clone(self.hashed_state).into_sorted()),
+                Arc::new(Arc::unwrap_or_clone(self.trie_updates).into_sorted()),
+                self.changed_paths,
+            ),
+        )
+    }
+}
+
 /// Represents a successfully built execution payload (block).
 ///
 /// Provides access to the underlying block data, execution results, and associated metadata

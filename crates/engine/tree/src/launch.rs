@@ -10,7 +10,7 @@ use crate::{
     download::BasicBlockDownloader,
     engine::{EngineApiKind, EngineApiRequest, EngineApiRequestHandler, EngineHandler},
     persistence::PersistenceHandle,
-    tree::{EngineApiTreeHandler, EngineValidator, TreeConfig, WaitForCaches},
+    tree::{EngineApiTreeHandler, EngineValidator, TreeConfig},
 };
 use futures::Stream;
 use reth_chain_state::StateTrieOverlayManager;
@@ -79,7 +79,7 @@ where
     N: ProviderNodeTypes,
     Client: BlockClient<Block = <N::Primitives as NodePrimitives>::Block> + 'static,
     S: Stream<Item = BeaconEngineMessage<N::Payload>> + Send + Sync + Unpin + 'static,
-    V: EngineValidator<N::Payload> + WaitForCaches,
+    V: EngineValidator<N::Payload>,
     C: ConfigureEvm<Primitives = N::Primitives> + 'static,
 {
     let downloader = BasicBlockDownloader::new(client, consensus.clone());

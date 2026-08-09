@@ -5,8 +5,9 @@ use core::hash::Hash;
 
 use crate::InMemorySize;
 use alloy_consensus::Transaction;
-use alloy_eips::eip2718::{Decodable2718, Encodable2718};
-use alloy_primitives::{keccak256, Address, Signature, TxHash, B256};
+use alloy_consensus::transaction::TxHashRef;
+use alloy_eips::eip2718::{Decodable2718, Encodable2718, IsTyped2718};
+use alloy_primitives::{keccak256, Address, Signature, B256};
 use revm::context::TxEnv;
 
 /// Opaque error type for sender recovery, re-exported from `alloy-consensus`.
@@ -31,12 +32,11 @@ pub trait SignedTransaction:
     + Encodable2718
     + Decodable2718
     + Transaction
+    + TxHashRef
+    + IsTyped2718
 {
     /// Transaction type that is signed.
     type Transaction: Transaction;
-
-    /// Returns reference to transaction hash.
-    fn tx_hash(&self) -> &TxHash;
 
     /// Returns reference to transaction.
     fn transaction(&self) -> &Self::Transaction;
@@ -123,9 +123,18 @@ pub trait SignedTransaction:
 
 /// Helper trait that unifies all behaviour required by transaction to support full node
 /// operations.
-pub trait FullSignedTx: SignedTransaction + crate::MaybeCompact + crate::MaybeSerdeBincodeCompat {}
+pub trait FullSignedTx:
+    SignedTransaction
+    + crate::MaybeCompact
+    + crate::MaybeSerdeBincodeCompat
+    + alloy_consensus::transaction::SignerRecoverable
+{
+}
 impl<T> FullSignedTx for T where
-    T: SignedTransaction + crate::MaybeCompact + crate::MaybeSerdeBincodeCompat
+    T: SignedTransaction
+        + crate::MaybeCompact
+        + crate::MaybeSerdeBincodeCompat
+        + alloy_consensus::transaction::SignerRecoverable
 {
 }
 
@@ -149,10 +158,6 @@ where
     Self: Transaction,
 {
     type Transaction = Self;
-
-    fn tx_hash(&self) -> &TxHash {
-        self.hash()
-    }
 
     fn transaction(&self) -> &Self::Transaction {
         self
