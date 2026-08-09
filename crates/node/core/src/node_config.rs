@@ -4,7 +4,7 @@ use crate::{
     args::{
         DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
         NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StateDbArgs, StaticFilesArgs,
-        TxPoolArgs,
+        StorageArgs, TxPoolArgs,
     },
     dirs::{ChainPath, DataDirPath},
     utils::get_single_header,
@@ -24,6 +24,7 @@ use reth_primitives_traits::SealedHeader;
 use reth_stages_types::StageId;
 use reth_storage_api::{
     BlockHashReader, DatabaseProviderFactory, HeaderProvider, StageCheckpointReader,
+    StorageSettings,
 };
 use reth_storage_errors::provider::ProviderResult;
 use std::{path::PathBuf, sync::Arc};
@@ -146,6 +147,9 @@ pub struct NodeConfig<ChainSpec> {
     /// All static files related arguments
     pub static_files: StaticFilesArgs,
 
+    /// All storage related arguments with --storage prefix
+    pub storage: StorageArgs,
+
     /// All state database related arguments
     pub statedb: StateDbArgs,
 
@@ -188,10 +192,30 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             engine: EngineArgs::default(),
             era: EraArgs::default(),
             static_files: StaticFilesArgs::default(),
+            storage: StorageArgs::default(),
             statedb: StateDbArgs::default(),
             enable_prefetch: false,
             skip_state_root_validation: false,
             enable_execution_cache: false,
+        }
+    }
+
+    /// Set the storage args for the node
+    pub const fn with_storage(mut self, storage: StorageArgs) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    /// Returns the effective storage settings for this node.
+    ///
+    /// Determined by the `--storage.v2` flag (defaults to `true`).
+    /// Existing databases retain whatever settings are persisted in their
+    /// metadata (checked during genesis init).
+    pub const fn storage_settings(&self) -> StorageSettings {
+        if self.storage.v2 {
+            StorageSettings::v2()
+        } else {
+            StorageSettings::v1()
         }
     }
 
@@ -479,6 +503,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             engine: self.engine,
             era: self.era,
             static_files: self.static_files,
+            storage: self.storage,
             statedb: self.statedb,
             enable_prefetch: self.enable_prefetch,
             skip_state_root_validation: self.skip_state_root_validation,
@@ -512,6 +537,7 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             engine: self.engine.clone(),
             era: self.era.clone(),
             static_files: self.static_files,
+            storage: self.storage,
             statedb: self.statedb.clone(),
             enable_prefetch: self.enable_prefetch,
             skip_state_root_validation: self.skip_state_root_validation,
