@@ -26,13 +26,30 @@ pub static OP_TESTNET_BOOTNODES: &[&str] = &[
 ];
 
 /// OPBNB mainnet boot nodes.
+///
+/// Official EL bootnodes from
+/// <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
+/// (`OpBNBMainnetBootnodes`, ENR→enode), plus legacy community nodes.
 pub static OPBNB_MAINNET_BOOTNODES: &[&str] = &[
+    // bnb-chain/op-geth OpBNBMainnetBootnodes
+    "enode://547af4cbde12708f6d484f6182e9568da95404b0914fb4db4efa57794133427ca6968b86ca1322b29671d39e5db44e417f3be4b83a4c4d3772a708f82ff3948e@54.178.145.73:30303",
+    "enode://50849e69a823e74db2bdda011cd85f7ccbebb53a0655008d4cb31f948877b36376489ff848efb8f5c5a523024ede177ee6c944d0c487c1a57b04b51f1a3d8923@54.227.72.206:30303",
+    // legacy
     "enode://db109c6cac5c8b6225edd3176fc3764c58e0720950fe94c122c80978e706a9c9e976629b718e48b6306ea0f9126e5394d3424c9716c5703549e2e7eba216353b@52.193.218.151:30304",
     "enode://afe18782053bb31fb7ea41e1acf659ab9bd1eec181fb97331f0a6b61871a469b4f75138f903c977796be1cc2a3c985d33150a396e878d3cd6e4723b6040ff9c0@52.195.105.192:30304",
 ];
 
 /// OPBNB testnet boot nodes.
+///
+/// Official EL bootnodes from
+/// <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
+/// (`OpBNBTestnetBootnodes`), plus legacy community nodes.
 pub static OPBNB_TESTNET_BOOTNODES: &[&str] = &[
+    // bnb-chain/op-geth OpBNBTestnetBootnodes (ENR→enode)
+    "enode://3ca42ffac304ebe4dd90fb25d0d4a18ab20cfd8bd10f2e4f00b5aeb9a54c981b3c036fb6e4e2c0779124fbb47740a2f32f70614ec5e02597915df7c0ab8ac2d1@52.68.138.166:30303",
+    "enode://f00355c77d619de2e988b7b8f715cee12aaff7e62cc8593ffdca237fb57f25470fa6f538641a3ca1e3bae90d4a73083dbacc8cee29494f0d704b3a108019a749@3.115.199.222:30303",
+    "enode://c57adc1e28cc11ee9c64b5e70b8f505e890bb0eb5685423781cdf1be7655052fe318ab7562270ae2266cf28cfe982ff9ac9a89546ddc895778acabf306e99b12@3.229.26.240:0?discport=30304",
+    // legacy
     "enode://217cfe091047a1c3f490e96d51e2f3bd90517a9be77b8a6033b31833a193aa6c33b6d07088c4980f462162635ffbccaa413dc28cb14c4f2b96af0dd97292411f@13.112.117.88:30304",
     "enode://38c8913f87d64179bac23514ddb56a17f5b28f7e253b3825a10a2c8b9553c5df7d3b6c83a96948ad0466f384bf63236fd5e6bed6d6402156749b6b0899c82d47@54.199.235.83:30304",
 ];

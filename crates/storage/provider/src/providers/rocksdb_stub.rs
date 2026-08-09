@@ -120,11 +120,7 @@ impl RocksDBBatch {
     }
 }
 
-impl RocksReadSnapshot<'_> {
-    pub fn into_raw(self) -> crate::either_writer::RocksTxRefArg<'static> {
-        ()
-    }
-}
+impl RocksReadSnapshot<'_> {}
 
 /// A stub builder for `RocksDB`.
 #[derive(Debug)]

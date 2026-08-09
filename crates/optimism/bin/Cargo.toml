@@ -24,11 +24,9 @@ tracing.workspace = true
 workspace = true
 
 [features]
-default = ["jemalloc"]
+default = ["jemalloc", "rocksdb"]
 
-# RocksDB backend for storage v2 history indices.
-# NOTE: currently does not compile in this fork (incomplete rocksdb port); do not
-# enable until PORT-STOR-002 is resolved. Without it, --storage.v2 keeps history in MDBX.
+# RocksDB backend for storage v2 history indices (`--storage.v2`).
 rocksdb = ["reth-optimism-cli/rocksdb"]
 
 jemalloc = [
