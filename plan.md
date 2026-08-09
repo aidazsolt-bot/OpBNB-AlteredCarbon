@@ -53,6 +53,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
 | PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ fixed: `account_changesets_in_static_files` / `transaction_senders_in_static_files` always false; route changesets to MDBX until real SF segments ported |
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; Aktivierung bricht aktuell den Compile (unvollständiger RocksDB-Port) | 🔓 open: Feature-Flags an `op-reth`/`optimism-cli` vorbereitet; Compile-Fix + Default-Enable separat |
+| PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
