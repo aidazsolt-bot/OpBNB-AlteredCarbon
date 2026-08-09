@@ -81,6 +81,13 @@ reth-optimism-chainspec = { workspace = true, features = ["std"] }
 [features]
 default = []
 
+# Enable real RocksDB backend for storage v2 history indices (required for --storage.v2).
+rocksdb = [
+    "reth-cli-commands/rocksdb",
+    "reth-provider/rocksdb",
+    "reth-stages/rocksdb",
+]
+
 # Opentelemetry feature to activate tracing and logs export
 otlp = ["reth-tracing/otlp", "reth-node-core/otlp"]
 otlp-logs = ["reth-tracing/otlp-logs", "reth-node-core/otlp-logs"]

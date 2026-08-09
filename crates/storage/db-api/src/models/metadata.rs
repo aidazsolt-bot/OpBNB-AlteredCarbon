@@ -61,8 +61,11 @@ impl StorageSettings {
     }
 
     /// Whether transaction senders are stored in static files.
+    ///
+    /// Always `false` in this fork: the TransactionSenders static-file segment is not ported
+    /// yet (stubs incorrectly reused the Transactions segment).
     pub const fn transaction_senders_in_static_files(&self) -> bool {
-        self.storage_v2
+        false
     }
 
     /// Whether storages history is stored in `RocksDB`.
@@ -92,7 +95,11 @@ impl StorageSettings {
     }
 
     /// Whether account changesets are stored in static files.
+    ///
+    /// Always `false` in this fork: the AccountChangeSets static-file segment is not ported
+    /// yet. Upstream v2 writes these to a dedicated SF segment; our incomplete port reused
+    /// the Headers segment and broke genesis (`append Headers #0 but expected #1`).
     pub const fn account_changesets_in_static_files(&self) -> bool {
-        self.storage_v2
+        false
     }
 }

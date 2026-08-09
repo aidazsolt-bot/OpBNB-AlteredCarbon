@@ -160,10 +160,12 @@ impl<'a> EitherWriter<'a, (), ()> {
         P: DBProvider + NodePrimitivesProvider + StorageSettingsCache + StaticFileProviderFactory,
         P::Tx: DbTxMut,
     {
-        if provider.cached_storage_settings().storage_v2 {
+        // Keep changesets in MDBX until AccountChangeSets SF is ported. Do not route through
+        // Headers (previous stub corrupted header static files during genesis).
+        if provider.cached_storage_settings().account_changesets_in_static_files() {
             Ok(EitherWriter::StaticFile(
                 provider
-                    .get_static_file_writer(block_number, StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)?,
+                    .get_static_file_writer(block_number, StaticFileSegment::AccountChangeSets)?,
             ))
         } else {
             Ok(EitherWriter::Database(
@@ -202,7 +204,7 @@ impl<'a> EitherWriter<'a, (), ()> {
     pub fn account_changesets_destination<P: DBProvider + StorageSettingsCache>(
         provider: &P,
     ) -> EitherWriterDestination {
-        if provider.cached_storage_settings().storage_v2 {
+        if provider.cached_storage_settings().account_changesets_in_static_files() {
             EitherWriterDestination::StaticFile
         } else {
             EitherWriterDestination::Database
@@ -917,7 +919,7 @@ impl EitherWriterDestination {
         P: StorageSettingsCache,
     {
         // Write account changesets to static files only if they're explicitly enabled
-        if provider.cached_storage_settings().storage_v2 {
+        if provider.cached_storage_settings().account_changesets_in_static_files() {
             Self::StaticFile
         } else {
             Self::Database
