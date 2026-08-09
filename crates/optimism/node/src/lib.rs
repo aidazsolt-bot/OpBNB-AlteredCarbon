@@ -11,9 +11,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-#[cfg(feature = "test-utils")]
-use reth_db_api as _;
-
 /// CLI argument parsing for the optimism node.
 pub mod args;
 
@@ -48,8 +45,9 @@ pub use reth_optimism_evm::*;
 
 pub use reth_optimism_storage::OpStorage;
 
+use futures_util as _;
 use op_revm as _;
-use revm as _;
-
-#[cfg(feature = "test-utils")]
+use reth_db_api as _;
+use reth_evm as _;
 use reth_tasks as _;
+use revm as _;

@@ -8,6 +8,11 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+// Kept for feature/CLI wiring; referenced to satisfy unused_crate_dependencies.
+use alloy_genesis as _;
+use reth_tasks as _;
+use serde_json as _;
+
 /// A configurable App on top of the cli parser.
 pub mod app;
 /// Optimism chain specification parser.

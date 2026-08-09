@@ -21,7 +21,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; live opBNB + trie/proofs deferred
-5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 angelaufen (`cargo check --workspace --no-default-features` ✅ 0 errors 2026-08-09; Clippy/nextest/EF noch offen)
+5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅ (warnings only); nextest chainspec/forks ✅ 23; EF + broader nextest noch offen
 6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
 
 ## Todo-Status (Stand 2026-08-09)
