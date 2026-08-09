@@ -10,6 +10,9 @@ pub use jar::StaticFileJarProvider;
 mod writer;
 pub use writer::{StaticFileProviderRW, StaticFileProviderRWRefMut};
 
+#[cfg(test)]
+mod writer_tests;
+
 mod metrics;
 use reth_nippy_jar::NippyJar;
 use reth_static_file_types::{SegmentHeader, StaticFileSegment};
@@ -685,7 +688,7 @@ mod tests {
 
         // Test writing and reading account changesets
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
 
             // Create test data for multiple blocks
             let test_blocks = 10u64;
@@ -713,17 +716,17 @@ mod tests {
         // Verify data can be read back correctly
         {
             let provider = sf_rw
-                .get_segment_provider_for_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */, 5, None)
+                .get_segment_provider_for_block(StaticFileSegment::AccountChangeSets, 5, None)
                 .unwrap();
 
             // Check that the segment header has changeset offsets
-            assert!(provider.user_header().changeset_offsets().is_some());
-            let offsets = provider.user_header().changeset_offsets().unwrap();
-            assert_eq!(offsets.len(), 10); // Should have 10 blocks worth of offsets
+            assert_eq!(provider.user_header().changeset_offsets_len(), 10); // 10 blocks worth of offsets
+            let offsets = provider.read_changeset_offsets(0..10).unwrap();
+            assert_eq!(offsets.len(), 10);
 
             // Verify each block has the expected number of changes
-            for (i, offset) in offsets.iter().enumerate() {
-                assert_eq!(offset.num_changes(), 5, "Block {} should have 5 changes", i);
+            for (block, offset) in offsets {
+                assert_eq!(offset.num_changes(), 5, "Block {block} should have 5 changes");
             }
         }
     }
@@ -742,7 +745,7 @@ mod tests {
 
         // Write changesets for multiple blocks
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
 
             // Block 0: test_address and other_address change
             writer
@@ -841,7 +844,7 @@ mod tests {
                     .build()
                     .expect("failed to create static file provider");
 
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
 
             for block_num in 0..=tip {
                 // Create varying number of changes per block
@@ -878,7 +881,7 @@ mod tests {
         ) -> eyre::Result<()> {
             // Verify highest block
             let highest_block =
-                sf_rw.get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
+                sf_rw.get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
             assert_eyre(highest_block, expected_tip, "block tip mismatch")?;
 
             // Verify file count
@@ -891,14 +894,16 @@ mod tests {
             if let Some(tip) = expected_tip {
                 // Verify we can still read data up to the tip
                 let provider = sf_rw.get_segment_provider_for_block(
-                    StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+                    StaticFileSegment::AccountChangeSets,
                     tip,
                     None,
                 )?;
 
                 // Check offsets are valid
-                let offsets = provider.user_header().changeset_offsets();
-                assert!(offsets.is_some(), "Should have changeset offsets");
+                assert!(
+                    provider.user_header().changeset_offsets_len() > 0,
+                    "Should have changeset offsets"
+                );
             }
 
             Ok(())
@@ -915,7 +920,7 @@ mod tests {
 
         // Case 1: Truncate to block 20 (remove last 9 blocks)
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
             writer.prune_account_changesets(20).unwrap();
             writer.commit().unwrap();
 
@@ -925,7 +930,7 @@ mod tests {
 
         // Case 2: Truncate to block 9 (should remove 2 files)
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
             writer.prune_account_changesets(9).unwrap();
             writer.commit().unwrap();
 
@@ -935,7 +940,7 @@ mod tests {
 
         // Case 3: Truncate all (should keep block 0)
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
             writer.prune_account_changesets(0).unwrap();
             writer.commit().unwrap();
 
@@ -966,7 +971,7 @@ mod tests {
 
         // Write the changeset
         {
-            let mut writer = sf_rw.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */).unwrap();
+            let mut writer = sf_rw.latest_writer(StaticFileSegment::AccountChangeSets).unwrap();
 
             let changeset: Vec<AccountBeforeTx> = addresses
                 .iter()
