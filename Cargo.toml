@@ -27,7 +27,10 @@ members = [
     "crates/optimism/consensus/",
     "crates/optimism/evm/",
     "crates/optimism/hardforks/",
+    "crates/optimism/payload/",
     "crates/optimism/primitives/",
+    "crates/optimism/storage/",
+    "crates/optimism/txpool/",
     "crates/primitives/",
     "crates/primitives-traits/",
     "crates/chainspec/",
@@ -434,6 +437,7 @@ reth-optimism-payload-builder = { path = "crates/optimism/payload" }
 reth-optimism-primitives = { path = "crates/optimism/primitives" }
 reth-optimism-rpc = { path = "crates/optimism/rpc" }
 reth-optimism-storage = { path = "crates/optimism/storage" }
+reth-optimism-txpool = { path = "crates/optimism/txpool" }
 reth-payload-builder = { path = "crates/payload/builder" }
 reth-payload-builder-primitives = { path = "crates/payload/builder-primitives" }
 reth-payload-primitives = { path = "crates/payload/primitives" }
@@ -541,6 +545,7 @@ alloy-transport-ipc = { version = "2.1.1", default-features = false }
 alloy-transport-ws = { version = "2.1.1", default-features = false }
 # Path-aligned with local optimism.git/rust (PostExec / Lagoon APIs + revm41).
 op-alloy-consensus = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/consensus", version = "2.0.0", default-features = false }
+op-alloy-flz = { version = "0.13.1", default-features = false }
 op-alloy-network = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/network", version = "2.0.0", default-features = false }
 op-alloy-rpc-types = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types", version = "2.0.0", default-features = false }
 op-alloy-rpc-types-engine = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types-engine", version = "2.0.0", default-features = false }

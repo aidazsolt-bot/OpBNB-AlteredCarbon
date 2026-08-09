@@ -666,3 +666,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Verified: `reth-optimism-evm` + stack, `reth-bsc-node --features bsc`, `cargo check --workspace --no-default-features`.
 - Next: optimism payload / rpc / node / cli.
 
+### Session 8 cont. — payload/txpool/storage
+- Synced `reth-optimism-{storage,txpool,payload-builder}` from op-reth; workspace members + `op-alloy-flz`.
+- Adapted payload to trail v2.4.1 `PayloadConfig`/`BuildArguments`/`PayloadTypes::PayloadBuilderAttributes`.
+- Added `SignedTransaction::try_clone_into_recovered`.
+- Verify: storage/txpool/payload + bsc-node + workspace `--no-default-features` green.
+- Next: optimism rpc / node / cli.
+

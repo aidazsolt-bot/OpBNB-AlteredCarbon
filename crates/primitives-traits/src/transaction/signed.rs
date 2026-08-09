@@ -119,6 +119,16 @@ pub trait SignedTransaction:
             None => Err(self),
         }
     }
+
+    /// Tries to recover signer and return a [`super::Recovered`] clone.
+    ///
+    /// Returns an error if recovery fails.
+    fn try_clone_into_recovered(&self) -> Result<super::Recovered<Self>, RecoveryError>
+    where
+        Self: Clone,
+    {
+        self.clone().try_into_recovered().map_err(|_| RecoveryError::default())
+    }
 }
 
 /// Helper trait that unifies all behaviour required by transaction to support full node
