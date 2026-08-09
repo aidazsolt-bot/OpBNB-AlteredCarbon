@@ -189,7 +189,7 @@ where
             config,
             chain,
             metrics,
-            instance: instance.unwrap_or(1),
+            instance,
             network,
             rpc,
             txpool,
