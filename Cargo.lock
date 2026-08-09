@@ -6685,6 +6685,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "op-alloy-flz"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a79f352fc3893dcd670172e615afef993a41798a1d3fc0db88a3e60ef2e70ecc"
+
+[[package]]
 name = "op-alloy-network"
 version = "2.0.0"
 dependencies = [
@@ -10550,6 +10556,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "reth-optimism-payload-builder"
+version = "2.4.1"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-evm",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-debug",
+ "alloy-rpc-types-engine",
+ "alloy-rpc-types-eth",
+ "derive_more",
+ "op-alloy-consensus",
+ "op-alloy-rpc-types-engine",
+ "op-revm",
+ "reth-basic-payload-builder",
+ "reth-chainspec",
+ "reth-evm",
+ "reth-execution-types",
+ "reth-metrics 2.4.1",
+ "reth-optimism-chainspec",
+ "reth-optimism-evm",
+ "reth-optimism-forks",
+ "reth-optimism-primitives",
+ "reth-optimism-txpool",
+ "reth-payload-builder-primitives",
+ "reth-payload-primitives",
+ "reth-payload-util",
+ "reth-payload-validator",
+ "reth-primitives-traits 2.4.1",
+ "reth-revm",
+ "reth-storage-api",
+ "reth-transaction-pool",
+ "revm",
+ "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
 name = "reth-optimism-primitives"
 version = "2.4.1"
 dependencies = [
@@ -10574,6 +10621,62 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+]
+
+[[package]]
+name = "reth-optimism-storage"
+version = "2.4.1"
+dependencies = [
+ "alloy-consensus",
+ "reth-codecs",
+ "reth-optimism-primitives",
+ "reth-prune-types",
+ "reth-stages-types",
+ "reth-storage-api",
+]
+
+[[package]]
+name = "reth-optimism-txpool"
+version = "2.4.1"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-json-rpc",
+ "alloy-primitives",
+ "alloy-rpc-client",
+ "alloy-rpc-types-eth",
+ "alloy-serde",
+ "async-trait",
+ "c-kzg",
+ "derive_more",
+ "futures-util",
+ "jsonrpsee",
+ "jsonrpsee-server",
+ "metrics",
+ "op-alloy-consensus",
+ "op-alloy-flz",
+ "op-alloy-rpc-types",
+ "op-revm",
+ "parking_lot",
+ "reth-chain-state",
+ "reth-chainspec",
+ "reth-eth-wire-types",
+ "reth-evm",
+ "reth-execution-types",
+ "reth-metrics 2.4.1",
+ "reth-optimism-chainspec",
+ "reth-optimism-evm",
+ "reth-optimism-forks",
+ "reth-optimism-primitives",
+ "reth-primitives-traits 2.4.1",
+ "reth-provider",
+ "reth-storage-api",
+ "reth-transaction-pool",
+ "rstest",
+ "serde",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
