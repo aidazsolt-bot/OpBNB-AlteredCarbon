@@ -20,9 +20,15 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
-4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; live opBNB + trie/proofs deferred
+4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅ (warnings only); nextest chainspec/forks ✅ 23; EF + broader nextest noch offen
 6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
+
+### Sync-Tests (Human-owned)
+
+- **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
+  **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
+- AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
 
 ## Todo-Status (Stand 2026-08-09)
 
@@ -32,7 +38,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
 | opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | ⏳ pending (workspace check grün) |
+| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 check+clippy-op+nextest(chainspec/forks) ✅; EF/prim/consensus nextest offen |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | ⏳ pending |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
@@ -702,4 +708,11 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - New `crates/optimism/bin` binary package `op-reth` (bsc-reth pattern).
 - Verify: `reth-optimism-cli`, `op-reth`, `reth-bsc-node --features bsc` green.
 - Next: live opBNB smoke / Clippy / optional trie-proofs; keep BSC green.
+
+### Session 8 cont. — Phase 5 smoke + Clippy + nextest (chainspec/forks)
+- Smoke: `op-reth init --chain opbnb` + short `node` boot → RPC up; hardfork list shows Snow/Volta/Fourier.
+- Clippy on op-stack finished (no errors); minor chainspec/node cleanups.
+- `EthChainSpec::next_block_base_fee` → `Option<u64>` via Holocene `decode_holocene_base_fee`.
+- nextest: `reth-optimism-chainspec` + `reth-optimism-forks` **23/23 passed**.
+- Next: nextest primitives/consensus/evm; EF-tests; optional trie/proofs; longer opBNB sync.
 
