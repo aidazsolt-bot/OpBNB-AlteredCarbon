@@ -33,7 +33,7 @@ use reth_node_core::{
 use reth_node_events::node;
 use reth_provider::{
     providers::{BlockchainProvider, NodeTypesForProvider},
-    BlockNumReader, MetadataProvider,
+    BlockNumReader, StorageSettingsCache,
 };
 use reth_tasks::TaskExecutor;
 use reth_tokio_util::EventSender;
@@ -43,7 +43,6 @@ use rust_eth_triedb::triedb_manager::is_triedb_active;
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::warn;
 
 /// The engine node launcher.
 #[derive(Debug)]
@@ -106,24 +105,8 @@ impl EngineNodeLauncher {
             .with_adjusted_configs()
             // Create the provider factory with changeset cache
             .with_provider_factory::<_, <CB::Components as NodeComponents<T>>::Evm>(changeset_cache.clone()).await?
-            .inspect(|ctx| {
+            .inspect(|_| {
                 info!(target: "reth::cli", "Database opened");
-                match ctx.provider_factory().storage_settings() {
-                    Ok(settings) => {
-                        info!(
-                            target: "reth::cli",
-                            ?settings,
-                            "Storage settings"
-                        );
-                    },
-                    Err(err) => {
-                        warn!(
-                            target: "reth::cli",
-                            ?err,
-                            "Failed to get storage settings"
-                        );
-                    },
-                }
             })
             .with_prometheus_server().await?
             .inspect(|this| {
@@ -132,6 +115,8 @@ impl EngineNodeLauncher {
             .with_genesis()?
             .inspect(|this: &LaunchContextWith<Attached<WithConfigs<<T::Types as NodeTypes>::ChainSpec>, _>>| {
                 info!(target: "reth::cli", "\n{}", this.chain_spec().display_hardforks());
+                let settings = this.provider_factory().cached_storage_settings();
+                info!(target: "reth::cli", ?settings, "Loaded storage settings");
             })
             .with_metrics_task()
             // passing FullNodeTypes as type parameter here so that we can build

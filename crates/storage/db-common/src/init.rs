@@ -15,15 +15,16 @@ use reth_provider::{
     providers::{StaticFileProvider, StaticFileWriter},
     BlockHashReader, BlockNumReader, BundleStateInit, ChainSpecProvider, DBProvider,
     DatabaseProviderFactory, ExecutionOutcome, HashingWriter, HeaderProvider, HistoryWriter,
-    OriginalValuesKnown, ProviderError, RevertsInit, StageCheckpointWriter,
-    StateWriter, StaticFileProviderFactory, TrieWriter,
+    MetadataProvider, MetadataWriter, OriginalValuesKnown, ProviderError, RevertsInit,
+    StageCheckpointWriter, StateWriter, StaticFileProviderFactory, StorageSettings,
+    StorageSettingsCache, TrieWriter,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_trie::{IntermediateStateRootState, StateRoot as StateRootComputer, StateRootProgress};
 use reth_trie_db::{DatabaseStateRoot, LegacyKeyAdapter};
 use serde::{Deserialize, Serialize};
 use std::io::BufRead;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Default soft limit for number of bytes to read from state dump file, before inserting into
 /// database.
@@ -72,22 +73,78 @@ impl From<DatabaseError> for InitDatabaseError {
 pub type InitStorageError = InitDatabaseError;
 
 /// Write the genesis block if it has not already been written with [`StorageSettings`].
+///
+/// On a **fresh** database, persists CLI `--storage.v2` / v1 settings into metadata before/with
+/// genesis. On an **existing** database, missing metadata is treated as v1 (legacy); a mismatch
+/// with the CLI flag is logged and the **stored/effective** settings win (never rewritten).
 pub fn init_genesis_with_settings<PF>(
     factory: &PF,
-    _genesis_storage_settings: reth_storage_api::StorageSettings,
+    genesis_storage_settings: StorageSettings,
 ) -> Result<B256, InitStorageError>
 where
-    PF: DatabaseProviderFactory + StaticFileProviderFactory + ChainSpecProvider + BlockHashReader,
+    PF: DatabaseProviderFactory
+        + StaticFileProviderFactory
+        + ChainSpecProvider
+        + BlockHashReader
+        + MetadataProvider
+        + StorageSettingsCache,
     PF::ProviderRW: StageCheckpointWriter
         + HistoryWriter
         + HeaderProvider
         + HashingWriter
         + StateWriter
+        + MetadataWriter
+        + StorageSettingsCache
         + AsRef<PF::ProviderRW>,
     PF::ChainSpec: EthChainSpec<Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader>,
     <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader: reth_codecs::Compact,
 {
-    init_genesis(factory)
+    let chain = factory.chain_spec();
+    let hash = chain.genesis_hash();
+
+    // Existing genesis: reconcile settings with stored/legacy, then skip rewrite.
+    match factory.block_hash(0) {
+        Ok(Some(block_hash)) if block_hash == hash => {
+            // Align with upstream: absent metadata means v1/legacy layout.
+            let stored = factory.storage_settings()?.unwrap_or_else(StorageSettings::v1);
+            if stored != genesis_storage_settings {
+                warn!(
+                    target: "reth::storage",
+                    ?stored,
+                    requested = ?genesis_storage_settings,
+                    "Storage settings mismatch detected. Using the stored settings from the existing database."
+                );
+            }
+            factory.set_storage_settings_cache(stored);
+            debug!("Genesis already written, skipping.");
+            return Ok(hash);
+        }
+        Ok(Some(block_hash)) => {
+            return Err(InitDatabaseError::GenesisHashMismatch {
+                chainspec_hash: hash,
+                database_hash: block_hash,
+            });
+        }
+        Ok(None) | Err(ProviderError::MissingStaticFileBlock(StaticFileSegment::Headers, 0)) => {}
+        Err(e) => return Err(e.into()),
+    }
+
+    // Fresh DB: honor CLI storage mode for all subsequent genesis writes.
+    factory.set_storage_settings_cache(genesis_storage_settings);
+    let hash = init_genesis(factory)?;
+
+    if factory.storage_settings()?.is_none() {
+        let provider_rw = factory.database_provider_rw()?;
+        provider_rw.write_storage_settings(genesis_storage_settings)?;
+        provider_rw.commit()?;
+        info!(
+            target: "reth::storage",
+            ?genesis_storage_settings,
+            "Wrote storage settings"
+        );
+    }
+
+    Ok(hash)
 }
 
 /// Write the genesis block if it has not already been written

@@ -49,6 +49,8 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | --- | --- | --- | --- |
 | PORT-CLI-001 | `--storage.v2` fehlte an `op-reth`/`reth` (`node`, `init`, …); neue DBs liefen effektiv über `StaticFilesArgs::to_settings()` → oft **v1** | `StorageArgs` beim Phase-3/4-Port aus `EnvironmentArgs`/`NodeCommand`/`NodeConfig` entfernt; Genesis nutzte falschen Settings-Pfad | ✅ fixed (Session 8): wieder verdrahtet wie Upstream v2.4.1; Default `true`; `ArgAction::Set` + optionaler Wert |
 | PORT-CLI-002 | README empfiehlt noch `--enable-prefetch` / `--optimize.enable-execution-cache` | Alte BSC-Fork-Toggles; CLI + Engine-Gating beim Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache | 📝 docs: Flags als obsolet markiert; Runtime-Port von `TriePrefetch` bewusst nicht wiederbelebt |
+| PORT-CLI-003 | `--ipcpath /tmp/foo.ipc` wurde zu `/tmp/foo.ipc-1` | `NodeConfig.instance` war `u16` mit Default `1`; `adjust_instance_ports` hängte immer `-{instance}` an | ✅ fixed: `instance: Option<u16>` (None ohne `--instance`), wie Upstream |
+| PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -738,4 +740,9 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Fix: flatten `StorageArgs` into `EnvironmentArgs`/`NodeCommand`/`NodeConfig`; `storage_settings()` → genesis; remove bogus `StaticFilesArgs::to_settings`.
 - Docs: Portierungs-Bugliste + README run examples (drop obsolete prefetch/exec-cache flags).
 - Rebuild maxperf `op-reth` after commit (binary stays local / gitignored).
+
+### Session 8 cont. — PORT-CLI-003/004 IPC + storage-settings stub
+- Bug: `--ipcpath` got `-1` suffix (`instance` defaulted to 1); `--storage.v2` still ineffective because `init_genesis_with_settings` ignored settings and log ran before genesis (`settings=None`).
+- Fix: `NodeConfig.instance: Option<u16>`; real genesis settings persist on fresh DB; existing DB treats missing metadata as v1 + warn on CLI mismatch; `Loaded storage settings` after genesis.
+- Note: DBs already opened under the stub without persisted settings effectively ran **v1** — wipe for true v2, or keep syncing as v1 (expect mismatch warn with `--storage.v2`).
 
