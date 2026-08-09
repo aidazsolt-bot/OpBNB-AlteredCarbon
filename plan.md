@@ -22,7 +22,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅ (warnings only); nextest chainspec/forks ✅ 23; EF + broader nextest noch offen
-6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
+6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log/Kosten Session 6+8 aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
@@ -39,7 +39,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
 | opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
 | build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 check+clippy-op+nextest(chainspec/forks) ✅; EF/prim/consensus nextest offen |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | ⏳ pending |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 8 ✅; finale Zahlen nach Human-Sync |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -176,12 +176,15 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Frühere Sessions (kumulativ, vor `a95758da`) | mehrere Tage | Claude Sonnet 5 (primär), GPT-5.4 | ~58,7M (Sonnet 5) + ~38,5M (GPT-5.4) | ~231K (Sonnet 5) + ~78K (GPT-5.4) | ~800 | Merge/Rebase auf v2.4.1, Konflikte, Blockchain-Tree→Engine-Tree, Kona-Node-Eval, README-Disclaimer |
 | Copilot CLI `a95758da` (Snapshot **2026-08-09**, final DB) | 2026-08-06 09:50 – 2026-08-07 18:05 | Sonnet 5, GPT-5.4, Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini | ~356,9M + ~135,4M + ~88,4M + ~63,1M + ~6,4M = **~650,1M** (+ ~636M cache-read) | ~1,163K + ~298K + ~260K + ~124K + ~16K = **~1,861K** | 32 Turns / 5.803 Events / ~8,1h request-wall | Compile-Loop bis node-core/stages/rpc-Typen; Phase-2/3 Vorarbeit |
 | Cursor Composer YOLO (Session 6, Chat `42f88fe7…`, Snapshot **2026-08-09 12:05 UTC**) | 06:45 – ~12:05 UTC (**~5,34 h** Wall) | **composer-2.5-fast** (4.986 `modelName`-Hits) + **cursor-grok-4.5-high-fast** (178); Parent `default` | **Kein lokaler Billed-Token-Ledger.** Content-Proxy: Transcripts ~2,34M chars ≈ **~0,58M Tokens** (÷4); Cleartext-Chat-JSON ≈ **~0,33M Tokens** (Untergrenze, Tool/Context unterzählt). Erwartete billed/context-Wiederholung deutlich höher | (Proxy, s. Input-Spalte) | **15 Agents** (1 Parent + 14 Subs); 2.582 Assistant-Msgs; 5.861 Tool-Blobs; ~11.722 Tool-Calls; 74.482 `ai_code_hashes` | **`reth-bsc-node --features bsc` + workspace `--no-default-features` grün**; Phase-4 op-forks/chainspec/primitives/consensus; Details: `files/cursor-session-metrics.json` |
+| Cursor Session 8 (Chat `d6ebb428…`, Snapshot **2026-08-09 ~14:30 UTC**) | ~12:18 – ~14:25 UTC (**~2,1 h** Commit-Span; ~1,4 h Chat-Wall) | Auto/Composer (kein per-request Model-Ledger im Transcript) | Transcript-Proxy **~0,11M Tokens** (÷4); billed meter n/a | (Proxy) | ~816 Tool-Calls; 11.288 `ai_code_hashes`; 350 assistant / 18 user msgs | op-evm→payload/rpc/node/cli/`op-reth` grün; opBNB init+RPC smoke; nextest chainspec/forks 23/23; Details: `files/cursor-session8-metrics.json` |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
 > verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
-> Quellen: Copilot `/root/.copilot/session-store.db`; Cursor `~/.cursor/chats/3ad71c6c…/` +
-> `agent-transcripts/` + `~/.cursor/ai-tracking/ai-code-tracking.db`.
+> **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
+> bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; Cursor-Kosten nur über Account-Dashboard.
+> Quellen: Copilot `/root/.copilot/session-store.db`; Cursor `agent-transcripts/` +
+> `~/.cursor/ai-tracking/ai-code-tracking.db`.
 
 ## Nächste Schritte (unmittelbar, in Reihenfolge)
 
@@ -714,5 +717,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Clippy on op-stack finished (no errors); minor chainspec/node cleanups.
 - `EthChainSpec::next_block_base_fee` → `Option<u64>` via Holocene `decode_holocene_base_fee`.
 - nextest: `reth-optimism-chainspec` + `reth-optimism-forks` **23/23 passed**.
-- Next: nextest primitives/consensus/evm; EF-tests; optional trie/proofs; longer opBNB sync.
+- Next: nextest primitives/consensus/evm; EF-tests; optional trie/proofs (Human: catch-up/full sync).
+
+### Session 8 cont. — docs + maxperf-op (binary not committed)
+- README/plan Effort-Log: Session 8 metrics + illustrative Copilot API-equivalent cost (~USD 1.5–2k).
+- Snapshots: `files/cursor-session8-metrics.json`; Makefile `maxperf-op` features fixed for trail `op-reth`.
+- Build: `make maxperf-op` / `cargo build --profile maxperf -p op-reth` → local `target/maxperf/op-reth` only (**do not commit binaries**).
 
