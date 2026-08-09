@@ -21,6 +21,10 @@ alloy-rpc-types-eth = { workspace = true, default-features = false }
 alloy-signer = { workspace = true, default-features = false }
 thiserror = { workspace = true, default-features = false }
 
+# op (optional)
+op-alloy-consensus = { workspace = true, optional = true, default-features = false }
+op-alloy-rpc-types = { workspace = true, optional = true, default-features = false }
+
 [features]
 default = ["std"]
 std = [
@@ -29,4 +33,13 @@ std = [
     "alloy-rpc-types-eth/std",
     "reth-primitives-traits/std",
     "thiserror/std",
+    "op-alloy-consensus?/std",
+    "op-alloy-rpc-types?/std",
+]
+op = [
+    "dep:op-alloy-consensus",
+    "dep:op-alloy-rpc-types",
+    "op-alloy-consensus/serde",
+    "op-alloy-rpc-types/serde",
+    "reth-primitives-traits/op",
 ]

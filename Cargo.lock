@@ -10841,6 +10841,7 @@ dependencies = [
  "reth-revm",
  "reth-rpc",
  "reth-rpc-api",
+ "reth-rpc-convert",
  "reth-rpc-engine-api",
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
@@ -11670,6 +11671,8 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
  "alloy-signer",
+ "op-alloy-consensus",
+ "op-alloy-rpc-types",
  "reth-primitives-traits 2.4.1",
  "thiserror 2.0.19",
 ]

@@ -19,3 +19,6 @@ pub use header::FromConsensusHeader;
 
 mod transaction;
 pub use transaction::{FromConsensusTx, TryIntoSimTx, TxInfoMapper};
+
+#[cfg(feature = "op")]
+mod op;
