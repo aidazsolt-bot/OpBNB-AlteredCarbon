@@ -28,6 +28,7 @@ members = [
     "crates/optimism/evm/",
     "crates/optimism/flashblocks/",
     "crates/optimism/hardforks/",
+    "crates/optimism/node/",
     "crates/optimism/payload/",
     "crates/optimism/post-exec-replay/",
     "crates/optimism/primitives/",

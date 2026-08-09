@@ -43,7 +43,7 @@ use reth_chainspec::{
 };
 use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
 use reth_network_peers::NodeRecord;
-use reth_optimism_forks::{OpHardfork, OpHardforks, OptimismHardfork, OptimismHardforks};
+pub use reth_optimism_forks::{OpHardfork, OpHardforks, OptimismHardfork, OptimismHardforks};
 use reth_primitives_traits::{Header, SealedHeader};
 
 /// Chain spec builder for a OP stack chain.

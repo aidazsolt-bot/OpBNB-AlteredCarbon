@@ -679,3 +679,11 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - RPC: drop blanket-conflicting EthSubscriptions/GetBlockAccessList; align receipt/witness APIs.
 - Verify: post-exec-replay, flashblocks, rpc green. Next: optimism-node/cli.
 
+### Session 8 cont. — optimism-node WIP
+- Synced `reth-optimism-node` from op-reth; stubbed `proof_history` (needs trie/exex).
+- Partial trail adapt: PayloadBuilderAttributes, pool-before-executor, RpcAddOns arity,
+  PoolBuilder without Evm generic, `OpHardfork` re-export, engine `Fn` (not `FnOnce`) for
+  post-exec hashed-state validation.
+- **Not green yet**: RpcConvert/SignableTxRequest/OpTransactionRequest + PayloadAttributes
+  mismatch (~38 errors). Next: wire OP RpcConverter / SignableTxRequest like ethereum path.
+
