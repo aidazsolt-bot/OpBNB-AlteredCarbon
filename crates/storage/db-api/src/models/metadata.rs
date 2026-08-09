@@ -16,11 +16,13 @@ use serde::{Deserialize, Serialize};
 pub struct StorageSettings {
     /// Whether this node uses v2 storage layout.
     ///
-    /// When `true`, enables all v2 storage features:
+    /// When `true`, enables v2 storage features:
     /// - Receipts and transaction senders in static files
     /// - History indices in `RocksDB` (accounts, storages, transaction hashes)
-    /// - Account and storage changesets in static files
     /// - Hashed state tables as canonical state representation
+    ///
+    /// Account changesets remain in MDBX until the AccountChangeSets SF segment is fully
+    /// ported ([`Self::account_changesets_in_static_files`]). Storage changesets stay in MDBX.
     ///
     /// When `false`, uses v1/legacy layout (everything in MDBX).
     pub storage_v2: bool,
@@ -32,11 +34,12 @@ impl StorageSettings {
         Self::v2()
     }
 
-    /// Creates `StorageSettings` for v2 nodes with all storage features enabled:
+    /// Creates `StorageSettings` for v2 nodes:
     /// - Receipts and transaction senders in static files
     /// - History indices in `RocksDB` (storages, accounts, transaction hashes)
-    /// - Account and storage changesets in static files
     /// - Hashed state as canonical state representation
+    ///
+    /// Account/storage changesets remain in MDBX until those SF segments are ported.
     ///
     /// Use this when the `--storage.v2` CLI flag is set.
     pub const fn v2() -> Self {
@@ -61,11 +64,8 @@ impl StorageSettings {
     }
 
     /// Whether transaction senders are stored in static files.
-    ///
-    /// Always `false` in this fork: the TransactionSenders static-file segment is not ported
-    /// yet (stubs incorrectly reused the Transactions segment).
     pub const fn transaction_senders_in_static_files(&self) -> bool {
-        false
+        self.storage_v2
     }
 
     /// Whether storages history is stored in `RocksDB`.
