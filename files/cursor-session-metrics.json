@@ -1,0 +1,56 @@
+{
+  "snapshot_utc": "2026-08-09T12:06:14.137229+00:00",
+  "parent_chat_id": "42f88fe7-e56f-47e3-9047-ffa66e6460a0",
+  "wall_clock_hours": 5.34,
+  "created_at_ms": 1786257938529,
+  "updated_at_ms": 1786277152411,
+  "agents": 15,
+  "transcript_agents": 15,
+  "transcript_lines": 2640,
+  "transcript_chars": 2337788,
+  "cleartext_json_blobs": 8522,
+  "roles": {
+    "system": 15,
+    "user": 64,
+    "assistant": 2582,
+    "tool": 5861
+  },
+  "msg_chars_by_role": {
+    "system": 31194,
+    "user": 1205735,
+    "assistant": 80128,
+    "tool": 0
+  },
+  "tool_calls_observed": 11722,
+  "models_observed": {
+    "composer-2.5-fast": 4986,
+    "cursor-grok-4.5-high-fast": 178
+  },
+  "token_estimate_method": "UTF-8 chars in cleartext chat JSON blobs / 4 (Cursor encrypts most blobs; official token meter unavailable locally)",
+  "token_estimate_total": 329264,
+  "token_estimate_user_role": 301434,
+  "token_estimate_assistant_role": 20032,
+  "token_estimate_from_transcripts": 584447,
+  "note": "Cleartext JSON undercounts total context (many blobs encrypted/protobuf). Transcript estimate includes tool I/O more fully but still is not billed-token telemetry.",
+  "ai_code_hashes_attributed_to_session_agents": 74482,
+  "ai_code_hashes_by_model": {
+    "default": 74482
+  },
+  "agent_ids": [
+    "42f88fe7-e56f-47e3-9047-ffa66e6460a0",
+    "dbf3efd9-aef3-4ffb-aa3d-629244157a03",
+    "75ff8f6a-3892-459f-ba44-598bd1236826",
+    "076c43f7-ade7-435c-9470-864f8f88eb77",
+    "85871a57-3083-4bcb-91e0-10fff8603ec3",
+    "602781ce-de22-495f-a7aa-b5ab3ea5bb3c",
+    "d72d3e08-3ab1-40e7-ad09-e24fc427d21b",
+    "d704763e-7609-4c3d-b4e6-1ac404c697c9",
+    "4adb3dfd-2f7b-4c7e-a553-3359666190cc",
+    "aea1c257-b935-4362-9573-332332ae30c1",
+    "9b245d93-b56a-489a-acb1-6df5b8855b03",
+    "ea17c9f1-56ec-4f71-ba8e-658253fec883",
+    "615ad00c-8ddc-4170-bcfd-37374f99ea4a",
+    "8bbb6af4-898c-43dd-82da-1687b211285c",
+    "2d1e88fa-4cc7-4ad3-91ad-9d754d98b637"
+  ]
+}

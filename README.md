@@ -351,19 +351,20 @@ diffs until explicitly reviewed (see `plan.md`).
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor YOLO parent chat: **2026-08-09 06:45 – ~12:05 UTC, ~5.34 h** wall) |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09 06:45 – ~12:05 UTC, ~5.34 h**; Cursor Session 8 op-stack: **~2026-08-09 12:18 – ~14:25 UTC, ~2.1 h** commit-span / ~1.4 h this chat) |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
-| LLM models used (Cursor session `42f88fe7…`, snapshot **2026-08-09**) | **composer-2.5-fast** (dominant: 4,986 cleartext `modelName` hits) + **cursor-grok-4.5-high-fast** (178 hits); parent model label `default` |
-| Approx. input tokens (Copilot `a95758da`, snapshot **2026-08-09**) | ~356.9M (Sonnet 5) + ~135.4M (GPT-5.4) + ~88.4M (Sonnet 4.6) + ~63.1M (GPT-5.3-Codex) + ~6.4M (GPT-5.4-mini) = **~650.1M** |
-| Approx. output tokens (Copilot `a95758da`, snapshot **2026-08-09**) | ~1.163M (Sonnet 5) + ~297.7K (GPT-5.4) + ~260.3K (Sonnet 4.6) + ~123.9K (GPT-5.3-Codex) + ~16.4K (GPT-5.4-mini) = **~1.861M** |
-| Cache-read tokens (Copilot `a95758da`) | ~636.2M (prompt-cache hits; included in billed/context scale, listed separately) |
-| Approx. model wall time (sum of request durations, Copilot `a95758da`) | ~8.1 hours across 5,803 usage events / 32 turns |
-| Cursor YOLO activity (local telemetry, chat `42f88fe7…` + 14 sub-agents) | **15 agents**; **2,582** assistant msgs; **5,861** tool-role blobs; **~11,722** tool-call records; **8,522** cleartext JSON blobs in chat stores |
-| Cursor token estimate (content-size, **not** billed API meter) | Official per-request token meter is **not stored locally** (many chat blobs encrypted). Proxies: agent-transcript UTF-8 ≈ **~2.34M chars → ~0.58M tokens** (÷4); cleartext chat JSON text ≈ **~1.32M chars → ~0.33M tokens** (undercounts tool/context). Billed/context-with-repetition is expected **much higher** than these content proxies — unlike Copilot, Cursor does not expose an `assistant_usage_events`-style ledger on disk here |
-| Cursor AI-code attribution (`ai-code-tracking.db`) | **74,482** `ai_code_hashes` rows attributed to this session’s agent conversation IDs (model field recorded as `default`) |
-| Compile milestone (2026-08-09) | `reth-bsc-node --features bsc`, `reth-node-ethereum`, and **`cargo check --workspace --no-default-features`** all **0 errors**; Phase 4 op-forks/chainspec/primitives/consensus compile; op-evm/node + Snow/Volta/Fourier + live sync still open |
-| Commits produced during the v2.4.1 rebase | See `git log` on the `rebase/reth-v2.4.1` branch; Cursor session may still have a large **uncommitted** working tree — see `plan.md` Session 6 |
-| Cursor metrics snapshot file | `files/cursor-session-metrics.json` (regenerable from `~/.cursor/chats/…/store.db` + agent-transcripts + `ai-tracking`) |
+| LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** (4,986 cleartext `modelName` hits) + **cursor-grok-4.5-high-fast** (178); parent `default` |
+| LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router (local transcript has no per-request model ledger); ~816 tool calls observed in agent transcript |
+| Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
+| Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
+| Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
+| Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
+| Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
+| Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Subscription pricing ≠ raw API. |
+| Compile / runnable milestone (2026-08-09, end Session 8) | `reth-bsc-node --features bsc`, workspace `--no-default-features`, **`reth-optimism-*` through `op-reth`**, Clippy op-stack (warnings only), nextest chainspec+forks **23/23**, opBNB `init` + short node/RPC smoke. Catch-up/full sync = **human-owned** when AI marks runnable (see `plan.md`). |
+| Commits | See `git log` on `rebase/reth-v2.4.1` |
+| Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8) |
+| Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` (and optionally `dist/bin/op-reth`); default CLI chain `opbnb` |
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference
 required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
@@ -372,9 +373,8 @@ cost of AI-assisted maintenance at this scale, not as a benchmark claim — no r
 optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
 figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
-> **TODO:** Update this effort log once the port has been validated against live BSC/opBNB testnet (or
-> mainnet) sync, including final cumulative token/time figures (replace Cursor proxies with account
-> billing export if/when available), workspace/`--all-features` compile status, and live-test outcome.
+> **TODO:** After human catch-up/full sync validation on BSC/opBNB, refresh final cumulative token/time
+> figures (replace Cursor proxies with account billing export if available) and live-test outcome.
 
 ### Side-evaluation: `kona-node` as an alternative to `op-node` for opBNB
 
