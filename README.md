@@ -140,10 +140,13 @@ export network=bsc
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory ./datadir/logs
 ```
+
+New databases use storage V2 by default (`--storage.v2`; opt out with `--storage.v2=false`).
+Legacy BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` are **obsolete** on this
+v2.4.1 rebase — use engine prewarming/cache controls instead (e.g. `--engine.disable-prewarming` to
+opt out; see `bsc-reth node --help` under Engine).
 
 You can run `bsc-reth --help` for command explanations.
 
@@ -168,9 +171,7 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory /data/logs
 ```
 
 ### Snapshots
@@ -261,17 +262,20 @@ export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
 
 ./target/release/op-reth node \
     --datadir=./datadir \
-    --chain=opbnb-${network} \
+    --chain=opbnb \
     --rollup.sequencer-http=${L2_RPC} \
     --authrpc.addr="0.0.0.0" \
     --authrpc.port=8551 \
     --authrpc.jwtsecret=./jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory ./datadir/logs
 ```
+
+For testnet use `--chain=opbnb-testnet` (or the matching built-in name from `op-reth node --help`).
+New databases default to storage V2 (`--storage.v2`; `--storage.v2=false` for legacy v1).
+Do **not** pass the old BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` — they are
+not wired on this rebase; use `--engine.*` prewarming/cache flags instead.
 
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be
 found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
@@ -299,16 +303,14 @@ export jwt_dir=/xxx/xxx
 docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
     --name op-reth ghcr.io/bnb-chain/op-reth:${version} node \
     --datadir=/data \
-    --chain=opbnb-${network} \
+    --chain=opbnb \
     --rollup.sequencer-http=${L2_RPC} \
     --authrpc.addr="0.0.0.0" \
     --authrpc.port=8551 \
     --authrpc.jwtsecret=/jwt/jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory /data/logs
 ```
 
 ## Contribution
@@ -361,7 +363,7 @@ diffs until explicitly reviewed (see `plan.md`).
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Subscription pricing ≠ raw API. |
-| Compile / runnable milestone (2026-08-09, end Session 8) | `reth-bsc-node --features bsc`, workspace `--no-default-features`, **`reth-optimism-*` through `op-reth`**, Clippy op-stack (warnings only), nextest chainspec+forks **23/23**, opBNB `init` + short node/RPC smoke. Catch-up/full sync = **human-owned** when AI marks runnable (see `plan.md`). |
+| Compile / runnable milestone (2026-08-09, end Session 8) | `reth-bsc-node --features bsc`, workspace `--no-default-features`, **`reth-optimism-*` through `op-reth`**, Clippy op-stack (warnings only), nextest chainspec+forks **23/23**, opBNB `init` + short node/RPC smoke; **`--storage.v2` restored** (PORT-CLI-001). Catch-up/full sync = **human-owned** (see `plan.md`). |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
 | Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8) |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` (and optionally `dist/bin/op-reth`); default CLI chain `opbnb` |

@@ -39,7 +39,16 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
 | opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
 | build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 check+clippy-op+nextest(chainspec/forks) ✅; EF/prim/consensus nextest offen |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 8 ✅; finale Zahlen nach Human-Sync |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 8 ✅; storage.v2-Port-Bugfix+Doku; finale Zahlen nach Human-Sync |
+
+## Portierungs-Bugliste (v2.4.1 rebase)
+
+Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feature-Gaps).
+
+| ID | Symptom | Ursache | Status |
+| --- | --- | --- | --- |
+| PORT-CLI-001 | `--storage.v2` fehlte an `op-reth`/`reth` (`node`, `init`, …); neue DBs liefen effektiv über `StaticFilesArgs::to_settings()` → oft **v1** | `StorageArgs` beim Phase-3/4-Port aus `EnvironmentArgs`/`NodeCommand`/`NodeConfig` entfernt; Genesis nutzte falschen Settings-Pfad | ✅ fixed (Session 8): wieder verdrahtet wie Upstream v2.4.1; Default `true`; `ArgAction::Set` + optionaler Wert |
+| PORT-CLI-002 | README empfiehlt noch `--enable-prefetch` / `--optimize.enable-execution-cache` | Alte BSC-Fork-Toggles; CLI + Engine-Gating beim Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache | 📝 docs: Flags als obsolet markiert; Runtime-Port von `TriePrefetch` bewusst nicht wiederbelebt |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -723,4 +732,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - README/plan Effort-Log: Session 8 metrics + illustrative Copilot API-equivalent cost (~USD 1.5–2k).
 - Snapshots: `files/cursor-session8-metrics.json`; Makefile `maxperf-op` features fixed for trail `op-reth`.
 - Build: `make maxperf-op` / `cargo build --profile maxperf -p op-reth` → local `target/maxperf/op-reth` only (**do not commit binaries**).
+
+### Session 8 cont. — PORT-CLI-001 `--storage.v2` restored
+- Bug: Flag missing after rebase; genesis settings derived from static-files heuristic instead of `--storage.v2`.
+- Fix: flatten `StorageArgs` into `EnvironmentArgs`/`NodeCommand`/`NodeConfig`; `storage_settings()` → genesis; remove bogus `StaticFilesArgs::to_settings`.
+- Docs: Portierungs-Bugliste + README run examples (drop obsolete prefetch/exec-cache flags).
+- Rebuild maxperf `op-reth` after commit (binary stays local / gitignored).
 
