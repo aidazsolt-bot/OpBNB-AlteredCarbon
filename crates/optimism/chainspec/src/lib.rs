@@ -12,6 +12,7 @@ extern crate alloc;
 
 mod base;
 mod base_sepolia;
+mod basefee;
 pub mod constants;
 mod dev;
 mod op;
@@ -26,6 +27,7 @@ use alloy_genesis::Genesis;
 use alloy_primitives::{Bytes, Signature, B256, U256};
 pub use base::BASE_MAINNET;
 pub use base_sepolia::BASE_SEPOLIA;
+pub use basefee::*;
 use core::fmt::Display;
 use derive_more::{Constructor, Deref, Display as DeriveDisplay, From, Into};
 pub use dev::OP_DEV;
@@ -41,7 +43,7 @@ use reth_chainspec::{
 };
 use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
 use reth_network_peers::NodeRecord;
-use reth_optimism_forks::{OptimismHardfork, OptimismHardforks};
+use reth_optimism_forks::{OpHardfork, OpHardforks, OptimismHardfork, OptimismHardforks};
 use reth_primitives_traits::{Header, SealedHeader};
 
 /// Chain spec builder for a OP stack chain.
@@ -359,6 +361,24 @@ impl EthereumHardforks for OpChainSpec {
 }
 
 impl OptimismHardforks for OpChainSpec {}
+
+impl OpHardforks for OpChainSpec {
+    fn op_fork_activation(&self, fork: OpHardfork) -> ForkCondition {
+        // Schedules store opBNB-specific [`OptimismHardfork`] variants; map the overlapping
+        // upstream [`OpHardfork`] names. Isthmus+ return Never until schedules grow.
+        let mapped = match fork {
+            OpHardfork::Bedrock => Some(OptimismHardfork::Bedrock),
+            OpHardfork::Regolith => Some(OptimismHardfork::Regolith),
+            OpHardfork::Canyon => Some(OptimismHardfork::Canyon),
+            OpHardfork::Ecotone => Some(OptimismHardfork::Ecotone),
+            OpHardfork::Fjord => Some(OptimismHardfork::Fjord),
+            OpHardfork::Granite => Some(OptimismHardfork::Granite),
+            OpHardfork::Holocene => Some(OptimismHardfork::Holocene),
+            _ => None,
+        };
+        mapped.map(|fork| self.fork(fork)).unwrap_or(ForkCondition::Never)
+    }
+}
 
 impl From<Genesis> for OpChainSpec {
     fn from(genesis: Genesis) -> Self {

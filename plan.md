@@ -645,9 +645,24 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 3. Phase 4: `reth-optimism-evm` auf `op-revm`/`ConfigureEvm` v2.4.1 porten (Reference: `bnb-chain_reth.git/crates/optimism/evm`), dann payload/rpc/node.
 4. Phase 5: Clippy, nextest, EF-Tests; Default-Features/`bsc`-Workspace; Phase 6: Live-Tests + finale Token-Zahlen.
 
+
+### Session 7 cont. (2026-08-09 ~14:20 UTC) — op-evm compile milestone
+- Path-deps auf lokales `optimism.git/rust` (`op-revm`, `alloy-op-evm`, `alloy-op-hardforks`, `op-alloy-*`) für revm41/alloy-evm0.37.
+- `reth-optimism-{primitives,consensus,evm}` aus op-reth gesynct + `primitives-traits` Feature `op` (InMemorySize/SignedTransaction für OpTxEnvelope inkl. PostExec).
+- `OpHardforks` Bridge auf `OpChainSpec`; `basefee.rs` (`decode_holocene_base_fee`) ergänzt.
+- Verify: `cargo check -p reth-optimism-{forks,chainspec,primitives,consensus,evm}` + `reth-bsc-node --features bsc` → grün.
+- Snow/Volta/Fourier bleiben in `OptimismHardfork`; workspace member `crates/optimism/evm/` aktiv.
+
 ### Session 6 Docs-Update (2026-08-09 ~10:45–12:45 UTC):
 - README Effort-Log: Copilot `a95758da` final **~650.1M in / ~1.861M out / 5803 events**.
 - Cursor-Metriken ergänzt (nicht mehr nur „unmetered“): Wall **~5.34 h**, 15 Agents, Models **composer-2.5-fast** / **cursor-grok-4.5-high-fast**, Activity (Msgs/Tool-Calls), Content-Token-Proxies (~0.58M / ~0.33M), **74.482** AI-code hashes; Snapshot `files/cursor-session-metrics.json`.
 - plan.md Aufwandsprotokoll-Tabelle synchronisiert.
 - Phase 4 Start: `reth-optimism-{forks,chainspec,primitives,consensus}` compile-fähig.
 - Phase 5: Workspace `--no-default-features` **0 errors**; WIP weiterhin uncommitted.
+
+### Session 8 (Cursor YOLO) — op-evm green
+- Ported `reth-optimism-{primitives,consensus,evm,chainspec basefee}` from local op-reth + path deps (`op-revm`/`alloy-op-evm`/`op-alloy`/`alloy-op-hardforks`) for revm 41.
+- `primitives-traits` feature `op`: InMemorySize + SignedTransaction + SerdeBincodeCompat for Op types; reth-codec/serde-bincode-compat wire `op-alloy?/…` for workspace feature unification.
+- Verified: `reth-optimism-evm` + stack, `reth-bsc-node --features bsc`, `cargo check --workspace --no-default-features`.
+- Next: optimism payload / rpc / node / cli.
+
