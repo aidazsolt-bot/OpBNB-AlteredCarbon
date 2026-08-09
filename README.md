@@ -262,7 +262,7 @@ export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
 
 ./target/release/op-reth node \
     --datadir=./datadir \
-    --chain=opbnb \
+    --chain=opbnb-${network} \
     --rollup.sequencer-http=${L2_RPC} \
     --authrpc.addr="0.0.0.0" \
     --authrpc.port=8551 \
@@ -272,7 +272,8 @@ export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
     --log.file.directory ./datadir/logs
 ```
 
-For testnet use `--chain=opbnb-testnet` (or the matching built-in name from `op-reth node --help`).
+Built-in chain names: `opbnb` / `opbnb-mainnet` (mainnet), `opbnb-testnet`, `opbnb-qa`
+(so `opbnb-${network}` with `network=mainnet|testnet` is correct).
 New databases default to storage V2 (`--storage.v2`; `--storage.v2=false` for legacy v1).
 Do **not** pass the old BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` — they are
 not wired on this rebase; use `--engine.*` prewarming/cache flags instead.
@@ -303,7 +304,7 @@ export jwt_dir=/xxx/xxx
 docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
     --name op-reth ghcr.io/bnb-chain/op-reth:${version} node \
     --datadir=/data \
-    --chain=opbnb \
+    --chain=opbnb-${network} \
     --rollup.sequencer-http=${L2_RPC} \
     --authrpc.addr="0.0.0.0" \
     --authrpc.port=8551 \
