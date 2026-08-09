@@ -28,6 +28,9 @@ alloy-primitives.workspace = true
 alloy-consensus.workspace = true
 alloy-genesis.workspace = true
 
+# optimism (optional DB codec bridge for Op primitives)
+reth-optimism-primitives = { workspace = true, optional = true, features = ["serde", "reth-codec"] }
+
 # codecs
 modular-bitfield.workspace = true
 roaring.workspace = true
@@ -84,6 +87,9 @@ arbitrary = [
     "reth-stages-types/arbitrary",
     "alloy-consensus/arbitrary",
     "reth-ethereum-primitives/arbitrary",
+    "reth-optimism-primitives?/arbitrary",
 ]
 optimism = [
+    "dep:reth-optimism-primitives",
+    "reth-primitives-traits/op",
 ]

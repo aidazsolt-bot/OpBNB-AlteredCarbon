@@ -6783,6 +6783,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "op-reth"
+version = "2.4.1"
+dependencies = [
+ "clap",
+ "reth-cli-util",
+ "reth-node-core",
+ "reth-optimism-cli",
+ "reth-optimism-node",
+ "tracing",
+]
+
+[[package]]
 name = "op-revm"
 version = "20.0.0"
 dependencies = [
@@ -8924,6 +8936,7 @@ dependencies = [
  "reth-codecs",
  "reth-db-models",
  "reth-ethereum-primitives",
+ "reth-optimism-primitives",
  "reth-primitives",
  "reth-primitives-traits 2.4.1",
  "reth-prune-types",
@@ -10513,6 +10526,60 @@ dependencies = [
  "reth-optimism-forks",
  "reth-primitives-traits 2.4.1",
  "serde_json",
+]
+
+[[package]]
+name = "reth-optimism-cli"
+version = "2.4.1"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-rlp",
+ "clap",
+ "derive_more",
+ "eyre",
+ "futures-util",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "op-alloy-consensus",
+ "proptest",
+ "reth-chainspec",
+ "reth-cli",
+ "reth-cli-commands",
+ "reth-cli-runner",
+ "reth-consensus",
+ "reth-db",
+ "reth-db-api",
+ "reth-db-common",
+ "reth-downloaders",
+ "reth-execution-types",
+ "reth-fs-util",
+ "reth-node-builder",
+ "reth-node-core",
+ "reth-node-events",
+ "reth-node-metrics",
+ "reth-optimism-chainspec",
+ "reth-optimism-consensus",
+ "reth-optimism-evm",
+ "reth-optimism-node",
+ "reth-optimism-primitives",
+ "reth-primitives-traits 2.4.1",
+ "reth-provider",
+ "reth-prune",
+ "reth-rpc-server-types",
+ "reth-stages",
+ "reth-static-file",
+ "reth-static-file-types",
+ "reth-tasks",
+ "reth-tracing",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
