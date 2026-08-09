@@ -13,6 +13,7 @@ pub mod hardfork;
 
 mod dev;
 
+pub use alloy_op_hardforks::{OpHardfork, OpHardforks};
 pub use dev::DEV_HARDFORKS;
 pub use hardfork::OptimismHardfork;
 

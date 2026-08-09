@@ -25,6 +25,7 @@ members = [
     "crates/bsc/primitives/",
     "crates/optimism/chainspec/",
     "crates/optimism/consensus/",
+    "crates/optimism/evm/",
     "crates/optimism/hardforks/",
     "crates/optimism/primitives/",
     "crates/primitives/",
@@ -490,6 +491,11 @@ revm = { version = "41.0.0", default-features = false }
 revm-primitives = { version = "20.0.0", features = ["std"], default-features = false }
 revmc = { git = "https://github.com/paradigmxyz/revmc", rev = "520462a463523a3bcd0a47226ddbc3200d62232e", default-features = false, features = ["llvm-prefer-static"] }
 revm-inspectors = "0.41.0"
+# Path deps: crates.io op-revm@20 / alloy-op-evm@0.32 still pin revm 38 / alloy-evm 0.33.
+# Local optimism.git/rust trees are patched for revm 41 + alloy-evm 0.37 (same as this workspace).
+op-revm = { path = "../../Ethereum/optimism.git/rust/op-revm", version = "20.0.0", default-features = false }
+alloy-op-evm = { path = "../../Ethereum/optimism.git/rust/alloy-op-evm", version = "0.32.0", default-features = false }
+alloy-op-hardforks = { path = "../../Ethereum/optimism.git/rust/alloy-op-hardforks", version = "0.5.0", default-features = false }
 
 # eth
 alloy-dyn-abi = "1.6.1"
@@ -533,10 +539,11 @@ alloy-transport = { version = "2.1.1" }
 alloy-transport-http = { version = "2.1.1", features = ["reqwest-rustls-tls"], default-features = false }
 alloy-transport-ipc = { version = "2.1.1", default-features = false }
 alloy-transport-ws = { version = "2.1.1", default-features = false }
-op-alloy-rpc-types = "2.0.0"
-op-alloy-rpc-types-engine = "2.0.0"
-op-alloy-network = "2.0.0"
-op-alloy-consensus = "2.0.0"
+# Path-aligned with local optimism.git/rust (PostExec / Lagoon APIs + revm41).
+op-alloy-consensus = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/consensus", version = "2.0.0", default-features = false }
+op-alloy-network = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/network", version = "2.0.0", default-features = false }
+op-alloy-rpc-types = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types", version = "2.0.0", default-features = false }
+op-alloy-rpc-types-engine = { path = "../../Ethereum/optimism.git/rust/op-alloy/crates/rpc-types-engine", version = "2.0.0", default-features = false }
 
 # misc
 either = { version = "1.16.0", default-features = false }

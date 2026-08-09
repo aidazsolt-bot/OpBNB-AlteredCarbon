@@ -25,6 +25,9 @@ alloy-trie.workspace = true
 revm = { workspace = true, features = ["serde"] }
 alloy-evm.workspace = true
 
+# op (optional)
+op-alloy-consensus = { workspace = true, optional = true, features = ["k256"] }
+
 # misc
 byteorder = "1"
 derive_more.workspace = true
@@ -65,7 +68,12 @@ std = [
 	"alloy-trie/std",
 	"revm/std",
 	"serde/std",
-	"bytes/std"
+	"bytes/std",
+	"op-alloy-consensus?/std",
+]
+op = [
+	"dep:op-alloy-consensus",
+	"op-alloy-consensus/serde",
 ]
 test-utils = [
 	"arbitrary",
@@ -85,7 +93,8 @@ arbitrary = [
 serde-bincode-compat = [
 	"serde_with",
 	"alloy-consensus/serde-bincode-compat",
-	"alloy-eips/serde-bincode-compat"
+	"alloy-eips/serde-bincode-compat",
+	"op-alloy-consensus?/serde-bincode-compat",
 ]
 bsc = []
 secp256k1 = [
@@ -96,6 +105,7 @@ rayon = []
 quanta = []
 serde = []
 reth-codec = [
-    "reth-codecs/alloy"
+    "reth-codecs/alloy",
+    "op-alloy-consensus?/reth-codec",
 ]
 rpc-compat = ["alloy-rpc-types-eth"]
