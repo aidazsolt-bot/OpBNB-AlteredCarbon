@@ -11,7 +11,6 @@ use op_alloy_consensus::{OpPooledTransaction, TxPostExec, interop::SafetyLevel};
 use reth_chainspec::{
     BaseFeeParams, ChainSpecProvider, EthChainSpec, EthereumHardforks, ForkCondition, Hardforks,
 };
-use reth_evm::ConfigureEvm;
 use reth_network::{
     NetworkConfig, NetworkHandle, NetworkManager, NetworkPrimitives, PeersInfo,
     types::BasicNetworkPrimitives,
@@ -150,15 +149,21 @@ impl<T> OpReplayNodePrimitives for T where
 }
 
 /// Marker trait for Optimism node types with standard engine, chain spec, and primitives.
-pub trait OpNodeTypes:
-    NodeTypes<Payload = OpEngineTypes, ChainSpec: OpHardforks + Hardforks, Primitives = OpPrimitives>
+pub trait OpNodeTypes: NodeTypes<
+    Payload = OpEngineTypes,
+    ChainSpec: OpHardforks + Hardforks + EthChainSpec<Header = alloy_consensus::Header> + EthereumHardforks,
+    Primitives = OpPrimitives,
+>
 {
 }
 /// Blanket impl for all node types that conform to the Optimism spec.
 impl<N> OpNodeTypes for N where
     N: NodeTypes<
             Payload = OpEngineTypes,
-            ChainSpec: OpHardforks + Hardforks,
+            ChainSpec: OpHardforks
+                + Hardforks
+                + EthChainSpec<Header = alloy_consensus::Header>
+                + EthereumHardforks,
             Primitives = OpPrimitives,
         >
 {
@@ -1277,15 +1282,13 @@ impl<T, O, W> OpPoolBuilder<T, O, W> {
 
 impl<Node, T, O, W> PoolBuilder<Node> for OpPoolBuilder<T, O, W>
 where
-    Node: FullNodeTypes<
-        Types: NodeTypes<ChainSpec: OpHardforks + EthChainSpec + EthereumHardforks>,
-    >,
+    Node: FullNodeTypes<Types: OpNodeTypes>,
     T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + OpPooledTx,
     O: TransactionOrdering<Transaction = T> + 'static,
     W: OpValidatorWrapper<
         Node::Provider,
         T,
-        OpEvmConfig<<Node::Types as NodeTypes>::ChainSpec>,
+        OpEvmConfig<<Node::Types as NodeTypes>::ChainSpec, OpPrimitives>,
     >,
     W::Validator: TransactionValidator<Transaction = T, Block = BlockTy<Node::Types>> + 'static,
 {
@@ -1293,7 +1296,10 @@ where
 
     async fn build_pool(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Pool> {
         let Self { pool_config_overrides, ordering, validator_wrapper, .. } = self;
-        let evm_config = OpEvmConfig::<_, PrimitivesTy<Node::Types>>::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
+        let evm_config = OpEvmConfig::<_, OpPrimitives>::new(
+            ctx.chain_spec(),
+            OpRethReceiptBuilder::default(),
+        );
 
         // Interop filter used for txpool validation.
         let interop_client = if self.interop_endpoints.is_empty() {
@@ -1531,6 +1537,7 @@ where
                 Payload: PayloadTypes<
                     BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
                     PayloadAttributes = OpPayloadAttrs,
+                    PayloadBuilderAttributes = OpPayloadBuilderAttributes<TxTy<Node::Types>>,
                 >,
             >,
         >,

@@ -39,3 +39,4 @@ serde_json.workspace = true
 
 [features]
 default = []
+op = ["reth-rpc-traits/op"]
