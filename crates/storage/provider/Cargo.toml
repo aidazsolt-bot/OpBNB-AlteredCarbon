@@ -49,7 +49,7 @@ rust-eth-triedb = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", ta
 rocksdb = { workspace = true, optional = true }
 
 # optimism
-reth-optimism-primitives = { workspace = true, optional = true }
+reth-optimism-primitives = { workspace = true, optional = true, features = ["serde", "reth-codec"] }
 
 # async
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }

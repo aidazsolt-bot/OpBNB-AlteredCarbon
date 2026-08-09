@@ -21,7 +21,7 @@ mod opbnb;
 mod opbnb_qa;
 mod opbnb_testnet;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use alloy_chains::Chain;
 use alloy_genesis::Genesis;
 use alloy_primitives::{Bytes, Signature, B256, U256};
@@ -36,6 +36,34 @@ pub use op_sepolia::OP_SEPOLIA;
 pub use opbnb::OPBNB_MAINNET;
 pub use opbnb_qa::OPBNB_QA;
 pub use opbnb_testnet::OPBNB_TESTNET;
+
+/// Named chains accepted by CLI / chain-spec parsers (opBNB-first, plus OP-Stack carriers).
+pub const SUPPORTED_CHAINS: &[&str] = &[
+    "opbnb",
+    "opbnb-mainnet",
+    "opbnb-testnet",
+    "opbnb-qa",
+    "optimism",
+    "optimism-sepolia",
+    "base",
+    "base-sepolia",
+    "dev",
+];
+
+/// Resolve a known chain name to an [`OpChainSpec`].
+pub fn generated_chain_value_parser(s: &str) -> Option<Arc<OpChainSpec>> {
+    Some(match s {
+        "opbnb" | "opbnb-mainnet" => OPBNB_MAINNET.clone(),
+        "opbnb-testnet" => OPBNB_TESTNET.clone(),
+        "opbnb-qa" => OPBNB_QA.clone(),
+        "optimism" => OP_MAINNET.clone(),
+        "optimism-sepolia" => OP_SEPOLIA.clone(),
+        "base" => BASE_MAINNET.clone(),
+        "base-sepolia" => BASE_SEPOLIA.clone(),
+        "dev" => OP_DEV.clone(),
+        _ => return None,
+    })
+}
 
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, DepositContract, EthChainSpec,

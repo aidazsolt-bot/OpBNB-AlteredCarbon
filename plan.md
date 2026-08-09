@@ -20,7 +20,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
-4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node** compile-green; CLI/bin next
+4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; live opBNB + trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 angelaufen (`cargo check --workspace --no-default-features` ✅ 0 errors 2026-08-09; Clippy/nextest/EF noch offen)
 6. **Phase 6 — Doku & Freigabe** 🔄 teilweise (Disclaimer/Effort-Log in README bereits drin, wird nach Live-Tests aktualisiert)
 
@@ -31,7 +31,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks ✅; op-evm/node pending |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ⏳ pending (workspace check grün) |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | ⏳ pending |
 
@@ -692,4 +692,14 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Constrained `OpNodeTypes` (Header/EthChainSpec) + PoolBuilder/PayloadBuilderAttributes bounds.
 - Verify: `reth-optimism-node`, `reth-bsc-node --features bsc`, workspace `--no-default-features` green.
 - Next: `reth-optimism-cli` + `op-reth` bin (opBNB-focused).
+
+### Session 8 cont. — optimism-cli + op-reth bin green
+- `SUPPORTED_CHAINS` / `generated_chain_value_parser` in chainspec (opBNB-first + OP/Base carriers).
+- Stripped `op_proofs` / slot-preimages seed (needs stages API not in trail yet).
+- Adapted CLI to trail command APIs (`env.init` without Runtime, `Arc<DatabaseEnv>`, import pipeline arity).
+- `reth-db-api` feature `optimism`: Compact→DB Compress bridge for `OpTxEnvelope`/`OpReceipt` (launch path).
+- `proof_history::launch_node` stub launches plain `OpNode` (trie/exex deferred).
+- New `crates/optimism/bin` binary package `op-reth` (bsc-reth pattern).
+- Verify: `reth-optimism-cli`, `op-reth`, `reth-bsc-node --features bsc` green.
+- Next: live opBNB smoke / Clippy / optional trie-proofs; keep BSC green.
 
