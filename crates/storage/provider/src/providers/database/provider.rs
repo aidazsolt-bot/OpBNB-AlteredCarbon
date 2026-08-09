@@ -1367,10 +1367,10 @@ impl<TX: DbTx + 'static, N: NodeTypes> AccountExtReader for DatabaseProvider<TX,
     ) -> ProviderResult<BTreeMap<Address, Vec<u64>>> {
         let highest_static_block = self
             .static_file_provider
-            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
+            .get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
 
         if let Some(highest) = highest_static_block &&
-            self.cached_storage_settings().storage_v2
+            self.cached_storage_settings().account_changesets_in_static_files()
         {
             let start = *range.start();
             let static_end = (*range.end()).min(highest + 1);
@@ -1453,7 +1453,7 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         &self,
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<AccountBeforeTx>> {
-        if self.cached_storage_settings().storage_v2 {
+        if self.cached_storage_settings().account_changesets_in_static_files() {
             let static_changesets =
                 self.static_file_provider.account_block_changeset(block_number)?;
             Ok(static_changesets)
@@ -1475,7 +1475,7 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
         block_number: BlockNumber,
         address: Address,
     ) -> ProviderResult<Option<AccountBeforeTx>> {
-        if self.cached_storage_settings().storage_v2 {
+        if self.cached_storage_settings().account_changesets_in_static_files() {
             Ok(self.static_file_provider.get_account_before_block(block_number, address)?)
         } else {
             self.tx
@@ -1493,10 +1493,10 @@ impl<TX: DbTx, N: NodeTypes> ChangeSetReader for DatabaseProvider<TX, N> {
     ) -> ProviderResult<Vec<(BlockNumber, AccountBeforeTx)>> {
         let range = to_range(range);
         let mut changesets = Vec::new();
-        if self.cached_storage_settings().storage_v2 &&
+        if self.cached_storage_settings().account_changesets_in_static_files() &&
             let Some(highest) = self
                 .static_file_provider
-                .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)
+                .get_highest_static_file_block(StaticFileSegment::AccountChangeSets)
         {
             let static_end = range.end.min(highest + 1);
             if range.start < static_end {
@@ -2646,14 +2646,14 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         // if there are static files for this segment, prune them.
         let highest_changeset_block = self
             .static_file_provider
-            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */);
+            .get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
         let account_changeset = if let Some(highest_block) = highest_changeset_block &&
-            self.cached_storage_settings().storage_v2
+            self.cached_storage_settings().account_changesets_in_static_files()
         {
             // TODO: add a `take` method that removes and returns the items instead of doing this
             let changesets = self.account_changesets_range(block + 1..highest_block + 1)?;
             let mut changeset_writer =
-                self.static_file_provider.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */)?;
+                self.static_file_provider.latest_writer(StaticFileSegment::AccountChangeSets)?;
             changeset_writer.prune_account_changesets(block)?;
 
             changesets

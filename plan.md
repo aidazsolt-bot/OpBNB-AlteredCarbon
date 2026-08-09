@@ -51,6 +51,8 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CLI-002 | README empfiehlt noch `--enable-prefetch` / `--optimize.enable-execution-cache` | Alte BSC-Fork-Toggles; CLI + Engine-Gating beim Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache | 📝 docs: Flags als obsolet markiert; Runtime-Port von `TriePrefetch` bewusst nicht wiederbelebt |
 | PORT-CLI-003 | `--ipcpath /tmp/foo.ipc` wurde zu `/tmp/foo.ipc-1` | `NodeConfig.instance` war `u16` mit Default `1`; `adjust_instance_ports` hängte immer `-{instance}` an | ✅ fixed: `instance: Option<u16>` (None ohne `--instance`), wie Upstream |
 | PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
+| PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ fixed: `account_changesets_in_static_files` / `transaction_senders_in_static_files` always false; route changesets to MDBX until real SF segments ported |
+| PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; Aktivierung bricht aktuell den Compile (unvollständiger RocksDB-Port) | 🔓 open: Feature-Flags an `op-reth`/`optimism-cli` vorbereitet; Compile-Fix + Default-Enable separat |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -745,4 +747,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Bug: `--ipcpath` got `-1` suffix (`instance` defaulted to 1); `--storage.v2` still ineffective because `init_genesis_with_settings` ignored settings and log ran before genesis (`settings=None`).
 - Fix: `NodeConfig.instance: Option<u16>`; real genesis settings persist on fresh DB; existing DB treats missing metadata as v1 + warn on CLI mismatch; `Loaded storage settings` after genesis.
 - Note: DBs already opened under the stub without persisted settings effectively ran **v1** — wipe for true v2, or keep syncing as v1 (expect mismatch warn with `--storage.v2`).
+
+### Session 8 cont. — PORT-STOR-001/002 genesis Headers crash + rocksdb gap
+- Bug: fresh `op-reth node` crashed `append Headers #0 but expected #1`; no `rocksdb/` despite `--storage.v2` default true.
+- Cause: AccountChangeSets SF stub wrote into Headers during genesis `write_state`; RocksDB feature not enabled / does not compile.
+- Fix (001): disable SF account-changesets/senders accessors; route changesets to MDBX. Genesis + `Loaded storage settings { storage_v2: true }` verified.
+- Gap (002): `rocksdb` feature flags sketched on `op-reth`/`optimism-cli` but enabling fails compile — history stays in MDBX until that port lands.
 
