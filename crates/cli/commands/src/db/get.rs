@@ -18,7 +18,10 @@ use reth_db_api::{
 use reth_db_common::DbTool;
 use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_builder::NodeTypesWithDB;
-use reth_provider::{providers::ProviderNodeTypes, ChangeSetReader, StaticFileProviderFactory};
+use reth_provider::{
+    providers::ProviderNodeTypes, ChangeSetReader, StaticFileProviderFactory,
+    StorageChangeSetReader,
+};
 use reth_static_file_types::StaticFileSegment;
 use tracing::error;
 
@@ -111,6 +114,10 @@ impl Command {
                             AccountChangesetMask::MASK,
                         )
                     }
+                    // `StorageChangeSets` is handled separately below via
+                    // `storage_changeset`, since its database key
+                    // (`BlockNumberAddress`) is not a plain block number.
+                    StaticFileSegment::StorageChangeSets => (0, None, AccountChangesetMask::MASK),
                     StaticFileSegment::Sidecars => (
                         table_key::<tables::Sidecars>(&key)?,
                         None,
@@ -142,6 +149,15 @@ impl Command {
                         error!(target: "reth::cli", "No content for the given table key.");
                     }
 
+                    return Ok(())
+                }
+
+                // handle storage changesets differently since they use a change-based row model.
+                if let StaticFileSegment::StorageChangeSets = segment {
+                    let changesets =
+                        tool.provider_factory.static_file_provider().storage_changeset(key)?;
+
+                    println!("{}", serde_json::to_string_pretty(&changesets)?);
                     return Ok(())
                 }
 
@@ -193,6 +209,9 @@ impl Command {
                                 }
                                 StaticFileSegment::AccountChangeSets => {
                                     unreachable!("account changeset static files are special cased before this match")
+                                }
+                                StaticFileSegment::StorageChangeSets => {
+                                    unreachable!("storage changeset static files are special cased before this match")
                                 }
                                 StaticFileSegment::Sidecars => {
                                     let sidecars = <<tables::Sidecars as Table>::Value>::decompress(
