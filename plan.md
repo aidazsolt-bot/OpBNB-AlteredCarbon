@@ -21,7 +21,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
-5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅; nextest stages/op-stack ✅; EF **v17.0** + Bytecode Compact fix → **61/62** suites (nur `valid_blocks` Timeout unter Default-Nextest; Override nachgezogen)
+5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
 6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** (+ EF-Abschluss) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
@@ -817,12 +817,12 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 
 **Verify:** Shanghai + zuvor failende Cluster (`st_bugs`, `st_code_size_limit`, `st_eip150`, `st_mem_expanding_eip150_calls`, `st_call_create_call_code`, `st_delegate_call_test_homestead`, `st_eip150_gas_prices`) → **8/8 PASS**. Logs: `files/yolo-ef-shanghai-after-bytecode-fix.log`, `files/yolo-ef-cluster-after-bytecode-fix.log`.
 
-**Full EF suite (nach Fix):** `cargo nextest run -p ef-tests --features ef-tests --retries 0 --no-fail-fast` → **61 passed / 1 timed out** (`valid_blocks`, Default-Nextest 60s). Log: `files/yolo-ef-tests-v17-after-bytecode.log`. Nextest-Override für `valid_blocks`/`invalid_blocks` (2m×5) nachgezogen.
+**Full EF suite (nach Fix):** `cargo nextest run -p ef-tests --features ef-tests --retries 0 --no-fail-fast` → **61 passed / 1 timed out** (`valid_blocks`, Default-Nextest 60s). Log: `files/yolo-ef-tests-v17-after-bytecode.log`. Nextest-Override für `valid_blocks`/`invalid_blocks` (2m×5) nachgezogen; Re-Verify: **beide PASS** (`files/yolo-ef-valid-blocks-reverify.log`, ~22s).
 
 ### Nächste Schritte (nach Bytecode-Fix)
 
-1. `valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.
-2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / trie) — derzeit ignored.
+1. ~~`valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.~~ ✅
+2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / SF-changeset unwind / history-index) — derzeit ignored; Teil-Investigate: Merkle-Mismatch block 2, Preimage-Pfad separat deferred.
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
 5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
