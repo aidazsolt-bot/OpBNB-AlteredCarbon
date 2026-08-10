@@ -608,7 +608,6 @@ async fn test_pipeline() -> eyre::Result<()> {
 /// - Changesets are stored in static files with pre-hashed storage keys
 /// - Unwind must still revert hashed state via the hashing stages before `MerkleUnwind` validates
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "storage.v2 pipeline state-root mismatch; needs trie/hashed-state follow-up"]
 async fn test_pipeline_v2() -> eyre::Result<()> {
     run_pipeline_forward_and_unwind(Some(StorageSettings::v2()), 5, 2).await
 }

@@ -354,7 +354,9 @@ where
                 })
             })?;
 
-            if let Err(err) = self.consensus.validate_block_post_execution(&block, &result, None, None) {
+            if let Err(err) =
+                self.consensus.validate_block_post_execution(&block, &result, None, None)
+            {
                 return Err(StageError::Block {
                     block: Box::new(block.block_with_parent()),
                     error: BlockErrorKind::Validation(err),
@@ -466,6 +468,13 @@ where
 
         // write output
         provider.write_state(&state, OriginalValuesKnown::Yes, StateWriteConfig::default())?;
+
+        // In storage.v2 hashed state is canonical, so keep it in sync with the plain-state
+        // changes written above. The hashing stages intentionally skip this work in that mode.
+        if provider.cached_storage_settings().use_hashed_state() {
+            let hashed_state = state.hash_state_slow::<KeccakKeyHasher>();
+            provider.write_hashed_state(&hashed_state.into_sorted())?;
+        }
 
         let db_write_duration = time.elapsed();
         debug!(

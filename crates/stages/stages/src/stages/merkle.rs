@@ -611,8 +611,7 @@ mod tests {
                         reth_trie_db::DatabaseTrieCursorFactory<&_, A>,
                         reth_trie_db::DatabaseHashedCursorFactory<&_>,
                     >::incremental_root_with_updates(
-                        &provider,
-                        stage_progress + 1..=previous_stage,
+                        &provider, stage_progress + 1..=previous_stage
                     )
                 }))
             })
