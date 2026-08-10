@@ -1,11 +1,11 @@
 use crate::stages::utils::collect_history_indices;
 
-use super::{collect_account_history_indices, load_history_indices};
-use alloy_primitives::Address;
+use super::{collect_account_history_indices, load_account_history};
 use reth_config::config::{EtlConfig, IndexHistoryConfig};
-use reth_db_api::{models::ShardedKey, table::Decode, tables, transaction::DbTxMut};
+use reth_db_api::{models::ShardedKey, tables, transaction::DbTxMut, Tables};
 use reth_provider::{
-    DBProvider, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter, StorageSettingsCache,
+    DBProvider, EitherWriter, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter,
+    RocksDBProviderFactory, StorageSettingsCache,
 };
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{
@@ -53,7 +53,8 @@ where
         + PruneCheckpointWriter
         + reth_storage_api::ChangeSetReader
         + reth_provider::StaticFileProviderFactory
-        + StorageSettingsCache,
+        + StorageSettingsCache
+        + RocksDBProviderFactory,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -101,17 +102,31 @@ where
 
         let mut range = input.next_block_range();
         let first_sync = input.checkpoint().block_number == 0;
+        let use_rocksdb = provider.cached_storage_settings().storage_v2;
 
         // On first sync we might have history coming from genesis. We clear the table since it's
         // faster to rebuild from scratch.
         if first_sync {
+            #[cfg(all(unix, feature = "rocksdb"))]
+            if use_rocksdb {
+                // Note: RocksDB clear() executes immediately (not deferred to commit like MDBX),
+                // but this is safe for first_sync because if we crash before commit, the
+                // checkpoint stays at 0 and we'll just clear and rebuild again on restart. The
+                // source data (changesets) is intact.
+                provider.rocksdb_provider().clear::<tables::AccountsHistory>()?;
+            } else {
+                provider.tx_ref().clear::<tables::AccountsHistory>()?;
+            }
+            // Without the rocksdb feature, EitherWriter falls back to MDBX even when
+            // `storage_v2` is set — clear MDBX so append-only load does not hit genesis rows.
+            #[cfg(not(all(unix, feature = "rocksdb")))]
             provider.tx_ref().clear::<tables::AccountsHistory>()?;
             range = 0..=*input.next_block_range().end();
         }
 
-        info!(target: "sync::stages::index_account_history::exec", ?first_sync, "Collecting indices");
+        info!(target: "sync::stages::index_account_history::exec", ?first_sync, ?use_rocksdb, "Collecting indices");
 
-        let collector = if provider.cached_storage_settings().account_changesets_in_static_files() {
+        let collector = if provider.cached_storage_settings().storage_v2 {
             // Use the provider-based collection that can read from static files.
             collect_account_history_indices(provider, range.clone(), &self.etl_config)?
         } else {
@@ -125,14 +140,18 @@ where
         };
 
         info!(target: "sync::stages::index_account_history::exec", "Loading indices into database");
-        load_history_indices::<_, tables::AccountsHistory, _>(
-            provider,
-            collector,
-            first_sync,
-            ShardedKey::new,
-            ShardedKey::<Address>::decode_owned,
-            |key| key.key,
-        )?;
+
+        provider.with_rocksdb_batch_auto_commit(|rocksdb_batch| {
+            let mut writer = EitherWriter::new_accounts_history(provider, rocksdb_batch)?;
+            load_account_history(collector, first_sync, &mut writer)
+                .map_err(|e| reth_provider::ProviderError::other(Box::new(e)))?;
+            Ok(((), writer.into_raw_rocksdb_batch()))
+        })?;
+
+        if use_rocksdb {
+            provider.commit_pending_rocksdb_batches()?;
+            provider.rocksdb_provider().flush(&[Tables::AccountsHistory.name()])?;
+        }
 
         Ok(ExecOutput { checkpoint: StageCheckpoint::new(*range.end()), done: true })
     }
