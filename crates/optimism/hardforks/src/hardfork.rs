@@ -377,7 +377,10 @@ impl OptimismHardfork {
             (Self::Ecotone.boxed(), ForkCondition::Timestamp(1710374401)),
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1720627201)),
             (Self::Granite.boxed(), ForkCondition::Timestamp(1726070401)),
-            (EthereumHardfork::Prague.boxed(), ForkCondition::Timestamp(OP_MAINNET_ISTHMUS_TIMESTAMP)),
+            (
+                EthereumHardfork::Prague.boxed(),
+                ForkCondition::Timestamp(OP_MAINNET_ISTHMUS_TIMESTAMP),
+            ),
             (OpHardfork::Isthmus.boxed(), ForkCondition::Timestamp(OP_MAINNET_ISTHMUS_TIMESTAMP)),
             (OpHardfork::Jovian.boxed(), ForkCondition::Timestamp(OP_MAINNET_JOVIAN_TIMESTAMP)),
         ])
@@ -416,7 +419,10 @@ impl OptimismHardfork {
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1716998400)),
             (Self::Granite.boxed(), ForkCondition::Timestamp(1723478400)),
             (Self::Holocene.boxed(), ForkCondition::Timestamp(1732633200)),
-            (EthereumHardfork::Prague.boxed(), ForkCondition::Timestamp(OP_SEPOLIA_ISTHMUS_TIMESTAMP)),
+            (
+                EthereumHardfork::Prague.boxed(),
+                ForkCondition::Timestamp(OP_SEPOLIA_ISTHMUS_TIMESTAMP),
+            ),
             (OpHardfork::Isthmus.boxed(), ForkCondition::Timestamp(OP_SEPOLIA_ISTHMUS_TIMESTAMP)),
             (OpHardfork::Jovian.boxed(), ForkCondition::Timestamp(OP_SEPOLIA_JOVIAN_TIMESTAMP)),
         ])

@@ -42,6 +42,14 @@ reth-optimism-primitives.workspace = true
 revm.workspace = true
 op-revm.workspace = true
 
+# opBNB Fermat/Haber precompiles
+bls_on_arkworks.workspace = true
+cometbft.workspace = true
+cometbft-light-client.workspace = true
+cometbft-light-client-verifier.workspace = true
+cometbft-proto.workspace = true
+prost.workspace = true
+
 # misc
 thiserror.workspace = true
 
@@ -51,6 +59,7 @@ reth-revm = { workspace = true, features = ["test-utils"] }
 alloy-genesis.workspace = true
 serde_json.workspace = true
 reth-optimism-primitives = { workspace = true, features = ["arbitrary"] }
+reth-optimism-chainspec = { workspace = true }
 
 [features]
 default = ["std"]

@@ -365,6 +365,10 @@ impl EthChainSpec for OpChainSpec {
     }
 
     fn next_block_base_fee(&self, parent: &Header, target_timestamp: u64) -> Option<u64> {
+        // opBNB Wright: base fee is fixed at 0 (OpBNBBaseFeeForGasLess).
+        if self.is_wright_active_at_timestamp(target_timestamp) {
+            return Some(0);
+        }
         // Holocene+ encode 1559 params in parent extra_data; Jovian also encodes min base fee
         // and uses max(gas_used, blob_gas_used) for the next base fee.
         // Prefer [`OpHardforks`] over [`OptimismHardforks`] (both expose Holocene helpers).

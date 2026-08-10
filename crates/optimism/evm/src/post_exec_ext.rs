@@ -1,26 +1,26 @@
 use alloc::{sync::Arc, vec::Vec};
 use alloy_consensus::Header;
-use alloy_evm::{FromRecoveredTx, FromTxWithEncoded, block::BlockExecutor};
+use alloy_evm::{block::BlockExecutor, FromRecoveredTx, FromTxWithEncoded};
 use alloy_op_evm::{
-    OpBlockExecutor, PreRefundGasUsed,
-    block::{OpTxEnv, receipt_builder::OpReceiptBuilder},
+    block::{receipt_builder::OpReceiptBuilder, OpTxEnv},
     post_exec::{PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks, PostExecExecutorExt},
+    OpBlockExecutor, OpEvmFactory, PreRefundGasUsed,
 };
 use core::fmt::Debug;
 use op_alloy_consensus::OpTransaction as OpConsensusTransaction;
 use op_revm::OpSpecId;
 use reth_chainspec::EthChainSpec;
 use reth_evm::{
-    ConfigureEvm, Database,
     execute::{BasicBlockBuilder, BlockBuilder},
     precompiles::PrecompilesMap,
+    ConfigureEvm, Database,
 };
-use reth_optimism_forks::OpHardforks;
+use reth_optimism_forks::{Hardforks, OpHardforks};
 use reth_optimism_primitives::DepositReceipt;
 use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
 use revm::{context::BlockEnv, database::State};
 
-use crate::{OpBlockExecutorFactory, OpEvmConfig, OpEvmFactory, OpTx, PostExecMode};
+use crate::{OpBlockExecutorFactory, OpBnbOverlayFactory, OpEvmConfig, OpTx, PostExecMode};
 
 /// Optimism-specific EVM helpers that expose post-exec-aware executors and builders.
 pub trait ConfigurePostExecEvm: ConfigureEvm {
@@ -36,10 +36,10 @@ pub trait ConfigurePostExecEvm: ConfigureEvm {
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockExecutor<
-            Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
-            Receipt = <Self::Primitives as NodePrimitives>::Receipt,
-        > + PostExecExecutorExt
-        + 'a,
+                Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
+                Receipt = <Self::Primitives as NodePrimitives>::Receipt,
+            > + PostExecExecutorExt
+            + 'a,
         Self::Error,
     >;
 
@@ -56,27 +56,28 @@ pub trait ConfigurePostExecEvm: ConfigureEvm {
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockBuilder<
-            Primitives = Self::Primitives,
-            Executor: PostExecExecutorExt
-                          + BlockExecutor<
-                Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
-                Result: PreRefundGasUsed,
-            >,
-        > + 'a,
+                Primitives = Self::Primitives,
+                Executor: PostExecExecutorExt
+                              + BlockExecutor<
+                    Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
+                    Result: PreRefundGasUsed,
+                >,
+            > + 'a,
         Self::Error,
     >;
 }
 
 impl<ChainSpec, N, R> ConfigurePostExecEvm for OpEvmConfig<ChainSpec, N, R>
 where
-    ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Send + Sync + Unpin + 'static,
+    ChainSpec:
+        EthChainSpec<Header = Header> + OpHardforks + Hardforks + Send + Sync + Unpin + 'static,
     N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
+        Receipt = R::Receipt,
+        SignedTx = R::Transaction,
+        BlockHeader = Header,
+        BlockBody = alloy_consensus::BlockBody<R::Transaction>,
+        Block = alloy_consensus::Block<R::Transaction>,
+    >,
     OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     R: OpReceiptBuilder<
             Receipt: DepositReceipt,
@@ -95,10 +96,10 @@ where
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockExecutor<
-            Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
-            Receipt = <Self::Primitives as NodePrimitives>::Receipt,
-        > + PostExecExecutorExt
-        + 'a,
+                Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
+                Receipt = <Self::Primitives as NodePrimitives>::Receipt,
+            > + PostExecExecutorExt
+            + 'a,
         Self::Error,
     > {
         let evm = self.evm_for_block(db, block.header())?;
@@ -120,13 +121,13 @@ where
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockBuilder<
-            Primitives = Self::Primitives,
-            Executor: PostExecExecutorExt
-                          + BlockExecutor<
-                Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
-                Result: PreRefundGasUsed,
-            >,
-        > + 'a,
+                Primitives = Self::Primitives,
+                Executor: PostExecExecutorExt
+                              + BlockExecutor<
+                    Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
+                    Result: PreRefundGasUsed,
+                >,
+            > + 'a,
         Self::Error,
     > {
         let evm_env = self.next_evm_env(parent, &attributes)?;
@@ -159,14 +160,15 @@ where
 impl<ChainSpec, N, R, F> ConfigurePostExecEvm
     for OpEvmConfig<ChainSpec, N, R, PostExecEvmFactoryAdapter<F>>
 where
-    ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Send + Sync + Unpin + 'static,
+    ChainSpec:
+        EthChainSpec<Header = Header> + OpHardforks + Hardforks + Send + Sync + Unpin + 'static,
     N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
+        Receipt = R::Receipt,
+        SignedTx = R::Transaction,
+        BlockHeader = Header,
+        BlockBody = alloy_consensus::BlockBody<R::Transaction>,
+        Block = alloy_consensus::Block<R::Transaction>,
+    >,
     OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     R: OpReceiptBuilder<
             Receipt: DepositReceipt,
@@ -184,7 +186,8 @@ where
             Precompiles = PrecompilesMap,
             Spec = OpSpecId,
             BlockEnv = BlockEnv,
-        > + Debug
+        > + OpBnbOverlayFactory
+        + Debug
         + Clone
         + Send
         + Sync
@@ -199,10 +202,10 @@ where
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockExecutor<
-            Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
-            Receipt = <Self::Primitives as NodePrimitives>::Receipt,
-        > + PostExecExecutorExt
-        + 'a,
+                Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
+                Receipt = <Self::Primitives as NodePrimitives>::Receipt,
+            > + PostExecExecutorExt
+            + 'a,
         Self::Error,
     > {
         let evm = self.evm_for_block(db, block.header())?;
@@ -224,13 +227,13 @@ where
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockBuilder<
-            Primitives = Self::Primitives,
-            Executor: PostExecExecutorExt
-                          + BlockExecutor<
-                Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
-                Result: PreRefundGasUsed,
-            >,
-        > + 'a,
+                Primitives = Self::Primitives,
+                Executor: PostExecExecutorExt
+                              + BlockExecutor<
+                    Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
+                    Result: PreRefundGasUsed,
+                >,
+            > + 'a,
         Self::Error,
     > {
         let evm_env = self.next_evm_env(parent, &attributes)?;
