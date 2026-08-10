@@ -21,8 +21,8 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
-5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅; nextest chainspec/forks 23 + stages 106 + op-stack libs/node/rpc ✅; EF fixtures **v17.0**; Bytecode Compact re-analyze fix → Shanghai + prior gas-mismatch cluster green
-6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
+5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅; nextest stages/op-stack ✅; EF **v17.0** + Bytecode Compact fix → **61/62** suites (nur `valid_blocks` Timeout unter Default-Nextest; Override nachgezogen)
+6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** (+ EF-Abschluss) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
@@ -38,8 +38,8 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
 | opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest (prim/cons/evm/node/rpc) ✅; trie/proofs/live sync pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages/op-stack nextest ✅; EF fixtures v17.0 + Bytecode Compact fix (Shanghai/gas cluster green); full EF suite still open |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 9 ✅; finale Zahlen nach Human-Sync |
+| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages/op-stack nextest ✅; EF v17.0 + Bytecode Compact → **61/62** (valid_blocks Timeout → nextest Override); EEST smoke ✅ |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort Session 9 + EF-Abschluss ✅; finale Zahlen nach Human-Sync |
 
 ## Portierungs-Bugliste (v2.4.1 rebase)
 
@@ -195,7 +195,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Copilot CLI `a95758da` (Snapshot **2026-08-09**, final DB) | 2026-08-06 09:50 – 2026-08-07 18:05 | Sonnet 5, GPT-5.4, Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini | ~356,9M + ~135,4M + ~88,4M + ~63,1M + ~6,4M = **~650,1M** (+ ~636M cache-read) | ~1,163K + ~298K + ~260K + ~124K + ~16K = **~1,861K** | 32 Turns / 5.803 Events / ~8,1h request-wall | Compile-Loop bis node-core/stages/rpc-Typen; Phase-2/3 Vorarbeit |
 | Cursor Composer YOLO (Session 6, Chat `42f88fe7…`, Snapshot **2026-08-09 12:05 UTC**) | 06:45 – ~12:05 UTC (**~5,34 h** Wall) | **composer-2.5-fast** (4.986 `modelName`-Hits) + **cursor-grok-4.5-high-fast** (178); Parent `default` | **Kein lokaler Billed-Token-Ledger.** Content-Proxy: Transcripts ~2,34M chars ≈ **~0,58M Tokens** (÷4); Cleartext-Chat-JSON ≈ **~0,33M Tokens** (Untergrenze, Tool/Context unterzählt). Erwartete billed/context-Wiederholung deutlich höher | (Proxy, s. Input-Spalte) | **15 Agents** (1 Parent + 14 Subs); 2.582 Assistant-Msgs; 5.861 Tool-Blobs; ~11.722 Tool-Calls; 74.482 `ai_code_hashes` | **`reth-bsc-node --features bsc` + workspace `--no-default-features` grün**; Phase-4 op-forks/chainspec/primitives/consensus; Details: `files/cursor-session-metrics.json` |
 | Cursor Session 8 (Chat `d6ebb428…`, Snapshot **2026-08-09 ~14:30 UTC**) | ~12:18 – ~14:25 UTC (**~2,1 h** Commit-Span; ~1,4 h Chat-Wall) | Auto/Composer (kein per-request Model-Ledger im Transcript) | Transcript-Proxy **~0,11M Tokens** (÷4); billed meter n/a | (Proxy) | ~816 Tool-Calls; 11.288 `ai_code_hashes`; 350 assistant / 18 user msgs | op-evm→payload/rpc/node/cli/`op-reth` grün; opBNB init+RPC smoke; nextest chainspec/forks 23/23; Details: `files/cursor-session8-metrics.json` |
-| Cursor Session 9 (Chat `6a6455c9…` + Vorabend `9be255b9…` PORT-STOR-006, Snapshot **2026-08-10 ~07:51 UTC**) | Vorabend SCS-Port unterbrochen; Resume **05:57–~07:51 UTC** (**~1,9 h** Chat-Wall); Commit-Span **06:06–07:43 UTC** (**~1,6 h**) | Auto/Composer + Task-Subagents (inherit); kein per-request Model-Ledger | Transcript-Proxy kombiniert **~97K Tokens** (÷4): Resume ~28K + SCS-Chat ~69K; billed meter n/a | (Proxy) | Resume: 12 user / 118 assistant; **250** tool_use (Shell 82, Read 76, Grep 37, AwaitShell 22, StrReplace 19, Task 3); Vorabend SCS ~304 lines / ~306 tools | **PORT-STOR-006** StorageChangeSets SF; stages nextest **106/106**; op-prim **26** / cons+evm **53** / node+rpc **51**; EF inventory 32/62 Suites; Details: `files/cursor-session9-metrics.json` |
+| Cursor Session 9 (Chat `6a6455c9…` + Vorabend `9be255b9…` PORT-STOR-006, Snapshot **2026-08-10 ~08:30 UTC**) | Vorabend SCS-Port unterbrochen; Resume **05:57–~08:30 UTC** (**~2,5 h** Chat-Wall inkl. EF-Rootcause); Commit-Span **06:06–~08:27 UTC** | Auto/Composer + Task-Subagents (inherit); kein per-request Model-Ledger | Transcript-Proxy kombiniert **~97K+** Tokens (÷4, früher Snapshot ~97K; Session fortgesetzt); billed meter n/a | (Proxy) | Resume früh: 12 user / 118 assistant; **250** tool_use; danach EF-Deep-Dive (Bytecode Compact) | **PORT-STOR-006**; stages **106**; op-stack nextest; EF **v17.0** + Compact-Fix → **61/62** suites; Details: `files/cursor-session9-metrics.json` |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -817,9 +817,11 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 
 **Verify:** Shanghai + zuvor failende Cluster (`st_bugs`, `st_code_size_limit`, `st_eip150`, `st_mem_expanding_eip150_calls`, `st_call_create_call_code`, `st_delegate_call_test_homestead`, `st_eip150_gas_prices`) → **8/8 PASS**. Logs: `files/yolo-ef-shanghai-after-bytecode-fix.log`, `files/yolo-ef-cluster-after-bytecode-fix.log`.
 
+**Full EF suite (nach Fix):** `cargo nextest run -p ef-tests --features ef-tests --retries 0 --no-fail-fast` → **61 passed / 1 timed out** (`valid_blocks`, Default-Nextest 60s). Log: `files/yolo-ef-tests-v17-after-bytecode.log`. Nextest-Override für `valid_blocks`/`invalid_blocks` (2m×5) nachgezogen.
+
 ### Nächste Schritte (nach Bytecode-Fix)
 
-1. Volles EF-Suite / EEST nachziehen (`make ef-tests`).
+1. `valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.
 2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / trie) — derzeit ignored.
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
