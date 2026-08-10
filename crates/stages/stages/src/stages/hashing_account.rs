@@ -9,7 +9,9 @@ use reth_db_api::{
 };
 use reth_etl::Collector;
 use reth_primitives_traits::Account;
-use reth_provider::{AccountExtReader, DBProvider, HashingWriter, StatsReader};
+use reth_provider::{
+    AccountExtReader, DBProvider, HashingWriter, StatsReader, StorageSettingsCache,
+};
 use reth_stages_api::{
     AccountHashingCheckpoint, EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint,
     StageError, StageId, UnwindInput, UnwindOutput,
@@ -134,7 +136,11 @@ impl Default for AccountHashingStage {
 
 impl<Provider> Stage<Provider> for AccountHashingStage
 where
-    Provider: DBProvider<Tx: DbTxMut> + HashingWriter + AccountExtReader + StatsReader,
+    Provider: DBProvider<Tx: DbTxMut>
+        + HashingWriter
+        + AccountExtReader
+        + StatsReader
+        + StorageSettingsCache,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -145,6 +151,11 @@ where
     fn execute(&mut self, provider: &Provider, input: ExecInput) -> Result<ExecOutput, StageError> {
         if input.target_reached() {
             return Ok(ExecOutput::done(input.checkpoint()))
+        }
+
+        // Execution writes hashed state directly when it is canonical.
+        if provider.cached_storage_settings().use_hashed_state() {
+            return Ok(ExecOutput::done(input.checkpoint().with_block_number(input.target())));
         }
 
         let (from_block, to_block) = input.next_block_range().into_inner();

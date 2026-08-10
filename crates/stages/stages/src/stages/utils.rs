@@ -76,7 +76,10 @@ where
     let mut current_block_number = u64::MAX;
     for (idx, entry) in changeset_cursor.walk_range(range)?.enumerate() {
         let (block_number, key) = partial_key_factory(entry?);
-        cache.entry(key).or_default().push(block_number);
+        let list = cache.entry(key).or_default();
+        if list.last().copied() != Some(block_number) {
+            list.push(block_number);
+        }
 
         if idx > 0 && idx.is_multiple_of(interval) && total_changesets > 1000 {
             info!(target: "sync::stages::index_history", progress = %format!("{:.4}%", (idx as f64 / total_changesets as f64) * 100.0), "Collecting indices");
@@ -149,7 +152,12 @@ where
 
     for (idx, changeset_result) in walker.enumerate() {
         let (block_number, AccountBeforeTx { address, .. }) = changeset_result?;
-        cache.entry(address).or_default().push(block_number);
+        let list = cache.entry(address).or_default();
+        // Same address can appear multiple times in one block's changeset; roaring lists require
+        // strictly increasing values.
+        if list.last().copied() != Some(block_number) {
+            list.push(block_number);
+        }
 
         if idx > 0 && idx % interval == 0 && total_changesets > 1000 {
             info!(target: "sync::stages::index_history", progress = %format!("{:.4}%", (idx as f64 / total_changesets as f64) * 100.0), "Collecting indices");

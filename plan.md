@@ -58,6 +58,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
 | PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 IPv6-only (Bootnodes IPv4) | ✅ code: op-geth Bootnodes + OpBNB discv4/IPv4-discv5 Defaults; ⏳ live: eth-Session/`peerCount>0` nach Rebuild noch verifizieren |
 | PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
+| PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -788,7 +789,7 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 | `reth-optimism-node` + `rpc --lib` | 51 pass / 1 skip | `files/yolo-nextest-op-node-rpc-verify.log` |
 | `reth-stages --features test-utils` | **106 pass / 8 skip** | `files/yolo-nextest-stages-final.log` |
 
-**Ignored (bewusst, Trie/preimage deferred):** 6× `tests/preimage.rs` Cancun-preimage; `tests/pipeline.rs::test_pipeline_v2` (storage.v2 State-Root). Commit `5b8488b60`.
+**Ignored (bewusst, Trie/preimage deferred):** 6× `tests/preimage.rs` Cancun-preimage. ~~`tests/pipeline.rs::test_pipeline_v2`~~ → ✅ PORT-STOR-007.
 
 **EF-Tests (Inventory, kein Grün-Meilenstein):**
 - Fixtures: ethereum/tests **v12.2** unter `testing/ef-tests/ethereum-tests/` (gitignored).
