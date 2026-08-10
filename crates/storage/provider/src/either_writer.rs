@@ -2,7 +2,7 @@
 //! files.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     marker::PhantomData,
     ops::{Range, RangeInclusive},
 };
@@ -13,12 +13,12 @@ use crate::{
     providers::{history_info, HistoryInfo, StaticFileProvider, StaticFileProviderRWRefMut},
     StaticFileProviderFactory,
 };
-use alloy_primitives::{map::HashMap, Address, BlockNumber, TxHash, TxNumber};
+use alloy_primitives::{map::HashMap, Address, BlockNumber, TxHash, TxNumber, B256};
 use rayon::slice::ParallelSliceMut;
 use reth_codecs::Compact;
 use reth_db::{
     cursor::{DbCursorRO, DbDupCursorRW},
-    models::AccountBeforeTx,
+    models::{AccountBeforeTx, BlockNumberAddress, StorageBeforeTx},
     static_file::{TransactionMask, TransactionSenderMask},
     table::Value,
     transaction::{CursorMutTy, CursorTy, DbTx, DbTxMut, DupCursorMutTy, DupCursorTy},
@@ -31,9 +31,12 @@ use reth_db_api::{
 };
 use reth_errors::ProviderError;
 use reth_node_types::NodePrimitives;
-use reth_primitives_traits::ReceiptTy;
+use reth_primitives_traits::{ReceiptTy, StorageEntry};
 use reth_static_file_types::StaticFileSegment;
-use reth_storage_api::{ChangeSetReader, DBProvider, NodePrimitivesProvider, StorageSettingsCache};
+use reth_storage_api::{
+    ChangeSetReader, DBProvider, NodePrimitivesProvider, StorageChangeSetReader,
+    StorageSettingsCache,
+};
 use reth_storage_errors::provider::ProviderResult;
 use strum::{Display, EnumIs};
 
@@ -200,6 +203,40 @@ impl<'a> EitherWriter<'a, (), ()> {
         provider: &P,
     ) -> EitherWriterDestination {
         if provider.cached_storage_settings().account_changesets_in_static_files() {
+            EitherWriterDestination::StaticFile
+        } else {
+            EitherWriterDestination::Database
+        }
+    }
+
+    /// Creates a new [`EitherWriter`] for storage changesets based on storage settings.
+    pub fn new_storage_changesets<P>(
+        provider: &'a P,
+        block_number: BlockNumber,
+    ) -> ProviderResult<DupEitherWriterTy<'a, P, tables::StorageChangeSets>>
+    where
+        P: DBProvider + NodePrimitivesProvider + StorageSettingsCache + StaticFileProviderFactory,
+        P::Tx: DbTxMut,
+    {
+        if provider.cached_storage_settings().storage_changesets_in_static_files() {
+            Ok(EitherWriter::StaticFile(
+                provider
+                    .get_static_file_writer(block_number, StaticFileSegment::StorageChangeSets)?,
+            ))
+        } else {
+            Ok(EitherWriter::Database(
+                provider.tx_ref().cursor_dup_write::<tables::StorageChangeSets>()?,
+            ))
+        }
+    }
+
+    /// Returns the destination for writing storage changesets.
+    ///
+    /// This determines the destination based solely on storage settings.
+    pub fn storage_changesets_destination<P: DBProvider + StorageSettingsCache>(
+        provider: &P,
+    ) -> EitherWriterDestination {
+        if provider.cached_storage_settings().storage_changesets_in_static_files() {
             EitherWriterDestination::StaticFile
         } else {
             EitherWriterDestination::Database
@@ -584,6 +621,40 @@ where
     }
 }
 
+impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N>
+where
+    CURSOR: DbDupCursorRW<tables::StorageChangeSets>,
+{
+    /// Append storage changeset for a block.
+    ///
+    /// NOTE: This _sorts_ the changesets by (address, key) before appending.
+    pub fn append_storage_changeset(
+        &mut self,
+        block_number: BlockNumber,
+        mut changeset: Vec<StorageBeforeTx>,
+    ) -> ProviderResult<()> {
+        changeset.par_sort_by_key(|change| (change.address, change.key));
+        match self {
+            Self::Database(cursor) => {
+                for change in changeset {
+                    let storage_id = BlockNumberAddress((block_number, change.address));
+                    cursor.append_dup(
+                        storage_id,
+                        StorageEntry { key: change.key, value: change.value },
+                    )?;
+                }
+            }
+            Self::StaticFile(writer) => {
+                writer.append_storage_changeset(changeset, block_number)?;
+            }
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(_) => return Err(ProviderError::UnsupportedProvider),
+        }
+
+        Ok(())
+    }
+}
+
 /// Represents a source for reading data, either from database, static files, or `RocksDB`.
 #[derive(Debug, Display)]
 pub enum EitherReader<'a, CURSOR, N> {
@@ -694,6 +765,24 @@ impl<'a> EitherReader<'a, (), ()> {
         } else {
             Ok(EitherReader::Database(
                 provider.tx_ref().cursor_dup_read::<tables::AccountChangeSets>()?,
+                PhantomData,
+            ))
+        }
+    }
+
+    /// Creates a new [`EitherReader`] for storage changesets based on storage settings.
+    pub fn new_storage_changesets<P>(
+        provider: &P,
+    ) -> ProviderResult<DupEitherReaderTy<'a, P, tables::StorageChangeSets>>
+    where
+        P: DBProvider + NodePrimitivesProvider + StorageSettingsCache + StaticFileProviderFactory,
+        P::Tx: DbTx,
+    {
+        if EitherWriterDestination::storage_changesets(provider).is_static_file() {
+            Ok(EitherReader::StaticFile(provider.static_file_provider(), PhantomData))
+        } else {
+            Ok(EitherReader::Database(
+                provider.tx_ref().cursor_dup_read::<tables::StorageChangeSets>()?,
                 PhantomData,
             ))
         }
@@ -895,6 +984,54 @@ where
     }
 }
 
+impl<CURSOR, N: NodePrimitives> EitherReader<'_, CURSOR, N>
+where
+    CURSOR: DbCursorRO<tables::StorageChangeSets>,
+{
+    /// Iterate over storage changesets and return all storage slots that were changed.
+    pub fn changed_storages_with_range(
+        &mut self,
+        range: RangeInclusive<BlockNumber>,
+    ) -> ProviderResult<BTreeMap<Address, BTreeSet<B256>>> {
+        match self {
+            Self::StaticFile(provider, _) => {
+                let highest_static_block =
+                    provider.get_highest_static_file_block(StaticFileSegment::StorageChangeSets);
+
+                let Some(highest) = highest_static_block else {
+                    return Err(ProviderError::MissingHighestStaticFileBlock(
+                        StaticFileSegment::StorageChangeSets,
+                    ))
+                };
+
+                let start = *range.start();
+                let static_end = (*range.end()).min(highest + 1);
+
+                let mut changed_storages: BTreeMap<Address, BTreeSet<B256>> = BTreeMap::default();
+                if start <= static_end {
+                    for block in start..=static_end {
+                        let block_changesets = provider.storage_block_changeset(block)?;
+                        for changeset in block_changesets {
+                            changed_storages.entry(changeset.address).or_default().insert(changeset.key);
+                        }
+                    }
+                }
+
+                Ok(changed_storages)
+            }
+            Self::Database(provider, _) => provider
+                .walk_range(BlockNumberAddress::range(range))?
+                .try_fold(BTreeMap::default(), |mut accounts: BTreeMap<Address, BTreeSet<B256>>, entry| {
+                    let (block_address, storage_entry) = entry?;
+                    accounts.entry(block_address.address()).or_default().insert(storage_entry.key);
+                    Ok(accounts)
+                }),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(_) => Err(ProviderError::UnsupportedProvider),
+        }
+    }
+}
+
 /// Destination for writing data.
 #[derive(Debug, EnumIs)]
 pub enum EitherWriterDestination {
@@ -927,6 +1064,19 @@ impl EitherWriterDestination {
     {
         // Write account changesets to static files only if they're explicitly enabled
         if provider.cached_storage_settings().account_changesets_in_static_files() {
+            Self::StaticFile
+        } else {
+            Self::Database
+        }
+    }
+
+    /// Returns the destination for writing storage changesets based on storage settings.
+    pub fn storage_changesets<P>(provider: &P) -> Self
+    where
+        P: StorageSettingsCache,
+    {
+        // Write storage changesets to static files only if they're explicitly enabled
+        if provider.cached_storage_settings().storage_changesets_in_static_files() {
             Self::StaticFile
         } else {
             Self::Database

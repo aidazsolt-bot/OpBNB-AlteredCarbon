@@ -41,7 +41,8 @@ use reth_db_api::{
     database::Database,
     models::{
         sharded_key, storage_sharded_key::StorageShardedKey, AccountBeforeTx, BlockNumberAddress,
-        BlockNumberHashedAddress, ShardedKey, StorageSettings, StoredBlockBodyIndices,
+        BlockNumberHashedAddress, ShardedKey, StorageBeforeTx, StorageSettings,
+        StoredBlockBodyIndices,
     },
     table::Table,
     tables,
@@ -1411,13 +1412,17 @@ impl<TX: DbTx, N: NodeTypes> StorageChangeSetReader for DatabaseProvider<TX, N> 
         &self,
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
-        let range = block_number..=block_number;
-        let storage_range = BlockNumberAddress::range(range);
-        self.tx
-            .cursor_dup_read::<tables::StorageChangeSets>()?
-            .walk_range(storage_range)?
-            .map(|result| -> ProviderResult<_> { Ok(result?) })
-            .collect()
+        if self.cached_storage_settings().storage_changesets_in_static_files() {
+            Ok(self.static_file_provider.storage_changeset(block_number)?)
+        } else {
+            let range = block_number..=block_number;
+            let storage_range = BlockNumberAddress::range(range);
+            self.tx
+                .cursor_dup_read::<tables::StorageChangeSets>()?
+                .walk_range(storage_range)?
+                .map(|result| -> ProviderResult<_> { Ok(result?) })
+                .collect()
+        }
     }
 
     fn get_storage_before_block(
@@ -1426,12 +1431,16 @@ impl<TX: DbTx, N: NodeTypes> StorageChangeSetReader for DatabaseProvider<TX, N> 
         address: Address,
         storage_key: B256,
     ) -> ProviderResult<Option<StorageEntry>> {
-        let storage_id = BlockNumberAddress((block_number, address));
-        Ok(self
-            .tx
-            .cursor_dup_read::<tables::StorageChangeSets>()?
-            .seek_by_key_subkey(storage_id, storage_key)?
-            .filter(|entry| entry.key == storage_key))
+        if self.cached_storage_settings().storage_changesets_in_static_files() {
+            self.static_file_provider.get_storage_before_block(block_number, address, storage_key)
+        } else {
+            let storage_id = BlockNumberAddress((block_number, address));
+            Ok(self
+                .tx
+                .cursor_dup_read::<tables::StorageChangeSets>()?
+                .seek_by_key_subkey(storage_id, storage_key)?
+                .filter(|entry| entry.key == storage_key))
+        }
     }
 
     fn storage_changesets_range(
@@ -1440,11 +1449,28 @@ impl<TX: DbTx, N: NodeTypes> StorageChangeSetReader for DatabaseProvider<TX, N> 
     ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
         let r = to_range(range);
         let range = r.start..=r.end.saturating_sub(1);
-        self.tx
-            .cursor_dup_read::<tables::StorageChangeSets>()?
-            .walk_range(BlockNumberAddress::range(range))?
-            .map(|result| -> ProviderResult<_> { Ok(result?) })
-            .collect()
+
+        let mut changesets = Vec::new();
+        if self.cached_storage_settings().storage_changesets_in_static_files() &&
+            let Some(highest) = self
+                .static_file_provider
+                .get_highest_static_file_block(StaticFileSegment::StorageChangeSets)
+        {
+            let start = *range.start();
+            let static_end = (*range.end()).min(highest);
+            if start <= static_end {
+                for block in start..=static_end {
+                    changesets.extend(self.storage_changeset(block)?);
+                }
+            }
+        } else {
+            let mut cursor = self.tx.cursor_dup_read::<tables::StorageChangeSets>()?;
+            for entry in cursor.walk_range(BlockNumberAddress::range(range))? {
+                changesets.push(entry?);
+            }
+        }
+
+        Ok(changesets)
     }
 }
 
@@ -2179,38 +2205,59 @@ impl<TX: DbTx + 'static, N: NodeTypes> StorageReader for DatabaseProvider<TX, N>
         &self,
         range: RangeInclusive<BlockNumber>,
     ) -> ProviderResult<BTreeMap<Address, BTreeSet<B256>>> {
-        self.tx
-            .cursor_read::<tables::StorageChangeSets>()?
-            .walk_range(BlockNumberAddress::range(range))?
-            // fold all storages and save its old state so we can remove it from HashedStorage
-            // it is needed as it is dup table.
-            .try_fold(BTreeMap::new(), |mut accounts: BTreeMap<Address, BTreeSet<B256>>, entry| {
-                let (BlockNumberAddress((_, address)), storage_entry) = entry?;
-                accounts.entry(address).or_default().insert(storage_entry.key);
-                Ok(accounts)
-            })
+        let mut reader = EitherReader::new_storage_changesets(self)?;
+        reader.changed_storages_with_range(range)
     }
 
     fn changed_storages_and_blocks_with_range(
         &self,
         range: RangeInclusive<BlockNumber>,
     ) -> ProviderResult<BTreeMap<(Address, B256), Vec<u64>>> {
-        let mut changeset_cursor = self.tx.cursor_read::<tables::StorageChangeSets>()?;
+        let highest_static_block = self
+            .static_file_provider
+            .get_highest_static_file_block(StaticFileSegment::StorageChangeSets);
 
-        let storage_changeset_lists =
-            changeset_cursor.walk_range(BlockNumberAddress::range(range))?.try_fold(
-                BTreeMap::new(),
-                |mut storages: BTreeMap<(Address, B256), Vec<u64>>, entry| -> ProviderResult<_> {
-                    let (index, storage) = entry?;
-                    storages
-                        .entry((index.address(), storage.key))
-                        .or_default()
-                        .push(index.block_number());
-                    Ok(storages)
-                },
-            )?;
+        if let Some(highest) = highest_static_block &&
+            self.cached_storage_settings().storage_changesets_in_static_files()
+        {
+            let start = *range.start();
+            let static_end = (*range.end()).min(highest + 1);
 
-        Ok(storage_changeset_lists)
+            let mut storage_changeset_lists: BTreeMap<(Address, B256), Vec<u64>> =
+                BTreeMap::default();
+            if start <= static_end {
+                for block in start..=static_end {
+                    let block_changesets = self.storage_block_changeset(block)?;
+                    for changeset in block_changesets {
+                        storage_changeset_lists
+                            .entry((changeset.address, changeset.key))
+                            .or_default()
+                            .push(block);
+                    }
+                }
+            }
+
+            Ok(storage_changeset_lists)
+        } else {
+            let mut changeset_cursor = self.tx.cursor_read::<tables::StorageChangeSets>()?;
+
+            let storage_changeset_lists =
+                changeset_cursor.walk_range(BlockNumberAddress::range(range))?.try_fold(
+                    BTreeMap::new(),
+                    |mut storages: BTreeMap<(Address, B256), Vec<u64>>,
+                     entry|
+                     -> ProviderResult<_> {
+                        let (index, storage) = entry?;
+                        storages
+                            .entry((index.address(), storage.key))
+                            .or_default()
+                            .push(index.block_number());
+                        Ok(storages)
+                    },
+                )?;
+
+            Ok(storage_changeset_lists)
+        }
     }
 }
 
@@ -2333,17 +2380,19 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         // Write storage changes
         tracing::trace!("Writing storage changes");
         let mut storages_cursor = self.tx_ref().cursor_dup_write::<tables::PlainStorageState>()?;
-        let mut storage_changeset_cursor =
-            self.tx_ref().cursor_dup_write::<tables::StorageChangeSets>()?;
         for (block_index, mut storage_changes) in reverts.storage.into_iter().enumerate() {
             let block_number = first_block + block_index as BlockNumber;
 
             tracing::trace!(block_number, "Writing block change");
             // sort changes by address.
             storage_changes.par_sort_unstable_by_key(|a| a.address);
-            for PlainStorageRevert { address, wiped, storage_revert } in storage_changes {
-                let storage_id = BlockNumberAddress((block_number, address));
 
+            if !config.write_storage_changesets {
+                continue
+            }
+
+            let mut block_changeset = Vec::new();
+            for PlainStorageRevert { address, wiped, storage_revert } in storage_changes {
                 let mut storage = storage_revert
                     .into_iter()
                     .map(|(k, v)| (B256::new(k.to_be_bytes()), v))
@@ -2371,9 +2420,13 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
 
                 tracing::trace!(?address, ?storage, "Writing storage reverts");
                 for (key, value) in StorageRevertsIter::new(storage, wiped_storage) {
-                    storage_changeset_cursor.append_dup(storage_id, StorageEntry { key, value })?;
+                    block_changeset.push(StorageBeforeTx { address, key, value });
                 }
             }
+
+            let mut storage_changesets_writer =
+                EitherWriter::new_storage_changesets(self, block_number)?;
+            storage_changesets_writer.append_storage_changeset(block_number, block_changeset)?;
         }
 
         if !config.write_account_changesets {

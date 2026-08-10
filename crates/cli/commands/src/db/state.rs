@@ -147,8 +147,11 @@ impl Command {
         // (not PlainStorageState, which reflects current state)
         let mut storage_keys = BTreeSet::new();
 
-        // Storage changesets remain in MDBX in this fork (no StorageChangeSets static file segment).
-        self.collect_mdbx_storage_keys_parallel(tool, address, &mut storage_keys)?;
+        if tool.provider_factory.cached_storage_settings().storage_changesets_in_static_files() {
+            self.collect_static_file_storage_keys_parallel(tool, address, &mut storage_keys)?;
+        } else {
+            self.collect_mdbx_storage_keys_parallel(tool, address, &mut storage_keys)?;
+        }
 
         info!(
             target: "reth::cli",
@@ -191,6 +194,121 @@ impl Command {
 
         self.print_results(address, Some(block), account, &entries);
 
+        Ok(())
+    }
+
+    /// Collects storage keys from the `StorageChangeSets` static file segment using parallel
+    /// block range scanning.
+    fn collect_static_file_storage_keys_parallel<N: NodeTypesWithDB + ProviderNodeTypes>(
+        &self,
+        tool: &DbTool<N>,
+        address: Address,
+        keys: &mut BTreeSet<B256>,
+    ) -> eyre::Result<()> {
+        const CHUNK_SIZE: u64 = 500_000; // 500k blocks per thread
+        let num_threads = std::thread::available_parallelism()
+            .map(|p| p.get().saturating_sub(1).max(1))
+            .unwrap_or(4);
+
+        let tip = tool.provider_factory.provider()?.best_block_number()?;
+
+        if tip == 0 {
+            return Ok(());
+        }
+
+        info!(
+            target: "reth::cli",
+            address = %address,
+            tip,
+            chunk_size = CHUNK_SIZE,
+            num_threads,
+            "Starting parallel static file changeset scan"
+        );
+
+        let collected_keys: Mutex<BTreeSet<B256>> = Mutex::new(BTreeSet::new());
+        let total_entries_scanned = Mutex::new(0usize);
+
+        let mut chunks: Vec<(u64, u64)> = Vec::new();
+        let mut start = 0u64;
+        while start <= tip {
+            let end = (start + CHUNK_SIZE - 1).min(tip);
+            chunks.push((start, end));
+            start = end + 1;
+        }
+
+        let chunks_ref = &chunks;
+        let next_chunk = Mutex::new(0usize);
+        let next_chunk_ref = &next_chunk;
+        let collected_keys_ref = &collected_keys;
+        let total_entries_ref = &total_entries_scanned;
+        let sf_provider = tool.provider_factory.static_file_provider();
+        let sf_provider_ref = &sf_provider;
+
+        thread::scope(|s| {
+            let handles: Vec<_> = (0..num_threads)
+                .map(|thread_id| {
+                    spawn_scoped_os_thread(s, "db-state-worker", move || {
+                        loop {
+                            let chunk_idx = {
+                                let mut idx = next_chunk_ref.lock();
+                                if *idx >= chunks_ref.len() {
+                                    return Ok::<_, eyre::Report>(());
+                                }
+                                let current = *idx;
+                                *idx += 1;
+                                current
+                            };
+
+                            let (chunk_start, chunk_end) = chunks_ref[chunk_idx];
+
+                            let mut local_keys = BTreeSet::new();
+                            let mut entries_in_chunk = 0usize;
+
+                            let walker =
+                                sf_provider_ref.clone().walk_storage_changeset_range(chunk_start..=chunk_end);
+                            for entry in walker {
+                                let (block_address, storage_entry) = entry?;
+                                if block_address.address() == address {
+                                    local_keys.insert(storage_entry.key);
+                                }
+                                entries_in_chunk += 1;
+                            }
+
+                            collected_keys_ref.lock().extend(local_keys);
+                            *total_entries_ref.lock() += entries_in_chunk;
+
+                            info!(
+                                target: "reth::cli",
+                                thread_id,
+                                chunk_start,
+                                chunk_end,
+                                entries_in_chunk,
+                                "Thread completed chunk"
+                            );
+                        }
+                    })
+                })
+                .collect();
+
+            for handle in handles {
+                handle.join().map_err(|_| eyre::eyre!("Thread panicked"))??;
+            }
+
+            Ok::<_, eyre::Report>(())
+        })?;
+
+        let final_keys = collected_keys.into_inner();
+        let total = *total_entries_scanned.lock();
+
+        info!(
+            target: "reth::cli",
+            address = %address,
+            total_entries = total,
+            unique_keys = final_keys.len(),
+            "Finished parallel static file changeset scan"
+        );
+
+        keys.extend(final_keys);
         Ok(())
     }
 
