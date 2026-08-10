@@ -3,10 +3,10 @@ use super::{
     StaticFileJarProvider, StaticFileProviderRW, StaticFileProviderRWRefMut,
 };
 use crate::{
-    changeset_walker::StaticFileAccountChangesetWalker, to_range, BlockHashReader, BlockNumReader,
-    BlockReader, BlockSource, EitherWriter, EitherWriterDestination, HeaderProvider,
-    ReceiptProvider, StageCheckpointReader, StatsReader, TransactionVariant, TransactionsProvider,
-    TransactionsProviderExt,
+    changeset_walker::{StaticFileAccountChangesetWalker, StaticFileStorageChangesetWalker},
+    to_range, BlockHashReader, BlockNumReader, BlockReader, BlockSource, EitherWriter,
+    EitherWriterDestination, HeaderProvider, ReceiptProvider, StageCheckpointReader, StatsReader,
+    TransactionVariant, TransactionsProvider, TransactionsProviderExt,
 };
 use alloy_consensus::{transaction::TransactionMeta, Header};
 use alloy_eips::{eip2718::Encodable2718, BlockHashOrNumber};
@@ -23,12 +23,12 @@ use reth_db::{
     lockfile::StorageLock,
     static_file::{
         iter_static_files, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-        StaticFileCursor, TransactionMask, TransactionSenderMask,
+        StaticFileCursor, TotalDifficultyMask, TransactionMask, TransactionSenderMask,
     },
 };
 use reth_db_api::{
     cursor::DbCursorRO,
-    models::{AccountBeforeTx, StoredBlockBodyIndices},
+    models::{AccountBeforeTx, BlockNumberAddress, StoredBlockBodyIndices},
     table::{Decompress, Table, Value},
     tables,
     transaction::DbTx,
@@ -38,6 +38,7 @@ use reth_nippy_jar::{NippyJar, NippyJarChecker, CONFIG_FILE_EXTENSION};
 use reth_node_types::NodePrimitives;
 use reth_primitives_traits::{
     AlloyBlockHeader as _, BlockBody as _, RecoveredBlock, SealedHeader, SignedTransaction,
+    StorageEntry,
 };
 use reth_stages_types::{PipelineTarget, StageId};
 use reth_static_file_types::{
@@ -45,7 +46,8 @@ use reth_static_file_types::{
     StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE,
 };
 use reth_storage_api::{
-    BlockBodyIndicesProvider, ChangeSetReader, DBProvider, StorageSettingsCache,
+    BlockBodyIndicesProvider, ChangeSetReader, DBProvider, StorageChangeSetReader,
+    StorageSettingsCache,
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult, StaticFileWriterError};
 use std::{
@@ -176,7 +178,15 @@ impl<P: AsRef<Path>> StaticFileProviderBuilder<P> {
 
     /// Set a custom number of blocks per file for all segments.
     pub fn with_blocks_per_file(mut self, blocks_per_file: u64) -> Self {
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
+        for segment in [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+            StaticFileSegment::StorageChangeSets,
+        ] {
             self.blocks_per_file.insert(segment, blocks_per_file);
         }
         self
@@ -405,7 +415,15 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
         };
 
         let mut blocks_per_file = StaticFileMap::default();
-        for segment in [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter() {
+        for segment in [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+            StaticFileSegment::StorageChangeSets,
+        ] {
             blocks_per_file.insert(segment, DEFAULT_BLOCKS_PER_STATIC_FILE);
         }
 
@@ -500,9 +518,21 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
 }
 
 impl<N: NodePrimitives> StaticFileProvider<N> {
+    /// Returns the total difficulty for `num` from the Headers static-file segment.
+    ///
+    /// Returns `Ok(None)` when the Headers jar for that block is missing.
     pub fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
-        let _ = num;
-        Err(ProviderError::UnsupportedProvider)
+        self.get_segment_provider_for_block(StaticFileSegment::Headers, num, None)
+            .and_then(|provider| {
+                Ok(provider.cursor()?.get_one::<TotalDifficultyMask>(num.into())?.map(Into::into))
+            })
+            .or_else(|err| {
+                if let ProviderError::MissingStaticFileBlock(_, _) = err {
+                    Ok(None)
+                } else {
+                    Err(err)
+                }
+            })
     }
 
     /// Reports metrics for the static files.
@@ -712,7 +742,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_senders = ctx.write_senders.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+                    StaticFileSegment::TransactionSenders,
                     first_block_number,
                     |w| Self::write_transaction_senders(w, blocks, tx_nums),
                 )
@@ -727,7 +757,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             let h_account_changesets = ctx.write_account_changesets.then(|| {
                 self.spawn_segment_writer(
                     s,
-                    StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+                    StaticFileSegment::AccountChangeSets,
                     first_block_number,
                     |w| Self::write_account_changesets(w, blocks),
                 )
@@ -1430,6 +1460,13 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         highest_block,
                         highest_block,
                     )?,
+                StaticFileSegment::StorageChangeSets => self
+                    .ensure_changeset_invariants_by_block::<_, tables::StorageChangeSets, _>(
+                        provider,
+                        segment,
+                        highest_block,
+                        |key| key.block_number(),
+                    )?,
             } {
                 debug!(target: "reth::providers::static_file", ?segment, unwind_target=unwind, "Invariants check returned unwind target");
                 update_unwind_target(unwind);
@@ -1467,8 +1504,17 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
-        [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
-            .filter(move |segment| self.should_check_segment(provider, *segment))
+        [
+            StaticFileSegment::Headers,
+            StaticFileSegment::Transactions,
+            StaticFileSegment::Receipts,
+            StaticFileSegment::Sidecars,
+            StaticFileSegment::TransactionSenders,
+            StaticFileSegment::AccountChangeSets,
+            StaticFileSegment::StorageChangeSets,
+        ]
+        .into_iter()
+        .filter(move |segment| self.should_check_segment(provider, *segment))
     }
 
     fn should_check_segment<Provider>(
@@ -1480,7 +1526,12 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
         match segment {
-            StaticFileSegment::Headers | StaticFileSegment::Transactions | StaticFileSegment::Sidecars => true,
+            StaticFileSegment::Headers | StaticFileSegment::Transactions => true,
+            // Sidecars are optional (BSC blob sidecars). An empty segment would otherwise
+            // compare Execution checkpoint against highest_block=0 and force Unwind(0).
+            StaticFileSegment::Sidecars => {
+                self.get_highest_static_file_block(StaticFileSegment::Sidecars).is_some()
+            }
             StaticFileSegment::Receipts => {
                 if EitherWriter::receipts_destination(provider).is_database() {
                     debug!(target: "reth::providers::static_file", ?segment, "Skipping receipts segment: receipts stored in database");
@@ -1501,6 +1552,9 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             }
             StaticFileSegment::AccountChangeSets => {
                 !EitherWriterDestination::account_changesets(provider).is_database()
+            }
+            StaticFileSegment::StorageChangeSets => {
+                !EitherWriterDestination::storage_changesets(provider).is_database()
             }
         }
     }
@@ -1636,7 +1690,8 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             StaticFileSegment::Transactions => StageId::Bodies,
             StaticFileSegment::Receipts |
             StaticFileSegment::Sidecars |
-            StaticFileSegment::AccountChangeSets => StageId::Execution,
+            StaticFileSegment::AccountChangeSets |
+            StaticFileSegment::StorageChangeSets => StageId::Execution,
             StaticFileSegment::TransactionSenders => StageId::SenderRecovery,
         };
         let checkpoint_block_number =
@@ -1696,7 +1751,8 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                                 writer.prune_transaction_senders(number, checkpoint_block_number)?
                             }
                             StaticFileSegment::Headers |
-                            StaticFileSegment::AccountChangeSets => {
+                            StaticFileSegment::AccountChangeSets |
+                            StaticFileSegment::StorageChangeSets => {
                                 unreachable!()
                             }
                         }
@@ -1707,10 +1763,102 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                 StaticFileSegment::AccountChangeSets => {
                     writer.prune_account_changesets(checkpoint_block_number)?;
                 }
+                StaticFileSegment::StorageChangeSets => {
+                    writer.prune_storage_changesets(checkpoint_block_number)?;
+                }
             }
             debug!(target: "reth::providers::static_file", ?segment, "Committing writer after pruning");
             writer.commit()?;
             debug!(target: "reth::providers::static_file", ?segment, "Writer committed successfully");
+        }
+
+        debug!(target: "reth::providers::static_file", ?segment, "Invariants ensured, returning None");
+        Ok(None)
+    }
+
+    /// Like [`Self::ensure_invariants`], but for change-based segments whose database table key
+    /// (e.g. [`tables::StorageChangeSets`]'s [`reth_db_api::models::BlockNumberAddress`]) is not
+    /// directly a [`BlockNumber`]. `block_from_key` extracts the block number component of the
+    /// key.
+    fn ensure_changeset_invariants_by_block<Provider, T, F>(
+        &self,
+        provider: &Provider,
+        segment: StaticFileSegment,
+        highest_static_file_block: Option<BlockNumber>,
+        block_from_key: F,
+    ) -> ProviderResult<Option<BlockNumber>>
+    where
+        Provider: DBProvider + BlockReader + StageCheckpointReader,
+        T: Table,
+        F: Fn(&T::Key) -> BlockNumber,
+    {
+        debug!(target: "reth::providers::static_file", ?segment, ?highest_static_file_block, "Ensuring changeset invariants");
+        let mut db_cursor = provider.tx_ref().cursor_read::<T>()?;
+
+        if let Some((db_first_key, _)) = db_cursor.first()? {
+            let db_first_block = block_from_key(&db_first_key);
+            debug!(target: "reth::providers::static_file", ?segment, db_first_block, "Found first database entry");
+            if let Some(highest_block) = highest_static_file_block &&
+                !(db_first_block <= highest_block || highest_block + 1 == db_first_block)
+            {
+                info!(
+                    target: "reth::providers::static_file",
+                    ?db_first_block,
+                    ?highest_block,
+                    unwind_target = highest_block,
+                    ?segment,
+                    "Setting unwind target."
+                );
+                return Ok(Some(highest_block));
+            }
+
+            if let Some((db_last_key, _)) = db_cursor.last()? {
+                let db_last_block = block_from_key(&db_last_key);
+                if highest_static_file_block.is_none_or(|highest_block| db_last_block > highest_block)
+                {
+                    debug!(target: "reth::providers::static_file", ?segment, db_last_block, ?highest_static_file_block, "Database has entries beyond static files, no unwind needed");
+                    return Ok(None);
+                }
+            }
+        } else {
+            debug!(target: "reth::providers::static_file", ?segment, "No database entries found");
+        }
+
+        let highest_static_file_block = highest_static_file_block.unwrap_or_default();
+
+        let stage_id = StageId::Execution;
+        let checkpoint_block_number =
+            provider.get_stage_checkpoint(stage_id)?.unwrap_or_default().block_number;
+        debug!(target: "reth::providers::static_file", ?segment, ?stage_id, checkpoint_block_number, highest_static_file_block, "Retrieved stage checkpoint");
+
+        if checkpoint_block_number > highest_static_file_block {
+            info!(
+                target: "reth::providers::static_file",
+                checkpoint_block_number,
+                unwind_target = highest_static_file_block,
+                ?segment,
+                "Setting unwind target."
+            );
+            return Ok(Some(highest_static_file_block));
+        }
+
+        if checkpoint_block_number < highest_static_file_block {
+            info!(
+                target: "reth::providers",
+                ?segment,
+                from = highest_static_file_block,
+                to = checkpoint_block_number,
+                "Unwinding static file segment."
+            );
+            let mut writer = self.latest_writer(segment)?;
+            match segment {
+                StaticFileSegment::StorageChangeSets => {
+                    writer.prune_storage_changesets(checkpoint_block_number)?;
+                }
+                _ => unreachable!("invalid segment for changeset invariants"),
+            }
+            debug!(target: "reth::providers::static_file", ?segment, "Committing writer after pruning");
+            writer.commit()?;
         }
 
         debug!(target: "reth::providers::static_file", ?segment, "Invariants ensured, returning None");
@@ -1782,6 +1930,8 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                 .get_highest_static_file_block(StaticFileSegment::TransactionSenders),
             account_changesets: self
                 .get_highest_static_file_block(StaticFileSegment::AccountChangeSets),
+            storage_changesets: self
+                .get_highest_static_file_block(StaticFileSegment::StorageChangeSets),
         }
     }
 
@@ -2147,7 +2297,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         block_number: BlockNumber,
     ) -> ProviderResult<Vec<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+            StaticFileSegment::AccountChangeSets,
             block_number,
             None,
         ) {
@@ -2156,11 +2306,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        let _ = (provider, block_number);
-        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
-        // offsets for static-file access. Keep account changesets MDBX-backed until that support
-        // is ported coherently.
-        Ok(Vec::new())
+        provider.account_changeset(block_number)
     }
 
     fn get_account_before_block(
@@ -2169,7 +2315,7 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
         address: Address,
     ) -> ProviderResult<Option<reth_db::models::AccountBeforeTx>> {
         let provider = match self.get_segment_provider_for_block(
-            StaticFileSegment::Headers /* TODO(opbnb-port): account changesets segment unsupported in this fork */,
+            StaticFileSegment::AccountChangeSets,
             block_number,
             None,
         ) {
@@ -2178,11 +2324,10 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
             Err(err) => return Err(err),
         };
 
-        let _ = (provider, block_number, address);
-        // TODO(opbnb-port): this fork's SegmentHeader does not carry per-block account changeset
-        // offsets for static-file access. Keep account changesets MDBX-backed until that support
-        // is ported coherently.
-        Ok(None)
+        Ok(provider
+            .account_changeset(block_number)?
+            .into_iter()
+            .find(|change| change.address == address))
     }
 
     fn account_changesets_range(
@@ -2193,8 +2338,16 @@ impl<N: NodePrimitives> ChangeSetReader for StaticFileProvider<N> {
     }
 
     fn account_changeset_count(&self) -> ProviderResult<usize> {
-        // Account changeset static files are not fully ported in this fork yet.
-        Ok(0)
+        let Some(highest) = self.get_highest_static_file_block(StaticFileSegment::AccountChangeSets)
+        else {
+            return Ok(0)
+        };
+
+        let mut count = 0usize;
+        for block in 0..=highest {
+            count += self.account_block_changeset(block)?.len();
+        }
+        Ok(count)
     }
 }
 
@@ -2213,6 +2366,75 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         range: impl RangeBounds<BlockNumber>,
     ) -> StaticFileAccountChangesetWalker<Self> {
         StaticFileAccountChangesetWalker::new(self.clone(), range)
+    }
+
+    /// Creates an iterator for walking through storage changesets in the specified block range.
+    ///
+    /// This returns a lazy iterator that fetches changesets block by block to avoid loading
+    /// everything into memory at once.
+    pub fn walk_storage_changeset_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> StaticFileStorageChangesetWalker<Self> {
+        StaticFileStorageChangesetWalker::new(self.clone(), range)
+    }
+}
+
+impl<N: NodePrimitives> StorageChangeSetReader for StaticFileProvider<N> {
+    fn storage_changeset(
+        &self,
+        block_number: BlockNumber,
+    ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        let provider = match self.get_segment_provider_for_block(
+            StaticFileSegment::StorageChangeSets,
+            block_number,
+            None,
+        ) {
+            Ok(provider) => provider,
+            Err(ProviderError::MissingStaticFileBlock(_, _)) => return Ok(Vec::new()),
+            Err(err) => return Err(err),
+        };
+
+        Ok(provider
+            .storage_changeset(block_number)?
+            .into_iter()
+            .map(|change| {
+                (
+                    BlockNumberAddress((block_number, change.address)),
+                    StorageEntry { key: change.key, value: change.value },
+                )
+            })
+            .collect())
+    }
+
+    fn get_storage_before_block(
+        &self,
+        block_number: BlockNumber,
+        address: Address,
+        storage_key: B256,
+    ) -> ProviderResult<Option<StorageEntry>> {
+        let provider = match self.get_segment_provider_for_block(
+            StaticFileSegment::StorageChangeSets,
+            block_number,
+            None,
+        ) {
+            Ok(provider) => provider,
+            Err(ProviderError::MissingStaticFileBlock(_, _)) => return Ok(None),
+            Err(err) => return Err(err),
+        };
+
+        Ok(provider
+            .storage_changeset(block_number)?
+            .into_iter()
+            .find(|change| change.address == address && change.key == storage_key)
+            .map(|change| StorageEntry { key: change.key, value: change.value }))
+    }
+
+    fn storage_changesets_range(
+        &self,
+        range: impl core::ops::RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<(BlockNumberAddress, StorageEntry)>> {
+        self.walk_storage_changeset_range(range).collect()
     }
 }
 
@@ -2528,7 +2750,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
         range: impl RangeBounds<TxNumber>,
     ) -> ProviderResult<Vec<Address>> {
         self.fetch_range_with_predicate(
-            StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */,
+            StaticFileSegment::TransactionSenders,
             to_range(range),
             |cursor, number| cursor.get_one::<TransactionSenderMask>(number.into()),
             |_| true,
@@ -2536,7 +2758,7 @@ impl<N: NodePrimitives<SignedTx: Decompress + SignedTransaction>> TransactionsPr
     }
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
-        self.get_segment_provider_for_transaction(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */, id, None)
+        self.get_segment_provider_for_transaction(StaticFileSegment::TransactionSenders, id, None)
             .and_then(|provider| provider.transaction_sender(id))
             .or_else(|err| {
                 if let ProviderError::MissingStaticFileTx(_, _) = err {
@@ -2677,7 +2899,7 @@ impl<N: NodePrimitives> StatsReader for StaticFileProvider<N> {
                 .unwrap_or_default()
                 as usize),
             tables::TransactionSenders::NAME => Ok(self
-                .get_highest_static_file_tx(StaticFileSegment::Transactions /* TODO(opbnb-port): tx senders segment unsupported in this fork */)
+                .get_highest_static_file_tx(StaticFileSegment::TransactionSenders)
                 .map(|txs| txs + 1)
                 .unwrap_or_default() as usize),
             _ => Err(ProviderError::UnsupportedProvider),

@@ -11,7 +11,7 @@ use reth_node_core::{
     args::{
         DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
         NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StateDbArgs, StaticFilesArgs,
-        TxPoolArgs,
+        StorageArgs, TxPoolArgs,
     },
     node_config::NodeConfig,
     version,
@@ -115,6 +115,10 @@ pub struct NodeCommand<C: ChainSpecParser, Ext: clap::Args + fmt::Debug = NoArgs
     #[command(flatten, next_help_heading = "Static Files")]
     pub static_files: StaticFilesArgs,
 
+    /// All storage related arguments with --storage prefix
+    #[command(flatten, next_help_heading = "Storage")]
+    pub storage: StorageArgs,
+
     /// All state database related arguments
     #[command(flatten, next_help_heading = "StateDB")]
     pub statedb: StateDbArgs,
@@ -174,6 +178,7 @@ where
             engine,
             era,
             static_files,
+            storage,
             statedb,
             ext,
         } = self;
@@ -184,7 +189,7 @@ where
             config,
             chain,
             metrics,
-            instance: instance.unwrap_or(1),
+            instance,
             network,
             rpc,
             txpool,
@@ -196,6 +201,7 @@ where
             engine,
             era,
             static_files,
+            storage,
             statedb,
             enable_prefetch: false,
             skip_state_root_validation: false,
@@ -317,6 +323,21 @@ mod tests {
             cmd.metrics.prometheus,
             Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9001))
         );
+    }
+
+    #[test]
+    fn parse_storage_v2() {
+        let cmd: NodeCommand<EthereumChainSpecParser> =
+            NodeCommand::try_parse_args_from(["reth"]).unwrap();
+        assert!(cmd.storage.v2);
+
+        let cmd: NodeCommand<EthereumChainSpecParser> =
+            NodeCommand::try_parse_args_from(["reth", "--storage.v2"]).unwrap();
+        assert!(cmd.storage.v2);
+
+        let cmd: NodeCommand<EthereumChainSpecParser> =
+            NodeCommand::try_parse_args_from(["reth", "--storage.v2=false"]).unwrap();
+        assert!(!cmd.storage.v2);
     }
 
     #[test]

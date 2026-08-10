@@ -140,10 +140,13 @@ export network=bsc
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory ./datadir/logs
 ```
+
+New databases use storage V2 by default (`--storage.v2`; opt out with `--storage.v2=false`).
+Legacy BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` are **obsolete** on this
+v2.4.1 rebase — use engine prewarming/cache controls instead (e.g. `--engine.disable-prewarming` to
+opt out; see `bsc-reth node --help` under Engine).
 
 You can run `bsc-reth --help` for command explanations.
 
@@ -168,9 +171,7 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
     --chain=${network} \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory /data/logs
 ```
 
 ### Snapshots
@@ -268,10 +269,14 @@ export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
     --authrpc.jwtsecret=./jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory ./datadir/logs
 ```
+
+Built-in chain names: `opbnb` / `opbnb-mainnet` (mainnet), `opbnb-testnet`, `opbnb-qa`
+(so `opbnb-${network}` with `network=mainnet|testnet` is correct).
+New databases default to storage V2 (`--storage.v2`; `--storage.v2=false` for legacy v1).
+Do **not** pass the old BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` — they are
+not wired on this rebase; use `--engine.*` prewarming/cache flags instead.
 
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be
 found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
@@ -306,9 +311,7 @@ docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/dat
     --authrpc.jwtsecret=/jwt/jwt.txt \
     --http \
     --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs \
-    --enable-prefetch \
-    --optimize.enable-execution-cache
+    --log.file.directory /data/logs
 ```
 
 ## Contribution
@@ -351,19 +354,21 @@ diffs until explicitly reviewed (see `plan.md`).
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09 06:45 – ~12:05 UTC, ~5.34 h**; Cursor Session 8 op-stack: **~2026-08-09 12:18 – ~14:25 UTC, ~2.1 h** commit-span / ~1.4 h this chat) |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09 06:45 – ~12:05 UTC, ~5.34 h**; Cursor Session 8 op-stack: **~2026-08-09 12:18 – ~14:25 UTC, ~2.1 h**; Cursor Session 9: **~2026-08-10 05:57 – ~07:51 UTC, ~1.9 h** resume chat + prior-evening SCS port) |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** (4,986 cleartext `modelName` hits) + **cursor-grok-4.5-high-fast** (178); parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router (local transcript has no per-request model ledger); ~816 tool calls observed in agent transcript |
+| LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); no per-request model ledger; ~250 tool_use in resume transcript |
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
+| Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Subscription pricing ≠ raw API. |
-| Compile / runnable milestone (2026-08-09, end Session 8) | `reth-bsc-node --features bsc`, workspace `--no-default-features`, **`reth-optimism-*` through `op-reth`**, Clippy op-stack (warnings only), nextest chainspec+forks **23/23**, opBNB `init` + short node/RPC smoke. Catch-up/full sync = **human-owned** when AI marks runnable (see `plan.md`). |
+| Compile / runnable milestone (2026-08-10, end Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106** (8 skipped deferred); op-primitives/consensus/evm/node/rpc nextest green; EF inventory **~32/62** suites (gas-mismatch cluster open). Catch-up/full sync = **human-owned** (see `plan.md`). |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
-| Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8) |
+| Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9) |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` (and optionally `dist/bin/op-reth`); default CLI chain `opbnb` |
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference

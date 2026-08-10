@@ -24,7 +24,10 @@ tracing.workspace = true
 workspace = true
 
 [features]
-default = ["jemalloc"]
+default = ["jemalloc", "rocksdb"]
+
+# RocksDB backend for storage v2 history indices (`--storage.v2`).
+rocksdb = ["reth-optimism-cli/rocksdb"]
 
 jemalloc = [
     "reth-cli-util/jemalloc",

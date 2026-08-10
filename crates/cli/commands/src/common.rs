@@ -19,7 +19,7 @@ use reth_node_builder::{
     Node, NodeComponents, NodeComponentsBuilder, NodeTypes, NodeTypesWithDBAdapter,
 };
 use reth_node_core::{
-    args::{DatabaseArgs, DatadirArgs, StaticFilesArgs},
+    args::{DatabaseArgs, DatadirArgs, StaticFilesArgs, StorageArgs},
     dirs::{ChainPath, DataDirPath},
 };
 use reth_provider::{
@@ -27,7 +27,7 @@ use reth_provider::{
         BlockchainProvider, NodeTypesForProvider, RocksDBProvider, StaticFileProvider,
         StaticFileProviderBuilder,
     },
-    ProviderFactory, StaticFileProviderFactory,
+    ProviderFactory, StaticFileProviderFactory, StorageSettings,
 };
 use reth_stages::{sets::DefaultStages, Pipeline, PipelineTarget};
 use reth_static_file::StaticFileProducer;
@@ -66,9 +66,26 @@ pub struct EnvironmentArgs<C: ChainSpecParser> {
     /// All static files related arguments
     #[command(flatten)]
     pub static_files: StaticFilesArgs,
+
+    /// Storage mode configuration (v2 vs v1/legacy)
+    #[command(flatten)]
+    pub storage: StorageArgs,
 }
 
 impl<C: ChainSpecParser> EnvironmentArgs<C> {
+    /// Returns the storage settings for new database initialization.
+    ///
+    /// Determined by the `--storage.v2` flag (defaults to `true`).
+    /// Existing databases retain whatever settings are persisted in their
+    /// metadata (checked during genesis init).
+    pub fn storage_settings(&self) -> StorageSettings {
+        if self.storage.v2 {
+            StorageSettings::v2()
+        } else {
+            StorageSettings::v1()
+        }
+    }
+
     /// Initializes environment according to [`AccessRights`] and returns an instance of
     /// [`Environment`].
     pub fn init<N: CliNodeTypes>(&self, access: AccessRights) -> eyre::Result<Environment<N>>
@@ -131,7 +148,7 @@ impl<C: ChainSpecParser> EnvironmentArgs<C> {
             self.create_provider_factory(&config, db, sfp, rocksdb_provider, access)?;
         if access.is_read_write() {
             debug!(target: "reth::cli", chain=%self.chain.chain(), genesis=?self.chain.genesis_hash(), "Initializing genesis");
-            init_genesis_with_settings(&provider_factory, self.static_files.to_settings())?;
+            init_genesis_with_settings(&provider_factory, self.storage_settings())?;
         }
 
         Ok(Environment { config, provider_factory, data_dir })
