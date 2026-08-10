@@ -102,6 +102,16 @@ impl OpChainSpecBuilder {
 
         Self { inner }
     }
+
+    /// Construct a new builder from the optimism sepolia chain spec.
+    pub fn optimism_sepolia() -> Self {
+        let mut inner =
+            ChainSpecBuilder::default().chain(OP_SEPOLIA.chain).genesis(OP_SEPOLIA.genesis.clone());
+        let forks = OP_SEPOLIA.hardforks.clone();
+        inner = inner.with_forks(forks);
+
+        Self { inner }
+    }
 }
 
 impl OpChainSpecBuilder {
@@ -223,6 +233,15 @@ impl OpChainSpecBuilder {
         self
     }
 
+    /// Enable Lagoon at genesis
+    pub fn lagoon_activated(mut self) -> Self {
+        self = self.jovian_activated();
+        self.inner = self
+            .inner
+            .with_fork(reth_optimism_forks::OpHardfork::Lagoon, ForkCondition::Timestamp(0));
+        self
+    }
+
     /// Build the resulting [`OpChainSpec`].
     ///
     /// # Panics
@@ -241,6 +260,11 @@ pub struct OpChainSpec {
     pub inner: ChainSpec,
 }
 
+impl From<ChainSpec> for OpChainSpec {
+    fn from(inner: ChainSpec) -> Self {
+        Self { inner }
+    }
+}
 
 #[derive(Clone, Debug, DeriveDisplay, Eq, PartialEq)]
 /// Error type for decoding Holocene 1559 parameters

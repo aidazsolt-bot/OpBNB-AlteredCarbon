@@ -1526,7 +1526,12 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         Provider: DBProvider + ChainSpecProvider + StorageSettingsCache,
     {
         match segment {
-            StaticFileSegment::Headers | StaticFileSegment::Transactions | StaticFileSegment::Sidecars => true,
+            StaticFileSegment::Headers | StaticFileSegment::Transactions => true,
+            // Sidecars are optional (BSC blob sidecars). An empty segment would otherwise
+            // compare Execution checkpoint against highest_block=0 and force Unwind(0).
+            StaticFileSegment::Sidecars => {
+                self.get_highest_static_file_block(StaticFileSegment::Sidecars).is_some()
+            }
             StaticFileSegment::Receipts => {
                 if EitherWriter::receipts_destination(provider).is_database() {
                     debug!(target: "reth::providers::static_file", ?segment, "Skipping receipts segment: receipts stored in database");

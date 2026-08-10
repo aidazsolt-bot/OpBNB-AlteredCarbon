@@ -10789,6 +10789,7 @@ dependencies = [
  "op-revm",
  "reth-basic-payload-builder",
  "reth-chainspec",
+ "reth-ethereum-engine-primitives",
  "reth-evm",
  "reth-execution-types",
  "reth-metrics 2.4.1",
