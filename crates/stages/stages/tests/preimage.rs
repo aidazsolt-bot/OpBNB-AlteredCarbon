@@ -1137,7 +1137,6 @@ where
         evm_config,
         consensus,
         stages_config,
-        PruneModes::default().sender_recovery,
     ))
     .add_set(HashingStages::default())
     .add_stage(FinishStage::default());
