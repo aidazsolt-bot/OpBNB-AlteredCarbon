@@ -77,6 +77,11 @@ impl RocksDBProvider {
     pub const fn clear<T: Table>(&self) -> ProviderResult<()> {
         Ok(())
     }
+
+    /// Flushes pending writes for the specified tables (no-op without RocksDB).
+    pub const fn flush(&self, _tables: &[&'static str]) -> ProviderResult<()> {
+        Ok(())
+    }
 }
 
 /// A stub batch writer for `RocksDB`.

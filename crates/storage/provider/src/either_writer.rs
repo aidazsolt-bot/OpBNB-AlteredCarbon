@@ -540,6 +540,49 @@ where
         }
     }
 
+    /// Appends a storage history entry (for first sync - more efficient).
+    pub fn append_storage_history(
+        &mut self,
+        key: StorageShardedKey,
+        value: &BlockNumberList,
+    ) -> ProviderResult<()> {
+        match self {
+            Self::Database(cursor) => Ok(cursor.append(key, value)?),
+            Self::StaticFile(_) => Err(ProviderError::UnsupportedProvider),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(batch) => batch.put::<tables::StoragesHistory>(key, value),
+        }
+    }
+
+    /// Upserts a storage history entry (for incremental sync).
+    pub fn upsert_storage_history(
+        &mut self,
+        key: StorageShardedKey,
+        value: &BlockNumberList,
+    ) -> ProviderResult<()> {
+        match self {
+            Self::Database(cursor) => Ok(cursor.upsert(key, value)?),
+            Self::StaticFile(_) => Err(ProviderError::UnsupportedProvider),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(batch) => batch.put::<tables::StoragesHistory>(key, value),
+        }
+    }
+
+    /// Gets the last shard for an address and storage key (keyed with `u64::MAX`).
+    pub fn get_last_storage_history_shard(
+        &mut self,
+        address: Address,
+        storage_key: B256,
+    ) -> ProviderResult<Option<BlockNumberList>> {
+        let key = StorageShardedKey::last(address, storage_key);
+        match self {
+            Self::Database(cursor) => Ok(cursor.seek_exact(key)?.map(|(_, v)| v)),
+            Self::StaticFile(_) => Err(ProviderError::UnsupportedProvider),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(batch) => batch.get::<tables::StoragesHistory>(key),
+        }
+    }
+
     /// Deletes a storage history entry.
     pub fn delete_storage_history(&mut self, key: StorageShardedKey) -> ProviderResult<()> {
         match self {
@@ -560,8 +603,22 @@ impl<'a, CURSOR, N: NodePrimitives> EitherWriter<'a, CURSOR, N>
 where
     CURSOR: DbCursorRW<tables::AccountsHistory> + DbCursorRO<tables::AccountsHistory>,
 {
-    /// Puts an account history entry.
-    pub fn put_account_history(
+    /// Appends an account history entry (for first sync - more efficient).
+    pub fn append_account_history(
+        &mut self,
+        key: ShardedKey<Address>,
+        value: &BlockNumberList,
+    ) -> ProviderResult<()> {
+        match self {
+            Self::Database(cursor) => Ok(cursor.append(key, value)?),
+            Self::StaticFile(_) => Err(ProviderError::UnsupportedProvider),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(batch) => batch.put::<tables::AccountsHistory>(key, value),
+        }
+    }
+
+    /// Upserts an account history entry (for incremental sync).
+    pub fn upsert_account_history(
         &mut self,
         key: ShardedKey<Address>,
         value: &BlockNumberList,
@@ -572,6 +629,30 @@ where
             #[cfg(all(unix, feature = "rocksdb"))]
             Self::RocksDB(batch) => batch.put::<tables::AccountsHistory>(key, value),
         }
+    }
+
+    /// Gets the last shard for an address (keyed with `u64::MAX`).
+    pub fn get_last_account_history_shard(
+        &mut self,
+        address: Address,
+    ) -> ProviderResult<Option<BlockNumberList>> {
+        match self {
+            Self::Database(cursor) => {
+                Ok(cursor.seek_exact(ShardedKey::last(address))?.map(|(_, v)| v))
+            }
+            Self::StaticFile(_) => Err(ProviderError::UnsupportedProvider),
+            #[cfg(all(unix, feature = "rocksdb"))]
+            Self::RocksDB(batch) => batch.get::<tables::AccountsHistory>(ShardedKey::last(address)),
+        }
+    }
+
+    /// Puts an account history entry.
+    pub fn put_account_history(
+        &mut self,
+        key: ShardedKey<Address>,
+        value: &BlockNumberList,
+    ) -> ProviderResult<()> {
+        self.upsert_account_history(key, value)
     }
 
     /// Deletes an account history entry.
