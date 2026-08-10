@@ -101,7 +101,7 @@ impl OpTransactionSigned {
 
     /// Splits the transaction into parts.
     pub(super) fn into_parts(self) -> (OpTypedTransaction, Signature, B256) {
-        let hash = *self.hash.get_or_init(|| self.recalculate_hash());
+        let hash = *self.hash.get_or_init(|| keccak256(self.encoded_2718()));
         (self.transaction, self.signature, hash)
     }
 }
@@ -169,7 +169,7 @@ impl SignerRecoverable for OpTransactionSigned {
 
 impl TxHashRef for OpTransactionSigned {
     fn tx_hash(&self) -> &TxHash {
-        self.hash.get_or_init(|| self.recalculate_hash())
+        self.hash.get_or_init(|| keccak256(self.encoded_2718()))
     }
 }
 
@@ -530,7 +530,8 @@ impl<'a> arbitrary::Arbitrary<'a> for OpTransactionSigned {
         let mut transaction = OpTypedTransaction::arbitrary(u)?;
 
         let secp = secp256k1::Secp256k1::new();
-        let key_pair = secp256k1::Keypair::new(&secp, &mut rand::rng());
+        // secp256k1 0.30 expects rand 0.8; workspace `rand` is 0.9.
+        let key_pair = secp256k1::Keypair::new(&secp, &mut rand_08::thread_rng());
         let signature = reth_primitives_traits::crypto::secp256k1::sign_message(
             B256::from_slice(&key_pair.secret_bytes()[..]),
             signature_hash(&transaction),

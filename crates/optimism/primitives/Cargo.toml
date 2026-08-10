@@ -22,10 +22,7 @@ alloy-eips.workspace = true
 alloy-rlp.workspace = true
 
 # op
-op-alloy-consensus = {
-    workspace = true,
-    features = ["reth-core", "k256", "serde", "reth-codec", "serde-bincode-compat"],
-}
+op-alloy-consensus = { workspace = true, features = ["reth-core", "k256", "serde", "reth-codec", "serde-bincode-compat"] }
 
 # codec
 serde = { workspace = true, optional = true }
