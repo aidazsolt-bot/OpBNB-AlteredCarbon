@@ -802,7 +802,7 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 ### Nächste Schritte (Stand Session 9 Ende)
 
 1. EF Gas-Mismatch Rootcause (revm/spec, bad-opcode) — priorisiert `stBadOpcode` / `st_create` Cluster.
-2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / trie) — derzeit ignored.
+2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007.
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
 5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
@@ -823,7 +823,7 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 ### Nächste Schritte (nach Bytecode-Fix)
 
 1. ~~`valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.~~ ✅
-2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / SF-changeset unwind / history-index) — derzeit ignored; Teil-Investigate: Merkle-Mismatch block 2, Preimage-Pfad separat deferred.
+2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (hashed readers, plain changeset keys, SF unwind, history dedupe).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
 5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
