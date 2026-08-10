@@ -21,7 +21,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
-5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅; nextest chainspec/forks 23 + stages 106 + op-stack libs/node/rpc ✅; EF inventory gelaufen (~32/62 Suites, Gas-Mismatch-Cluster offen)
+5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅; nextest chainspec/forks 23 + stages 106 + op-stack libs/node/rpc ✅; EF fixtures **v17.0**; Bytecode Compact re-analyze fix → Shanghai + prior gas-mismatch cluster green
 6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
@@ -38,7 +38,7 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
 | opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest (prim/cons/evm/node/rpc) ✅; trie/proofs/live sync pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages nextest 106/106; op-stack nextest green; EF inventory 32/62 suites — Gas-Mismatch-Cluster offen |
+| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages/op-stack nextest ✅; EF fixtures v17.0 + Bytecode Compact fix (Shanghai/gas cluster green); full EF suite still open |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 9 ✅; finale Zahlen nach Human-Sync |
 
 ## Portierungs-Bugliste (v2.4.1 rebase)
@@ -801,6 +801,25 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 ### Nächste Schritte (Stand Session 9 Ende)
 
 1. EF Gas-Mismatch Rootcause (revm/spec, bad-opcode) — priorisiert `stBadOpcode` / `st_create` Cluster.
+2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / trie) — derzeit ignored.
+3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
+4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
+5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
+
+### Session 9 cont. — EF fixtures v17.0 + Bytecode Compact (2026-08-10)
+
+**Rootcause Gas-Mismatch:** Makefile noch auf ethereum/tests **v12.2** (Upstream v2.4.1: **v17.0**). Zusätzlich `Bytecode::Compact` restore via `new_analyzed` ohne revm-41-Padding → Interpreter-UB / falsches Gas (PUSH0-Suite).
+
+**Fixes:**
+- `Makefile`: `EF_TESTS_TAG=v17.0` + EEST v4.5.0 Targets (wie Upstream).
+- `Bytecode::from_compact`: Legacy-analyzed → `new_raw` Re-Analyse (wie revm serde).
+- Test-Factory: RocksDB/`static_files` TempDirs via `keep()` (kein Drop unter offenen Handles).
+
+**Verify:** Shanghai + zuvor failende Cluster (`st_bugs`, `st_code_size_limit`, `st_eip150`, `st_mem_expanding_eip150_calls`, `st_call_create_call_code`, `st_delegate_call_test_homestead`, `st_eip150_gas_prices`) → **8/8 PASS**. Logs: `files/yolo-ef-shanghai-after-bytecode-fix.log`, `files/yolo-ef-cluster-after-bytecode-fix.log`.
+
+### Nächste Schritte (nach Bytecode-Fix)
+
+1. Volles EF-Suite / EEST nachziehen (`make ef-tests`).
 2. `test_pipeline_v2` State-Root unter `storage.v2` (hashed state / trie) — derzeit ignored.
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.

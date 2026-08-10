@@ -60,11 +60,13 @@ pub fn create_test_provider_factory_with_node_types<N: NodeTypesForProvider>(
     let (static_dir, _) = create_test_static_files_dir();
     let (rocksdb_dir, _) = create_test_rocksdb_dir();
     let db = create_test_rw_db();
+    // `keep()` so RocksDB/static-file paths are not deleted while providers still hold them.
+    // Dropping the TempDir at the end of this function previously raced under parallel EF cases.
     ProviderFactory::new(
         db,
         chain_spec,
         StaticFileProvider::read_write(static_dir.keep()).expect("static file provider"),
-        RocksDBBuilder::new(&rocksdb_dir)
+        RocksDBBuilder::new(rocksdb_dir.keep())
             .with_default_tables()
             .build()
             .expect("failed to create test RocksDB provider"),
