@@ -23,7 +23,7 @@ use reth_db::{
     lockfile::StorageLock,
     static_file::{
         iter_static_files, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-        StaticFileCursor, TransactionMask, TransactionSenderMask,
+        StaticFileCursor, TotalDifficultyMask, TransactionMask, TransactionSenderMask,
     },
 };
 use reth_db_api::{
@@ -518,9 +518,21 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
 }
 
 impl<N: NodePrimitives> StaticFileProvider<N> {
+    /// Returns the total difficulty for `num` from the Headers static-file segment.
+    ///
+    /// Returns `Ok(None)` when the Headers jar for that block is missing.
     pub fn header_td_by_number(&self, num: BlockNumber) -> ProviderResult<Option<U256>> {
-        let _ = num;
-        Err(ProviderError::UnsupportedProvider)
+        self.get_segment_provider_for_block(StaticFileSegment::Headers, num, None)
+            .and_then(|provider| {
+                Ok(provider.cursor()?.get_one::<TotalDifficultyMask>(num.into())?.map(Into::into))
+            })
+            .or_else(|err| {
+                if let ProviderError::MissingStaticFileBlock(_, _) = err {
+                    Ok(None)
+                } else {
+                    Err(err)
+                }
+            })
     }
 
     /// Reports metrics for the static files.
