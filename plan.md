@@ -61,6 +61,27 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 | PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
 
+## Feature-Requests (nicht Port-Regressions)
+
+Geplante Produkt-/Explorer-Fähigkeiten. **Start erst nachdem PORT-P2P-001 live belegt ist** (`net_peerCount>0`, eth-Session zu Peers stabil) — Sync/P2P vor Index-Disk-Kosten.
+
+Quelle / Bench (kanonisch):
+`/usr/src/Erigon/Ethereum-MEV-BOT/Analysis/reth-vs-erigon-history-index-gap-2026-08-10.md`
+(WalletHistory / Otterscan / `eth_getLogs` Address-Topic vs Erigon 3.7 am Tip ≈25.7 M).
+
+| ID | Ziel | Scope (kurz) | Gate / Abhängigkeit | Status |
+| --- | --- | --- | --- | --- |
+| FEAT-HIST-001 | Historische Adress-Analysen auf **≥ Erigon-Niveau** (WalletHistory/OTS + sparse `getLogs`) | CallTrace From/To-Index (+ optional internal frames); echte `ots_searchTransactionsBefore/After` auf Index (nicht 100-Block-Scan); Log Address/Topic inverted index (FilterMaps / EIP-7745, Upstream [#16999](https://github.com/paradigmxyz/reth/issues/16999) / [#18305](https://github.com/paradigmxyz/reth/pull/18305)); optional Sender→Nonce Accessor + `eth_getBlockReceipts`-Pfad | **nach** PORT-P2P-001 live ✅; Archive-Disk-Budget operatorseitig (Call-Index Ballpark 100–400 GiB-Klasse); Upstream-Bezug [#15394](https://github.com/paradigmxyz/reth/issues/15394), stale [#22626](https://github.com/paradigmxyz/reth/pull/22626), [#13499](https://github.com/paradigmxyz/reth/issues/13499) | 📋 geplant · blocked on P2P live |
+
+**Acceptance (nach Implementierung, gleiches Tip-Pin wie Bench-Doc):**
+
+1. `ots_searchTransactionsBefore/After` OK; Vollscan tip→First-Activity (Bench-Wallet) ≤5 s (Erigon-Referenz ≤3 s).
+2. `eth_getLogs` Transfer.from lookback 50k @chunk1k wall ≤0.5 s (Erigon ~0.13 s).
+3. Optional: WalletHistoryExport Reth-only ≤120 s; `du`/DB-Stats Before/After dokumentieren.
+4. Repro-Scripts aus dem Analysis-Doc (`bench-erigon-vs-reth-ipc.py`, `bench-wallet-history-nodes.py`).
+
+**Priorisierte Teilschritte innerhalb FEAT-HIST-001:** (1) CallTraceFrom/To-Index + Stage → (2) `ots_search*` → (3) Log inverted index → (4) Sender+Nonce / BlockReceipts-Tuning.
+
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
 ### Phase 1+2 (frühere Sessions, zusammengefasst)
@@ -802,11 +823,12 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 
 ### Nächste Schritte (Stand Session 9 Ende)
 
-1. EF Gas-Mismatch Rootcause (revm/spec, bad-opcode) — priorisiert `stBadOpcode` / `st_create` Cluster.
-2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007.
+1. ~~EF Gas-Mismatch / `valid_blocks`~~ → ✅ (v17.0 + Bytecode Compact; 62/62).
+2. ~~`test_pipeline_v2`~~ → ✅ PORT-STOR-007/008.
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
 5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
+6. **FEAT-HIST-001** (nach P2P live): Reth History-Index ≥ Erigon für WalletHistory/`eth_getLogs`.
 
 ### Session 9 cont. — EF fixtures v17.0 + Bytecode Compact (2026-08-10)
 
@@ -821,12 +843,13 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 
 **Full EF suite (nach Fix):** `cargo nextest run -p ef-tests --features ef-tests --retries 0 --no-fail-fast` → **61 passed / 1 timed out** (`valid_blocks`, Default-Nextest 60s). Log: `files/yolo-ef-tests-v17-after-bytecode.log`. Nextest-Override für `valid_blocks`/`invalid_blocks` (2m×5) nachgezogen; Re-Verify: **beide PASS** (`files/yolo-ef-valid-blocks-reverify.log`, ~22s).
 
-### Nächste Schritte (nach Bytecode-Fix)
+### Nächste Schritte (nach Bytecode-Fix / Pipeline-v2)
 
 1. ~~`valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.~~ ✅
-2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (hashed readers, plain changeset keys, SF unwind, history dedupe).
+2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
-4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
+4. **PORT-P2P-001 live:** `net_peerCount>0` / eth-Session nach maxperf-Rebuild **belegen**.
 5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
+6. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität für WalletHistory/`getLogs` (siehe Feature-Requests; Bench-Doc MEV-BOT Analysis).
 
 
