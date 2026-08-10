@@ -67,7 +67,7 @@ pub fn generated_chain_value_parser(s: &str) -> Option<Arc<OpChainSpec>> {
 
 use reth_chainspec::{
     BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, DepositContract, EthChainSpec,
-    EthereumHardforks, ForkFilter, ForkId, Hardforks, Head, make_genesis_header,
+    EthereumHardforks, ForkFilter, ForkFilterKey, ForkId, Hardforks, Head, make_genesis_header,
 };
 use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
 use reth_network_peers::NodeRecord;
@@ -390,15 +390,68 @@ impl Hardforks for OpChainSpec {
     }
 
     fn fork_id(&self, head: &Head) -> ForkId {
-        self.inner.fork_id(head)
+        if self.is_opbnb_chain() {
+            self.opbnb_fork_filter(*head).current()
+        } else {
+            self.inner.fork_id(head)
+        }
     }
 
     fn latest_fork_id(&self) -> ForkId {
-        self.inner.latest_fork_id()
+        if self.is_opbnb_chain() {
+            // Far-future head so every scheduled forkid fork is applied.
+            self.fork_id(&Head {
+                number: u64::MAX,
+                timestamp: u64::MAX,
+                ..Default::default()
+            })
+        } else {
+            self.inner.latest_fork_id()
+        }
     }
 
     fn fork_filter(&self, head: Head) -> ForkFilter {
-        self.inner.fork_filter(head)
+        if self.is_opbnb_chain() {
+            self.opbnb_fork_filter(head)
+        } else {
+            self.inner.fork_filter(head)
+        }
+    }
+}
+
+impl OpChainSpec {
+    /// Whether this chainspec is an opBNB network (mainnet / testnet / qa).
+    fn is_opbnb_chain(&self) -> bool {
+        let chain = self.chain();
+        chain == Chain::opbnb_mainnet() ||
+            chain == Chain::opbnb_testnet() ||
+            // opBNB QA uses a custom chain id (not in alloy NamedChain).
+            chain.id() == 3534
+    }
+
+    /// ForkId / ForkFilter forks for opBNB, matching bnb-chain op-geth `gatherForks`.
+    ///
+    /// op-geth only reflects fields whose names end in `Block` or `Time`. That means:
+    /// - `Fermat *big.Int` is **omitted** from the EL forkid (even though it activates by block)
+    /// - `Snow` / `Volta` / `Fourier` are not present as `*Time` fields on op-geth `develop`,
+    ///   so they must also be omitted from the forkid while remaining in [`ChainHardforks`]
+    ///   for EVM / helper activation checks.
+    ///
+    /// Without this filter, Status handshake against opBNB bootnodes fails with incompatible
+    /// forkid and `net_peerCount` stays 0.
+    fn opbnb_fork_filter(&self, head: Head) -> ForkFilter {
+        let forks = self.inner.hardforks.forks_iter().filter_map(|(fork, condition)| {
+            if matches!(fork.name(), "Fermat" | "Snow" | "Volta" | "Fourier") {
+                return None;
+            }
+            Some(match condition {
+                ForkCondition::Block(block) |
+                ForkCondition::TTD { fork_block: Some(block), .. } => ForkFilterKey::Block(block),
+                ForkCondition::Timestamp(time) => ForkFilterKey::Time(time),
+                _ => return None,
+            })
+        });
+        ForkFilter::new(head, self.genesis_hash(), self.inner.genesis_timestamp(), forks)
     }
 }
 
@@ -589,7 +642,7 @@ mod tests {
 
     use alloy_genesis::{ChainConfig, Genesis};
     use alloy_primitives::b256;
-    use reth_chainspec::{test_fork_ids, BaseFeeParams, BaseFeeParamsKind};
+    use reth_chainspec::{test_fork_ids, BaseFeeParams, BaseFeeParamsKind, Hardforks};
     use reth_ethereum_forks::{EthereumHardfork, ForkCondition, ForkHash, ForkId, Head};
     use reth_optimism_forks::{OptimismHardfork, OptimismHardforks};
 
@@ -804,6 +857,35 @@ mod tests {
             ForkId { hash: ForkHash([0xbc, 0x38, 0xf9, 0xca]), next: 0 },
             base_mainnet.latest_fork_id()
         )
+    }
+
+    /// EIP-2124 forkid must match bnb-chain op-geth `gatherForks` for Status handshake.
+    ///
+    /// Hash uses alloy/geth CRC32 continuation over Shanghai→Fjord timestamps only
+    /// (Fermat/Snow/Volta/Fourier excluded — see [`OpChainSpec::opbnb_fork_filter`]).
+    #[test]
+    fn opbnb_mainnet_fork_id_matches_op_geth() {
+        use crate::OPBNB_MAINNET;
+
+        let genesis_ts = OPBNB_MAINNET.genesis_timestamp();
+        let at_genesis = Head { number: 0, timestamp: genesis_ts, ..Default::default() };
+        let at_tip = Head {
+            number: 200_000_000,
+            timestamp: 1_900_000_000,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            OPBNB_MAINNET.fork_id(&at_genesis),
+            ForkId { hash: ForkHash([0x71, 0x6d, 0x4a, 0x3a]), next: 1_718_870_400 },
+            "genesis forkid must match op-geth before Shanghai"
+        );
+        assert_eq!(
+            OPBNB_MAINNET.fork_id(&at_tip),
+            ForkId { hash: ForkHash([0x45, 0xea, 0xc6, 0xaa]), next: 0 },
+            "post-Fjord forkid must match op-geth tip"
+        );
+        assert_eq!(OPBNB_MAINNET.latest_fork_id().hash, ForkHash([0x45, 0xea, 0xc6, 0xaa]));
     }
 
     #[test]

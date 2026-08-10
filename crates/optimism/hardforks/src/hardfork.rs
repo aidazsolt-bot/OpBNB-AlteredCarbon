@@ -181,6 +181,8 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Bedrock => Some(0),
+                // bnb-chain/op-geth `OPBNBMainNetConfig.Fermat`
+                Self::Fermat => Some(9_397_477),
                 _ => None,
             },
         )
@@ -210,6 +212,8 @@ impl OptimismHardfork {
             |fork| match fork {
                 Self::Bedrock => Some(0),
                 Self::PreContractForkBlock => Some(5805494),
+                // bnb-chain/op-geth `OPBNBTestNetConfig.Fermat`
+                Self::Fermat => Some(12_113_000),
                 _ => None,
             },
         )
@@ -296,7 +300,7 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Regolith => Some(0),
-                Self::Fermat => Some(1701151200),
+                // Fermat is block-activated — see `opbnb_mainnet_activation_block`.
                 // Apr-15-2024 06:00 AM +UTC — bnb-chain/opbnb op-node/chaincfg
                 Self::Snow => Some(1713160800),
                 Self::Canyon => Some(1718870400),
@@ -324,7 +328,7 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Regolith => Some(0),
-                Self::Fermat => Some(1698991506),
+                // Fermat is block-activated — see `opbnb_testnet_activation_block`.
                 // May-15-2024 06:00 AM +UTC — bnb-chain/opbnb op-node/chaincfg
                 Self::Snow => Some(1715752800),
                 Self::Canyon => Some(1715753400),
@@ -514,7 +518,8 @@ impl OptimismHardfork {
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
-            (Self::Fermat.boxed(), ForkCondition::Timestamp(1701151200)),
+            // Fermat is a *block* fork in bnb-chain/op-geth (`Fermat *big.Int`), not a timestamp.
+            (Self::Fermat.boxed(), ForkCondition::Block(9_397_477)),
             (Self::Snow.boxed(), ForkCondition::Timestamp(1713160800)),
             (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(1718870400)),
             (Self::Canyon.boxed(), ForkCondition::Timestamp(1718870400)),
@@ -555,7 +560,8 @@ impl OptimismHardfork {
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
             (Self::PreContractForkBlock.boxed(), ForkCondition::Block(5805494)),
-            (Self::Fermat.boxed(), ForkCondition::Timestamp(1698991506)),
+            // Match op-geth: Fermat is a block fork (`Fermat *big.Int`).
+            (Self::Fermat.boxed(), ForkCondition::Block(12_113_000)),
             (Self::Snow.boxed(), ForkCondition::Timestamp(1715752800)),
             (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(1715753400)),
             (Self::Canyon.boxed(), ForkCondition::Timestamp(1715753400)),
