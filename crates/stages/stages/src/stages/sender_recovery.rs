@@ -630,8 +630,10 @@ mod tests {
         for block in &blocks[..=max_processed_block] {
             for transaction in &block.body().transactions {
                 if block.number > max_pruned_block {
-                    tx_senders
-                        .push((tx_number, transaction.recover_signer().expect("recover signer")));
+                    tx_senders.push((
+                        tx_number,
+                        SignedTransaction::recover_signer(transaction).expect("recover signer"),
+                    ));
                 }
                 tx_number += 1;
             }
@@ -765,8 +767,8 @@ mod tests {
                             let transaction: TransactionSigned = provider
                                 .transaction_by_id_unhashed(tx_id)?
                                 .expect("no transaction entry");
-                            let signer =
-                                transaction.recover_signer().expect("failed to recover signer");
+                            let signer = SignedTransaction::recover_signer(&transaction)
+                                .expect("failed to recover signer");
                             assert_eq!(Some(signer), provider.transaction_sender(tx_id)?)
                         }
                     }
