@@ -18,9 +18,11 @@ pub struct StaticFileProviderMetrics {
 
 impl Default for StaticFileProviderMetrics {
     fn default() -> Self {
+        // Must cover every `StaticFileSegment` variant. Consistency heal / init-cursor
+        // records metrics for AccountChangeSets, StorageChangeSets, and TransactionSenders
+        // under storage.v2; a partial list panics with "segment operation metrics should exist".
         Self {
-            segments: [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars]
-                .into_iter()
+            segments: StaticFileSegment::iter()
                 .map(|segment| {
                     (
                         segment,
@@ -28,7 +30,7 @@ impl Default for StaticFileProviderMetrics {
                     )
                 })
                 .collect(),
-            segment_operations: [StaticFileSegment::Headers, StaticFileSegment::Transactions, StaticFileSegment::Receipts, StaticFileSegment::Sidecars].into_iter()
+            segment_operations: StaticFileSegment::iter()
                 .cartesian_product(StaticFileProviderOperation::iter())
                 .map(|(segment, operation)| {
                     (
