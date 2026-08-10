@@ -8,12 +8,12 @@ mod tests {
     use crate::{OpEvmConfig, OpRethReceiptBuilder};
     use alloc::sync::Arc;
     use alloy_consensus::{Block, BlockBody, Eip658Value, Header, SignableTransaction, TxEip1559};
-    use alloy_primitives::{Address, Signature, StorageKey, StorageValue, U256, address, b256};
+    use alloy_primitives::{address, b256, Address, Signature, StorageKey, StorageValue, U256};
     use op_alloy_consensus::TxDeposit;
     use op_revm::constants::L1_BLOCK_CONTRACT;
     use reth_chainspec::MIN_TRANSACTION_GAS;
     use reth_evm::execute::{BasicBlockExecutor, BlockExecutionOutput, Executor};
-    use reth_optimism_chainspec::{OP_DEV, OpChainSpec, OpChainSpecBuilder};
+    use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder, OP_DEV};
     use reth_optimism_primitives::{OpReceipt, OpTransactionSigned};
     use reth_primitives_traits::{Account, RecoveredBlock};
     use reth_revm::{database::StateProviderDatabase, test_utils::StateProviderTest};

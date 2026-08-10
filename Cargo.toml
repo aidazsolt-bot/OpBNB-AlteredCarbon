@@ -509,6 +509,14 @@ op-revm = { path = "../../Ethereum/optimism.git/rust/op-revm", version = "20.0.0
 alloy-op-evm = { path = "../../Ethereum/optimism.git/rust/alloy-op-evm", version = "0.32.0", default-features = false }
 alloy-op-hardforks = { path = "../../Ethereum/optimism.git/rust/alloy-op-hardforks", version = "0.5.0", default-features = false }
 
+# opBNB Fermat/Haber precompiles (ported from bnb-chain/reth-bsc / bnb-chain/revm)
+bls_on_arkworks = "0.3.0"
+cometbft = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-light-client-verifier = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-proto = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-light-client = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+prost = { version = "0.12.6" }
+
 # eth
 alloy-dyn-abi = "1.6.1"
 alloy-json-abi = "1.6.1"

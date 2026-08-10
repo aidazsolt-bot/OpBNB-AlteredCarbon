@@ -284,6 +284,27 @@ impl<T> Default for OpPayloadBuilderAttributes<T> {
     }
 }
 
+impl<T> From<reth_ethereum_engine_primitives::EthPayloadBuilderAttributes>
+    for OpPayloadBuilderAttributes<T>
+{
+    fn from(value: reth_ethereum_engine_primitives::EthPayloadBuilderAttributes) -> Self {
+        Self {
+            id: value.id,
+            parent: value.parent,
+            timestamp: value.timestamp,
+            suggested_fee_recipient: value.suggested_fee_recipient,
+            prev_randao: value.prev_randao,
+            withdrawals: value.withdrawals,
+            parent_beacon_block_root: value.parent_beacon_block_root,
+            no_tx_pool: false,
+            transactions: Vec::new(),
+            gas_limit: None,
+            eip_1559_params: None,
+            min_base_fee: None,
+        }
+    }
+}
+
 impl<T> OpPayloadBuilderAttributes<T> {
     /// Extracts the extra data parameters post-Holocene hardfork.
     /// In Holocene, those parameters are the EIP-1559 base fee parameters.

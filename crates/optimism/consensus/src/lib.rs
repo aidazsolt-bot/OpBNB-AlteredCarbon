@@ -13,11 +13,11 @@ extern crate alloc;
 
 use alloc::{format, sync::Arc};
 use alloy_consensus::{
-    BlockHeader as _, EMPTY_OMMER_ROOT_HASH, constants::MAXIMUM_EXTRA_DATA_SIZE,
+    constants::MAXIMUM_EXTRA_DATA_SIZE, BlockHeader as _, EMPTY_OMMER_ROOT_HASH,
 };
-use alloy_primitives::{B64, B256};
+use alloy_primitives::{B256, B64};
 use core::fmt::Debug;
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{EthChainSpec, Hardforks};
 use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator, ReceiptRootBloom};
 use reth_consensus_common::validation::{
     validate_against_parent_eip1559_base_fee, validate_against_parent_hash_number,
@@ -25,7 +25,7 @@ use reth_consensus_common::validation::{
     validate_header_extra_data, validate_header_gas,
 };
 use reth_execution_types::BlockExecutionResult;
-use reth_optimism_forks::OpHardforks;
+use reth_optimism_forks::{OpHardforks, OptimismHardfork};
 use reth_optimism_primitives::DepositReceipt;
 use reth_primitives_traits::{
     Block, BlockBody, BlockHeader, GotExpected, NodePrimitives, RecoveredBlock, SealedBlock,
@@ -73,7 +73,12 @@ impl<ChainSpec> OpBeaconConsensus<ChainSpec> {
 impl<N, ChainSpec> FullConsensus<N> for OpBeaconConsensus<ChainSpec>
 where
     N: NodePrimitives<Receipt: DepositReceipt>,
-    ChainSpec: EthChainSpec<Header = N::BlockHeader> + OpHardforks + Debug + Send + Sync,
+    ChainSpec: EthChainSpec<Header = N::BlockHeader>
+        + OpHardforks
+        + reth_chainspec::Hardforks
+        + Debug
+        + Send
+        + Sync,
 {
     fn validate_block_post_execution(
         &self,
@@ -89,7 +94,12 @@ where
 impl<B, ChainSpec> Consensus<B> for OpBeaconConsensus<ChainSpec>
 where
     B: Block,
-    ChainSpec: EthChainSpec<Header = B::Header> + OpHardforks + Debug + Send + Sync,
+    ChainSpec: EthChainSpec<Header = B::Header>
+        + OpHardforks
+        + reth_chainspec::Hardforks
+        + Debug
+        + Send
+        + Sync,
 {
     fn validate_body_against_header(
         &self,
@@ -154,7 +164,8 @@ where
 impl<H, ChainSpec> HeaderValidator<H> for OpBeaconConsensus<ChainSpec>
 where
     H: BlockHeader,
-    ChainSpec: EthChainSpec<Header = H> + OpHardforks + Debug + Send + Sync,
+    ChainSpec:
+        EthChainSpec<Header = H> + OpHardforks + reth_chainspec::Hardforks + Debug + Send + Sync,
 {
     fn validate_header(&self, header: &SealedHeader<H>) -> Result<(), ConsensusError> {
         let header = header.header();
@@ -197,11 +208,20 @@ where
             validate_against_parent_timestamp(header.header(), parent.header())?;
         }
 
-        validate_against_parent_eip1559_base_fee(
-            header.header(),
-            parent.header(),
-            &self.chain_spec,
-        )?;
+        // opBNB Wright: base fee must be 0 (bnb-chain/op-geth CalcBaseFee).
+        if self.chain_spec.is_fork_active_at_timestamp(OptimismHardfork::Wright, header.timestamp())
+        {
+            let base_fee = header.base_fee_per_gas().ok_or(ConsensusError::BaseFeeMissing)?;
+            if base_fee != 0 {
+                return Err(ConsensusError::BaseFeeDiff(GotExpected { expected: 0, got: base_fee }));
+            }
+        } else {
+            validate_against_parent_eip1559_base_fee(
+                header.header(),
+                parent.header(),
+                &self.chain_spec,
+            )?;
+        }
 
         // Ensure that the blob gas fields for this block are correctly set.
         // In the op-stack, the excess blob gas is always 0 for all blocks after ecotone.
@@ -243,13 +263,13 @@ mod tests {
     use alloy_eips::{eip4895::Withdrawals, eip7685::Requests};
     use alloy_primitives::{Address, Bytes, Log, Signature, U256};
     use op_alloy_consensus::{
-        OpTypedTransaction, encode_holocene_extra_data, encode_jovian_extra_data,
+        encode_holocene_extra_data, encode_jovian_extra_data, OpTypedTransaction,
     };
     use reth_chainspec::BaseFeeParams;
     use reth_consensus::{Consensus, ConsensusError, FullConsensus, HeaderValidator};
-    use reth_optimism_chainspec::{OP_MAINNET, OpChainSpec, OpChainSpecBuilder};
+    use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder, OP_MAINNET};
     use reth_optimism_primitives::{OpPrimitives, OpReceipt, OpTransactionSigned};
-    use reth_primitives_traits::{RecoveredBlock, SealedBlock, SealedHeader, proofs};
+    use reth_primitives_traits::{proofs, RecoveredBlock, SealedBlock, SealedHeader};
     use reth_provider::BlockExecutionResult;
 
     use crate::OpBeaconConsensus;

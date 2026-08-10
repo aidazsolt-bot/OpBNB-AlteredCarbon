@@ -20,9 +20,9 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
-4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; trie/proofs deferred
-5. **Phase 5 — Build/Lint/Test/EF-Tests** 🔄 check ✅; Clippy op-stack ✅ (warnings only); nextest chainspec/forks ✅ 23; EF + broader nextest noch offen
-6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log/Kosten Session 6+8 aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
+4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
+5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
+6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** (+ EF-Abschluss) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
@@ -30,16 +30,16 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
 
-## Todo-Status (Stand 2026-08-09)
+## Todo-Status (Stand 2026-08-10)
 
 | ID | Titel | Status |
 | --- | --- | --- |
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
-| bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün; uncommitted) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Hardforks+stack through cli/bin ✅; trie/proofs/live tests pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 check+clippy-op+nextest(chainspec/forks) ✅; EF/prim/consensus nextest offen |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort/Kosten Session 8 ✅; storage.v2-Port-Bugfix+Doku; finale Zahlen nach Human-Sync |
+| bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest (prim/cons/evm/node/rpc) ✅; trie/proofs/live sync pending |
+| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages/op-stack nextest ✅; EF v17.0 + Bytecode Compact → **61/62** (valid_blocks Timeout → nextest Override); EEST smoke ✅ |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort Session 9 + EF-Abschluss ✅; finale Zahlen nach Human-Sync |
 
 ## Portierungs-Bugliste (v2.4.1 rebase)
 
@@ -54,10 +54,34 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ closed via PORT-STOR-004/005 (dedicated segments; no Headers/Tx reuse) |
 | PORT-STOR-004 | TransactionSenders SF stub reused Transactions/Receipts | Wrong segment literals + prune stub; v2 expected senders in SF | ✅ fixed: dedicated TransactionSenders writer/prune/readers; `transaction_senders_in_static_files() → storage_v2` |
 | PORT-STOR-005 | AccountChangeSets SF incomplete (Headers corruption) | Missing `.csoff` sidecar / header len / writer heal; stubs wrote Headers | ✅ fixed: SegmentHeader `changeset_offsets_len` + sidecar writer/heal/truncate; `account_changesets_in_static_files() → storage_v2` |
-| PORT-STOR-006 | StorageChangeSets stub always routed to MDBX (`TODO(opbnb-port)` `Headers` placeholders in rocksdb invariants, migrate-v2, `db state`) | `StaticFileSegment::StorageChangeSets` variant, mask, writer/reader, and `either_writer` routing were never ported after AccountChangeSets SF landed | ✅ fixed: dedicated `StorageChangeSets` segment (`.csoff` sidecar, same change-based model as AccountChangeSets); `storage_changesets_in_static_files() → storage_v2`; `EitherWriter`/`EitherReader` routing in `write_state_reverts`/`StorageReader`; `migrate-v2` now really migrates `StorageChangeSets` into static files instead of skipping |
+| PORT-STOR-006 | StorageChangeSets stub always routed to MDBX (`TODO(opbnb-port)` `Headers` placeholders in rocksdb invariants, migrate-v2, `db state`) | `StaticFileSegment::StorageChangeSets` variant, mask, writer/reader, and `either_writer` routing were never ported after AccountChangeSets SF landed | ✅ fixed (Session 9): dedicated `StorageChangeSets` segment (`.csoff` sidecar, same change-based model as AccountChangeSets); `storage_changesets_in_static_files() → storage_v2`; `EitherWriter`/`EitherReader` routing in `write_state_reverts`/`StorageReader`; `migrate-v2` now really migrates `StorageChangeSets` into static files instead of skipping |
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
-| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 IPv6-only (Bootnodes IPv4) | ✅ code: op-geth Bootnodes + OpBNB discv4/IPv4-discv5 Defaults; ⏳ live: eth-Session/`peerCount>0` nach Rebuild noch verifizieren |
+| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 IPv6-only; **ForkId mismatch** vs op-geth (`Fermat` als Timestamp + Snow/Volta/Fourier in forkid, op-geth `gatherForks` lässt die aus) | 🔄 code: Bootnodes+discv4/IPv4; **ForkId-Filter** (Fermat=Block EVM-only, Snow/Volta/Fourier aus forkid); ⏳ live: `peerCount>0` nach maxperf-Rebuild |
 | PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
+| PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
+| PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
+| PORT-STOR-009 | Startup panic: `segment operation metrics should exist` (static_file/metrics.rs) after metrics endpoint | Metrics `Default` only registered Headers/Tx/Receipts/Sidecars; heal/init-cursor hits Account/StorageChangeSets + TransactionSenders | ✅ fixed: register via `StaticFileSegment::iter()` (upstream pattern) |
+
+## Feature-Requests (nicht Port-Regressions)
+
+Geplante Produkt-/Explorer-Fähigkeiten. **Start erst nachdem PORT-P2P-001 live belegt ist** (`net_peerCount>0`, eth-Session zu Peers stabil) — Sync/P2P vor Index-Disk-Kosten.
+
+Quelle / Bench (kanonisch):
+`<external-analysis>/Analysis/reth-vs-erigon-history-index-gap-2026-08-10.md`
+(WalletHistory / Otterscan / `eth_getLogs` Address-Topic vs Erigon 3.7 am Tip ≈25.7 M).
+
+| ID | Ziel | Scope (kurz) | Gate / Abhängigkeit | Status |
+| --- | --- | --- | --- | --- |
+| FEAT-HIST-001 | Historische Adress-Analysen auf **≥ Erigon-Niveau** (WalletHistory/OTS + sparse `getLogs`) | CallTrace From/To-Index (+ optional internal frames); echte `ots_searchTransactionsBefore/After` auf Index (nicht 100-Block-Scan); Log Address/Topic inverted index (FilterMaps / EIP-7745, Upstream [#16999](https://github.com/paradigmxyz/reth/issues/16999) / [#18305](https://github.com/paradigmxyz/reth/pull/18305)); optional Sender→Nonce Accessor + `eth_getBlockReceipts`-Pfad | **nach** PORT-P2P-001 live ✅; Archive-Disk-Budget operatorseitig (Call-Index Ballpark 100–400 GiB-Klasse); Upstream-Bezug [#15394](https://github.com/paradigmxyz/reth/issues/15394), stale [#22626](https://github.com/paradigmxyz/reth/pull/22626), [#13499](https://github.com/paradigmxyz/reth/issues/13499) | 📋 geplant · blocked on P2P live |
+
+**Acceptance (nach Implementierung, gleiches Tip-Pin wie Bench-Doc):**
+
+1. `ots_searchTransactionsBefore/After` OK; Vollscan tip→First-Activity (Bench-Wallet) ≤5 s (Erigon-Referenz ≤3 s).
+2. `eth_getLogs` Transfer.from lookback 50k @chunk1k wall ≤0.5 s (Erigon ~0.13 s).
+3. Optional: WalletHistoryExport Reth-only ≤120 s; `du`/DB-Stats Before/After dokumentieren.
+4. Repro-Scripts aus dem Analysis-Doc (`bench-erigon-vs-reth-ipc.py`, `bench-wallet-history-nodes.py`).
+
+**Priorisierte Teilschritte innerhalb FEAT-HIST-001:** (1) CallTraceFrom/To-Index + Stage → (2) `ots_search*` → (3) Log inverted index → (4) Sender+Nonce / BlockReceipts-Tuning.
 
 ## Chronologisches Änderungsprotokoll (wichtigste Meilensteine)
 
@@ -195,6 +219,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Copilot CLI `a95758da` (Snapshot **2026-08-09**, final DB) | 2026-08-06 09:50 – 2026-08-07 18:05 | Sonnet 5, GPT-5.4, Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini | ~356,9M + ~135,4M + ~88,4M + ~63,1M + ~6,4M = **~650,1M** (+ ~636M cache-read) | ~1,163K + ~298K + ~260K + ~124K + ~16K = **~1,861K** | 32 Turns / 5.803 Events / ~8,1h request-wall | Compile-Loop bis node-core/stages/rpc-Typen; Phase-2/3 Vorarbeit |
 | Cursor Composer YOLO (Session 6, Chat `42f88fe7…`, Snapshot **2026-08-09 12:05 UTC**) | 06:45 – ~12:05 UTC (**~5,34 h** Wall) | **composer-2.5-fast** (4.986 `modelName`-Hits) + **cursor-grok-4.5-high-fast** (178); Parent `default` | **Kein lokaler Billed-Token-Ledger.** Content-Proxy: Transcripts ~2,34M chars ≈ **~0,58M Tokens** (÷4); Cleartext-Chat-JSON ≈ **~0,33M Tokens** (Untergrenze, Tool/Context unterzählt). Erwartete billed/context-Wiederholung deutlich höher | (Proxy, s. Input-Spalte) | **15 Agents** (1 Parent + 14 Subs); 2.582 Assistant-Msgs; 5.861 Tool-Blobs; ~11.722 Tool-Calls; 74.482 `ai_code_hashes` | **`reth-bsc-node --features bsc` + workspace `--no-default-features` grün**; Phase-4 op-forks/chainspec/primitives/consensus; Details: `files/cursor-session-metrics.json` |
 | Cursor Session 8 (Chat `d6ebb428…`, Snapshot **2026-08-09 ~14:30 UTC**) | ~12:18 – ~14:25 UTC (**~2,1 h** Commit-Span; ~1,4 h Chat-Wall) | Auto/Composer (kein per-request Model-Ledger im Transcript) | Transcript-Proxy **~0,11M Tokens** (÷4); billed meter n/a | (Proxy) | ~816 Tool-Calls; 11.288 `ai_code_hashes`; 350 assistant / 18 user msgs | op-evm→payload/rpc/node/cli/`op-reth` grün; opBNB init+RPC smoke; nextest chainspec/forks 23/23; Details: `files/cursor-session8-metrics.json` |
+| Cursor Session 9 (Chat `6a6455c9…` + Vorabend `9be255b9…` PORT-STOR-006, Snapshot **2026-08-10 ~08:30 UTC**) | Vorabend SCS-Port unterbrochen; Resume **05:57–~08:30 UTC** (**~2,5 h** Chat-Wall inkl. EF-Rootcause); Commit-Span **06:06–~08:27 UTC** | Auto/Composer + Task-Subagents (inherit); kein per-request Model-Ledger | Transcript-Proxy kombiniert **~97K+** Tokens (÷4, früher Snapshot ~97K; Session fortgesetzt); billed meter n/a | (Proxy) | Resume früh: 12 user / 118 assistant; **250** tool_use; danach EF-Deep-Dive (Bytecode Compact) | **PORT-STOR-006**; stages **106**; op-stack nextest; EF **v17.0** + Compact-Fix → **61/62** suites; Details: `files/cursor-session9-metrics.json` |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -762,5 +787,70 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 ### Session 8 YOLO — PORT-P2P-001 + PORT-STOR-002
 - P2P: op-geth EL-Bootnodes in `OPBNB_*_BOOTNODES`; OpBNB erzwingt discv4; bei RLPx `::` ohne `--discovery.v5.addr` → discv5 auf `0.0.0.0`.
 - Ops-Hinweis: bevorzugt `--addr 0.0.0.0` (+ optional IPv6 discv5), `--nat extip:<public>`; nach Rebuild `net_peerCount` / eth-Session gegen Bootnodes prüfen.
-- Offen danach: ~~echte AccountChangeSets/TransactionSenders-SF-Segmente~~ → PORT-STOR-004/005; ~~StorageChangeSets-SF~~ → PORT-STOR-006; EF/nextest; Archive-Sync; live P2P nach Rebuild.
+- Offen danach: ~~echte AccountChangeSets/TransactionSenders-SF-Segmente~~ → PORT-STOR-004/005; ~~StorageChangeSets-SF~~ → PORT-STOR-006; EF Gas-Mismatch-Cluster; Archive-Sync; live P2P nach Rebuild; Human Catch-up/Full-Sync.
+
+### Session 9 — Resume + YOLO Phase-5 (2026-08-10)
+
+**Kontext:** Vorabend-Chat `9be255b9…` (PORT-STOR-006 StorageChangeSets SF) war NW-technisch unterbrochen mitten in der Schlussverifikation. Resume-Chat `6a6455c9…` schloss den Port ab und lief YOLO weiter auf nextest/EF.
+
+**Storage / PORT-STOR-006 (Commit `d93bd7ea0`):**
+- Dedicated `StaticFileSegment::StorageChangeSets` mit `.csoff` (wie AccountChangeSets); Mask `StorageChangesetMask` / `StorageBeforeTx`.
+- Writer/jar/manager/either_writer Routing; `storage_changesets_in_static_files() → storage_v2`; migrate-v2 + `db state` + stage drop/config_gen verdrahtet.
+- Verify: `reth-static-file-types` / `reth-provider` / `op-reth` check grün; sf-types nextest 14/14.
+
+**Compile/Test-Fixes (Folgecommits):**
+- `f6f05157e` — `RocksDBProvider::clear` auf Stub (ohne `rocksdb`-Feature); prune Full-Clear wie Upstream.
+- `b4eabb869` — `StorageSettings::legacy`/`with_*`-Shims, `SealedHeader::clone_header`, `StoragePath`/`db_path`, stages `--tests` Dev-Deps.
+- `c73eaa747` — echtes `header_td_by_number` aus Headers-Jar (Stub → `UnsupportedProvider` hatte `insert_block` ab Block 1 gebrochen).
+- `35c2bb28a` — Sidecars-Consistency nur bei vorhandenem SF-Daten (sonst falsches `Unwind(0)`); op-node/rpc Lagoon/Sepolia-Aktivatoren + Payload-`From`.
+
+**Nextest-Meilensteine:**
+| Package | Result | Log |
+| --- | --- | --- |
+| `reth-optimism-primitives --lib` | 26/26 | `files/yolo-nextest-op-prim.log` |
+| `reth-optimism-consensus` + `evm --lib` | 53/53 | `files/yolo-nextest-op-ce-verify.log` |
+| `reth-optimism-node` + `rpc --lib` | 51 pass / 1 skip | `files/yolo-nextest-op-node-rpc-verify.log` |
+| `reth-stages --features test-utils` | **106 pass / 8 skip** | `files/yolo-nextest-stages-final.log` |
+
+**Ignored (bewusst, Trie/preimage deferred):** 6× `tests/preimage.rs` Cancun-preimage. ~~`tests/pipeline.rs::test_pipeline_v2`~~ → ✅ PORT-STOR-007.
+
+**EF-Tests (Inventory, kein Grün-Meilenstein):**
+- Fixtures: ethereum/tests **v12.2** unter `testing/ef-tests/ethereum-tests/` (gitignored).
+- `cargo nextest run -p ef-tests --features ef-tests --no-fail-fast`: **62 Suites → 32 pass / 29 fail / 1 timeout**; Case-Proxy aus `Ran`-Zeilen ~**1303 pass / ~240 fail**.
+- Dominantes Muster: `block gas used mismatch` (z.B. `stBadOpcode/measureGas.json`). Log: `files/yolo-ef-tests-full.log`.
+- Nächster Deep-Dive: Gas-Accounting / Spec-ID / bad-opcode Pfad vs. Upstream v2.4.1.
+
+**Aufwand Session 9 (Proxy, kein Invoice):** siehe Tabelle oben + `files/cursor-session9-metrics.json`.
+
+### Nächste Schritte (Stand Session 9 Ende)
+
+1. ~~EF Gas-Mismatch / `valid_blocks`~~ → ✅ (v17.0 + Bytecode Compact; 62/62).
+2. ~~`test_pipeline_v2`~~ → ✅ PORT-STOR-007/008.
+3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
+4. PORT-P2P-001 live: `net_peerCount` nach maxperf-Rebuild.
+5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
+6. **FEAT-HIST-001** (nach P2P live): Reth History-Index ≥ Erigon für WalletHistory/`eth_getLogs`.
+
+### Session 9 cont. — EF fixtures v17.0 + Bytecode Compact (2026-08-10)
+
+**Rootcause Gas-Mismatch:** Makefile noch auf ethereum/tests **v12.2** (Upstream v2.4.1: **v17.0**). Zusätzlich `Bytecode::Compact` restore via `new_analyzed` ohne revm-41-Padding → Interpreter-UB / falsches Gas (PUSH0-Suite).
+
+**Fixes:**
+- `Makefile`: `EF_TESTS_TAG=v17.0` + EEST v4.5.0 Targets (wie Upstream).
+- `Bytecode::from_compact`: Legacy-analyzed → `new_raw` Re-Analyse (wie revm serde).
+- Test-Factory: RocksDB/`static_files` TempDirs via `keep()` (kein Drop unter offenen Handles).
+
+**Verify:** Shanghai + zuvor failende Cluster (`st_bugs`, `st_code_size_limit`, `st_eip150`, `st_mem_expanding_eip150_calls`, `st_call_create_call_code`, `st_delegate_call_test_homestead`, `st_eip150_gas_prices`) → **8/8 PASS**. Logs: `files/yolo-ef-shanghai-after-bytecode-fix.log`, `files/yolo-ef-cluster-after-bytecode-fix.log`.
+
+**Full EF suite (nach Fix):** `cargo nextest run -p ef-tests --features ef-tests --retries 0 --no-fail-fast` → **61 passed / 1 timed out** (`valid_blocks`, Default-Nextest 60s). Log: `files/yolo-ef-tests-v17-after-bytecode.log`. Nextest-Override für `valid_blocks`/`invalid_blocks` (2m×5) nachgezogen; Re-Verify: **beide PASS** (`files/yolo-ef-valid-blocks-reverify.log`, ~22s).
+
+### Nächste Schritte (nach Bytecode-Fix / Pipeline-v2)
+
+1. ~~`valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.~~ ✅
+2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
+3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
+4. **PORT-P2P-001 live:** `net_peerCount>0` / eth-Session nach maxperf-Rebuild **belegen**.
+5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
+6. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität für WalletHistory/`getLogs` (siehe Feature-Requests; Bench-Doc MEV-BOT Analysis).
+
 

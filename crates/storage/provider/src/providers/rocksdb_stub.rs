@@ -69,6 +69,19 @@ impl RocksDBProvider {
     pub const fn batch_with_auto_commit(&self) -> RocksDBBatch {
         RocksDBBatch
     }
+
+    /// Clears all entries from the specified table (no-op without RocksDB).
+    ///
+    /// Signature matches the real [`RocksDBProvider::clear`] so call sites such as
+    /// the transaction-lookup pruner compile with the stub feature off.
+    pub const fn clear<T: Table>(&self) -> ProviderResult<()> {
+        Ok(())
+    }
+
+    /// Flushes pending writes for the specified tables (no-op without RocksDB).
+    pub const fn flush(&self, _tables: &[&'static str]) -> ProviderResult<()> {
+        Ok(())
+    }
 }
 
 /// A stub batch writer for `RocksDB`.

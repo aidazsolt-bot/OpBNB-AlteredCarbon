@@ -13,21 +13,21 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use alloy_consensus::{BlockHeader, Header};
-use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded, block::BlockExecutorFactory};
+use alloy_evm::{block::BlockExecutorFactory, EvmFactory, FromRecoveredTx, FromTxWithEncoded};
 use alloy_op_evm::{
-    block::{OpTxEnv, receipt_builder::OpReceiptBuilder},
+    block::{receipt_builder::OpReceiptBuilder, OpTxEnv},
     evm_env_for_op_block, evm_env_for_op_next_block,
 };
 use core::fmt::Debug;
 use op_alloy_consensus::{
-    EIP1559ParamError, OpTransaction as OpConsensusTransaction,
-    parse_post_exec_payload_from_transactions,
+    parse_post_exec_payload_from_transactions, EIP1559ParamError,
+    OpTransaction as OpConsensusTransaction,
 };
 use op_revm::OpSpecId;
 use reth_chainspec::EthChainSpec;
-use reth_evm::{ConfigureEvm, EvmEnv, eth::NextEvmEnvAttributes, precompiles::PrecompilesMap};
+use reth_evm::{eth::NextEvmEnvAttributes, precompiles::PrecompilesMap, ConfigureEvm, EvmEnv};
 use reth_optimism_chainspec::OpChainSpec;
-use reth_optimism_forks::OpHardforks;
+use reth_optimism_forks::{Hardforks, OpHardforks};
 use reth_optimism_primitives::{DepositReceipt, OpPrimitives};
 use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
 use revm::context::BlockEnv;
@@ -50,7 +50,10 @@ use {
 use reth_evm::{ConfigureEngineEvm, ExecutableTxIterator};
 
 mod config;
-pub use config::{OpNextBlockEnvAttributes, revm_spec, revm_spec_by_timestamp_after_bedrock};
+pub use config::{
+    opbnb_precompile_flags, revm_spec, revm_spec_by_timestamp_after_bedrock,
+    OpNextBlockEnvAttributes,
+};
 mod execute;
 pub use execute::*;
 pub mod l1;
@@ -66,10 +69,16 @@ pub use error::{L1BlockInfoError, OpBlockExecutionError};
 pub mod tx;
 pub use tx::OpTx;
 
+pub mod opbnb_precompiles;
+pub use opbnb_precompiles::{opbnb_precompiles, OpBnbPrecompileFlags};
+
+mod factory;
+pub use factory::OpBnbOverlayFactory;
+
 pub use alloy_op_evm::{
+    post_exec::{PostExecExecutorExt, WarmingRefundEvent, WarmingRefundKind, WarmingState},
     OpBlockExecutionCtx, OpBlockExecutorFactory, OpEvm, OpEvmFactory, PostExecMode,
     PreRefundGasUsed,
-    post_exec::{PostExecExecutorExt, WarmingRefundEvent, WarmingRefundKind, WarmingState},
 };
 
 mod post_exec_ext;
@@ -103,14 +112,14 @@ impl<ChainSpec, N: NodePrimitives, R: Clone, EvmFactory: Clone> Clone
     }
 }
 
-impl<ChainSpec: EthChainSpec<Header = Header> + OpHardforks> OpEvmConfig<ChainSpec> {
+impl<ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Hardforks> OpEvmConfig<ChainSpec> {
     /// Creates a new [`OpEvmConfig`] with the given chain spec for OP chains.
     pub fn optimism(chain_spec: Arc<ChainSpec>) -> Self {
         Self::new(chain_spec, OpRethReceiptBuilder::default())
     }
 }
 
-impl<ChainSpec: EthChainSpec<Header = Header> + OpHardforks, N: NodePrimitives, R>
+impl<ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Hardforks, N: NodePrimitives, R>
     OpEvmConfig<ChainSpec, N, R>
 {
     /// Creates a new [`OpEvmConfig`] with the given chain spec.
@@ -120,7 +129,7 @@ impl<ChainSpec: EthChainSpec<Header = Header> + OpHardforks, N: NodePrimitives, 
             executor_factory: OpBlockExecutorFactory::new(
                 receipt_builder,
                 chain_spec,
-                OpEvmFactory::<OpTx>::default(),
+                OpEvmFactory::default(),
             ),
             _pd: core::marker::PhantomData,
         }
@@ -209,20 +218,20 @@ where
 
 impl<ChainSpec, N, R, EvmF> ConfigureEvm for OpEvmConfig<ChainSpec, N, R, EvmF>
 where
-    ChainSpec: EthChainSpec<Header = Header> + OpHardforks,
+    ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Hardforks,
     N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
-    OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
+        Receipt = R::Receipt,
+        SignedTx = R::Transaction,
+        BlockHeader = Header,
+        BlockBody = alloy_consensus::BlockBody<R::Transaction>,
+        Block = alloy_consensus::Block<R::Transaction>,
+    >,
+    OpTx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
     N::SignedTx: OpConsensusTransaction,
     R: OpReceiptBuilder<
-            Receipt: DepositReceipt,
-            Transaction: SignedTransaction + OpConsensusTransaction,
-        >,
+        Receipt: DepositReceipt,
+        Transaction: SignedTransaction + OpConsensusTransaction,
+    >,
     EvmF: EvmFactory<
             Tx: FromRecoveredTx<R::Transaction>
                     + FromTxWithEncoded<R::Transaction>
@@ -231,13 +240,14 @@ where
             Precompiles = PrecompilesMap,
             Spec = OpSpecId,
             BlockEnv = BlockEnv,
-        > + Debug,
+        > + OpBnbOverlayFactory
+        + Debug,
     OpBlockExecutorFactory<R, Arc<ChainSpec>, EvmF>: for<'a> BlockExecutorFactory<
-            EvmFactory = EvmF,
-            ExecutionCtx<'a> = OpBlockExecutionCtx,
-            Transaction = R::Transaction,
-            Receipt = R::Receipt,
-        >,
+        EvmFactory = EvmF,
+        ExecutionCtx<'a> = OpBlockExecutionCtx,
+        Transaction = R::Transaction,
+        Receipt = R::Receipt,
+    >,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
     type Primitives = N;
@@ -252,6 +262,36 @@ where
 
     fn block_assembler(&self) -> &Self::BlockAssembler {
         &self.block_assembler
+    }
+
+    fn evm_with_env<DB: reth_evm::Database>(
+        &self,
+        db: DB,
+        evm_env: reth_evm::EvmEnvFor<Self>,
+    ) -> reth_evm::EvmFor<Self, DB> {
+        self.executor_factory.evm_factory().create_evm_with_opbnb_overlays(
+            self.chain_spec().as_ref(),
+            db,
+            evm_env,
+        )
+    }
+
+    fn evm_with_env_and_inspector<DB, I>(
+        &self,
+        db: DB,
+        evm_env: reth_evm::EvmEnvFor<Self>,
+        inspector: I,
+    ) -> reth_evm::EvmFor<Self, DB, I>
+    where
+        DB: reth_evm::Database,
+        I: reth_evm::InspectorFor<Self, DB>,
+    {
+        self.executor_factory.evm_factory().create_evm_with_inspector_and_opbnb_overlays(
+            self.chain_spec().as_ref(),
+            db,
+            evm_env,
+            inspector,
+        )
     }
 
     fn evm_env(&self, header: &Header) -> Result<EvmEnv<OpSpecId>, Self::Error> {
@@ -307,20 +347,20 @@ where
 #[cfg(feature = "std")]
 impl<ChainSpec, N, R> ConfigureEngineEvm<OpExecutionData> for OpEvmConfig<ChainSpec, N, R>
 where
-    ChainSpec: EthChainSpec<Header = Header> + OpHardforks,
+    ChainSpec: EthChainSpec<Header = Header> + OpHardforks + Hardforks,
     N: NodePrimitives<
-            Receipt = R::Receipt,
-            SignedTx = R::Transaction,
-            BlockHeader = Header,
-            BlockBody = alloy_consensus::BlockBody<R::Transaction>,
-            Block = alloy_consensus::Block<R::Transaction>,
-        >,
+        Receipt = R::Receipt,
+        SignedTx = R::Transaction,
+        BlockHeader = Header,
+        BlockBody = alloy_consensus::BlockBody<R::Transaction>,
+        Block = alloy_consensus::Block<R::Transaction>,
+    >,
     OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     N::SignedTx: Decodable2718 + OpConsensusTransaction,
     R: OpReceiptBuilder<
-            Receipt: DepositReceipt,
-            Transaction: SignedTransaction + OpConsensusTransaction,
-        >,
+        Receipt: DepositReceipt,
+        Transaction: SignedTransaction + OpConsensusTransaction,
+    >,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
     fn evm_env_for_payload(
@@ -413,18 +453,15 @@ mod tests {
     use alloy_consensus::{Block, BlockBody, Header, Receipt, Sealable};
     use alloy_eips::eip7685::Requests;
     use alloy_genesis::Genesis;
-    use alloy_primitives::{
-        Address, B256, LogData, bytes,
-        map::{AddressMap, B256Map, HashMap},
-    };
-    use op_alloy_consensus::{SDMGasEntry, build_post_exec_tx};
+    use alloy_primitives::{bytes, map::HashMap, Address, LogData, B256};
+    use op_alloy_consensus::{build_post_exec_tx, SDMGasEntry};
     use op_revm::OpSpecId;
     use reth_chainspec::ChainSpec;
     use reth_evm::execute::ProviderError;
     use reth_execution_types::{
         AccountRevertInit, BundleStateInit, Chain, ExecutionOutcome, RevertsInit,
     };
-    use reth_optimism_chainspec::{OP_MAINNET, OpChainSpec, OpChainSpecBuilder};
+    use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder, OP_MAINNET};
     use reth_optimism_primitives::{OpBlock, OpPrimitives, OpReceipt, OpTransactionSigned};
     use reth_primitives_traits::{Account, RecoveredBlock, SealedBlock};
     use revm::{
@@ -732,6 +769,7 @@ mod tests {
             receipts,
             requests: vec![],
             first_block: 10,
+            snapshots: vec![],
         };
 
         // Create a Chain object with a BTreeMap of blocks mapped to their block numbers,
@@ -748,6 +786,7 @@ mod tests {
             receipts: vec![vec![receipt1]],
             requests: vec![],
             first_block: 10,
+            snapshots: vec![],
         };
 
         // Assert that the execution outcome at the first block contains only the first receipt
@@ -786,6 +825,7 @@ mod tests {
             receipts: receipts.clone(),
             requests: requests.clone(),
             first_block,
+            snapshots: vec![],
         };
 
         // Assert that creating a new ExecutionOutcome using the constructor matches exec_res
@@ -795,12 +835,12 @@ mod tests {
         );
 
         // Create a BundleStateInit object and insert initial data
-        let mut state_init: BundleStateInit = AddressMap::default();
+        let mut state_init: BundleStateInit = HashMap::default();
         state_init
-            .insert(Address::new([2; 20]), (None, Some(Account::default()), B256Map::default()));
+            .insert(Address::new([2; 20]), (None, Some(Account::default()), HashMap::default()));
 
-        // Create an AddressMap for account reverts and insert initial data
-        let mut revert_inner: AddressMap<AccountRevertInit> = AddressMap::default();
+        // Create a HashMap for account reverts and insert initial data
+        let mut revert_inner: HashMap<Address, AccountRevertInit> = HashMap::default();
         revert_inner.insert(Address::new([2; 20]), (None, vec![]));
 
         // Create a RevertsInit object and insert the revert_inner data
@@ -841,6 +881,7 @@ mod tests {
             receipts,
             requests: vec![],
             first_block,
+            snapshots: vec![],
         };
 
         // Test before the first block
@@ -872,6 +913,7 @@ mod tests {
             receipts,
             requests: vec![],
             first_block,
+            snapshots: vec![],
         };
 
         // Get logs for block number 123
@@ -899,7 +941,8 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts,                   // Include the created receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number
+            first_block,                // Set the first block number,
+            snapshots: vec![],
         };
 
         // Get receipts for block number 123 and convert the result into a vector
@@ -937,7 +980,8 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts,                   // Include the created receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number
+            first_block,                // Set the first block number,
+            snapshots: vec![],
         };
 
         // Assert that the length of receipts in exec_res is 1
@@ -951,7 +995,8 @@ mod tests {
             bundle: Default::default(), // Default value for bundle
             receipts: receipts_empty,   // Include the empty receipts
             requests: vec![],           // Empty vector for requests
-            first_block,                // Set the first block number
+            first_block,                // Set the first block number,
+            snapshots: vec![],
         };
 
         // Assert that the length of receipts in exec_res_empty_receipts is 0
@@ -985,8 +1030,13 @@ mod tests {
 
         // Create a ExecutionOutcome object with the created bundle, receipts, requests, and
         // first_block
-        let mut exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
+        let mut exec_res = ExecutionOutcome {
+            bundle: Default::default(),
+            receipts,
+            requests,
+            first_block,
+            snapshots: vec![],
+        };
 
         // Assert that the revert_to method returns true when reverting to the initial block number.
         assert!(exec_res.revert_to(123));
@@ -1028,8 +1078,13 @@ mod tests {
         let first_block = 123;
 
         // Create an ExecutionOutcome object.
-        let mut exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
+        let mut exec_res = ExecutionOutcome {
+            bundle: Default::default(),
+            receipts,
+            requests,
+            first_block,
+            snapshots: vec![],
+        };
 
         // Extend the ExecutionOutcome object by itself.
         exec_res.extend(exec_res.clone());
@@ -1042,6 +1097,7 @@ mod tests {
                 receipts: vec![vec![Some(receipt.clone())], vec![Some(receipt)]],
                 requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
                 first_block: 123,
+                snapshots: vec![],
             }
         );
     }
@@ -1077,8 +1133,13 @@ mod tests {
 
         // Create a ExecutionOutcome object with the created bundle, receipts, requests, and
         // first_block
-        let exec_res =
-            ExecutionOutcome { bundle: Default::default(), receipts, requests, first_block };
+        let exec_res = ExecutionOutcome {
+            bundle: Default::default(),
+            receipts,
+            requests,
+            first_block,
+            snapshots: vec![],
+        };
 
         // Split the ExecutionOutcome at block number 124
         let result = exec_res.clone().split_at(124);
@@ -1089,6 +1150,7 @@ mod tests {
             receipts: vec![vec![Some(receipt.clone())]],
             requests: vec![Requests::new(vec![request.clone()])],
             first_block,
+            snapshots: vec![],
         };
 
         // Define the expected higher ExecutionOutcome after splitting
@@ -1097,6 +1159,7 @@ mod tests {
             receipts: vec![vec![Some(receipt.clone())], vec![Some(receipt)]],
             requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
             first_block: 124,
+            snapshots: vec![],
         };
 
         // Assert that the split result matches the expected lower and higher outcomes

@@ -219,11 +219,8 @@ impl TransactionLookup {
     {
         // For PruneMode::Full, clear the entire RocksDB table in one operation
         if self.mode.is_full() {
-            provider.with_rocksdb_batch(|_| {
-                // Full clear is applied immediately on the RocksDB provider (not via batch).
-                provider.rocksdb_provider().clear::<tables::TransactionHashNumbers>()?;
-                Ok(((), None))
-            })?;
+            let rocksdb = provider.rocksdb_provider();
+            rocksdb.clear::<tables::TransactionHashNumbers>()?;
             trace!(target: "pruner", "Cleared transaction lookup table (RocksDB)");
 
             let last_pruned_block = provider

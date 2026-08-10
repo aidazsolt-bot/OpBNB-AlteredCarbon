@@ -605,7 +605,8 @@ async fn test_pipeline() -> eyre::Result<()> {
 /// In v2 mode:
 /// - The execution stage writes directly to `HashedAccounts`/`HashedStorages`
 /// - `AccountHashingStage` and `StorageHashingStage` are no-ops during forward execution
-/// - Changesets are stored in static files with pre-hashed storage keys
+/// - Changesets are stored in static files with plain storage keys
+/// - History indices are written to RocksDB when the `rocksdb` feature is enabled
 /// - Unwind must still revert hashed state via the hashing stages before `MerkleUnwind` validates
 #[tokio::test(flavor = "multi_thread")]
 async fn test_pipeline_v2() -> eyre::Result<()> {

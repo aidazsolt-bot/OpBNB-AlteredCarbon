@@ -50,6 +50,62 @@ impl StorageSettings {
         Self { storage_v2: false }
     }
 
+    /// Alias for [`Self::v1`] for compatibility with older multi-field API call sites.
+    pub const fn legacy() -> Self {
+        Self::v1()
+    }
+
+    /// Compatibility shim: enabling any former per-feature flag turns on v2 storage.
+    ///
+    /// Call sites typically start from [`Self::legacy`] and only pass `true` to enable a feature;
+    /// `false` leaves settings unchanged.
+    pub const fn with_receipts_in_static_files(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
+    /// See [`Self::with_receipts_in_static_files`].
+    pub const fn with_transaction_senders_in_static_files(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
+    /// See [`Self::with_receipts_in_static_files`].
+    pub const fn with_transaction_hash_numbers_in_rocksdb(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
+    /// See [`Self::with_receipts_in_static_files`].
+    pub const fn with_storages_history_in_rocksdb(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
+    /// See [`Self::with_receipts_in_static_files`].
+    pub const fn with_account_history_in_rocksdb(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
+    /// See [`Self::with_receipts_in_static_files`].
+    pub const fn with_account_changesets_in_static_files(mut self, value: bool) -> Self {
+        if value {
+            self.storage_v2 = true;
+        }
+        self
+    }
+
     /// Returns `true` if this node uses v2 storage layout.
     pub const fn is_v2(&self) -> bool {
         self.storage_v2
