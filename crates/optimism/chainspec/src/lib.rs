@@ -203,6 +203,26 @@ impl OpChainSpecBuilder {
         self
     }
 
+    /// Enable Isthmus at genesis
+    pub fn isthmus_activated(mut self) -> Self {
+        self = self.holocene_activated();
+        // Prague is co-activated with Isthmus on the OP Stack.
+        self.inner = self.inner.with_fork(EthereumHardfork::Prague, ForkCondition::Timestamp(0));
+        self.inner = self
+            .inner
+            .with_fork(reth_optimism_forks::OpHardfork::Isthmus, ForkCondition::Timestamp(0));
+        self
+    }
+
+    /// Enable Jovian at genesis
+    pub fn jovian_activated(mut self) -> Self {
+        self = self.isthmus_activated();
+        self.inner = self
+            .inner
+            .with_fork(reth_optimism_forks::OpHardfork::Jovian, ForkCondition::Timestamp(0));
+        self
+    }
+
     /// Build the resulting [`OpChainSpec`].
     ///
     /// # Panics
@@ -321,11 +341,12 @@ impl EthChainSpec for OpChainSpec {
     }
 
     fn next_block_base_fee(&self, parent: &Header, target_timestamp: u64) -> Option<u64> {
-        // Holocene+ encode 1559 params in parent extra_data; fall back to chainspec params.
-        if self.inner.is_fork_active_at_timestamp(
-            reth_optimism_forks::OptimismHardfork::Holocene,
-            parent.timestamp,
-        ) {
+        // Holocene+ encode 1559 params in parent extra_data; Jovian also encodes min base fee
+        // and uses max(gas_used, blob_gas_used) for the next base fee.
+        // Prefer [`OpHardforks`] over [`OptimismHardforks`] (both expose Holocene helpers).
+        if OpHardforks::is_jovian_active_at_timestamp(self, parent.timestamp) {
+            basefee::compute_jovian_base_fee(parent).ok()
+        } else if OpHardforks::is_holocene_active_at_timestamp(self, parent.timestamp) {
             basefee::decode_holocene_base_fee(parent).ok()
         } else {
             self.inner.next_block_base_fee(parent, target_timestamp)
@@ -370,8 +391,9 @@ impl OptimismHardforks for OpChainSpec {}
 
 impl OpHardforks for OpChainSpec {
     fn op_fork_activation(&self, fork: OpHardfork) -> ForkCondition {
-        // Schedules store opBNB-specific [`OptimismHardfork`] variants; map the overlapping
-        // upstream [`OpHardfork`] names. Isthmus+ return Never until schedules grow.
+        // Schedules primarily store opBNB-specific [`OptimismHardfork`] variants; map the
+        // overlapping upstream [`OpHardfork`] names. Unmapped forks (Isthmus+) fall back to a
+        // direct [`OpHardfork`] lookup so activator helpers and ad-hoc inserts work.
         let mapped = match fork {
             OpHardfork::Bedrock => Some(OptimismHardfork::Bedrock),
             OpHardfork::Regolith => Some(OptimismHardfork::Regolith),
@@ -382,7 +404,12 @@ impl OpHardforks for OpChainSpec {
             OpHardfork::Holocene => Some(OptimismHardfork::Holocene),
             _ => None,
         };
-        mapped.map(|fork| self.fork(fork)).unwrap_or(ForkCondition::Never)
+        let from_mapped = mapped.map(|fork| self.fork(fork)).unwrap_or(ForkCondition::Never);
+        if from_mapped != ForkCondition::Never {
+            from_mapped
+        } else {
+            self.fork(fork)
+        }
     }
 }
 
