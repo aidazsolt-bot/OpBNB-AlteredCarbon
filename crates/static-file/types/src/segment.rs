@@ -64,6 +64,14 @@ pub enum StaticFileSegment {
     /// [`SegmentHeader`] itself. Only the number of entries in that sidecar is tracked on the
     /// header via [`SegmentHeader::changeset_offsets_len`].
     AccountChangeSets,
+    #[strum(serialize = "storage-change-sets")]
+    /// Static File segment responsible for the `StorageChangeSets` table.
+    ///
+    /// Storage changeset static files append block-by-block changesets sorted by address and
+    /// storage slot, using the same change-based row model as [`Self::AccountChangeSets`] (see
+    /// its doc comment). Per-block offsets are likewise tracked out-of-band in a `.csoff`
+    /// sidecar file via [`SegmentHeader::changeset_offsets_len`].
+    StorageChangeSets,
 }
 
 impl StaticFileSegment {
@@ -76,6 +84,7 @@ impl StaticFileSegment {
             Self::Sidecars => "sidecars",
             Self::TransactionSenders => "transaction-senders",
             Self::AccountChangeSets => "account-change-sets",
+            Self::StorageChangeSets => "storage-change-sets",
         }
     }
 
@@ -88,6 +97,7 @@ impl StaticFileSegment {
             Self::Sidecars,
             Self::TransactionSenders,
             Self::AccountChangeSets,
+            Self::StorageChangeSets,
         ]
         .into_iter()
     }
@@ -103,7 +113,7 @@ impl StaticFileSegment {
             Self::Headers => 3,
             Self::Transactions | Self::Receipts => 1,
             Self::Sidecars => 2,
-            Self::TransactionSenders | Self::AccountChangeSets => 1,
+            Self::TransactionSenders | Self::AccountChangeSets | Self::StorageChangeSets => 1,
         }
     }
 
@@ -188,7 +198,7 @@ impl StaticFileSegment {
     /// Returns `true` if the segment stores per-block changeset rows (offsets tracked in a
     /// `.csoff` sidecar file, see [`SegmentHeader::changeset_offsets_len`]).
     pub const fn is_change_based(&self) -> bool {
-        matches!(self, Self::AccountChangeSets)
+        matches!(self, Self::AccountChangeSets | Self::StorageChangeSets)
     }
 
     /// Returns `true` if a segment row is linked to a block (i.e. one row per block).
@@ -459,7 +469,8 @@ impl SegmentHeader {
         match self.segment {
             StaticFileSegment::Headers |
             StaticFileSegment::Sidecars |
-            StaticFileSegment::AccountChangeSets => (),
+            StaticFileSegment::AccountChangeSets |
+            StaticFileSegment::StorageChangeSets => (),
             StaticFileSegment::Transactions |
             StaticFileSegment::Receipts |
             StaticFileSegment::TransactionSenders => {

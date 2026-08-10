@@ -275,7 +275,7 @@ impl RocksDBProvider {
 
         let sf_tip = provider
             .static_file_provider()
-            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */)
+            .get_highest_static_file_block(StaticFileSegment::StorageChangeSets)
             .unwrap_or(0);
 
         if sf_tip < checkpoint {
@@ -1269,7 +1269,7 @@ mod tests {
         {
             let sf_provider = factory.static_file_provider();
             let mut writer =
-                sf_provider.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */).unwrap();
+                sf_provider.latest_writer(StaticFileSegment::StorageChangeSets).unwrap();
 
             // Reuse changeset vec to avoid repeated allocations
             let mut changeset = Vec::with_capacity(1);
@@ -1292,7 +1292,7 @@ mod tests {
         {
             let sf_provider = factory.static_file_provider();
             let highest = sf_provider
-                .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */)
+                .get_highest_static_file_block(StaticFileSegment::StorageChangeSets)
                 .unwrap();
             assert_eq!(highest, TOTAL_BLOCKS - 1, "Static files should have blocks 0..14999");
         }
@@ -1374,7 +1374,7 @@ mod tests {
         {
             let sf_provider = factory.static_file_provider();
             let mut writer =
-                sf_provider.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */).unwrap();
+                sf_provider.latest_writer(StaticFileSegment::StorageChangeSets).unwrap();
 
             for block_num in 0..=SF_TIP {
                 let changeset = if block_num == CHECKPOINT_BLOCK {
@@ -1665,7 +1665,7 @@ mod tests {
         {
             let sf_provider = factory.static_file_provider();
             let mut writer =
-                sf_provider.latest_writer(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */).unwrap();
+                sf_provider.latest_writer(StaticFileSegment::StorageChangeSets).unwrap();
 
             for block_num in 0..=100u64 {
                 let changeset = vec![StorageBeforeTx {
@@ -1692,7 +1692,7 @@ mod tests {
         // Verify sf_tip equals checkpoint (both at 100)
         let sf_tip = provider
             .static_file_provider()
-            .get_highest_static_file_block(StaticFileSegment::Headers /* TODO(opbnb-port): StorageChangeSets segment unsupported in this fork */)
+            .get_highest_static_file_block(StaticFileSegment::StorageChangeSets)
             .unwrap();
         assert_eq!(sf_tip, 100, "Static file tip should be 100");
 

@@ -12,9 +12,10 @@ use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, 
 use reth_chainspec::ChainInfo;
 use reth_db::static_file::{
     AccountChangesetMask, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-    StaticFileCursor, TDWithHashMask, TotalDifficultyMask, TransactionMask, TransactionSenderMask,
+    StaticFileCursor, StorageChangesetMask, TDWithHashMask, TotalDifficultyMask, TransactionMask,
+    TransactionSenderMask,
 };
-use reth_db::models::AccountBeforeTx;
+use reth_db::models::{AccountBeforeTx, StorageBeforeTx};
 use reth_db_api::table::{Decompress, Value};
 use reth_node_types::NodePrimitives;
 use reth_primitives_traits::{SealedHeader, SignedTransaction};
@@ -156,6 +157,23 @@ impl<'a, N: NodePrimitives> StaticFileJarProvider<'a, N> {
         let mut changes = Vec::with_capacity(offset.num_changes() as usize);
         for row in offset.changeset_range() {
             if let Some(change) = cursor.get_one::<AccountChangesetMask>(row.into())? {
+                changes.push(change);
+            }
+        }
+        Ok(changes)
+    }
+
+    /// Reads the storage changeset for a given block using the `.csoff` sidecar offsets.
+    pub fn storage_changeset(&self, block: BlockNumber) -> ProviderResult<Vec<StorageBeforeTx>> {
+        let Some(offset) = self.read_changeset_offset(block)? else { return Ok(Vec::new()) };
+        if offset.num_changes() == 0 {
+            return Ok(Vec::new())
+        }
+
+        let mut cursor = self.cursor()?;
+        let mut changes = Vec::with_capacity(offset.num_changes() as usize);
+        for row in offset.changeset_range() {
+            if let Some(change) = cursor.get_one::<StorageChangesetMask>(row.into())? {
                 changes.push(change);
             }
         }

@@ -17,11 +17,10 @@ pub struct StorageSettings {
     /// Whether this node uses v2 storage layout.
     ///
     /// When `true`, enables v2 storage features:
-    /// - Receipts, transaction senders and account changesets in static files
+    /// - Receipts, transaction senders, account changesets and storage changesets in static
+    ///   files
     /// - History indices in `RocksDB` (accounts, storages, transaction hashes)
     /// - Hashed state tables as canonical state representation
-    ///
-    /// Storage changesets stay in MDBX until a `StorageChangeSets` SF segment is ported.
     ///
     /// When `false`, uses v1/legacy layout (everything in MDBX).
     pub storage_v2: bool,
@@ -34,11 +33,10 @@ impl StorageSettings {
     }
 
     /// Creates `StorageSettings` for v2 nodes:
-    /// - Receipts, transaction senders and account changesets in static files
+    /// - Receipts, transaction senders, account changesets and storage changesets in static
+    ///   files
     /// - History indices in `RocksDB` (storages, accounts, transaction hashes)
     /// - Hashed state as canonical state representation
-    ///
-    /// Storage changesets remain in MDBX until that SF segment is ported.
     ///
     /// Use this when the `--storage.v2` CLI flag is set.
     pub const fn v2() -> Self {
@@ -97,9 +95,16 @@ impl StorageSettings {
     ///
     /// Backed by the `AccountChangeSets` static-file segment, which tracks per-block
     /// changeset offsets out-of-band in a `.csoff` sidecar file (see
-    /// [`reth_static_file_types::SegmentHeader::changeset_offsets_len`]). Storage changesets
-    /// remain MDBX-backed until a `StorageChangeSets` SF segment is ported.
+    /// [`reth_static_file_types::SegmentHeader::changeset_offsets_len`]).
     pub const fn account_changesets_in_static_files(&self) -> bool {
+        self.storage_v2
+    }
+
+    /// Whether storage changesets are stored in static files.
+    ///
+    /// Backed by the `StorageChangeSets` static-file segment, which uses the same
+    /// change-based row model (and `.csoff` sidecar) as [`Self::account_changesets_in_static_files`].
+    pub const fn storage_changesets_in_static_files(&self) -> bool {
         self.storage_v2
     }
 }
