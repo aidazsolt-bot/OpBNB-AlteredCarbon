@@ -534,7 +534,7 @@ mod test {
             OpPayloadTypes,
         >>::validate_block_post_execution_with_hashed_state(
             &validator,
-            || &hashed_state,
+            &|| &hashed_state,
             &block,
             || NoopProvider::default().latest(),
         );
