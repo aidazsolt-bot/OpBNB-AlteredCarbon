@@ -363,9 +363,12 @@ Those hints were therefore given explicitly during live-sync debugging (Session 
 procedure the agent was instructed to author a reusable Cursor skill:
 
 - **`.cursor/skills/reth-opbnb-port/SKILL.md`** — *Reth / opBNB Portierungs-Spezialist*
+- **`.cursor/skills/rust-best-practices/SKILL.md`** — *Experienced Rust / best practices*
+- **`.cursor/rules/reth-opbnb-port-mandatory.mdc`** — `alwaysApply: true` (load both skills first every session)
+- **`.cursor/hooks.json`** `sessionStart` — injects both skills into agent context
 
-Subsequent port/sync work on this fork should load that skill (or follow `plan.md` the same way)
-instead of relying on unaided vibecoding.
+Subsequent port/sync work on this fork **must** load both skills at session start (rule + hook enforce it)
+and follow `plan.md` (`PORT-PIPE-*`) instead of unaided vibecoding.
 
 ### Effort log (approximate, based on available session telemetry)
 

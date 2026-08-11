@@ -24,11 +24,14 @@ und keine disziplinierte `PORT-*`-Bugliste. Erst nach **expliziten Operator-Hinw
 Vorgehensweise** (Referenz zuerst, Layer Symptom→Consensus/Engine/Pipeline, Live-Beleg) entstanden
 die relevanten Sync-Fixes (Milli-Timestamp, FCU-Backfill).
 
-Aus diesen Hinweisen wurde der Projekt-Skill angelegt:
+Aus diesen Hinweisen wurde der Projekt-Skill angelegt und **Session-Start-Pflicht** verdrahtet:
 
 - **`.cursor/skills/reth-opbnb-port/SKILL.md`** — Portierungs-Spezialist (Reth/opBNB)
+- **`.cursor/skills/rust-best-practices/SKILL.md`** — erfahrener Rust-Stil / Best Practices
+- **`.cursor/rules/reth-opbnb-port-mandatory.mdc`** — `alwaysApply: true` (beide Skills zuerst `Read`)
+- **`.cursor/hooks.json`** → `sessionStart` injiziert beide Skills als `additional_context`
 
-Weitere Port-/Sync-Arbeit soll diesen Skill laden bzw. dieselbe Checkliste in `plan.md` befolgen.
+Weitere Port-/Sync-Arbeit: beide Skills sind bei jeder Session zwingend geladen; Checkliste in `plan.md` (PORT-PIPE) befolgen.
 
 ## Phasenübersicht (Soll)
 
@@ -895,8 +898,8 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. ~~**PORT-P2P-001 live:** eth-Session~~ → ✅ Session zu opBNB-Peers (2026-08-11); Peer-Count weiterhin flüchtig.
-5. **PORT-ENGINE-001 / PORT-CONS-001 live:** `make maxperf-op` → Restart → Log `backfill threshold` / `Preparing stage Headers` → checkpoint steigt; Grafana Stages wieder Werte (nicht No data).
-6. Human Catch-up / Full Sync; spätere Stages können weitere Port-Lücken zeigen — Stage-für-Stage.
+5. **PORT-PIPE-001…** live abarbeiten (Matrix in Bugliste); zuerst PIPE-001/002 nach maxperf-Rebuild (`Preparing stage Headers`, Milli ohne Ban).
+6. Human Catch-up / Full Sync; spätere Stages über PIPE-007…012 (Execution/Merkle/History).
 7. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität (Gate: stabiler Sync).
 
 ### Session 10 — Live opBNB Archive Sync Blocker (2026-08-11)
@@ -924,6 +927,8 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 - Operator-Befund: AI ohne zusätzlichen Portierungs-Skill / ohne Vorgehens-Hints liefert keine
   belastbare Protokoll-Portierung (siehe Abschnitt *Befund Methodik* oben).
 - Daraus erstellt: `.cursor/skills/reth-opbnb-port/SKILL.md`.
+- Zusätzlich: `.cursor/skills/rust-best-practices/SKILL.md` (erfahrener Rust / Best Practices).
+- **Zwingend Session-Start:** Rule `reth-opbnb-port-mandatory` + Hook lädt **beide** Skills.
 - README *About This Fork → Method finding* entsprechend aktualisiert.
 
 
