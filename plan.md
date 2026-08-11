@@ -22,24 +22,25 @@ Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
-6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+**9** (+ EF-Abschluss) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
+6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+9+**10** (Live-Sync Blocker) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
+- **Stand 2026-08-11:** Live-Archive-Versuch opBNB mainnet — Pipeline hat Headers **2×** gestartet, blieb aber an Consensus/Engine-Blockern hängen (siehe PORT-CONS-001 / PORT-ENGINE-001). Grafana Stage „No data“ = Pipeline idle (kein Stage-Lauf), nicht fehlende Stage-Metriken-Registrierung.
 
-## Todo-Status (Stand 2026-08-10)
+## Todo-Status (Stand 2026-08-11)
 
 | ID | Titel | Status |
 | --- | --- | --- |
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest (prim/cons/evm/node/rpc) ✅; trie/proofs/live sync pending |
-| build-test-validate | Build, Lint, Tests, EF-Tests | 🔄 stages/op-stack nextest ✅; EF v17.0 + Bytecode Compact → **61/62** (valid_blocks Timeout → nextest Override); EEST smoke ✅ |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Effort Session 9 + EF-Abschluss ✅; finale Zahlen nach Human-Sync |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest ✅; **live sync** Blocker CONS/ENGINE gefixt (Code); Headers-Fortschritt nach maxperf-Rebuild ⏳ |
+| build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Session 10 Live-Sync Bugs + plan/README; finale Zahlen nach Human-Sync |
 
 ## Portierungs-Bugliste (v2.4.1 rebase)
 
@@ -51,16 +52,21 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CLI-002 | README empfiehlt noch `--enable-prefetch` / `--optimize.enable-execution-cache` | Alte BSC-Fork-Toggles; CLI + Engine-Gating beim Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache | 📝 docs: Flags als obsolet markiert; Runtime-Port von `TriePrefetch` bewusst nicht wiederbelebt |
 | PORT-CLI-003 | `--ipcpath /tmp/foo.ipc` wurde zu `/tmp/foo.ipc-1` | `NodeConfig.instance` war `u16` mit Default `1`; `adjust_instance_ports` hängte immer `-{instance}` an | ✅ fixed: `instance: Option<u16>` (None ohne `--instance`), wie Upstream |
 | PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
+| PORT-CLI-005 | OTLP (`--tracing-otlp` / `--logs-otlp`) wirkt in Live-/maxperf-`op-reth` nicht; Grafana sieht nur Prometheus | Code pfad ist verdrahtet (`reth-tracing-otlp`, `TraceArgs`, Optimism/Eth CLI), aber hinter optionalen Features `otlp` / `otlp-logs` — **nicht** in `default`, **nicht** in `make maxperf-op` (`jemalloc,asm-keccak,keccak-cache-global`). Ohne Feature: Warn „compile with the `otlp` feature“ | 📝 bewusst so (wie Upstream Feature-Gate). **Ops:** `--metrics` (Prometheus) reicht für Grafana; OTLP nur bei Bedarf mit `--features …,otlp[,otlp-logs]` bauen |
 | PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ closed via PORT-STOR-004/005 (dedicated segments; no Headers/Tx reuse) |
 | PORT-STOR-004 | TransactionSenders SF stub reused Transactions/Receipts | Wrong segment literals + prune stub; v2 expected senders in SF | ✅ fixed: dedicated TransactionSenders writer/prune/readers; `transaction_senders_in_static_files() → storage_v2` |
 | PORT-STOR-005 | AccountChangeSets SF incomplete (Headers corruption) | Missing `.csoff` sidecar / header len / writer heal; stubs wrote Headers | ✅ fixed: SegmentHeader `changeset_offsets_len` + sidecar writer/heal/truncate; `account_changesets_in_static_files() → storage_v2` |
 | PORT-STOR-006 | StorageChangeSets stub always routed to MDBX (`TODO(opbnb-port)` `Headers` placeholders in rocksdb invariants, migrate-v2, `db state`) | `StaticFileSegment::StorageChangeSets` variant, mask, writer/reader, and `either_writer` routing were never ported after AccountChangeSets SF landed | ✅ fixed (Session 9): dedicated `StorageChangeSets` segment (`.csoff` sidecar, same change-based model as AccountChangeSets); `storage_changesets_in_static_files() → storage_v2`; `EitherWriter`/`EitherReader` routing in `write_state_reverts`/`StorageReader`; `migrate-v2` now really migrates `StorageChangeSets` into static files instead of skipping |
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
-| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 IPv6-only; **ForkId mismatch** vs op-geth (`Fermat` als Timestamp + Snow/Volta/Fourier in forkid, op-geth `gatherForks` lässt die aus) | 🔄 code: Bootnodes+discv4/IPv4; **ForkId-Filter** (Fermat=Block EVM-only, Snow/Volta/Fourier aus forkid); ⏳ live: `peerCount>0` nach maxperf-Rebuild |
+| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 dialte UDP-discport statt `tcp4`; **ForkId mismatch** vs op-geth | 🔄 code: Bootnodes+ForkId-Filter; **discv5 DualStack dial**; **live 2026-08-11:** eth-Session zu trusted/static Peers (`a624…@<ipv4>:30305`) ✅; `connected_peers` oft 0–1 (TooManyPeers/fremde Genesis) — Sync-Blocker danach CONS/ENGINE |
+| PORT-P2P-002 | `--nat upnp` / `--nat any` nutzen **kein** echtes UPnP/IGD | `NatResolver::Upnp` ist Stub: alias zu HTTP Public-IP (`ipinfo.io`/…); kein SSDP, **kein Port-Mapping**; Router-UPnP „an“ ändert an Reth nichts | 🐛 open (Upstream-Lücke in `reth-net-nat`). **Ops-Workaround:** manuell TCP+UDP forwarden + `--nat extip:<public-v4>` |
 | PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
 | PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 | PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
 | PORT-STOR-009 | Startup panic: `segment operation metrics should exist` (static_file/metrics.rs) after metrics endpoint | Metrics `Default` only registered Headers/Tx/Receipts/Sidecars; heal/init-cursor hits Account/StorageChangeSets + TransactionSenders | ✅ fixed: register via `StaticFileSegment::iter()` (upstream pattern) |
+| PORT-CONS-001 | Headers-Stage: `TimestampIsInPast` trotz gültiger opBNB-Kette; Peers `BadMessage`-Ban; Checkpoint 0 | Eth-`validate_against_parent_timestamp` (Sekunden). opBNB speichert Subsekunden in `mixHash` (`MilliTimestamp = Time*1000 + mixHash[:2]`, bnb-chain/op-geth); gleiche Unix-Sekunde + steigende Milli ist gültig | ✅ fixed (Session 10): `validation/milli_timestamp.rs` + `OpBeaconConsensus` für Chain-ID **204/5611**; Unit-Tests live equal-second + OP-Mainnet reject |
+| PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed (Session 10, Code): downloader vor CL pollen; Backfill wenn gebufferter Tip > `MIN_BLOCKS_FOR_PIPELINE_RUN`; `NewDownloadStarted` entfernt. ⏳ live: maxperf-Rebuild + Restart → `Preparing stage Headers` + steigendes checkpoint |
+| PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
 
 ## Feature-Requests (nicht Port-Regressions)
 
@@ -849,8 +855,29 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 1. ~~`valid_blocks` mit erhöhtem Nextest-Timeout grün verifizieren.~~ ✅
 2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
-4. **PORT-P2P-001 live:** `net_peerCount>0` / eth-Session nach maxperf-Rebuild **belegen**.
-5. Human Catch-up / Full Sync; danach Effort-Zahlen + README finalisieren.
-6. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität für WalletHistory/`getLogs` (siehe Feature-Requests; Bench-Doc MEV-BOT Analysis).
+4. ~~**PORT-P2P-001 live:** eth-Session~~ → ✅ Session zu opBNB-Peers (2026-08-11); Peer-Count weiterhin flüchtig.
+5. **PORT-ENGINE-001 / PORT-CONS-001 live:** `make maxperf-op` → Restart → Log `backfill threshold` / `Preparing stage Headers` → checkpoint steigt; Grafana Stages wieder Werte (nicht No data).
+6. Human Catch-up / Full Sync; spätere Stages können weitere Port-Lücken zeigen — Stage-für-Stage.
+7. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität (Gate: stabiler Sync).
+
+### Session 10 — Live opBNB Archive Sync Blocker (2026-08-11)
+
+**Setup:** `op-reth-bnb` maxperf, Datadir Archive opBNB mainnet (chain 204), CL federt Tip ~173M, Datadir genesis-only.
+
+**Beobachtete Sequenz:**
+1. Engine Fairness: ohne Downloader-vor-CL blieb Sync bei Tip-Inserts ohne Backfill.
+2. Pipeline startete (`Preparing stage Headers`, `pipeline_stages=1/13`) — Stages sind **vorhanden**.
+3. Headers stuck Checkpoint 0: `TimestampIsInPast` bei Blöcken mit gleicher Unix-Sekunde (live 173253771/772, `ts=1786430373`) → **PORT-CONS-001**.
+4. Nach Milli-Fix-Rebuild: Tip-FCU wieder ohne Pipeline; Status nur `latest_block=0`; Grafana **No data** → **PORT-ENGINE-001** (Tip-Chase + Download-Poll).
+5. Empty-response / TooManyPeers / fremde Genesis weiter Rauschen, aber nicht der Hauptblocker nachdem ein guter Peer (`a624`) Headers/Bodies liefert.
+
+**Code:**
+- `crates/optimism/consensus/src/validation/milli_timestamp.rs` (+ Wire in `OpBeaconConsensus`).
+- `crates/engine/tree`: `handle_missing_block` Backfill-Shortcut; `engine.rs` Downloader-first; `download.rs` ohne `NewDownloadStarted`-Ready-Starvation.
+- `Makefile` `maxperf-op` installiert `dist/bin/op-reth-bnb` (kein PATH-Overwrite von generischem `op-reth`).
+
+**Verify (Code):** `cargo check -p reth-engine-tree` ✅; Consensus-Unit-Tests für equal-second opBNB / reject OP-Mainnet.
+
+**Noch offen live:** Rebuild+Restart belegen Headers-Fortschritt; Bodies→Execution ggf. weitere Bugs.
 
 
