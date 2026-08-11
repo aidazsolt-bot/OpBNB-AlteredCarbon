@@ -92,21 +92,23 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 
 Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → MerkleUnwind → AccountHashing → StorageHashing → MerkleExecute → TxLookup → IndexStorageHistory → IndexAccountHistory → Prune → Finish.
 
+**Status-Legende:** `✅ umgesetzt` = Code gegen op-geth portiert (ggf. Unit-Tests); `⏳ live ungetestet` = noch kein Stage-/Archive-Lauf-Beleg; `🐛` = bekannte Regel-Lücke; `➖` = kein Extra-EL-Port; `📝`/`📋` = Hinweis.
+
 | ID | Stage / Gate | op-geth-Regel (Soll) | Reth-Stand (Code) | Verify / Status |
 | --- | --- | --- | --- | --- |
-| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | PORT-ENGINE-001 (Code) | ⏳ live: `backfill threshold` / `Preparing stage Headers`; Grafana ≠ No data |
-| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | PORT-CONS-001 (204/5611) | ⏳ live: kein `TimestampIsInPast`; checkpoint ↑; Spot 173253771/772 |
-| PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus + `next_block_base_fee` | ⏳ ab Wright-Höhe: kein invalid base fee |
-| PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | ⏳ Pre-Wright-Range ohne BaseFee-Diff |
-| PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` | ⏳ Stage läuft; Watch BlobGas/withdrawals-Fehler |
-| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP primitives | ⏳ keine Mass-Fails auf Deposits |
-| PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay | ⏳ State-root/exec-error genau an Höhe |
-| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ Flags in `evm/src/config.rs` | ⏳ Window Haber…Fjord; danach stock Fjord |
-| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | ⚠️ **Diff:** Reth `skip_l1_data_fee=true` für **alle** Txs post-Wright (`factory.rs`); op-geth nur `GasPrice==0` | 🐛 open bis live/State-Root nach Wright; dann angleichen oder belegen |
-| PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | EL braucht keine Snow-Logik | 📝 CL muss L1-Info liefern; EL parst Deposit |
-| PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | Generic; hängt an PIPE-007…009 | ⏳ erster harter State-Beweis nach Execution |
-| PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | Tests PORT-STOR-007/008 | ⏳ Archive-Last; IntegerList/SF-Unwind |
-| PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | ✅; Mainnet kein Fork | 📋 nur bei Testnet-Archive |
+| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | ✅ `handle_missing_block` Backfill + downloader-first (PORT-ENGINE-001) | ✅ umgesetzt · ⏳ live ungetestet (`backfill threshold` / `Preparing stage Headers`; Grafana ≠ No data) |
+| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | ✅ umgesetzt · ⏳ live ungetestet (kein `TimestampIsInPast`; checkpoint ↑; Spot 173253771/772) |
+| PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus-Check + `next_block_base_fee` → 0 | ✅ umgesetzt · ⏳ live ungetestet (ab Wright-Höhe) |
+| PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | ✅ umgesetzt · ⏳ live ungetestet (Pre-Wright-Range) |
+| PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | ✅ umgesetzt · ⏳ live ungetestet (Stage Bodies) |
+| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery | ✅ umgesetzt · ⏳ live ungetestet (keine Mass-Fails auf Deposits) |
+| PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | ✅ umgesetzt · ⏳ live ungetestet (State-root/exec @ Höhe) |
+| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | ✅ umgesetzt · ⏳ live ungetestet (Window Haber…Fjord) |
+| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | ⚠️ **Diff:** Reth `skip_l1_data_fee=true` für **alle** Txs post-Wright (`factory.rs`); op-geth nur `GasPrice==0` | 🐛 **nicht umgesetzt** (Regelabweichung); live/State-Root nach Wright entscheidet Fix vs. Beleg |
+| PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ EL braucht keine Snow-Logik (Deposit-Parse stock OP) | ➖ n/a EL · 📝 CL liefert L1-Info |
+| PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
+| PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008) | ✅ umgesetzt · ⏳ live ungetestet (Archive-Last / SF-Unwind) |
+| PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | ✅ Hardfork + `is_pre_contract_fork_block`; Mainnet ohne Fork | ✅ umgesetzt · 📋 Verify nur bei Testnet-Archive (Mainnet n/a) |
 
 **Nicht als fehlende Pipeline-Stages portieren:** Holocene/Isthmus/Jovian (in opBNB-Hardfork-Liste inaktiv); Snow (CL-only); exaktes Δt Volta/Fourier (op-geth prüft nur milli ↑).
 
@@ -898,7 +900,7 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. ~~**PORT-P2P-001 live:** eth-Session~~ → ✅ Session zu opBNB-Peers (2026-08-11); Peer-Count weiterhin flüchtig.
-5. **PORT-PIPE-001…** live abarbeiten (Matrix in Bugliste); zuerst PIPE-001/002 nach maxperf-Rebuild (`Preparing stage Headers`, Milli ohne Ban).
+5. **PORT-PIPE live:** zuerst **001/002** nach maxperf-Rebuild; danach 003–008/012. Offen als Code-Lücke: **009** (Wright L1-Fee). 010/011 kein Extra-Port.
 6. Human Catch-up / Full Sync; spätere Stages über PIPE-007…012 (Execution/Merkle/History).
 7. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität (Gate: stabiler Sync).
 
