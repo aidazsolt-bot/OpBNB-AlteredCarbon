@@ -342,13 +342,30 @@ or officially supported client.
 ### Method
 
 Work was performed interactively with AI coding agents across multiple sessions — primarily
-**GitHub Copilot CLI** (session `a95758da`, 2026-08-06–07) and a follow-on **Cursor Composer** YOLO
-session (2026-08-09) — using a mix of direct agent-driven edits and delegated background sub-agents
-supervising/verifying each other's changes (given the scale of the merge — 200+ conflicting files
-across the initial rebase alone). Progress was checkpointed via small, incrementally verified git
-commits where possible, specifically to keep the change history auditable and revertible given the
-semi-autonomous nature of the work. Large mid-session compile loops may leave uncommitted working-tree
-diffs until explicitly reviewed (see `plan.md`).
+**GitHub Copilot CLI** (session `a95758da`, 2026-08-06–07) and follow-on **Cursor Composer**
+sessions (2026-08-09–11) — using a mix of direct agent-driven edits and delegated background
+sub-agents supervising/verifying each other's changes (given the scale of the merge — 200+
+conflicting files across the initial rebase alone). Progress was checkpointed via small,
+incrementally verified git commits where possible, specifically to keep the change history
+auditable and revertible given the semi-autonomous nature of the work. Large mid-session compile
+loops may leave uncommitted working-tree diffs until explicitly reviewed (see `plan.md`).
+
+### Method finding: AI needs an explicit porting skill / approach hints
+
+A central result of this experiment: **generic AI coding agents were not able to perform a
+meaningful protocol port on their own.** They can drive large compile/fix loops and surface
+plausible diffs, but without **operator-supplied approach hints** (reference-first against
+`bnb-chain/op-geth`, stage-by-stage live verify, `PORT-*` bugliste discipline, Engine vs Pipeline
+vs Consensus layering) they repeatedly stop at “builds green” or chase the wrong layer
+(e.g. Eth second-resolution timestamps, tip-chase instead of backfill).
+
+Those hints were therefore given explicitly during live-sync debugging (Session 10). From that
+procedure the agent was instructed to author a reusable Cursor skill:
+
+- **`.cursor/skills/reth-opbnb-port/SKILL.md`** — *Reth / opBNB Portierungs-Spezialist*
+
+Subsequent port/sync work on this fork should load that skill (or follow `plan.md` the same way)
+instead of relying on unaided vibecoding.
 
 ### Effort log (approximate, based on available session telemetry)
 
