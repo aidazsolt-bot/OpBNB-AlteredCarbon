@@ -103,20 +103,19 @@ where
                 }
             }
 
+            // Advance the downloader before draining CL messages. Under sustained Engine API
+            // flood (e.g. opBNB tip NewPayload/FCU), always-ready `incoming_requests` previously
+            // starved `downloader.poll`, so full-block futures never completed into
+            // `DownloadedBlocks` and backfill never started.
+            if let Poll::Ready(DownloadOutcome::Blocks(blocks)) = self.downloader.poll(cx) {
+                self.handler.on_event(FromEngine::DownloadedBlocks(blocks));
+                continue
+            }
+
             // pop the next incoming request
             if let Poll::Ready(Some(req)) = self.incoming_requests.poll_next_unpin(cx) {
                 // and delegate the request to the handler
                 self.handler.on_event(FromEngine::Request(req.into()));
-                // skip downloading in this iteration to allow the handler to process the request
-                continue
-            }
-
-            // advance the downloader
-            if let Poll::Ready(outcome) = self.downloader.poll(cx) {
-                if let DownloadOutcome::Blocks(blocks) = outcome {
-                    // delegate the downloaded blocks to the handler
-                    self.handler.on_event(FromEngine::DownloadedBlocks(blocks));
-                }
                 continue
             }
 
