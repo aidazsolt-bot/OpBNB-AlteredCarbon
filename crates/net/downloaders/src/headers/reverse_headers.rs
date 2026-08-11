@@ -376,6 +376,15 @@ where
                     .count();
                 // removes all headers that are higher than current target
                 self.queued_validated_headers.drain(..skip);
+
+                // Cap sets `SyncTargetBlock::Number(reachable)` before the tip header arrives.
+                // Tip outcome then calls this with the same number (`old == new`), so the
+                // Hash→Number first-time branch never runs — still prime Falling trackers.
+                let local = self.local_block_number().unwrap_or(0);
+                if self.next_request_block_number <= local && next_block > local {
+                    self.next_request_block_number = next_block;
+                    self.next_chain_tip_block_number = next_block;
+                }
             }
         } else {
             // this occurs on the initial sync target request
@@ -1723,7 +1732,7 @@ mod tests {
             ])
             .await;
 
-        let headers = downloader.next().await.unwrap().unwrap();
+        let mut headers = downloader.next().await.unwrap().unwrap();
         // Working tip capped to p1 — must not include unreachable p0.
         assert!(!headers.iter().any(|h| h.hash() == p0.hash()));
         assert!(headers.iter().any(|h| h.hash() == p1.hash()));
@@ -1740,6 +1749,13 @@ mod tests {
         assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), before_tip);
         assert_eq!(downloader.queued_validated_headers.len(), before_queued);
         assert!(downloader.sync_target_request.is_none());
+
+        // Cap Number tip must prime Falling (regression: only tip flushed, then stall).
+        if !headers.iter().any(|h| h.hash() == p2.hash() || h.hash() == p3.hash()) {
+            let more = downloader.next().await.unwrap().unwrap();
+            headers.extend(more);
+        }
+        assert!(headers.iter().any(|h| h.hash() == p2.hash() || h.hash() == p3.hash()));
     }
 
     #[test]
