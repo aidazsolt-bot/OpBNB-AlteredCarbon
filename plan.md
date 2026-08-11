@@ -96,8 +96,8 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 
 | ID | Stage / Gate | op-geth-Regel (Soll) | Reth-Stand (Code) | Verify / Status |
 | --- | --- | --- | --- | --- |
-| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | ✅ `handle_missing_block` Backfill + downloader-first (PORT-ENGINE-001) | ✅ umgesetzt · ⏳ live ungetestet (`backfill threshold` / `Preparing stage Headers`; Grafana ≠ No data) |
-| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | ✅ umgesetzt · ⏳ live ungetestet (kein `TimestampIsInPast`; checkpoint ↑; Spot 173253771/772) |
+| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | ✅ `handle_missing_block` Backfill + downloader-first (PORT-ENGINE-001) | ✅ **live** (2026-08-11T09:15Z): `backfill threshold` + `Preparing stage Headers` 1/13; Grafana Stages erwartet ≠ No data. Headers-Checkpoint hängt noch an eth-Peers=0 |
+| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | ✅ umgesetzt · ⏳ live ungetestet (noch keine Header-Antworten; 0× `TimestampIsInPast` seit Restart — Peer-Gap) |
 | PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus-Check + `next_block_base_fee` → 0 | ✅ umgesetzt · ⏳ live ungetestet (ab Wright-Höhe) |
 | PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | ✅ umgesetzt · ⏳ live ungetestet (Pre-Wright-Range) |
 | PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | ✅ umgesetzt · ⏳ live ungetestet (Stage Bodies) |
