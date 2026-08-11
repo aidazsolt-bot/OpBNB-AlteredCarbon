@@ -122,8 +122,44 @@ Portierte Helper oder Alt-Pfade ohne Call-Site — **nicht** mit „fehlender St
 | PORT-PIPE-U04 | `is_haber_active_at_timestamp` (Optimism-Trait) | In **optimism**-Crates unbenutzt; Overlay nutzt `fork(Haber)` in `config.rs`. (BSC-Crates haben eigene Haber-API.) | ♻️ ersetzt (OP-Pfad) · BSC separat |
 | PORT-PIPE-U05 | `crates/optimism/cli/src/commands/build_pipeline.rs` (`build_import_pipeline`) | **Nicht** in `commands/mod.rs` eingebunden → kompiliert nicht mit. Live-Import: `reth_cli_commands::import::build_import_pipeline` + Node-`DefaultStages`. Stale Merge-Artefakt (falsche `DefaultStages::new`-Arity historisch). | ⚠️ orphan · löschen oder an CLI anbinden · **kein Live-Sync-Pfad** |
 | PORT-PIPE-U06 | Alt-CLI `TriePrefetch` / `--enable-prefetch` / `--optimize.enable-execution-cache` | Beim v2.4.1-Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache (siehe PORT-CLI-002). | ♻️ ersetzt (Upstream-Engine) · 📝 bewusst nicht wiederbelebt · 🔜 nur falls Produkt-Parity zu altem BSC-Fork |
+| PORT-PIPE-U07 | `COMETBFT_LIGHT_BLOCK_VALIDATION` (+ `…_run`) und `…_PASTEUR` (+ `…_run_pasteur`, per-byte gas) in `opbnb_precompiles/cometbft.rs` | **dead_code** bei `maxperf-op`. Overlay (`opbnb_precompiles/mod.rs`) injiziert nur `COMETBFT_LIGHT_BLOCK_VALIDATION_BEFORE_HERTZ`. op-geth opBNB (`contracts.go`) hat **eine** `cometBFTLightBlockValidate` @ `0x67` mit flat gas — kein Hertz/Pasteur-Switch. Hertz/Pasteur = BSC-Era-Varianten, mitkopiert. | 📝 by design für **opBNB** (BEFORE_HERTZ ≈ op-geth) · ⚠️ BSC-Varianten tot im OP-Crate · 🔜 nachportieren/verdrahten nur wenn `reth-bsc` denselben Precompile-Pfad braucht; sonst löschen/cfg-gaten |
+| PORT-PIPE-U08 | Unused imports in `optimism/hardforks/src/hardfork.rs` (+ Spiegel `bsc/hardforks`) | `Box`/`format`/`String`/`Display`/`FromStr` nach Macro-Refactor übrig (`maxperf-op` warn). | 🧹 CLEANUP-A01 · kein Port-Gap |
+| PORT-PIPE-U09 | `reth-engine-tree`: unused crate dep `reth_trie_prefetch` | Prefetch-Crate hängt noch als Dependency, Code-Pfad entfernt (U06). | ♻️ ersetzt · 🧹 Dep entfernen (CLEANUP-A02) |
+| PORT-PIPE-U10 | `reth-stages`: `load_history_indices` / `load_indices` / `LoadMode` | storage.v2/EitherWriter-Port hat alten History-Load-Pfad obsolet gemacht; Funktionen blieben liegen. | ♻️ ersetzt (v2 history writers) · 🧹 löschen oder hinter Feature · Verify: PIPE-012 |
+| PORT-PIPE-U11 | `reth-prune`: `AccountHistory::prune_static_files` / `StorageHistory::prune_static_files` | SF-Changeset-Prune vorbereitet, Call-Site fehlt (v2-Port unvollständig verdrahtet). | ⚠️ unwired · 🔜 nachportieren wenn SF-History-Prune live nötig · sonst dead entfernen |
+| PORT-PIPE-U12 | `reth-beacon-consensus`: `MAX_INVALID_HEADERS`, `StaticFileHook` fields, Metrics-Imports | Engine-Tree ersetzt Beacon-Engine-Laufzeit; Crate oft nur noch Stub/Compat → tote Felder. | ♻️ Architektur (engine-tree) · 🧹 Stub aufräumen oder Crate schrumpfen (CLEANUP-B) |
+| PORT-PIPE-U13 | `reth-blockchain-tree-api` + Deps in `engine-tree`/`provider` | Deprecated `SealedBlockWithSenders` / Tree-API; Upstream-Tree weg, Fork behält Compat-Schicht. | ♻️ ersetzt durch engine-tree · 🧹 Deprecate-Migration / Deps streichen (CLEANUP-B) |
+| PORT-PIPE-U14 | `ConsistentProvider.chain_spec` never read; mass unused imports in `reth-provider` | storage.v2/RocksDB-Port ließ Imports & Feldreste. | 🧹 CLEANUP-A03 · kein Konsens-Gap |
+| PORT-PIPE-U15 | `NETWORK_PEER_SCOPE` (`net/network/metrics.rs`) | Metric-Scope-Konstante ohne Verwendung nach Metrics-Refactor. | 🧹 trivial |
+| PORT-PIPE-U16 | CLI checksum helpers (`write_entry`, `split_storage_changeset_row`, `checksum_change_based_segment`, …) | Change-based checksum für v2-Rows geplant, nicht verdrahtet. | ⚠️ orphan helpers · 🔜 Tooling nachportieren oder löschen |
+| PORT-PIPE-U17 | `reth-rpc-types-compat` mass missing-docs + deprecated aliases | Compat-Crate für alte RPC-Typen; Upstream migriert zu `RecoveredBlock` / neuen Traits. | 🧹 CLEANUP-C (docs/deprecate) · niedrige Prio vs Sync |
 
 **Nicht als fehlende Pipeline-Stages portieren:** Holocene/Isthmus/Jovian (in opBNB-Hardfork-Liste inaktiv); Snow (CL-only); exaktes Δt Volta/Fourier (op-geth prüft nur milli ↑) — siehe U01/U02.
+
+### Final Cleanup Plan (nach Sync-Gates) — CLEANUP-*
+
+Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Warning-Dump (2026-08-11).  
+**Reihenfolge:** Sync-Korrektheit (PORT-PIPE live) **vor** mechanischem Aufräumen. Cleanup darf keine Konsens-/EVM-Semantik ändern.
+
+| Prio | ID | Scope | Aktion | Done wenn |
+| --- | --- | --- | --- | --- |
+| **P0** | — | Live PORT-PIPE-001/002 (+009 Watch) | maxperf install + Restart; Backfill/Headers belegen | Grafana Stages ≠ No data; Milli ohne Ban |
+| **P1** | CLEANUP-A01 | `reth-optimism-forks` / `reth-bsc-forks` unused imports | `cargo fix -p …` oder Imports streichen | 0 unused_imports in hardfork.rs |
+| **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
+| **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
+| **P1** | CLEANUP-A04 | PORT-PIPE-U05 orphan `build_pipeline.rs` | Datei löschen **oder** korrekt in CLI verdrahten | nicht mehr unreferenced on disk |
+| **P2** | CLEANUP-A05 | PORT-PIPE-U07 CometBFT Hertz/Pasteur | Entscheiden: (a) `cfg(feature = "bsc")` / nach `reth-bsc-evm` verschieben, oder (b) im OP-Crate löschen, BEFORE_HERTZ behalten | `reth-optimism-evm` ohne dead_code CometBFT-Warnungen |
+| **P2** | CLEANUP-A06 | PORT-PIPE-U10/U11/U16 stages/prune/cli checksum | Toten History/Prune/Checksum-Code entfernen **oder** an storage.v2 anbinden + Test | keine dead_code auf genannten Symbolen **oder** nextest-Beleg |
+| **P2** | CLEANUP-A07 | Trivial unused imports (payload-primitives, config, eth-wire, txpool, rpc, node-builder, stages HeaderTy, …) | `cargo fix` sweep gezielt | Warning-Anzahl spürbar ↓ |
+| **P3** | CLEANUP-B | Legacy tree/beacon: `blockchain-tree-api` deprecated types; beacon stub dead fields; engine-tree deps auf tree-api | Migrate Callers → `RecoveredBlock` / Engine-Events; unnötige deps streichen | keine `SealedBlockWithSenders` Warnungen in Hot-Crates **oder** crate `allow`/entfernen dokumentiert |
+| **P3** | CLEANUP-C | Docs/cfg noise: `missing-docs` (primitives-traits Maybe*, rpc-types-compat, provider writer); `unexpected_cfgs` mdbx in db-api; `missing-debug-implementations` beacon | Docs ergänzen **oder** lint-Allow nur lokal; Feature `mdbx` in db-api oder cfg entfernen | `maxperf-op` ohne missing-docs/unexpected-cfgs in Fork-touched files |
+| **P3** | CLEANUP-D | Deprecated API surface: `PruneSegment::Headers/Transactions`, revm `gas_used`, ringbuffer `push`, rpc-types-compat aliases | Upstream-Ersatz nutzen wo billig | Warnungen weg oder bewusst `#[allow(deprecated)]` mit Ticket |
+| **P4** | CLEANUP-E | Workspace hygiene | `files/*.log` nicht committen; untracked build logs; optional warning-baseline script `scripts/maxperf-op-warnings.sh` | Repro: eine Command → Warning-Count Trend |
+
+**Exit-Kriterium „final cleanup done“:**  
+1) `make maxperf-op` (bzw. gleicher `cargo build --profile maxperf … --bin op-reth`) **ohne** `unused`/`dead_code` in `crates/optimism/**` und ohne neue Konsens-Diffs;  
+2) Workspace-Warnungen dokumentiert (Baseline) oder auf Upstream-Parity;  
+3) PORT-PIPE-U* alle entweder gelöscht, verdrahtet, oder als `📝 by design` abgehakt.
 
 ## Feature-Requests (nicht Port-Regressions)
 
@@ -913,9 +949,10 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. ~~**PORT-P2P-001 live:** eth-Session~~ → ✅ Session zu opBNB-Peers (2026-08-11); Peer-Count weiterhin flüchtig.
-5. **PORT-PIPE live:** zuerst **001/002** nach maxperf-Rebuild; danach 003–008/012. Offen als Code-Lücke: **009** (Wright L1-Fee). 010/011 kein Extra-Port. Unused-Helper: **U01–U06** (by design / ersetzt / orphan — kein Sync-Blocker außer ggf. U05 aufräumen).
+5. **PORT-PIPE live:** zuerst **001/002** nach maxperf-Rebuild; danach 003–008/012. Offen als Code-Lücke: **009** (Wright L1-Fee). 010/011 kein Extra-Port. Unused: **U01–U17**; mechanisch: **Final Cleanup Plan (CLEANUP-A…E)** nach Sync-Gates.
 6. Human Catch-up / Full Sync; spätere Stages über PIPE-007…012 (Execution/Merkle/History).
 7. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität (Gate: stabiler Sync).
+8. **Final cleanup** laut CLEANUP-* (nicht vor P0 Live-Verify).
 
 ### Session 10 — Live opBNB Archive Sync Blocker (2026-08-11)
 
