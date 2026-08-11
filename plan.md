@@ -15,6 +15,21 @@ größere, protokollkritische Rust-Codebasis eigenständig ("vibecoding") auf ei
 heben können — **kein** Anspruch auf produktionsreife oder offiziell unterstützte Client-Software.
 Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
 
+### Befund Methodik (Session 10, 2026-08-11)
+
+Die KI ist **selbständig nicht in der Lage**, eine sinnvolle Protokoll-Portierung (opBNB/Reth)
+durchzuführen, solange sie nur generische Coding-Skills nutzt. Compile-/Test-Grün und große
+Diff-Mengen ersetzen keinen Abgleich gegen `bnb-chain/op-geth`, keine Stage-für-Stage-Live-Verify
+und keine disziplinierte `PORT-*`-Bugliste. Erst nach **expliziten Operator-Hinweisen zur
+Vorgehensweise** (Referenz zuerst, Layer Symptom→Consensus/Engine/Pipeline, Live-Beleg) entstanden
+die relevanten Sync-Fixes (Milli-Timestamp, FCU-Backfill).
+
+Aus diesen Hinweisen wurde der Projekt-Skill angelegt:
+
+- **`.cursor/skills/reth-opbnb-port/SKILL.md`** — Portierungs-Spezialist (Reth/opBNB)
+
+Weitere Port-/Sync-Arbeit soll diesen Skill laden bzw. dieselbe Checkliste in `plan.md` befolgen.
+
 ## Phasenübersicht (Soll)
 
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
@@ -879,5 +894,12 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 **Verify (Code):** `cargo check -p reth-engine-tree` ✅; Consensus-Unit-Tests für equal-second opBNB / reject OP-Mainnet.
 
 **Noch offen live:** Rebuild+Restart belegen Headers-Fortschritt; Bodies→Execution ggf. weitere Bugs.
+
+### Methodik-Notiz Session 10 — Skill statt Vibecoding
+
+- Operator-Befund: AI ohne zusätzlichen Portierungs-Skill / ohne Vorgehens-Hints liefert keine
+  belastbare Protokoll-Portierung (siehe Abschnitt *Befund Methodik* oben).
+- Daraus erstellt: `.cursor/skills/reth-opbnb-port/SKILL.md`.
+- README *About This Fork → Method finding* entsprechend aktualisiert.
 
 
