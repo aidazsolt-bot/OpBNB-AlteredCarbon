@@ -159,17 +159,35 @@ impl Stream for TestDownload {
 }
 
 /// A test client for fetching headers
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TestHeadersClient {
     responses: Arc<Mutex<Vec<Header>>>,
     error: Arc<Mutex<Option<RequestError>>>,
     request_attempts: Arc<AtomicU64>,
+    /// `u64::MAX` means unknown / no peers (see [`DownloadClient::max_peer_best_number`]).
+    max_peer_best: Arc<AtomicU64>,
+}
+
+impl Default for TestHeadersClient {
+    fn default() -> Self {
+        Self {
+            responses: Default::default(),
+            error: Default::default(),
+            request_attempts: Default::default(),
+            max_peer_best: Arc::new(AtomicU64::new(u64::MAX)),
+        }
+    }
 }
 
 impl TestHeadersClient {
     /// Return the number of times client was polled
     pub fn request_attempts(&self) -> u64 {
         self.request_attempts.load(Ordering::SeqCst)
+    }
+
+    /// Sets the advertised max peer best number used by reachable-head capping tests.
+    pub fn set_max_peer_best(&self, best: Option<u64>) {
+        self.max_peer_best.store(best.unwrap_or(u64::MAX), Ordering::SeqCst);
     }
 
     /// Adds headers to the set.
@@ -198,6 +216,15 @@ impl DownloadClient for TestHeadersClient {
 
     fn num_connected_peers(&self) -> usize {
         0
+    }
+
+    fn max_peer_best_number(&self) -> Option<u64> {
+        let n = self.max_peer_best.load(Ordering::SeqCst);
+        if n == u64::MAX {
+            None
+        } else {
+            Some(n)
+        }
     }
 }
 

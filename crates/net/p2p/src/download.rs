@@ -10,4 +10,12 @@ pub trait DownloadClient: Send + Sync + Debug {
 
     /// Returns how many peers the network is currently connected to.
     fn num_connected_peers(&self) -> usize;
+
+    /// Highest advertised best-block number among connected peers.
+    ///
+    /// Used by reverse header sync to cap the *working* tip to what peers can actually serve
+    /// (Status `best`), without dropping lagging peers. Returns `None` when unknown / no peers.
+    fn max_peer_best_number(&self) -> Option<u64> {
+        None
+    }
 }

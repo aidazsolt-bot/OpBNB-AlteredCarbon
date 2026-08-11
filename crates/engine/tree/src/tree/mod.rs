@@ -23,6 +23,7 @@ use reth_engine_primitives::{
 };
 use reth_errors::{ConsensusError, ProviderResult};
 use reth_evm::ConfigureEvm;
+use reth_network_p2p::headers::HeaderSeed;
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_payload_primitives::{
     BuiltPayload, NewPayloadError, PayloadAttributes, PayloadBuilderAttributes, PayloadTypes,
@@ -357,6 +358,11 @@ where
     building_payload: bool,
     /// Task runtime for spawning blocking work on named, reusable threads.
     runtime: reth_tasks::Runtime,
+    /// Headers known from NewPayload that the reverse-sync headers client can serve locally.
+    ///
+    /// Without this, Headers stage tip-fetch asks P2P for the FCU tip hash; peers that do not have
+    /// that tip yet return empty responses and get banned, leaving `connected_peers=0`.
+    header_seed: Arc<HeaderSeed<N::BlockHeader>>,
 }
 
 impl<N, P: Debug, T: PayloadTypes + Debug, V: Debug, C> std::fmt::Debug
@@ -384,6 +390,7 @@ where
             .field("changeset_cache", &self.changeset_cache)
             .field("execution_timing_stats", &self.execution_timing_stats.len())
             .field("runtime", &self.runtime)
+            .field("header_seed", &self.header_seed)
             .finish()
     }
 }
@@ -424,6 +431,7 @@ where
         evm_config: C,
         changeset_cache: ChangesetCache,
         runtime: reth_tasks::Runtime,
+        header_seed: Arc<HeaderSeed<N::BlockHeader>>,
     ) -> Self {
         let (incoming_tx, incoming) = crossbeam_channel::unbounded();
 
@@ -448,6 +456,7 @@ where
             execution_timing_stats: B256Map::default(),
             building_payload: false,
             runtime,
+            header_seed,
         }
     }
 
@@ -470,6 +479,7 @@ where
         evm_config: C,
         changeset_cache: ChangesetCache,
         runtime: reth_tasks::Runtime,
+        header_seed: Arc<HeaderSeed<N::BlockHeader>>,
     ) -> (Sender<FromEngine<EngineApiRequest<T, N>, N::Block>>, UnboundedReceiver<EngineApiEvent<N>>)
     {
         let best_block_number = provider.best_block_number().unwrap_or(0);
@@ -505,6 +515,7 @@ where
             evm_config,
             changeset_cache,
             runtime,
+            header_seed,
         );
         let incoming = task.incoming_tx.clone();
         spawn_os_thread("engine", || {
@@ -1404,6 +1415,13 @@ where
         {
             let backfill_hash = self.backfill_target_hash(state);
             if !backfill_hash.is_zero() {
+                // Prefer the backfill tip header (often the FCU head itself) so Headers stage does
+                // not depend on P2P tip fetch for a hash peers may not serve yet.
+                if let Some(tip_block) = self.state.buffer.block(&backfill_hash) {
+                    self.seed_header_from_block(tip_block);
+                } else {
+                    self.seed_header_from_block(buffered);
+                }
                 debug!(
                     target: "engine::tree",
                     local_tip,
@@ -2574,8 +2592,14 @@ where
         if let Err(err) = self.validate_block(&block) {
             return Err(InsertBlockError::consensus_error(err, block))
         }
+        self.seed_header_from_block(&block);
         self.state.buffer.insert_block(block);
         Ok(())
+    }
+
+    /// Seeds the reverse-sync headers client with a block header already known via NewPayload.
+    fn seed_header_from_block(&self, block: &SealedBlock<N::Block>) {
+        self.header_seed.insert(block.hash(), block.header().clone());
     }
 
     /// Returns true if the distance from the local tip to the block is greater than the configured
@@ -3040,6 +3064,7 @@ where
                     .map(|block| block.parent_num_hash())
                     .unwrap_or_else(|| block.parent_num_hash());
 
+                self.seed_header_from_block(&block);
                 self.state.buffer.insert_block(block);
 
                 return Ok(InsertPayloadOk::Inserted(BlockStatus::Disconnected {

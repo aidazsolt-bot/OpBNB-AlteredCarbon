@@ -30,6 +30,13 @@ where
             Self::Right(b) => b.num_connected_peers(),
         }
     }
+
+    fn max_peer_best_number(&self) -> Option<u64> {
+        match self {
+            Self::Left(a) => a.max_peer_best_number(),
+            Self::Right(b) => b.max_peer_best_number(),
+        }
+    }
 }
 
 impl<A, B> BodiesClient for Either<A, B>
