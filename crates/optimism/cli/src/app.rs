@@ -64,6 +64,12 @@ where
                 self.cli.logs.log_file_directory.join(chain_spec.chain.to_string());
         }
 
+        // `--log.file.max-files` defaults to unset → effective 0 (disabled). For `node`,
+        // apply the documented default of 5 before init_tracing wires the file layer.
+        if matches!(self.cli.command, Commands::Node(_)) {
+            self.cli.logs.apply_node_defaults();
+        }
+
         self.init_tracing(&runner)?;
 
         // Install the prometheus recorder to be sure to record all metrics
@@ -130,7 +136,11 @@ where
             let otlp_logs_status = runner.block_on(self.cli.traces.init_otlp_logs(&mut layers))?;
 
             self.guard = Some(self.cli.logs.init_tracing_with_layers(layers, false)?);
-            info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.cli.logs.log_file_directory);
+            if self.cli.logs.effective_log_file_max_files() > 0 {
+                info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.cli.logs.log_file_directory);
+            } else {
+                info!(target: "reth::cli", "Initialized tracing (file logging disabled; set --log.file.max-files > 0 to enable)");
+            }
 
             match otlp_status {
                 OtlpInitStatus::Started(endpoint) => {

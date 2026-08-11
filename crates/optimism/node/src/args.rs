@@ -87,7 +87,11 @@ impl Default for ProofsHistoryWindowArg {
 /// can tune above the default when their environment supports it.
 pub fn parse_backfill_batch_size(raw: &str) -> Result<usize, String> {
     let n: usize = raw.parse().map_err(|e| format!("not a non-negative integer: {e}"))?;
-    if n >= 1 { Ok(n) } else { Err("must be >= 1".to_string()) }
+    if n >= 1 {
+        Ok(n)
+    } else {
+        Err("must be >= 1".to_string())
+    }
 }
 
 /// Shared backfill args. Used by `op-proofs backfill` (explicit) and `op-proofs init`

@@ -4,18 +4,18 @@ mod ordering;
 mod validator;
 
 use alloy_consensus::{SignableTransaction, TxEip1559};
-use alloy_network::{TxSignerSync, eip2718::Encodable2718};
-use alloy_primitives::{Address, B256, Bytes, Signature, TxKind};
+use alloy_network::{eip2718::Encodable2718, TxSignerSync};
+use alloy_primitives::{Address, Bytes, Signature, TxKind, B256};
 use alloy_signer_local::PrivateKeySigner;
 use reth_db::{
+    test_utils::{create_test_rw_db_with_path, TempDatabase},
     DatabaseEnv,
-    test_utils::{TempDatabase, create_test_rw_db_with_path},
 };
 use reth_e2e_test_utils::wallet::Wallet;
 use reth_node_api::FullNodeTypes;
 use reth_node_builder::{
-    NodeConfig,
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
+    NodeConfig,
 };
 use reth_node_core::args::DatadirArgs;
 use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder};

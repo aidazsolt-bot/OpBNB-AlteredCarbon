@@ -9,7 +9,7 @@ use reth_node_core::{
 };
 use reth_optimism_chainspec::OP_SEPOLIA;
 use reth_optimism_node::OpNode;
-use reth_rpc_api::{EthConfigApiClient, servers::AdminApiServer};
+use reth_rpc_api::{servers::AdminApiServer, EthConfigApiClient};
 use reth_tasks::Runtime;
 
 // <https://github.com/paradigmxyz/reth/issues/19765>

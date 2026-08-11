@@ -3,7 +3,7 @@
 //! Full historical-proofs ExEx (`reth-optimism-trie` / `reth-optimism-exex`) is deferred.
 //! Until then this always launches a plain [`OpNode`].
 
-use crate::{OpNode, args::RollupArgs};
+use crate::{args::RollupArgs, OpNode};
 use eyre::ErrReport;
 use reth_db::DatabaseEnv;
 use reth_node_builder::{NodeBuilder, WithLaunchContext};

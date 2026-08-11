@@ -10,10 +10,10 @@
 //! use op_alloy_network::Optimism;
 //! use reth_db::test_utils::create_test_rw_db_with_path;
 //! use reth_node_builder::{
-//!     ConsensusEngineHandle, LaunchContext, NodeConfig, RethFullAdapter,
 //!     components::ComponentsBuilder,
 //!     hooks::OnComponentInitializedHook,
 //!     rpc::{EthApiBuilder, EthApiCtx},
+//!     ConsensusEngineHandle, LaunchContext, NodeConfig, RethFullAdapter,
 //! };
 //! use reth_optimism_chainspec::OP_SEPOLIA;
 //! use reth_optimism_evm::OpEvmConfig;
@@ -23,7 +23,7 @@
 //! use reth_provider::providers::BlockchainProvider;
 //! use reth_rpc::TraceApi;
 //! use reth_rpc_eth_types::{EthConfig, EthStateCache};
-//! use reth_tasks::{RuntimeBuilder, pool::BlockingTaskGuard};
+//! use reth_tasks::{pool::BlockingTaskGuard, RuntimeBuilder};
 //! use reth_trie_db::ChangesetCache;
 //! use std::sync::Arc;
 //!
@@ -96,7 +96,7 @@ use reth_node_api::{
     AddOnsContext, EngineApiValidator, EngineTypes, FullNodeComponents, NodeTypes,
 };
 use reth_node_builder::rpc::{EngineApiBuilder, PayloadValidatorBuilder};
-use reth_node_core::version::{CLIENT_CODE, version_metadata};
+use reth_node_core::version::{version_metadata, CLIENT_CODE};
 use reth_optimism_payload_builder::OpExecData;
 use reth_optimism_rpc::engine::OP_ENGINE_CAPABILITIES;
 use reth_payload_builder::PayloadStore;
