@@ -92,7 +92,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 
 Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → MerkleUnwind → AccountHashing → StorageHashing → MerkleExecute → TxLookup → IndexStorageHistory → IndexAccountHistory → Prune → Finish.
 
-**Status-Legende:** `✅ umgesetzt` = Code gegen op-geth portiert (ggf. Unit-Tests); `⏳ live ungetestet` = noch kein Stage-/Archive-Lauf-Beleg; `🐛` = bekannte Regel-Lücke; `➖` = kein Extra-EL-Port; `📝`/`📋` = Hinweis.
+**Status-Legende:** `✅ umgesetzt` = Code gegen op-geth portiert (ggf. Unit-Tests); `⏳ live ungetestet` = noch kein Stage-/Archive-Lauf-Beleg; `🐛` = bekannte Regel-Lücke; `➖` = kein Extra-EL-Port; `📝`/`📋` = Hinweis; `♻️`/`⚠️`/`🔜` = siehe Unused-Tabelle (PORT-PIPE-U*).
 
 | ID | Stage / Gate | op-geth-Regel (Soll) | Reth-Stand (Code) | Verify / Status |
 | --- | --- | --- | --- | --- |
@@ -110,7 +110,20 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008) | ✅ umgesetzt · ⏳ live ungetestet (Archive-Last / SF-Unwind) |
 | PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | ✅ Hardfork + `is_pre_contract_fork_block`; Mainnet ohne Fork | ✅ umgesetzt · 📋 Verify nur bei Testnet-Archive (Mainnet n/a) |
 
-**Nicht als fehlende Pipeline-Stages portieren:** Holocene/Isthmus/Jovian (in opBNB-Hardfork-Liste inaktiv); Snow (CL-only); exaktes Δt Volta/Fourier (op-geth prüft nur milli ↑).
+#### Unused / ersetzt / Orphan (PORT-PIPE-U*)
+
+Portierte Helper oder Alt-Pfade ohne Call-Site — **nicht** mit „fehlender Stage“ verwechseln. Legende: `📝 by design` = absichtlich unverdrahtet; `♻️ ersetzt` = Logik läuft woanders; `⚠️ orphan` = tote Datei/API; `🔜 ggf. nachportieren` = nur wenn Live/Produkt es braucht.
+
+| ID | Symbol / Artefakt | Warum unused? | Bewertung |
+| --- | --- | --- | --- |
+| PORT-PIPE-U01 | `OptimismHardforks::opbnb_block_interval_ms_at_timestamp` (`hardforks/src/lib.rs`) | **0 Call-Sites** außerhalb der Definition. Portiert als Convenience (Volta 500 ms / Fourier 250 ms), aber **EL-Konsens prüft kein festes Δt** — op-geth verlangt nur `MilliTimestamp` streng steigend; Kadenz steuert die CL (`opbnb`). Milli-Validierung (PIPE-002) deckt Sync ab. | 📝 by design · **kein Sync-Blocker** · 🔜 optional nur für Metrics/RPC/Diagnose verdrahten, nicht für Header-Reject |
+| PORT-PIPE-U02 | `is_snow_active_at_timestamp` / `is_volta_*` / `is_fourier_*` | Nur von U01 referenziert → ebenfalls **tot**. Die **Forks selbst** stehen in `ChainHardforks` (Aktivierungszeiten) und werden aus dem EIP-2124-ForkId **ausgefiltert** (`opbnb_fork_filter`) — das ist verdrahtet. Snow-L1-Gas-Median bleibt CL (PIPE-010). | 📝 by design (Helper) · Forks ≠ unused · 🔜 Helper nur mit U01 |
+| PORT-PIPE-U03 | `is_fermat_active_at_block` | **0 Call-Sites.** Execution nutzt inline `chain_spec.fork(Fermat).active_at_block` in `opbnb_precompile_flags` (PIPE-007). | ♻️ ersetzt durch `fork(Fermat)…` · Helper darf bleiben oder auf Flags umgestellt werden |
+| PORT-PIPE-U04 | `is_haber_active_at_timestamp` (Optimism-Trait) | In **optimism**-Crates unbenutzt; Overlay nutzt `fork(Haber)` in `config.rs`. (BSC-Crates haben eigene Haber-API.) | ♻️ ersetzt (OP-Pfad) · BSC separat |
+| PORT-PIPE-U05 | `crates/optimism/cli/src/commands/build_pipeline.rs` (`build_import_pipeline`) | **Nicht** in `commands/mod.rs` eingebunden → kompiliert nicht mit. Live-Import: `reth_cli_commands::import::build_import_pipeline` + Node-`DefaultStages`. Stale Merge-Artefakt (falsche `DefaultStages::new`-Arity historisch). | ⚠️ orphan · löschen oder an CLI anbinden · **kein Live-Sync-Pfad** |
+| PORT-PIPE-U06 | Alt-CLI `TriePrefetch` / `--enable-prefetch` / `--optimize.enable-execution-cache` | Beim v2.4.1-Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache (siehe PORT-CLI-002). | ♻️ ersetzt (Upstream-Engine) · 📝 bewusst nicht wiederbelebt · 🔜 nur falls Produkt-Parity zu altem BSC-Fork |
+
+**Nicht als fehlende Pipeline-Stages portieren:** Holocene/Isthmus/Jovian (in opBNB-Hardfork-Liste inaktiv); Snow (CL-only); exaktes Δt Volta/Fourier (op-geth prüft nur milli ↑) — siehe U01/U02.
 
 ## Feature-Requests (nicht Port-Regressions)
 
@@ -900,7 +913,7 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 2. ~~`test_pipeline_v2` State-Root unter `storage.v2`~~ → ✅ PORT-STOR-007 (+ PORT-STOR-008 history EitherWriter).
 3. Preimage-Aux-DB für Cancun-Selfdestruct — deferred mit Trie/Proofs.
 4. ~~**PORT-P2P-001 live:** eth-Session~~ → ✅ Session zu opBNB-Peers (2026-08-11); Peer-Count weiterhin flüchtig.
-5. **PORT-PIPE live:** zuerst **001/002** nach maxperf-Rebuild; danach 003–008/012. Offen als Code-Lücke: **009** (Wright L1-Fee). 010/011 kein Extra-Port.
+5. **PORT-PIPE live:** zuerst **001/002** nach maxperf-Rebuild; danach 003–008/012. Offen als Code-Lücke: **009** (Wright L1-Fee). 010/011 kein Extra-Port. Unused-Helper: **U01–U06** (by design / ersetzt / orphan — kein Sync-Blocker außer ggf. U05 aufräumen).
 6. Human Catch-up / Full Sync; spätere Stages über PIPE-007…012 (Execution/Merkle/History).
 7. **Danach FEAT-HIST-001:** History-/Explorer-Indizes → Erigon-Parität (Gate: stabiler Sync).
 
