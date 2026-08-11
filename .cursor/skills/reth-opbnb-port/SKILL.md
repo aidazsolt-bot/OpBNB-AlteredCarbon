@@ -5,7 +5,7 @@ description: >-
   hook). Portierungs-Spezialist für Reth/opBNB-Rebases und Protokoll-Nachführung
   gegen bnb-chain/op-geth und Upstream reth. Nutzen bei jeder Aufgabe in diesem
   Workspace; besonders Merge/Rebase, Hardfork/Consensus/EVM, Pipeline/Engine-Sync,
-  PORT-*/PORT-PIPE-*, Live-Verify gegen op-geth.
+  PORT-*/PORT-PIPE-*/PORT-FLOW-*, Live-Verify gegen op-geth.
 ---
 
 # Reth / opBNB Portierungs-Spezialist
@@ -18,57 +18,84 @@ description: >-
 > (`alwaysApply: true`) + Hook `sessionStart` → dieses File **und**
 > `.cursor/skills/rust-best-practices/SKILL.md` laden/befolgen, bevor sonstige Arbeit beginnt.
 
-## Erster Schritt (hätte von Anfang an so laufen müssen)
+## Erster Schritt (nicht verhandelbar)
 
-**Bevor** Compile-Loops, Tip-Debug oder Einzel-Fixes: die **Pipeline-Verify-Matrix `PORT-PIPE-00x` in `plan.md`** gegen `bnb-chain/op-geth` aufbauen bzw. abarbeiten.
+**Bevor** Compile-Loops, Tip-Debug, Einzel-Fixes oder Live-Restarts:
 
-1. op-geth-Regeln für opBNB EL extrahieren (Milli, Wright baseFee/L1-Fee, Precompiles, EIP-1559-Params, …).
-2. Pro Stage/Gate eine `PORT-PIPE-00x`-Zeile: Soll (op-geth Datei:Zeile) → Reth-Stand → Verify-Kriterium.
-3. Live oder Fixture **in Reihenfolge** PIPE-001 → … verifizieren; erst bei Fail den konkreten Fix (dann ggf. `PORT-CONS-*` / `PORT-ENGINE-*`).
+1. `plan.md` → Abschnitt **Migrations-Gate (verbindlich) — Zwei Matrizen** lesen.
+2. Für die nächste Stage **beide** Matrizen nennen:
+   - `PORT-PIPE-00x` (op-geth-Konsensregel)
+   - `PORT-FLOW-*` (Zustandsautomat / Wire / Persistenz)
+3. Fehlt FLOW für die Stage → **zuerst** FLOW-Zeilen + Invarianten anlegen, **dann** Code/Live.
+4. DoD aus `plan.md` (Referenz, Matrix, Invariante, Transition-Test, Live-Kriterium, plan-Update).
 
-Das war der fehlende erste Schritt im Experiment: ohne Matrix wurde an Symptomen (Peers, Timestamps, Grafana) entlang vibecodiert, statt systematisch Pipeline↔op-geth zu sichern. **Skill-Pflicht:** bei Port-/Sync-Aufgaben zuerst `plan.md` Abschnitt *Pipeline-Verify-Matrix (PORT-PIPE)* lesen und Status der offenen PIPE-IDs nennen.
+`PORT-PIPE` allein reicht **nicht**. Cap-Idempotenz / Falling-Prime (FLOW-H03/H04 = P2P-004/005)
+waren Analyse-Soll im Downloader-Dataflow — keine „Live-Folgebugs“.
 
 ## Wann laden
 
 - **Immer bei Session-Start in diesem Repo** (nicht optional; Rule + Hook erzwingen das), zusammen mit `rust-best-practices`
 - Zusätzlich explizit: opBNB/OP-Stack-Port, Rebase, Diff gegen `bnb-chain/op-geth` / `bnb-chain/opbnb`
 - Live-Sync hängt (Headers/Bodies/Execution/Merkle, Engine FCU, Peers, Grafana Stages)
-- Eintrag/Update von `PORT-*` / `PORT-PIPE-*` in `plan.md`
+- Eintrag/Update von `PORT-*` / `PORT-PIPE-*` / `PORT-FLOW-*` in `plan.md`
 
 ## Kernprinzip (nicht verhandelbar)
 
-1. **PORT-PIPE zuerst.** Matrix in `plan.md` ist der Einstieg — nicht optionaler Nachtrag.
-2. **Referenz zuerst, Code danach.** Jede vermutete Lücke braucht einen Beleg in op-geth (oder opbnb CL) mit Datei:Zeile — nicht nur „sollte so sein“.
-3. **Compile/nextest grün beweist keine Chain-Korrektheit.** Live- oder Fixture-Verify Stage für Stage (`PORT-PIPE-00x`).
-4. **Symptom → Layer → Regel → Diff → Fix → Verify.** Nicht random refactors.
-5. **Human-owned:** Catch-up/Full-Sync und lange Läufe startet der Operator; Agent höchstens Boot-Smoke / gezielte Log-Analyse.
+1. **Zwei Matrizen.** PIPE = Regel; FLOW = Automat. Beide in `plan.md` — nicht optionaler Nachtrag.
+2. **Referenz zuerst, Code danach.** op-geth Datei:Zeile **oder** Reth-Callgraph mit benannten Zuständen.
+3. **Compile/nextest grün beweist keine Chain-Korrektheit.** Live erst nach FLOW+PIPE-DoD.
+4. **Symptom → Layer → Regel/FLOW → Diff → Fix → Verify.** Nicht random refactors.
+5. **Human-owned:** Catch-up/Full-Sync und lange Läufe startet der Operator; Agent höchstens Boot-Smoke / gezielte Log-/Mimir-Analyse.
+6. **Kein Live als Analyseersatz.** Stall/Ban/`total=1` → fehlende FLOW-Zeile nachziehen, nicht „Folgebug“ taufen.
+7. **Live Archive Sync aktiv:** Rule `.cursor/rules/opbnb-live-sync-health.mdc` — periodische Health-Checks (Mimir+Logs; Hash-Stichprobe; **Point 4 stateRoot sobald Execution > 0**).
 
 ## Pflicht-Referenzen (dieser Workspace)
 
 | Quelle | Pfad / Hinweis |
 |--------|----------------|
-| Arbeitsprotokoll + Bugliste | `plan.md` |
+| Arbeitsprotokoll + Matrizen | `plan.md` (*Migrations-Gate*, PIPE, FLOW, Bugliste) |
 | Fork-Zweck / Methodik / Effort | `README.md` → *About This Fork* |
 | Reth-Fork | Workspace-Root (Branch `rebase/reth-v2.4.1`) |
 | op-geth (EL-Konsens) | `<src-root>/Binance/bnb-chain_op-geth.git` |
 | opbnb (CL/Derivation) | `<src-root>/Binance/bnb-chain_opbnb.git` |
-| Upstream-Architektur | `paradigmxyz/reth` v2.4.1 Patterns (`engine-tree`, `DefaultStages`) |
+| Upstream-Architektur | `paradigmxyz/reth` v2.4.1 Patterns (`engine-tree`, `DefaultStages`, downloaders) |
 
 ## Vorgehensweise (Checkliste)
 
-### A. PORT-PIPE-Matrix (immer zuerst)
+### A. Matrizen öffnen (immer zuerst)
 
-1. `plan.md` → *Pipeline-Verify-Matrix (PORT-PIPE)* öffnen.
-2. Offene `PORT-PIPE-00x` (⏳/🐛) auflisten; nächste Verify-ID nennen.
-3. Bei neuer Lücke: neue PIPE-Zeile oder Verweis auf CONS/ENGINE/STOR — keine parallele Schattenliste.
+1. `plan.md` → *Migrations-Gate* + *PORT-FLOW* + *PORT-PIPE*.
+2. Offene `PORT-PIPE-00x` **und** `PORT-FLOW-*` für die nächste Stage auflisten.
+3. Bodies/Execution/… mit Status `🔬` → Analyse **vor** Live (Gate in PIPE-Tabelle: „gesperrt bis FLOW-*“).
+4. Neue Lücke: PIPE- und/oder FLOW-Zeile — keine parallele Schattenliste.
 
-### B. Bestandsaufnahme (Symptom)
+### B. Dataflow skizzieren (FLOW, vor Code)
 
-1. Welches Symptom? (Log-Zeile, Grafana No data vs 0, Stage-Name, Blockhöhe)
-2. Welche Pipeline-Stage / Engine-Pfad? (Headers downloader ≠ Execution overlay)
-3. Mappt auf welche `PORT-PIPE-00x` / existierende `PORT-*`?
+Pflichtfelder:
 
-### C. op-geth-Regel extrahieren
+```
+Trigger → Guard → State-Update → Request/IO → Response-Klassen → Penalty? → Next-State → Persistenz/Metrik
+```
+
+Headers-Referenzsoll (bereits FLOW-H01…H05):
+
+```
+FCU Tip → Backfill → HeaderSeed(CL)
+  → Cap(working=max_peer_best) idempotent vs eventual_CL
+  → Number(N) primt Falling → GetHeaders reverse
+  → Empty=backoff/no ban | Headers=ETL(TempDir)
+  → Writing headers → Checkpoint
+```
+
+Vor Bodies-Live mindestens FLOW-B01…B04 ausfüllen (Peer/Range, Empty-Politik, Buffer→Checkpoint, Headers-Kopplung).
+
+### C. Bestandsaufnahme (Symptom)
+
+1. Welches Symptom? (Log-Zeile, Mimir, Grafana No data vs 0, Stage, Blockhöhe)
+2. Pipeline-Stage / Engine- / Downloader-Pfad?
+3. Mappt auf welche `PORT-PIPE-00x` **und** `PORT-FLOW-*`?
+
+### D. op-geth-Regel extrahieren (PIPE)
 
 Für Header/Import/State typische opBNB-Delta vs vanilla OP:
 
@@ -81,47 +108,56 @@ Für Header/Import/State typische opBNB-Delta vs vanilla OP:
 | EIP-1559 elast=2, denom=8 | `params/config.go` OptimismConfig opBNB |
 | PreContractFork | testnet only; mainnet nil |
 | ForkId-Filter | Fermat/Snow/Volta/Fourier aus EL-forkid |
+| Beacon tip by number | `eth/downloader/beaconsync.go`; Skeleton mock bans hash-head fetch |
 
 CL-only (Snow, Volta/Fourier-Kadenz): EL muss resultierende Header **akzeptieren**, nicht die Kadenz selbst erzwingen.
 
-### D. Reth-Wiring prüfen
+### E. Reth-Wiring prüfen
 
-1. Pipeline: stock `DefaultStages` + injiziertes `OpBeaconConsensus` / `OpEvmConfig` — selten fehlt eine Stage, oft fehlt die **Regel im Consensus/EVM**.
-2. Headers: Downloader → `HeaderValidator::validate_header_against_parent` (nicht nur Engine NewPayload).
-3. Execution: Overlays (`opbnb_precompiles`, Wright flags) müssen am **historischen** Blockzeitpunkt greifen.
-4. Engine: Tip-FCU ohne Backfill = Pipeline idle (Grafana „No data“); großer Gap → Backfill auf Head (OpStack).
+1. Pipeline: stock `DefaultStages` + injiziertes `OpBeaconConsensus` / `OpEvmConfig` — selten fehlt eine Stage, oft fehlt die **Regel** oder der **Downloader-Automat**.
+2. Headers: `ReverseHeadersDownloader` Zustände (Tip/Cap/Falling) + `HeaderValidator` (Milli).
+3. Engine: Tip-FCU ohne Backfill = idle; Tip-Seed vs P2P-hash; poll-order.
+4. Execution: Overlays am **historischen** Blockzeitpunkt.
+5. Persistenz: SF-Segment-Routing, ETL-TempDir, Checkpoint-Semantik (FLOW-H05/S*).
 
-### E. Fix-Disziplin
+### F. Fix-Disziplin
 
 - Minimaler Diff; eine logische Lücke pro Commit wenn möglich.
-- Unit-Test an **live beobachteten** Werten (z. B. equal-second Milli-Headers), plus Negativtest (OP-Mainnet behält Sekunden-Regel).
-- `plan.md` Bugliste + kurzer Session-Eintrag; README nur bei Meilenstein/Methodik.
+- Transition-Test für FLOW-Knicke (Cap→Falling, Tip-Seed Empty, Backfill-Schwelle).
+- Unit-Test an live beobachteten Werten wo PIPE (equal-second Milli + Negativtest OP-Mainnet).
+- `plan.md` Bugliste + FLOW/PIPE-Status + kurzer Session-Eintrag; README bei Meilenstein/Methodik.
 - Keine Secrets/`trusted_nodes` in committed Config; keine `files/*.log` committen.
+- **Niemals `/tmp`** — Scratch/Logs/Datadir/IPC/JWT nur unter `files/` (siehe `.cursor/rules/no-tmp-writes.mdc`).
 
-### F. Live-Verify = Abarbeitung von PORT-PIPE-001…
+### G. Live-Verify = PIPE **und** FLOW grün für die Stage
 
-Reihenfolge und Kriterien stehen in `plan.md` (PORT-PIPE-001 … 013). Kurz:
+Reihenfolge und Gates stehen in `plan.md`. Kurz:
 
-1. PIPE-001 Engine Backfill → Headers startet
-2. PIPE-002…004 Headers (Milli, Wright baseFee, EIP-1559)
-3. PIPE-005 Bodies → PIPE-006 SenderRecovery
-4. PIPE-007…010 Execution (Fermat/Haber/Wright L1-Fee / L1-Attr)
-5. PIPE-011 MerkleExecute → PIPE-012 History/TxLookup
-6. PIPE-013 nur Testnet PreContract
+1. FLOW-E* + PIPE-001 → Backfill / Headers startet
+2. FLOW-H01…H04 + PIPE-002…004 → Falling stabil
+3. FLOW-H05 → `Writing headers` / Checkpoint > 0
+4. FLOW-B* **analysiert** + PIPE-005 → Bodies
+5. FLOW-R01 + PIPE-006 → SenderRecovery
+6. FLOW-X* + PIPE-007…010 → Execution (X02 = Wright L1-Fee Diff!)
+7. FLOW-S* + PIPE-011…012 → Merkle/History
 
-Bei Failure: Stage + Höhe + op-geth-Regel + Reth-Pfad; PIPE-Status in `plan.md` aktualisieren.
+Bei Failure: Stage + Höhe + PIPE-Regel + FLOW-Übergang + Reth-Pfad; Status in `plan.md` aktualisieren.
 
 ## Anti-Patterns (aus dem Experiment)
 
-- Live-Sync debuggen **ohne** vorherige `PORT-PIPE`-Matrix gegen op-geth
-- „Workspace kompiliert“ als Done für Protokoll-Port
-- Eth-Default-Validierung ohne op-geth-Diff (klassisch: Sekunden-Timestamp)
-- Tip-Chase/`Download(single_block)` statt Pipeline bei Genesis→Tip-Gap
-- Holocene/Isthmus-Code portieren, obwohl opBNB-Hardfork-Liste sie nicht hat
+- Live-Sync debuggen **ohne** PIPE **und** FLOW für die Stage
+- Nur Konsensregel portieren, Downloader-/Engine-Automat ignorieren
+- Cap/Seed/Tracker als „Live-Folgebug“ nach Restart entdecken
+- Checkpoint 0 als „Headers broken“ ohne FLOW-H05 (ETL-TempDir)
+- eth/68 Tip-Hash mit `best_number` verwechseln
+- Ban auf Empty Headers/Bodies
+- „Workspace kompiliert“ / nextest grün als Protokoll-Done
+- Holocene/Isthmus portieren, obwohl opBNB-Hardfork-Liste sie nicht hat
 - Pipeline-Stages umbauen, obwohl nur Consensus/EVM-Overlay fehlt
 - Blindes Vibecoding ohne Referenz-Repo und ohne Bugliste
 
 ## Ausgabe an den Nutzer
 
-- Kurz: Symptom → Ursache (mit Referenz) → Fix-Status → nächster Verify-Schritt
+- Kurz: Symptom → PIPE + FLOW (mit Referenz) → Fix-Status → nächstes Gate
+- Offene `🔬` FLOW-IDs nennen, bevor Live vorgeschlagen wird
 - Keine Garantie Produktionsreife; Catch-up/Full-Sync = Human

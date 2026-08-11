@@ -9,12 +9,11 @@ use op_alloy_network::Optimism;
 use reth_e2e_test_utils::{node::NodeTestContext, transaction::TransactionTestContext};
 use reth_node_api::FullNodeTypes;
 use reth_node_builder::{
-    EngineNodeLauncher, NodeBuilder,
     components::{BasicPayloadServiceBuilder, ComponentsBuilder},
     rpc::BasicEngineValidatorBuilder,
+    EngineNodeLauncher, NodeBuilder,
 };
 use reth_optimism_node::{
-    OpEngineApiBuilder, OpNode,
     args::RollupArgs,
     node::{
         OpConsensusBuilder, OpEngineValidatorBuilder, OpExecutorBuilder, OpNetworkBuilder,
@@ -22,12 +21,13 @@ use reth_optimism_node::{
     },
     txpool::OpTransactionValidator,
     utils::optimism_payload_attributes,
+    OpEngineApiBuilder, OpNode,
 };
 use reth_optimism_txpool::OpPooledTransaction;
 use reth_primitives_traits::SealedBlock;
 use reth_transaction_pool::{
-    CoinbaseTipOrdering, TransactionOrigin, TransactionValidationOutcome, TransactionValidator,
-    error::InvalidPoolTransactionError,
+    error::InvalidPoolTransactionError, CoinbaseTipOrdering, TransactionOrigin,
+    TransactionValidationOutcome, TransactionValidator,
 };
 
 const GAS_LIMIT_REJECT_THRESHOLD: u64 = 250_000;

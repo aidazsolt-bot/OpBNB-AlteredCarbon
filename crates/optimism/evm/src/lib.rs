@@ -27,7 +27,7 @@ use op_revm::OpSpecId;
 use reth_chainspec::EthChainSpec;
 use reth_evm::{eth::NextEvmEnvAttributes, precompiles::PrecompilesMap, ConfigureEvm, EvmEnv};
 use reth_optimism_chainspec::OpChainSpec;
-use reth_optimism_forks::{Hardforks, OpHardforks};
+use reth_optimism_forks::{Hardforks, OpHardforks, OptimismHardfork};
 use reth_optimism_primitives::{DepositReceipt, OpPrimitives};
 use reth_primitives_traits::{NodePrimitives, SealedBlock, SealedHeader, SignedTransaction};
 use revm::context::BlockEnv;
@@ -165,7 +165,7 @@ where
 
 impl<ChainSpec, N, R, EvmFactory> OpEvmConfig<ChainSpec, N, R, EvmFactory>
 where
-    ChainSpec: OpHardforks,
+    ChainSpec: OpHardforks + Hardforks,
     N: NodePrimitives,
 {
     /// Returns the chain spec associated with this configuration.
@@ -178,6 +178,13 @@ where
     /// See the free [`is_sdm_active_at_timestamp`] function, which this delegates to.
     pub fn is_sdm_active_at_timestamp(&self, timestamp: u64) -> bool {
         crate::is_sdm_active_at_timestamp(self.chain_spec(), timestamp)
+    }
+
+    /// Whether `block_number` is the opBNB PreContractForkBlock activation block.
+    fn is_pre_contract_fork_block(&self, block_number: u64) -> bool {
+        self.chain_spec()
+            .fork(OptimismHardfork::PreContractForkBlock)
+            .transitions_at_block(block_number)
     }
 
     /// Builds a block execution context with an optional post-exec mode override.
@@ -194,6 +201,7 @@ where
             parent_beacon_block_root: block.header().parent_beacon_block_root(),
             extra_data: block.header().extra_data().clone(),
             post_exec_mode: post_exec_mode.unwrap_or_default(),
+            apply_pre_contract_hardfork: self.is_pre_contract_fork_block(block.header().number()),
         }
     }
 
@@ -204,6 +212,7 @@ where
         attributes: OpNextBlockEnvAttributes,
         post_exec_mode: PostExecMode,
     ) -> OpBlockExecutionCtx {
+        let next_number = parent.number().saturating_add(1);
         OpBlockExecutionCtx {
             parent_hash: parent.hash(),
             no_user_tx_activation_block: self
@@ -212,6 +221,7 @@ where
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             extra_data: attributes.extra_data,
             post_exec_mode,
+            apply_pre_contract_hardfork: self.is_pre_contract_fork_block(next_number),
         }
     }
 }
@@ -427,6 +437,8 @@ where
             parent_beacon_block_root: payload.sidecar.parent_beacon_block_root(),
             extra_data: payload.payload.as_v1().extra_data.clone(),
             post_exec_mode,
+            apply_pre_contract_hardfork: self
+                .is_pre_contract_fork_block(payload.payload.block_number()),
         })
     }
 

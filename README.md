@@ -355,12 +355,15 @@ loops may leave uncommitted working-tree diffs until explicitly reviewed (see `p
 A central result of this experiment: **generic AI coding agents were not able to perform a
 meaningful protocol port on their own.** They can drive large compile/fix loops and surface
 plausible diffs, but without **operator-supplied approach hints** (reference-first against
-`bnb-chain/op-geth`, stage-by-stage live verify, `PORT-*` bugliste discipline, Engine vs Pipeline
-vs Consensus layering) they repeatedly stop at “builds green” or chase the wrong layer
-(e.g. Eth second-resolution timestamps, tip-chase instead of backfill).
+`bnb-chain/op-geth`, stage-by-stage live verify, dual **`PORT-PIPE` + `PORT-FLOW`** matrices,
+Engine vs Pipeline vs Consensus vs Downloader layering) they repeatedly stop at “builds green”
+or chase the wrong layer (e.g. Eth second-resolution timestamps, tip-chase instead of backfill,
+Cap/Falling stalls treated as “live follow-ups” instead of missing dataflow analysis).
 
 Those hints were therefore given explicitly during live-sync debugging (Session 10). From that
-procedure the agent was instructed to author a reusable Cursor skill:
+procedure the agent was instructed to author a reusable Cursor skill; Session 10 cont. then
+hardened `plan.md` with a mandatory **Migrations-Gate** (PIPE = consensus rule, FLOW = state
+machine / wire / persistence) so Bodies/Execution cannot repeat the Headers dataflow gap:
 
 - **`.cursor/skills/reth-opbnb-port/SKILL.md`** — *Reth / opBNB Portierungs-Spezialist*
 - **`.cursor/skills/rust-best-practices/SKILL.md`** — *Experienced Rust / best practices*
@@ -368,7 +371,7 @@ procedure the agent was instructed to author a reusable Cursor skill:
 - **`.cursor/hooks.json`** `sessionStart` — injects both skills into agent context
 
 Subsequent port/sync work on this fork **must** load both skills at session start (rule + hook enforce it)
-and follow `plan.md` (`PORT-PIPE-*`) instead of unaided vibecoding.
+and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) instead of unaided vibecoding.
 
 ### Effort log (approximate, based on available session telemetry)
 
@@ -379,7 +382,7 @@ and follow `plan.md` (`PORT-PIPE-*`) instead of unaided vibecoding.
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
 | LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); ~250 tool_use in resume transcript |
-| LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **PORT-P2P-003** (live Falling verified) |
+| LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **P2P-003/004/005** + **Migrations-Gate PIPE+FLOW** |
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
@@ -389,7 +392,7 @@ and follow `plan.md` (`PORT-PIPE-*`) instead of unaided vibecoding.
 | Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
-| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003 live**: Falling `total=10000` from peer head ~173.37M @ ~22k hdr/s (2 peers). Checkpoint stays 0 until ETL write (Upstream TempDir — no mid-resume). |
+| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003/004/005** (reachable tip + Cap idempotent + Falling-Prime — Downloader-Dataflow, not live follow-ups): Falling from peer head ~173.37M @ ~22k hdr/s. Checkpoint 0 until ETL write (Upstream TempDir). |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
 | Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9) |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install **`dist/bin/op-reth-bnb`** (avoids overwriting a generic `op-reth` on PATH); default CLI chain `opbnb` |

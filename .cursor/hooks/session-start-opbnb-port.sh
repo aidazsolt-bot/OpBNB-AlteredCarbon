@@ -19,7 +19,7 @@ if ((${#missing[@]})); then
   exit 0
 fi
 
-PREAMBLE=$'MANDATORY SESSION START — skills loaded:\n1) reth-opbnb-port (PORT-PIPE first)\n2) rust-best-practices (idiomatic Rust)\nFollow both for all work in this repo.\n\n'
+PREAMBLE=$'MANDATORY SESSION START — skills loaded:\n1) reth-opbnb-port (PORT-PIPE + PORT-FLOW gate in plan.md)\n2) rust-best-practices (idiomatic Rust)\nName open PIPE and FLOW IDs before live/code. Follow both for all work in this repo.\n\n'
 
 BODY="${PREAMBLE}"
 BODY+=$'===== SKILL: reth-opbnb-port =====\n\n'

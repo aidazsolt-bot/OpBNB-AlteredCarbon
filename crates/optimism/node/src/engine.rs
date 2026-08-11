@@ -4,21 +4,20 @@ use alloy_rpc_types_engine::{ExecutionPayloadEnvelopeV2, ExecutionPayloadV1};
 use op_alloy_rpc_types_engine::{OpExecutionPayloadEnvelopeV3, OpExecutionPayloadEnvelopeV4};
 use reth_consensus::ConsensusError;
 use reth_node_api::{
-    BuiltPayload, EngineApiValidator, EngineTypes, InsertBlockErrorKind, NodePrimitives,
-    PayloadValidator,
     payload::{
-        EngineApiMessageVersion, EngineObjectValidationError, MessageValidationKind,
-        NewPayloadError, PayloadOrAttributes, PayloadTypes, VersionSpecificValidationError,
-        validate_parent_beacon_block_root_presence,
+        validate_parent_beacon_block_root_presence, EngineApiMessageVersion,
+        EngineObjectValidationError, MessageValidationKind, NewPayloadError, PayloadOrAttributes,
+        PayloadTypes, VersionSpecificValidationError,
     },
-    validate_version_specific_fields,
+    validate_version_specific_fields, BuiltPayload, EngineApiValidator, EngineTypes,
+    InsertBlockErrorKind, NodePrimitives, PayloadValidator,
 };
 use reth_optimism_consensus::isthmus;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_payload_builder::{
     OpExecData, OpExecutionPayloadValidator, OpPayloadAttrs, OpPayloadTypes,
 };
-use reth_optimism_primitives::{L2_TO_L1_MESSAGE_PASSER_ADDRESS, OpBlock};
+use reth_optimism_primitives::{OpBlock, L2_TO_L1_MESSAGE_PASSER_ADDRESS};
 use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock, SignedTransaction};
 use reth_provider::{ProviderResult, StateProviderBox, StateProviderFactory};
 use reth_trie_common::{HashedPostState, KeyHasher};
@@ -164,10 +163,10 @@ where
 impl<Types, P, Tx, ChainSpec> EngineApiValidator<Types> for OpEngineValidator<P, Tx, ChainSpec>
 where
     Types: PayloadTypes<
-            PayloadAttributes = OpPayloadAttrs,
-            ExecutionData = OpExecData,
-            BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
-        >,
+        PayloadAttributes = OpPayloadAttrs,
+        ExecutionData = OpExecData,
+        BuiltPayload: BuiltPayload<Primitives: NodePrimitives<SignedTx = Tx>>,
+    >,
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
     ChainSpec: OpHardforks + Send + Sync + 'static,
@@ -303,10 +302,10 @@ pub fn validate_withdrawals_presence(
 mod test {
     use super::*;
 
-    use crate::{OpNode, engine};
+    use crate::{engine, OpNode};
     use alloy_consensus::{BlockBody, Header};
     use alloy_op_hardforks::OP_SEPOLIA_JOVIAN_TIMESTAMP;
-    use alloy_primitives::{Address, B64, B256, b64};
+    use alloy_primitives::{b64, Address, B256, B64};
     use alloy_rpc_types_engine::PayloadAttributes;
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use reth_db_common::init::init_genesis;

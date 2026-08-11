@@ -11,8 +11,8 @@ use reth_e2e_test_utils::{
 use reth_node_builder::{EngineNodeLauncher, Node, NodeBuilder, NodeConfig};
 use reth_node_core::args::DatadirArgs;
 use reth_optimism_chainspec::OpChainSpecBuilder;
-use reth_optimism_node::{OpNode, utils::optimism_payload_attributes};
-use reth_provider::{HeaderProvider, StageCheckpointReader, providers::BlockchainProvider};
+use reth_optimism_node::{utils::optimism_payload_attributes, OpNode};
+use reth_provider::{providers::BlockchainProvider, HeaderProvider, StageCheckpointReader};
 use reth_stages_types::StageId;
 use std::sync::Arc;
 use tokio::sync::Mutex;
