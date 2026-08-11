@@ -145,7 +145,7 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 
 | Prio | ID | Scope | Aktion | Done wenn |
 | --- | --- | --- | --- | --- |
-| **P0** | — | Live PORT-PIPE-001/002 (+ ENGINE-003 Tip-Seed, +009 Watch) | maxperf install + Restart; Tip aus NewPayload, nicht P2P-Hash; Headers-Checkpoint > 0 | Mimir Stages Headers ↑; Milli ohne Ban |
+| **P0** | — | Live Headers ETL-Write + PIPE-002/009 | Warten auf `Writing headers` / Checkpoint > 0; Milli ohne Ban; danach Bodies | Mimir Stages Headers ↑ nach Write; PIPE-003… |
 | **P1** | CLEANUP-A01 | `reth-optimism-forks` / `reth-bsc-forks` unused imports | `cargo fix -p …` oder Imports streichen | 0 unused_imports in hardfork.rs |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
 | **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
