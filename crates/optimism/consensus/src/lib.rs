@@ -36,10 +36,21 @@ mod proof;
 pub use proof::calculate_receipt_root_no_memo_optimism;
 
 pub mod validation;
-pub use validation::{canyon, isthmus, validate_block_post_execution};
+pub use validation::{
+    canyon, isthmus, opbnb_milli_timestamp, opbnb_milliseconds_from_mix_hash,
+    validate_against_parent_opbnb_milli_timestamp, validate_block_post_execution,
+};
 
 pub mod error;
 pub use error::OpConsensusError;
+
+/// Returns `true` for opBNB L2 chains that encode sub-second time in `mixHash`.
+///
+/// Chain IDs: mainnet 204, testnet 5611 (bnb-chain/op-geth).
+#[inline]
+fn is_opbnb_chain_id(chain_id: u64) -> bool {
+    matches!(chain_id, 204 | 5611)
+}
 
 /// Optimism consensus implementation.
 ///
@@ -205,7 +216,15 @@ where
         validate_against_parent_hash_number(header.header(), parent)?;
 
         if self.chain_spec.is_bedrock_active_at_block(header.number()) {
-            validate_against_parent_timestamp(header.header(), parent.header())?;
+            // opBNB: sub-second block times encode milliseconds in mixHash
+            // (bnb-chain/op-geth Header.MilliTimestamp). Consecutive blocks may
+            // share the same unix second; second-resolution Eth checks reject
+            // valid headers. OP-Stack L2s keep the standard second check.
+            if is_opbnb_chain_id(self.chain_spec.chain().id()) {
+                validate_against_parent_opbnb_milli_timestamp(header.header(), parent.header())?;
+            } else {
+                validate_against_parent_timestamp(header.header(), parent.header())?;
+            }
         }
 
         // opBNB Wright: base fee must be 0 (bnb-chain/op-geth CalcBaseFee).
@@ -807,6 +826,79 @@ mod tests {
             result.unwrap_err(),
             ConsensusError::BlobGasUsedDiff(diff)
                 if diff.got == DA_FOOTPRINT && diff.expected == 0
+        ));
+    }
+
+    /// Live opBNB blocks 173253771/772 share unix second 1786430373 but have
+    /// increasing milli-timestamps encoded in mixHash (500ms → 750ms).
+    #[test]
+    fn test_opbnb_equal_second_milli_timestamp_accepted() {
+        use alloy_primitives::b256;
+        use reth_optimism_chainspec::OPBNB_MAINNET;
+
+        let consensus = OpBeaconConsensus::new(OPBNB_MAINNET.clone());
+
+        let parent = SealedHeader::seal_slow(Header {
+            number: 173253771,
+            timestamp: 1786430373,
+            mix_hash: b256!("01f4010200000000000000000000000000000000000000000000000000000000"),
+            base_fee_per_gas: Some(0),
+            blob_gas_used: Some(0),
+            excess_blob_gas: Some(0),
+            ..Default::default()
+        });
+        let header = SealedHeader::seal_slow(Header {
+            number: 173253772,
+            timestamp: 1786430373,
+            mix_hash: b256!("02ee0102000000000000000000000000000000000000000000000000000001c2"),
+            base_fee_per_gas: Some(0),
+            blob_gas_used: Some(0),
+            excess_blob_gas: Some(0),
+            parent_hash: parent.hash(),
+            ..Default::default()
+        });
+
+        assert!(
+            consensus.validate_header_against_parent(&header, &parent).is_ok(),
+            "opBNB must accept equal unix seconds when milli-timestamps increase"
+        );
+    }
+
+    /// OP-Stack (non-opBNB) still rejects equal second timestamps.
+    #[test]
+    fn test_op_mainnet_equal_second_timestamp_rejected() {
+        use alloy_primitives::b256;
+
+        let chain_spec = OpChainSpecBuilder::default()
+            .ecotone_activated()
+            .genesis(OP_MAINNET.genesis.clone())
+            .chain(OP_MAINNET.chain)
+            .build();
+        let consensus = OpBeaconConsensus::new(Arc::new(chain_spec));
+
+        let parent = SealedHeader::seal_slow(Header {
+            number: 1,
+            timestamp: 100,
+            mix_hash: b256!("01f4010200000000000000000000000000000000000000000000000000000000"),
+            base_fee_per_gas: Some(7),
+            blob_gas_used: Some(0),
+            excess_blob_gas: Some(0),
+            ..Default::default()
+        });
+        let header = SealedHeader::seal_slow(Header {
+            number: 2,
+            timestamp: 100,
+            mix_hash: b256!("02ee0102000000000000000000000000000000000000000000000000000001c2"),
+            base_fee_per_gas: Some(7),
+            blob_gas_used: Some(0),
+            excess_blob_gas: Some(0),
+            parent_hash: parent.hash(),
+            ..Default::default()
+        });
+
+        assert!(matches!(
+            consensus.validate_header_against_parent(&header, &parent),
+            Err(ConsensusError::TimestampIsInPast { .. })
         ));
     }
 }

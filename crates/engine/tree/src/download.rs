@@ -12,7 +12,7 @@ use reth_network_p2p::{
 use reth_primitives_traits::{Block, SealedBlock};
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{binary_heap::PeekMut, BinaryHeap, VecDeque},
+    collections::{binary_heap::PeekMut, BinaryHeap},
     fmt::Debug,
     sync::Arc,
     task::{Context, Poll},
@@ -45,13 +45,6 @@ pub enum DownloadAction {
 pub enum DownloadOutcome<B: Block> {
     /// Downloaded blocks.
     Blocks(Vec<SealedBlock<B>>),
-    /// New download started.
-    NewDownloadStarted {
-        /// How many blocks are pending in this download.
-        remaining_blocks: u64,
-        /// The hash of the highest block of this download.
-        target: B256,
-    },
 }
 
 /// Basic [`BlockDownloader`].
@@ -71,8 +64,6 @@ where
     set_buffered_blocks: BinaryHeap<Reverse<OrderedSealedBlock<B>>>,
     /// Engine download metrics.
     metrics: BlockDownloaderMetrics,
-    /// Pending events to be emitted.
-    pending_events: VecDeque<DownloadOutcome<B>>,
 }
 
 impl<Client, B> BasicBlockDownloader<Client, B>
@@ -88,7 +79,6 @@ where
             inflight_block_range_requests: Vec::new(),
             set_buffered_blocks: BinaryHeap::new(),
             metrics: BlockDownloaderMetrics::default(),
-            pending_events: Default::default(),
         }
     }
 
@@ -128,10 +118,6 @@ where
             );
 
             let request = self.full_block_client.get_full_block_range(hash, count);
-            self.push_pending_event(DownloadOutcome::NewDownloadStarted {
-                remaining_blocks: request.count(),
-                target: request.start_hash(),
-            });
             self.inflight_block_range_requests.push(request);
 
             self.update_block_download_metrics();
@@ -146,10 +132,6 @@ where
         if self.is_inflight_request(hash) {
             return false
         }
-        self.push_pending_event(DownloadOutcome::NewDownloadStarted {
-            remaining_blocks: 1,
-            target: hash,
-        });
 
         trace!(
             target: "engine::download",
@@ -176,16 +158,6 @@ where
             self.inflight_block_range_requests.iter().map(|r| r.count() as usize).sum::<usize>();
         self.metrics.active_block_downloads.set(blocks as f64);
     }
-
-    /// Adds a pending event to the FIFO queue.
-    fn push_pending_event(&mut self, pending_event: DownloadOutcome<B>) {
-        self.pending_events.push_back(pending_event);
-    }
-
-    /// Removes a pending event from the FIFO queue.
-    fn pop_pending_event(&mut self) -> Option<DownloadOutcome<B>> {
-        self.pending_events.pop_front()
-    }
 }
 
 impl<Client, B> BlockDownloader for BasicBlockDownloader<Client, B>
@@ -205,10 +177,6 @@ where
 
     /// Advances the download process.
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<DownloadOutcome<B>> {
-        if let Some(pending_event) = self.pop_pending_event() {
-            return Poll::Ready(pending_event);
-        }
-
         // advance all full block requests
         for idx in (0..self.inflight_full_block_requests.len()).rev() {
             let mut request = self.inflight_full_block_requests.swap_remove(idx);
@@ -366,14 +334,7 @@ mod tests {
         assert_eq!(first_req.start_hash(), tip.hash());
         assert_eq!(first_req.count(), tip.number);
 
-        // poll downloader
-        let sync_future = poll_fn(|cx| block_downloader.poll(cx));
-        let next_ready = sync_future.await;
-
-        assert_matches!(next_ready, DownloadOutcome::NewDownloadStarted { remaining_blocks, .. } => {
-            assert_eq!(remaining_blocks, TOTAL_BLOCKS as u64);
-        });
-
+        // poll downloader — range completes into Blocks (no intermediate NewDownloadStarted)
         let sync_future = poll_fn(|cx| block_downloader.poll(cx));
         let next_ready = sync_future.await;
 
@@ -403,16 +364,7 @@ mod tests {
         // ensure we have TOTAL_BLOCKS in flight full block request
         assert_eq!(block_downloader.inflight_full_block_requests.len(), TOTAL_BLOCKS);
 
-        // poll downloader
-        for _ in 0..TOTAL_BLOCKS {
-            let sync_future = poll_fn(|cx| block_downloader.poll(cx));
-            let next_ready = sync_future.await;
-
-            assert_matches!(next_ready, DownloadOutcome::NewDownloadStarted { remaining_blocks, .. } => {
-                assert_eq!(remaining_blocks, 1);
-            });
-        }
-
+        // poll downloader — full blocks complete into Blocks
         let sync_future = poll_fn(|cx| block_downloader.poll(cx));
         let next_ready = sync_future.await;
         assert_matches!(next_ready, DownloadOutcome::Blocks(blocks) => {

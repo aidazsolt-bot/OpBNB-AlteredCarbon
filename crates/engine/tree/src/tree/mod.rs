@@ -1361,7 +1361,7 @@ where
     /// Handles the case where the head block is missing and needs to be downloaded.
     ///
     /// This is the fallback case when all other forkchoice update scenarios have been exhausted.
-    /// Returns a `TreeOutcome` with syncing status and download event.
+    /// Returns a `TreeOutcome` with syncing status and download or backfill event.
     fn handle_missing_block(
         &self,
         state: ForkchoiceState,
@@ -1383,13 +1383,44 @@ where
             state.head_block_hash
         };
 
+        let syncing = TreeOutcome::new(OnForkChoiceUpdated::valid(PayloadStatus::from_status(
+            PayloadStatusEnum::Syncing,
+        )));
+
+        // If NewPayload already buffered the FCU head (or an ancestor) and the gap to the local
+        // tip already exceeds the pipeline threshold, start backfill immediately.
+        //
+        // Without this, every FCU only requests `Download(single_block)` of the sliding buffer's
+        // lowest ancestor (buffer limit is small, tip advances every ~250ms on opBNB). That
+        // tip-chases live sync forever and never reaches `on_disconnected_downloaded_block`,
+        // so pipeline backfill never starts on a genesis→tip gap.
+        let local_tip = self.state.tree_state.current_canonical_head.number;
+        if let Some(buffered) = self
+            .state
+            .buffer
+            .block(&state.head_block_hash)
+            .or_else(|| self.state.buffer.lowest_ancestor(&state.head_block_hash))
+            && self.exceeds_backfill_run_threshold(local_tip, buffered.number())
+        {
+            let backfill_hash = self.backfill_target_hash(state);
+            if !backfill_hash.is_zero() {
+                debug!(
+                    target: "engine::tree",
+                    local_tip,
+                    buffered_number = buffered.number(),
+                    %backfill_hash,
+                    "missing FCU head exceeds backfill threshold, starting backfill"
+                );
+                return Ok(syncing.with_event(TreeEvent::BackfillAction(BackfillAction::Start(
+                    backfill_hash.into(),
+                ))));
+            }
+        }
+
         let target = self.lowest_buffered_ancestor_or(target);
         trace!(target: "engine::tree", %target, "downloading missing block");
 
-        Ok(TreeOutcome::new(OnForkChoiceUpdated::valid(PayloadStatus::from_status(
-            PayloadStatusEnum::Syncing,
-        )))
-        .with_event(TreeEvent::Download(DownloadRequest::single_block(target))))
+        Ok(syncing.with_event(TreeEvent::Download(DownloadRequest::single_block(target))))
     }
 
     /// Helper method to remove blocks and set the persistence state. This ensures we keep track of

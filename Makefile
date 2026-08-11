@@ -59,7 +59,7 @@ install: ## Build and install the reth binary under `~/.cargo/bin`.
 .PHONY: install-op
 install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 	cargo install --path crates/optimism/bin --bin op-reth --force --locked \
-		--features "optimism opbnb $(FEATURES)" \
+		--features "$(FEATURES)" \
 		--profile "$(PROFILE)" \
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 
@@ -90,7 +90,7 @@ build-debug: ## Build the reth binary into `target/debug` directory.
 
 .PHONY: build-op
 build-op: ## Build the op-reth binary into `target` directory.
-	cargo build --bin op-reth --features "optimism opbnb $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
+	cargo build --bin op-reth --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
 
 .PHONY: build-bsc
 build-bsc: ## Build the bsc-reth binary into `target` directory.
@@ -101,7 +101,7 @@ build-native-%:
 	cargo build --bin reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
 
 op-build-native-%:
-	cargo build --bin op-reth --target $* --features "optimism opbnb $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
+	cargo build --bin op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
 
 bsc-build-native-%:
 	cargo build --bin bsc-reth --target $* --features "bsc $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/bsc/bin/Cargo.toml
@@ -140,7 +140,7 @@ build-%:
 
 op-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
-		cross build --bin op-reth --target $* --features "optimism,opbnb,$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
+		cross build --bin op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
 
 bsc-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
@@ -428,8 +428,9 @@ maxperf: ## Builds `reth` with the most aggressive optimisations.
 maxperf-op: ## Builds `op-reth` with the most aggressive optimisations (opBNB/OP-Stack).
 	RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml
 	@mkdir -p $(BIN_DIR)
-	@cp -f "$(CARGO_TARGET_DIR)/maxperf/op-reth" "$(BIN_DIR)/op-reth"
-	@echo "Installed $(BIN_DIR)/op-reth (maxperf, default chain opbnb)"
+	# Install as op-reth-bnb so we never overwrite a generic/op-stack `op-reth` on PATH.
+	@cp -f "$(CARGO_TARGET_DIR)/maxperf/op-reth" "$(BIN_DIR)/op-reth-bnb"
+	@echo "Installed $(BIN_DIR)/op-reth-bnb (maxperf, default chain opbnb)"
 
 .PHONY: maxperf-bsc
 maxperf-bsc: ## Builds `bsc-reth` with the most aggressive optimisations.
@@ -462,7 +463,7 @@ lint-op-reth:
 	--examples \
 	--tests \
 	--benches \
-	--features "optimism opbnb $(BIN_OTHER_FEATURES)" \
+	--features "$(BIN_OTHER_FEATURES)" \
 	-- -D warnings
 
 lint-bsc-reth:
@@ -514,7 +515,7 @@ fix-lint-op-reth:
 	--examples \
 	--tests \
 	--benches \
-	--features "optimism opbnb $(BIN_OTHER_FEATURES)" \
+	--features "$(BIN_OTHER_FEATURES)" \
 	--fix \
 	--allow-staged \
 	--allow-dirty \
@@ -567,7 +568,7 @@ test-op-reth:
 	--lib --examples \
 	--tests \
 	--benches \
-	--features "optimism $(BIN_OTHER_FEATURES)"
+	--features "$(BIN_OTHER_FEATURES)"
 
 test-other-targets:
 	cargo test \

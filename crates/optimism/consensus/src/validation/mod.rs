@@ -2,6 +2,12 @@
 
 pub mod canyon;
 pub mod isthmus;
+pub mod milli_timestamp;
+
+pub use milli_timestamp::{
+    opbnb_milli_timestamp, opbnb_milliseconds_from_mix_hash,
+    validate_against_parent_opbnb_milli_timestamp,
+};
 
 // Re-export the decode_holocene_base_fee function for compatibility
 use reth_execution_types::BlockExecutionResult;
@@ -9,14 +15,14 @@ pub use reth_optimism_chainspec::decode_holocene_base_fee;
 
 use crate::proof::calculate_receipt_root_optimism;
 use alloc::vec::Vec;
-use alloy_consensus::{BlockHeader, EMPTY_OMMER_ROOT_HASH, TxReceipt};
+use alloy_consensus::{BlockHeader, TxReceipt, EMPTY_OMMER_ROOT_HASH};
 use alloy_eips::Encodable2718;
-use alloy_primitives::{B256, Bloom, Bytes};
+use alloy_primitives::{Bloom, Bytes, B256};
 use alloy_trie::EMPTY_ROOT_HASH;
 use reth_consensus::ConsensusError;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_primitives::DepositReceipt;
-use reth_primitives_traits::{BlockBody, GotExpected, receipt::gas_spent_by_transactions};
+use reth_primitives_traits::{receipt::gas_spent_by_transactions, BlockBody, GotExpected};
 
 /// Ensures the block response data matches the header.
 ///
@@ -209,10 +215,10 @@ mod tests {
     use super::*;
     use alloy_consensus::Header;
     use alloy_eips::eip7685::Requests;
-    use alloy_primitives::{Bytes, U256, b256, hex};
-    use op_alloy_consensus::{OpTxEnvelope, encode_jovian_extra_data};
+    use alloy_primitives::{b256, hex, Bytes, U256};
+    use op_alloy_consensus::{encode_jovian_extra_data, OpTxEnvelope};
     use reth_chainspec::{BaseFeeParams, ChainSpec, EthChainSpec, ForkCondition, Hardfork};
-    use reth_optimism_chainspec::{OP_SEPOLIA, OpChainSpec};
+    use reth_optimism_chainspec::{OpChainSpec, OP_SEPOLIA};
     use reth_optimism_forks::OpHardfork;
     use reth_optimism_primitives::OpReceipt;
     use std::sync::Arc;
