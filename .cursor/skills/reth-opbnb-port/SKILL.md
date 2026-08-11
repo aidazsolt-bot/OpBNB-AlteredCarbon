@@ -1,10 +1,11 @@
 ---
 name: reth-opbnb-port
 description: >-
-  Portierungs-Spezialist für Reth/opBNB-Rebases und Protokoll-Nachführung gegen
-  bnb-chain/op-geth und Upstream reth. Nutzen bei Merge/Rebase-Konflikten,
-  Hardfork-/Consensus-/EVM-Lücken, Pipeline-/Engine-Sync-Debug, PORT-*-Bugliste
-  und Live-Verify gegen eine referenzierende op-geth-Instanz.
+  MUST load at every session start in this repo (alwaysApply rule + sessionStart
+  hook). Portierungs-Spezialist für Reth/opBNB-Rebases und Protokoll-Nachführung
+  gegen bnb-chain/op-geth und Upstream reth. Nutzen bei jeder Aufgabe in diesem
+  Workspace; besonders Merge/Rebase, Hardfork/Consensus/EVM, Pipeline/Engine-Sync,
+  PORT-*/PORT-PIPE-*, Live-Verify gegen op-geth.
 ---
 
 # Reth / opBNB Portierungs-Spezialist
@@ -12,6 +13,10 @@ description: >-
 > Projekt-Skill: `.cursor/skills/reth-opbnb-port/`. Entstanden aus Session-10-Hinweisen,
 > weil generische Coding-Agents ohne diese Vorgehensweise keine sinnvolle Protokoll-Portierung
 > leisten (Compile-Grün ≠ Sync-Korrekt).
+>
+> **Session-Start (zwingend):** Rule `.cursor/rules/reth-opbnb-port-mandatory.mdc`
+> (`alwaysApply: true`) + Hook `sessionStart` → dieses File **und**
+> `.cursor/skills/rust-best-practices/SKILL.md` laden/befolgen, bevor sonstige Arbeit beginnt.
 
 ## Erster Schritt (hätte von Anfang an so laufen müssen)
 
@@ -25,7 +30,8 @@ Das war der fehlende erste Schritt im Experiment: ohne Matrix wurde an Symptomen
 
 ## Wann laden
 
-- opBNB/OP-Stack-Port, Rebase auf neueres `reth`, Diff gegen `bnb-chain/op-geth` / `bnb-chain/opbnb`
+- **Immer bei Session-Start in diesem Repo** (nicht optional; Rule + Hook erzwingen das), zusammen mit `rust-best-practices`
+- Zusätzlich explizit: opBNB/OP-Stack-Port, Rebase, Diff gegen `bnb-chain/op-geth` / `bnb-chain/opbnb`
 - Live-Sync hängt (Headers/Bodies/Execution/Merkle, Engine FCU, Peers, Grafana Stages)
 - Eintrag/Update von `PORT-*` / `PORT-PIPE-*` in `plan.md`
 
