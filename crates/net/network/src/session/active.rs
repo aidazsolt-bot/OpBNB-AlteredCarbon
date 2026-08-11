@@ -414,9 +414,17 @@ impl<N: NetworkPrimitives> ActiveSession<N> {
 
                 if let Some(range_info) = self.range_info.as_ref() {
                     range_info.update(msg.earliest, msg.latest, msg.latest_hash);
+                } else {
+                    // eth/69 peer should announce range in Status; still accept mid-session updates.
+                    self.range_info =
+                        Some(BlockRangeInfo::new(msg.earliest, msg.latest, msg.latest_hash));
                 }
 
-                OnIncomingMessageOutcome::Ok
+                // Propagate to NetworkState so Status tip / HeadersAtLeast stay in sync (pruning
+                // raises `earliest`; tip advances raise `latest`).
+                return self
+                    .try_emit_broadcast(PeerMessage::BlockRangeUpdated(msg))
+                    .into();
             }
             EthMessage::GetCells(resp) => {
                 on_request!(resp, Cells, GetCells)

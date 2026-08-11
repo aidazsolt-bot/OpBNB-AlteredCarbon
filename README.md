@@ -363,20 +363,23 @@ Those hints were therefore given explicitly during live-sync debugging (Session 
 procedure the agent was instructed to author a reusable Cursor skill:
 
 - **`.cursor/skills/reth-opbnb-port/SKILL.md`** — *Reth / opBNB Portierungs-Spezialist*
+- **`.cursor/skills/rust-best-practices/SKILL.md`** — *Experienced Rust / best practices*
+- **`.cursor/rules/reth-opbnb-port-mandatory.mdc`** — `alwaysApply: true` (load both skills first every session)
+- **`.cursor/hooks.json`** `sessionStart` — injects both skills into agent context
 
-Subsequent port/sync work on this fork should load that skill (or follow `plan.md` the same way)
-instead of relying on unaided vibecoding.
+Subsequent port/sync work on this fork **must** load both skills at session start (rule + hook enforce it)
+and follow `plan.md` (`PORT-PIPE-*`) instead of unaided vibecoding.
 
 ### Effort log (approximate, based on available session telemetry)
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`) |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Multiple sessions over several days (Copilot: ~2026-08-06 09:50 – 2026-08-07 18:05 UTC; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, ~4 h cont. for P2P-003) |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
 | LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); ~250 tool_use in resume transcript |
-| LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync diagnosis + CONS/ENGINE fixes |
+| LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **PORT-P2P-003** reachable headers |
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
@@ -385,7 +388,7 @@ instead of relying on unaided vibecoding.
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
-| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001** opBNB milli-timestamp parent check; **PORT-ENGINE-001** FCU backfill + downloader fairness. Pipeline Headers hat live schon gestartet (`1/13`); Grafana Stage „No data“ = Pipeline idle. Rebuild/`op-reth-bnb` Restart noch ausstehend für Headers-Fortschritt. |
+| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001** milli-timestamp; **PORT-ENGINE-001/003** backfill + Tip-Seed; **PORT-P2P-003** Status tip-resolve, HeadersAtLeast/miss-map, Working-Tip-Cap (Cap-Loop-Fix). Live: Tip `total=1`@173274244; Falling `total=10000` nach Cap-Fix-Rebuild ausstehend. |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
 | Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9) |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install **`dist/bin/op-reth-bnb`** (avoids overwriting a generic `op-reth` on PATH); default CLI chain `opbnb` |

@@ -17,7 +17,7 @@ use reth_chain_state::StateTrieOverlayManager;
 use reth_consensus::FullConsensus;
 use reth_engine_primitives::BeaconEngineMessage;
 use reth_evm::ConfigureEvm;
-use reth_network_p2p::BlockClient;
+use reth_network_p2p::{headers::HeaderSeed, BlockClient};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
@@ -67,6 +67,7 @@ pub fn build_engine_orchestrator<N, Client, S, V, C>(
     evm_config: C,
     changeset_cache: ChangesetCache,
     runtime: Runtime,
+    header_seed: Arc<HeaderSeed<<N::Primitives as NodePrimitives>::BlockHeader>>,
 ) -> ChainOrchestrator<
     EngineHandler<
         EngineApiRequestHandler<EngineApiRequest<N::Payload, N::Primitives>, N::Primitives>,
@@ -102,6 +103,7 @@ where
         evm_config,
         changeset_cache,
         runtime,
+        header_seed,
     );
 
     let engine_handler = EngineApiRequestHandler::new(to_tree_tx, from_tree);
