@@ -119,4 +119,23 @@ mod tests {
         assert!(matches!(filter.filter(&enr_1), FilterOutcome::Ignore { .. }));
         assert!(matches!(filter.filter(&enr_2), FilterOutcome::Ignore { .. }));
     }
+
+    #[test]
+    fn must_not_include_opstack_allows_opel() {
+        let filter = MustNotIncludeKeys::new(&[NetworkStackId::ETH2, NetworkStackId::OPSTACK]);
+
+        let sk = CombinedKey::generate_secp256k1();
+        let cl = Enr::builder()
+            .add_value_rlp(NetworkStackId::OPSTACK, Bytes::from("opbnb-cl"))
+            .build(&sk)
+            .unwrap();
+        assert!(matches!(filter.filter(&cl), FilterOutcome::Ignore { .. }));
+
+        let sk = CombinedKey::generate_secp256k1();
+        let el = Enr::builder()
+            .add_value_rlp(NetworkStackId::OPEL, Bytes::from("opbnb-el"))
+            .build(&sk)
+            .unwrap();
+        assert!(filter.filter(&el).is_ok());
+    }
 }

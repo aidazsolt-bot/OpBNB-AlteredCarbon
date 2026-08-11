@@ -142,7 +142,11 @@ impl EngineNodeLauncher {
 
         // create pipeline
         let network_handle = ctx.components().network().clone();
-        let network_client = network_handle.fetch_client().await?;
+        let header_seed = Arc::new(reth_network_p2p::headers::HeaderSeed::default());
+        let network_client = reth_network_p2p::headers::SeededBlockClient::new(
+            network_handle.fetch_client().await?,
+            Arc::clone(&header_seed),
+        );
         let (consensus_engine_tx, consensus_engine_rx) = unbounded_channel();
 
         let node_config = ctx.node_config();
@@ -260,6 +264,7 @@ impl EngineNodeLauncher {
             ctx.components().evm_config().clone(),
             changeset_cache,
             runtime,
+            header_seed,
         );
 
         info!(target: "reth::cli", "Consensus engine initialized");

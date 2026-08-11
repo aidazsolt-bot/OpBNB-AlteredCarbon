@@ -697,7 +697,9 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             PeerMessage::SendTransactions(_) | PeerMessage::SendBroadcastPoolTransactions(_) => {
                 unreachable!("Not emitted by session")
             }
-            PeerMessage::BlockRangeUpdated(_) => {}
+            PeerMessage::BlockRangeUpdated(update) => {
+                self.swarm.state_mut().on_peer_block_range_update(peer_id, update);
+            }
             PeerMessage::Other(other) => {
                 debug!(target: "net", message_id=%other.id, "Ignoring unsupported message");
             }

@@ -40,14 +40,14 @@ Weitere Port-/Sync-Arbeit: beide Skills sind bei jeder Session zwingend geladen;
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
-6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+9+**10** (Live-Sync Blocker) aktualisiert; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
+6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+9+**10** (Live-Sync: CONS/ENGINE/P2P-003); Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-11:** Live-Archive-Versuch opBNB mainnet — Pipeline hat Headers **2×** gestartet, blieb aber an Consensus/Engine-Blockern hängen (siehe PORT-CONS-001 / PORT-ENGINE-001). Grafana Stage „No data“ = Pipeline idle (kein Stage-Lauf), nicht fehlende Stage-Metriken-Registrierung.
+- **Stand 2026-08-11:** Live-Archive opBNB — Pipeline Headers läuft (`1/13`); Peer `a624` liefert History. Tip-Resolve + Cap-Code aktiv; **Cap-Re-Loop** (eventual CL-Tip) verhinderte Falling nach `total=1`@Peer-Head — Fix committed, maxperf-Rebuild/Restart ausstehend für `total=10000`.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -76,8 +76,9 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-005 | AccountChangeSets SF incomplete (Headers corruption) | Missing `.csoff` sidecar / header len / writer heal; stubs wrote Headers | ✅ fixed: SegmentHeader `changeset_offsets_len` + sidecar writer/heal/truncate; `account_changesets_in_static_files() → storage_v2` |
 | PORT-STOR-006 | StorageChangeSets stub always routed to MDBX (`TODO(opbnb-port)` `Headers` placeholders in rocksdb invariants, migrate-v2, `db state`) | `StaticFileSegment::StorageChangeSets` variant, mask, writer/reader, and `either_writer` routing were never ported after AccountChangeSets SF landed | ✅ fixed (Session 9): dedicated `StorageChangeSets` segment (`.csoff` sidecar, same change-based model as AccountChangeSets); `storage_changesets_in_static_files() → storage_v2`; `EitherWriter`/`EitherReader` routing in `write_state_reverts`/`StorageReader`; `migrate-v2` now really migrates `StorageChangeSets` into static files instead of skipping |
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
-| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 dialte UDP-discport statt `tcp4`; **ForkId mismatch** vs op-geth | 🔄 code: Bootnodes+ForkId-Filter; **discv5 DualStack dial**; **live 2026-08-11:** eth-Session zu trusted/static Peers (`a624…@167.235.95.170:30305`) ✅; `connected_peers` oft 0–1 (TooManyPeers/fremde Genesis) — Sync-Blocker danach CONS/ENGINE |
+| PORT-P2P-001 | opBNB EL: `peerCount=0`, Sync hängt bei Genesis trotz Tip-Feeding | Stale Bootnodes; discv4 default aus; `--addr ::` → discv5 dialte UDP-discport statt `tcp4`; **ForkId mismatch** vs op-geth; discv5 admitted **opstack CL** ENRs (TCP ~9222) without fork-id gate | 🔄 code: Bootnodes+ForkId-Filter; discv5 DualStack; **OPSTACK must-not-include + `enforce_enr_fork_id` for Optimism**; live: eth-Session zu `a624…` ✅; Header-empty vom Peer = History, nicht Dial-Noise |
 | PORT-P2P-002 | `--nat upnp` / `--nat any` nutzen **kein** echtes UPnP/IGD | `NatResolver::Upnp` ist Stub: alias zu HTTP Public-IP (`ipinfo.io`/…); kein SSDP, **kein Port-Mapping**; Router-UPnP „an“ ändert an Reth nichts | 🐛 open (Upstream-Lücke in `reth-net-nat`). **Ops-Workaround:** manuell TCP+UDP forwarden + `--nat extip:<public-v4>` |
+| PORT-P2P-003 | Headers: Empty-Spam auf Tip-Range (`best_number`≪CL-Tip); Lagging-Peers ungenutzt; Stage hängt an unreachable Tip | Probe `a624`: Status liefert **Tip-Hash** (eth/68 ohne Number); `GetBlockHeaders(hash,1)` → `#173274244`. op-geth: `headerPeerMiss` + Reschedule. Reth reverse braucht Working-Tip-Cap | ✅ Code: Status-Tip-Resolve; `HeadersAtLeast`+miss-map; Working-Tip-Cap; eth/69 Range; **Cap idempotent** (kein Re-Cap-Loop über eventual tip). ⏳ live: Falling ab Peer-Head, Empty-Ratio↓ |
 | PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
 | PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 | PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
@@ -85,6 +86,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CONS-001 | Headers-Stage: `TimestampIsInPast` trotz gültiger opBNB-Kette; Peers `BadMessage`-Ban; Checkpoint 0 | Eth-`validate_against_parent_timestamp` (Sekunden). opBNB speichert Subsekunden in `mixHash` (`MilliTimestamp = Time*1000 + mixHash[:2]`, bnb-chain/op-geth); gleiche Unix-Sekunde + steigende Milli ist gültig | ✅ fixed (Session 10): `validation/milli_timestamp.rs` + `OpBeaconConsensus` für Chain-ID **204/5611**; Unit-Tests live equal-second + OP-Mainnet reject |
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed (Session 10, Code): downloader vor CL pollen; Backfill wenn gebufferter Tip > `MIN_BLOCKS_FOR_PIPELINE_RUN`; `NewDownloadStarted` entfernt. ⏳ live: maxperf-Rebuild + Restart → `Preparing stage Headers` + steigendes checkpoint |
 | PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
+| PORT-ENGINE-003 | Headers nach Backfill-Start: Tip-Hash per P2P `GetBlockHeaders(limit=1)` → empty → `BadMessage`-Ban → `connected_peers=0`, Checkpoint 0 | **op-geth Beacon/Skeleton-Sync:** Tip-Header kommt von CL/NewPayload, **nicht** von Peers per Hash. Skeleton-Mock: `RequestHeadersByHash` / remote `Head()` → panic (`eth/downloader/skeleton_test.go:191-196`); Sync füllt per Number (`beaconsync.go` `fetchBeaconHeaders`). Reth `ReverseHeadersDownloader` + `SyncTarget::Tip(hash)` forderte Tip per P2P — Lücke nach PIPE-001. | ✅ Code: `HeaderSeed` + `SeededBlockClient` (NewPayload/Backfill seedet Tip); EmptyResponse nicht penalizen; Trusted ohne BadMessage-Ban; Tip-Retry-Backoff. ⏳ live: maxperf-Rebuild + Restart → Headers-Checkpoint > 0 |
 
 ### Pipeline-Verify-Matrix (PORT-PIPE) — op-geth ↔ Reth, Stage für Stage
 
@@ -96,8 +98,8 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 
 | ID | Stage / Gate | op-geth-Regel (Soll) | Reth-Stand (Code) | Verify / Status |
 | --- | --- | --- | --- | --- |
-| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | ✅ `handle_missing_block` Backfill + downloader-first (PORT-ENGINE-001) | ✅ **live** (2026-08-11T09:15Z): `backfill threshold` + `Preparing stage Headers` 1/13; Grafana Stages erwartet ≠ No data. Headers-Checkpoint hängt noch an eth-Peers=0 |
-| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | ✅ umgesetzt · ⏳ live ungetestet (noch keine Header-Antworten; 0× `TimestampIsInPast` seit Restart — Peer-Gap) |
+| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | ✅ `handle_missing_block` Backfill + downloader-first (PORT-ENGINE-001) | ✅ **live** (2026-08-11T09:15Z): `backfill threshold` + `Preparing stage Headers` 1/13. Tip-Fetch-Ban → **PORT-ENGINE-003** |
+| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | ✅ umgesetzt · ⏳ live ungetestet (blockiert durch ENGINE-003 Tip-Seed bis Rebuild) |
 | PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus-Check + `next_block_base_fee` → 0 | ✅ umgesetzt · ⏳ live ungetestet (ab Wright-Höhe) |
 | PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | ✅ umgesetzt · ⏳ live ungetestet (Pre-Wright-Range) |
 | PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | ✅ umgesetzt · ⏳ live ungetestet (Stage Bodies) |
@@ -143,7 +145,7 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 
 | Prio | ID | Scope | Aktion | Done wenn |
 | --- | --- | --- | --- | --- |
-| **P0** | — | Live PORT-PIPE-001/002 (+009 Watch) | maxperf install + Restart; Backfill/Headers belegen | Grafana Stages ≠ No data; Milli ohne Ban |
+| **P0** | — | Live PORT-PIPE-001/002 (+ ENGINE-003 Tip-Seed, +009 Watch) | maxperf install + Restart; Tip aus NewPayload, nicht P2P-Hash; Headers-Checkpoint > 0 | Mimir Stages Headers ↑; Milli ohne Ban |
 | **P1** | CLEANUP-A01 | `reth-optimism-forks` / `reth-bsc-forks` unused imports | `cargo fix -p …` oder Imports streichen | 0 unused_imports in hardfork.rs |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
 | **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
@@ -319,6 +321,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Composer YOLO (Session 6, Chat `42f88fe7…`, Snapshot **2026-08-09 12:05 UTC**) | 06:45 – ~12:05 UTC (**~5,34 h** Wall) | **composer-2.5-fast** (4.986 `modelName`-Hits) + **cursor-grok-4.5-high-fast** (178); Parent `default` | **Kein lokaler Billed-Token-Ledger.** Content-Proxy: Transcripts ~2,34M chars ≈ **~0,58M Tokens** (÷4); Cleartext-Chat-JSON ≈ **~0,33M Tokens** (Untergrenze, Tool/Context unterzählt). Erwartete billed/context-Wiederholung deutlich höher | (Proxy, s. Input-Spalte) | **15 Agents** (1 Parent + 14 Subs); 2.582 Assistant-Msgs; 5.861 Tool-Blobs; ~11.722 Tool-Calls; 74.482 `ai_code_hashes` | **`reth-bsc-node --features bsc` + workspace `--no-default-features` grün**; Phase-4 op-forks/chainspec/primitives/consensus; Details: `files/cursor-session-metrics.json` |
 | Cursor Session 8 (Chat `d6ebb428…`, Snapshot **2026-08-09 ~14:30 UTC**) | ~12:18 – ~14:25 UTC (**~2,1 h** Commit-Span; ~1,4 h Chat-Wall) | Auto/Composer (kein per-request Model-Ledger im Transcript) | Transcript-Proxy **~0,11M Tokens** (÷4); billed meter n/a | (Proxy) | ~816 Tool-Calls; 11.288 `ai_code_hashes`; 350 assistant / 18 user msgs | op-evm→payload/rpc/node/cli/`op-reth` grün; opBNB init+RPC smoke; nextest chainspec/forks 23/23; Details: `files/cursor-session8-metrics.json` |
 | Cursor Session 9 (Chat `6a6455c9…` + Vorabend `9be255b9…` PORT-STOR-006, Snapshot **2026-08-10 ~08:30 UTC**) | Vorabend SCS-Port unterbrochen; Resume **05:57–~08:30 UTC** (**~2,5 h** Chat-Wall inkl. EF-Rootcause); Commit-Span **06:06–~08:27 UTC** | Auto/Composer + Task-Subagents (inherit); kein per-request Model-Ledger | Transcript-Proxy kombiniert **~97K+** Tokens (÷4, früher Snapshot ~97K; Session fortgesetzt); billed meter n/a | (Proxy) | Resume früh: 12 user / 118 assistant; **250** tool_use; danach EF-Deep-Dive (Bytecode Compact) | **PORT-STOR-006**; stages **106**; op-stack nextest; EF **v17.0** + Compact-Fix → **61/62** suites; Details: `files/cursor-session9-metrics.json` |
+| Cursor Session 10 cont. (Chat `84eb0b61…`, Snapshot **2026-08-11 ~15:50 UTC**) | Live-Sync nach PIPE-001: **~12:00–15:50 UTC** (**~4 h** Wall) Diagnose+Code+maxperf | Auto/Composer | Transcript-Proxy n/a (billed meter n/a) | (Proxy) | Tip-Probe → Status tip-resolve → Cap-Loop-Fix; eth/69 Range | **PORT-ENGINE-003** Tip-Seed; **PORT-P2P-003** HeadersAtLeast/miss-map/Working-Tip-Cap (idempotent); Status-Tip-Resolve; eth/69 `BlockRangeUpdate`→Fetcher; discv5 OPSTACK-Filter; Unit-Tests fetch+reverse_headers ✅; live: Tip `total=1`@173274244 dann Cap-Loop (Fix im Build) |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -964,15 +967,35 @@ Zusätzlich: `reth-node-ethereum --no-default-features` → **0 errors**.
 3. Headers stuck Checkpoint 0: `TimestampIsInPast` bei Blöcken mit gleicher Unix-Sekunde (live 173253771/772, `ts=1786430373`) → **PORT-CONS-001**.
 4. Nach Milli-Fix-Rebuild: Tip-FCU wieder ohne Pipeline; Status nur `latest_block=0`; Grafana **No data** → **PORT-ENGINE-001** (Tip-Chase + Download-Poll).
 5. Empty-response / TooManyPeers / fremde Genesis weiter Rauschen, aber nicht der Hauptblocker nachdem ein guter Peer (`a624`) Headers/Bodies liefert.
+6. Nach PIPE-001 live: Headers Tip-Fetch `GetBlockHeaders(hash,limit=1)` → empty → Ban → peers=0 → **PORT-ENGINE-003** (op-geth Beacon: Tip von CL, P2P nur by number).
 
 **Code:**
 - `crates/optimism/consensus/src/validation/milli_timestamp.rs` (+ Wire in `OpBeaconConsensus`).
 - `crates/engine/tree`: `handle_missing_block` Backfill-Shortcut; `engine.rs` Downloader-first; `download.rs` ohne `NewDownloadStarted`-Ready-Starvation.
 - `Makefile` `maxperf-op` installiert `dist/bin/op-reth-bnb` (kein PATH-Overwrite von generischem `op-reth`).
+- **PORT-ENGINE-003:** `reth-network-p2p` `HeaderSeed`/`SeededBlockClient`; Engine seedet Tip aus NewPayload/Buffer; EmptyResponse ohne Penalize; Trusted ohne BadMessage-Ban.
 
-**Verify (Code):** `cargo check -p reth-engine-tree` ✅; Consensus-Unit-Tests für equal-second opBNB / reject OP-Mainnet.
+**Verify (Code):** `cargo check -p reth-engine-tree` ✅; Consensus-Unit-Tests für equal-second opBNB / reject OP-Mainnet; seed + trusted-reputation Unit-Tests ✅.
 
-**Noch offen live:** Rebuild+Restart belegen Headers-Fortschritt; Bodies→Execution ggf. weitere Bugs.
+**Noch offen live:** maxperf mit Cap-Loop-Fix + Restart → Falling ab Peer-Head (`Received headers total=10000`); danach PIPE-002…; Bodies→Execution ggf. weitere Bugs.
+
+### Session 10 cont. — PORT-P2P-003 Reachable Headers (2026-08-11)
+
+**Live-Befund:**
+1. Nach ENGINE-003/Tip-Seed: Falling ab ~149M (`total=10000`) mit Peer `a624` — dann Restart ohne Cap-Idempotenz.
+2. eth/68 Status liefert nur Tip-**Hash** → `best_number=0` → `HeadersAtLeast(CL)` wählt keinen Peer → Stall.
+3. Tip-Resolve `GetBlockHeaders(hash,1)` → `#173274244` + Working-Tip-Cap ✅; danach **Cap-Re-Loop**: `maybe_recap` nutzte eventual CL-Tip → jedes Poll wischte Tip-Header/Falling → Journal nur `Status` / einmal `total=1`.
+
+**Code:**
+- `StateFetcher`: `HeadersAtLeast` + `header_miss`; `tip_number=max(best,range.latest)`; `FullBlockRange` hard-filter; `on_block_range_update`.
+- `NetworkState`: Status tip-number resolve; `BlockRangeUpdate` → Fetcher.
+- `ReverseHeadersDownloader`: Working-Tip-Cap; Empty-Backoff (**kein** Ban); Cap **idempotent** (kein Re-Cap über eventual tip).
+- `HeaderSeed` / `SeededBlockClient` (ENGINE-003); Trusted: `BadMessage` nicht bannen.
+- discv5: OPSTACK must-not-include + `enforce_enr_fork_id`; Bootnodes TCP `30303?discport=30304`.
+
+**Verify (Code):** `cargo test -p reth-network --lib fetch::tests` 43/43; `cargo test -p reth-downloaders --lib headers::reverse_headers::tests` 11/11.
+
+**Noch offen live:** Cap-Loop-Fix Binary installieren + Restart; Empty-Ratio↓; Headers-Checkpoint steigt erst nach ETL-Fill (Stage-Design: `checkpoint=0` bis Gap geschlossen).
 
 ### Methodik-Notiz Session 10 — Skill statt Vibecoding
 

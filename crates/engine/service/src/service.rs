@@ -16,9 +16,10 @@ pub use reth_engine_tree::{
     engine::EngineApiEvent,
 };
 use reth_evm::ConfigureEvm;
-use reth_network_p2p::BlockClient;
+use reth_network_p2p::{headers::HeaderSeed, BlockClient};
 use reth_node_types::{BlockTy, NodeTypes};
 use reth_payload_builder::PayloadBuilderHandle;
+use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
     providers::{BlockchainProvider, ProviderNodeTypes},
     ProviderFactory,
@@ -88,6 +89,7 @@ where
         evm_config: Evm,
         changeset_cache: ChangesetCache,
         runtime: Runtime,
+        header_seed: Arc<HeaderSeed<<N::Primitives as NodePrimitives>::BlockHeader>>,
     ) -> Self
     where
         V: EngineValidator<N::Payload>,
@@ -116,6 +118,7 @@ where
             evm_config,
             changeset_cache,
             runtime,
+            header_seed,
         );
 
         let engine_handler = EngineApiRequestHandler::new(to_tree_tx, from_tree);

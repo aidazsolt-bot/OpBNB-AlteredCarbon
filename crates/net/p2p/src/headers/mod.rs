@@ -12,3 +12,7 @@ pub mod downloader;
 
 /// Header downloader error.
 pub mod error;
+
+/// Local tip-header seed for reverse sync when peers cannot serve the FCU tip yet.
+pub mod seed;
+pub use seed::{HeaderSeed, SeededBlockClient};

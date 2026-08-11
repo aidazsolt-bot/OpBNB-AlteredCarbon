@@ -271,6 +271,7 @@ impl TestHarness {
             evm_config,
             changeset_cache,
             runtime,
+            Arc::new(reth_network_p2p::headers::HeaderSeed::default()),
         );
 
         let block_builder = TestBlockBuilder::default().with_chain_spec((*chain_spec).clone());

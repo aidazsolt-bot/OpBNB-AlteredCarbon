@@ -233,8 +233,13 @@ impl ConfigBuilder {
     /// Adds keys to disallow when filtering a discovered peer, to determine whether or not it
     /// should be passed to rlpx. The discovered node record is scanned for any kv-pairs where the
     /// key matches the disallowed keys. If not explicitly set, b"eth2" key will be disallowed.
+    ///
+    /// When called for the first time, the default `eth2` disallow-list is used as the base so
+    /// callers that only add e.g. `opstack` do not accidentally clear the eth2 filter.
     pub fn must_not_include_keys(mut self, not_keys: &[&'static [u8]]) -> Self {
-        let mut filter = self.discovered_peer_filter.unwrap_or_default();
+        let mut filter = self
+            .discovered_peer_filter
+            .unwrap_or_else(|| MustNotIncludeKeys::new(&[NetworkStackId::ETH2]));
         filter.add_disallowed_keys(not_keys);
         self.discovered_peer_filter = Some(filter);
         self
@@ -629,5 +634,36 @@ mod test {
         assert_eq!(*config_socket_ipv6.ip(), rlpx_addr);
         assert_eq!(config_socket_ipv6.port(), DEFAULT_DISCOVERY_V5_PORT);
         assert_eq!(ipv4(&amended_config), ipv4(&listen_config));
+    }
+
+    #[test]
+    fn must_not_include_keys_keeps_eth2_when_adding_opstack() {
+        use crate::filter::FilterOutcome;
+        use alloy_rlp::Bytes;
+        use discv5::enr::{CombinedKey, Enr};
+
+        let config = Config::builder((Ipv4Addr::UNSPECIFIED, 30303).into())
+            .must_not_include_keys(&[NetworkStackId::OPSTACK])
+            .build();
+
+        let sk = CombinedKey::generate_secp256k1();
+        let eth2 = Enr::builder()
+            .add_value_rlp(NetworkStackId::ETH2, Bytes::from("deneb"))
+            .build(&sk)
+            .unwrap();
+        assert!(matches!(
+            config.discovered_peer_filter.filter(&eth2),
+            FilterOutcome::Ignore { .. }
+        ));
+
+        let sk = CombinedKey::generate_secp256k1();
+        let opstack = Enr::builder()
+            .add_value_rlp(NetworkStackId::OPSTACK, Bytes::from("cl"))
+            .build(&sk)
+            .unwrap();
+        assert!(matches!(
+            config.discovered_peer_filter.filter(&opstack),
+            FilterOutcome::Ignore { .. }
+        ));
     }
 }

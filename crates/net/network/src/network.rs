@@ -330,6 +330,20 @@ impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
         } else {
             builder.udp6(local_node_record.udp_port);
             builder.tcp6(local_node_record.tcp_port);
+
+            // add IPv4 fields from discv5 for dual-stack support
+            if let Some(discv5) = self.inner.discv5.as_ref() {
+                let discv5_enr = discv5.local_enr();
+                if let Some(ip4) = discv5_enr.ip4() {
+                    builder.ip4(ip4);
+                }
+                if let Some(udp4) = discv5_enr.udp4() {
+                    builder.udp4(udp4);
+                }
+                if let Some(tcp4) = discv5_enr.tcp4() {
+                    builder.tcp4(tcp4);
+                }
+            }
         }
 
         builder.build(&self.inner.secret_key).expect("valid enr")

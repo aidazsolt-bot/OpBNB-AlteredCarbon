@@ -566,6 +566,9 @@ impl PeersManager {
                             | ReputationChangeKind::BadAnnouncement
                             | ReputationChangeKind::Timeout
                             | ReputationChangeKind::AlreadySeenTransaction
+                            // Empty tip fetches during reverse sync are reported as BadMessage;
+                            // do not ban the only archive peer we trusted for that.
+                            | ReputationChangeKind::BadMessage
                     ) {
                         return;
                     }
@@ -2402,18 +2405,20 @@ mod tests {
         peers.on_active_outgoing_established(peer);
         assert_eq!(peers.peers.get_mut(&peer).unwrap().state, PeerConnectionState::Out);
 
-        peers.apply_reputation_change(&peer, ReputationChangeKind::BadMessage);
-
+        // BadMessage is exempt for trusted peers (empty tip fetches during reverse sync).
+        for _ in 0..64 {
+            peers.apply_reputation_change(&peer, ReputationChangeKind::BadMessage);
+        }
         {
             let p = peers.peers.get(&peer).unwrap();
             assert_eq!(p.state, PeerConnectionState::Out);
-            // not banned yet
             assert!(!p.is_banned());
+            assert_eq!(p.reputation, DEFAULT_REPUTATION);
         }
 
-        // ensure peer is banned eventually
+        // Other severe changes still apply (capped) and can eventually ban.
         loop {
-            peers.apply_reputation_change(&peer, ReputationChangeKind::BadMessage);
+            peers.apply_reputation_change(&peer, ReputationChangeKind::BadBlock);
 
             let p = peers.peers.get(&peer).unwrap();
             if p.is_banned() {
