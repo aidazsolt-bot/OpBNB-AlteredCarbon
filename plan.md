@@ -83,6 +83,30 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed (Session 10, Code): downloader vor CL pollen; Backfill wenn gebufferter Tip > `MIN_BLOCKS_FOR_PIPELINE_RUN`; `NewDownloadStarted` entfernt. ⏳ live: maxperf-Rebuild + Restart → `Preparing stage Headers` + steigendes checkpoint |
 | PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
 
+### Pipeline-Verify-Matrix (PORT-PIPE) — op-geth ↔ Reth, Stage für Stage
+
+**Zweck:** Systematische Live-/Code-Verifikation der opBNB-EL-Regeln entlang `DefaultStages` (13 Stages). Abgeleitet aus Diff gegen `bnb-chain_op-geth.git` (Session 10). **Hätte vor dem Live-Sync-Debug der erste Portierungsschritt sein sollen** (siehe Skill `reth-opbnb-port`).
+
+Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → MerkleUnwind → AccountHashing → StorageHashing → MerkleExecute → TxLookup → IndexStorageHistory → IndexAccountHistory → Prune → Finish.
+
+| ID | Stage / Gate | op-geth-Regel (Soll) | Reth-Stand (Code) | Verify / Status |
+| --- | --- | --- | --- | --- |
+| PORT-PIPE-001 | Engine → Pipeline | Tip-Gap → Backfill/Pipeline, nicht endlos Tip-Chase | PORT-ENGINE-001 (Code) | ⏳ live: `backfill threshold` / `Preparing stage Headers`; Grafana ≠ No data |
+| PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | PORT-CONS-001 (204/5611) | ⏳ live: kein `TimestampIsInPast`; checkpoint ↑; Spot 173253771/772 |
+| PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus + `next_block_base_fee` | ⏳ ab Wright-Höhe: kein invalid base fee |
+| PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | ⏳ Pre-Wright-Range ohne BaseFee-Diff |
+| PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` | ⏳ Stage läuft; Watch BlobGas/withdrawals-Fehler |
+| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP primitives | ⏳ keine Mass-Fails auf Deposits |
+| PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay | ⏳ State-root/exec-error genau an Höhe |
+| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ Flags in `evm/src/config.rs` | ⏳ Window Haber…Fjord; danach stock Fjord |
+| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | ⚠️ **Diff:** Reth `skip_l1_data_fee=true` für **alle** Txs post-Wright (`factory.rs`); op-geth nur `GasPrice==0` | 🐛 open bis live/State-Root nach Wright; dann angleichen oder belegen |
+| PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | EL braucht keine Snow-Logik | 📝 CL muss L1-Info liefern; EL parst Deposit |
+| PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | Generic; hängt an PIPE-007…009 | ⏳ erster harter State-Beweis nach Execution |
+| PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | Tests PORT-STOR-007/008 | ⏳ Archive-Last; IntegerList/SF-Unwind |
+| PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | ✅; Mainnet kein Fork | 📋 nur bei Testnet-Archive |
+
+**Nicht als fehlende Pipeline-Stages portieren:** Holocene/Isthmus/Jovian (in opBNB-Hardfork-Liste inaktiv); Snow (CL-only); exaktes Δt Volta/Fourier (op-geth prüft nur milli ↑).
+
 ## Feature-Requests (nicht Port-Regressions)
 
 Geplante Produkt-/Explorer-Fähigkeiten. **Start erst nachdem PORT-P2P-001 live belegt ist** (`net_peerCount>0`, eth-Session zu Peers stabil) — Sync/P2P vor Index-Disk-Kosten.
