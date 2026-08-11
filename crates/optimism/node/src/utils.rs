@@ -2,7 +2,7 @@ use crate::{OpBuiltPayload, OpNode as OtherOpNode};
 use alloy_genesis::Genesis;
 use alloy_primitives::{Address, B256};
 use reth_e2e_test_utils::{
-    NodeHelperType, TmpDB, transaction::TransactionTestContext, wallet::Wallet,
+    transaction::TransactionTestContext, wallet::Wallet, NodeHelperType, TmpDB,
 };
 use reth_node_api::NodeTypesWithDBAdapter;
 use reth_optimism_chainspec::OpChainSpecBuilder;
@@ -56,7 +56,9 @@ pub async fn advance_chain(
 }
 
 /// Helper function to create optimism payload builder attributes
-pub fn optimism_payload_attributes(timestamp: u64) -> OpPayloadBuilderAttributes<OpTransactionSigned> {
+pub fn optimism_payload_attributes(
+    timestamp: u64,
+) -> OpPayloadBuilderAttributes<OpTransactionSigned> {
     OpPayloadBuilderAttributes {
         timestamp,
         prev_randao: B256::ZERO,

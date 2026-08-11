@@ -37,8 +37,8 @@ pub mod proof_history;
 pub mod utils;
 
 pub use reth_optimism_payload_builder::{
-    self as payload, OpBuiltPayload, OpPayloadAttributes, OpPayloadBuilder,
-    OpPayloadBuilderAttributes, OpPayloadPrimitives, OpPayloadTypes, config::OpDAConfig,
+    self as payload, config::OpDAConfig, OpBuiltPayload, OpPayloadAttributes, OpPayloadBuilder,
+    OpPayloadBuilderAttributes, OpPayloadPrimitives, OpPayloadTypes,
 };
 
 pub use reth_optimism_evm::*;

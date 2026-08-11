@@ -5,11 +5,11 @@ use alloy_consensus::Transaction as _;
 use alloy_primitives::B256;
 use op_alloy_network::Optimism;
 use reth_e2e_test_utils::{node::NodeTestContext, transaction::TransactionTestContext};
-use reth_node_builder::{EngineNodeLauncher, NodeBuilder, rpc::BasicEngineValidatorBuilder};
+use reth_node_builder::{rpc::BasicEngineValidatorBuilder, EngineNodeLauncher, NodeBuilder};
 use reth_optimism_node::{
-    OpEngineApiBuilder, OpNode,
     node::{OpEngineValidatorBuilder, OpPoolBuilder},
     utils::optimism_payload_attributes,
+    OpEngineApiBuilder, OpNode,
 };
 use reth_optimism_txpool::OpPooledTransaction;
 use reth_provider::providers::BlockchainProvider;

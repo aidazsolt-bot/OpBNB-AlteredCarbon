@@ -105,6 +105,12 @@ where
                 self.cli.logs.log_file_directory.join(chain_spec.chain().to_string());
         }
 
+        // `--log.file.max-files` defaults to unset → effective 0 (disabled). For `node`,
+        // apply the documented default of 5 before init_tracing wires the file layer.
+        if matches!(self.cli.command, Commands::Node(_)) {
+            self.cli.logs.apply_node_defaults();
+        }
+
         self.init_tracing(&runner)?;
 
         // Install the prometheus recorder to be sure to record all metrics

@@ -58,6 +58,14 @@ pub trait OptimismHardforks: EthereumHardforks + Hardforks {
         self.fork(OptimismHardfork::Regolith).active_at_timestamp(timestamp)
     }
 
+    /// Convenience method to check if this is the exact
+    /// [`PreContractForkBlock`](OptimismHardfork::PreContractForkBlock) activation block.
+    ///
+    /// Matches op-geth: apply only when `header.Number == PreContractForkBlock`.
+    fn is_pre_contract_fork_block(&self, block_number: u64) -> bool {
+        self.fork(OptimismHardfork::PreContractForkBlock).transitions_at_block(block_number)
+    }
+
     /// Returns `true` if [`Fermat`](OptimismHardfork::Fermat) is active at the given block number.
     ///
     /// Fermat is a block fork in bnb-chain/op-geth (`Fermat *big.Int`), not a timestamp fork.
