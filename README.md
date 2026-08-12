@@ -12,6 +12,28 @@ client codebase — rebasing it onto a current upstream ([paradigmxyz/reth](http
 and porting forward protocol changes from an actively maintained downstream fork. It is a technology/process
 evaluation, not a production initiative.
 
+### Permitted use — private individuals only (non-commercial)
+
+**The results of this experiment** (this repository as packaged, including author-original port/docs/skills,
+effort logs, and any binaries or artifacts derived from this tree for the experiment) are made available
+**only for private natural persons** for personal, educational, or hobby use.
+
+**Not permitted** without a separate written license from the project author:
+
+- any **commercial** use (paid services, SaaS, consulting deliverables, product bundling, token/ops revenue, …);
+- any use **by or for companies / enterprises / organizations** (including internal R&D, staging, or production
+  infrastructure), whether or not money changes hands;
+- redistribution of this experimental packaging **for** commercial or organizational purposes.
+
+See **`NOTICE-PERSONAL-USE.md`** for the full additional terms and the relationship to upstream licenses.
+
+**Why not GPL / public domain for this restriction?** GPL, MIT, Apache-2.0, and public-domain dedications
+all **allow commercial use**. A non-commercial / private-individuals-only policy cannot honestly be expressed
+by relicensing the whole tree as GPL or “open domain.” Upstream Reth code remains under its existing
+**Apache-2.0 OR MIT** terms (`LICENSE-APACHE` / `LICENSE-MIT`); those rights are **not** revoked here. The
+additional personal-use terms apply to **this experiment’s packaging and author-original material** as stated
+in `NOTICE-PERSONAL-USE.md`. For production BSC/opBNB, use official maintained clients.
+
 **No warranty, no liability, use at your own risk.** This software is provided "AS IS", without warranty of
 any kind, express or implied, including but not limited to fitness for a particular purpose, merchantability,
 or non-infringement. The author(s) and contributors accept **no responsibility or liability whatsoever** for
@@ -20,6 +42,12 @@ misuse, or inability to use this software — whether run as a node, a library, 
 code has **not** been security-audited and should not be trusted with real funds or run against mainnet
 without independent review. If you need a supported client for BNB Smart Chain or opBNB, use one of the
 actively maintained official clients instead (see upstream project links further below).
+
+**DE (Kurzfassung):** Die Ergebnisse dieses Experiments stehen **nur Privatpersonen** für persönliche /
+nicht-kommerzielle Nutzung zur Verfügung. **Kommerzielle Nutzung und jeder Einsatz in/durch Unternehmen
+oder Organisationen sind nicht gestattet.** Details: `NOTICE-PERSONAL-USE.md`. Upstream-Reth bleibt
+Apache-2.0/MIT; GPL/Public Domain würden kommerzielle Nutzung erlauben und werden deshalb für diese
+Zusatzbeschränkung **nicht** verwendet.
 
 -------
 
@@ -338,6 +366,11 @@ and the `blockchain-tree` → `engine-tree` migration), and porting forward opBN
 changes from [bnb-chain/opbnb](https://github.com/bnb-chain/opbnb). The explicit goal was to evaluate how
 far current-generation AI coding assistants can carry this class of work — not to produce a production-ready
 or officially supported client.
+
+**Availability:** experiment results are for **private individuals only** (personal / non-commercial).
+**Commercial use and any company/enterprise use are not permitted.** See the Project Notice and
+`NOTICE-PERSONAL-USE.md`. Upstream Reth remains Apache-2.0 OR MIT; this project does **not** relicense
+the tree as GPL or public domain (those allow commercial use and would not express the NC intent).
 
 ### Method
 
