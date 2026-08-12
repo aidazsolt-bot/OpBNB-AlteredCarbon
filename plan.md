@@ -14,6 +14,9 @@ Ziel des Projekts: Evaluierung, wie weit aktuelle KI-Coding-Assistenten (GitHub 
 größere, protokollkritische Rust-Codebasis eigenständig ("vibecoding") auf einen neuen Upstream-Stand
 heben können — **kein** Anspruch auf produktionsreife oder offiziell unterstützte Client-Software.
 Es besteht keinerlei Garantie oder Haftung; siehe README-Disclaimer.
+**Nutzung:** Experiment-Ergebnisse laut Nutzerdoku **nur Privatpersonen** (persönlich/nicht-kommerziell);
+kommerziell / Unternehmen **nicht gestattet** — `NOTICE-PERSONAL-USE.md` (Upstream bleibt Apache-2.0/MIT;
+kein GPL/Public-Domain für NC-Intent).
 
 ### Befund Methodik (Session 10, 2026-08-11)
 
