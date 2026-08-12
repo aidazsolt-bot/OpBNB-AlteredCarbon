@@ -18,6 +18,31 @@ description: >-
 > (`alwaysApply: true`) + Hook `sessionStart` → dieses File **und**
 > `.cursor/skills/rust-best-practices/SKILL.md` laden/befolgen, bevor sonstige Arbeit beginnt.
 
+## Experiment-Befund (Workspace-Zweck — verbindlich)
+
+Dieser Fork ist ein **Methodik-/Prozess-Experiment** (README *Project Notice* / *About This Fork*):
+wie weit KI-Assistenten einen archivierten, protokollkritischen Client (Reth/opBNB) revitalisieren
+können — **kein** Produkt, **keine** Produktionsreife, **keine** Haftung.
+
+**Urteil (Stand 2026-08-12, Live Archive past Fermat):**
+
+| These | Befund |
+| --- | --- |
+| Reines Vibecoding rettet EL-Protokoll-Ports allein | **Widerlegt.** Ohne Referenz + PIPE+FLOW vibecodet der Agent am Symptom. |
+| KI unter engem Migrations-Gate als beschleunigter Mechaniker | **Bestätigt.** Mit Operator-Disziplin: Rebase, Stack, EF, Storage-v2, Sync bis Headers/Bodies/Sender + Execution past Fermat (Point4 stateRoot MATCH). |
+| Compile/nextest grün = Sync-korrekt | **Widerlegt.** Meilenstein ≠ Chain-Korrektheit. |
+| Session-10-Lektion (PIPE ohne FLOW) | **Dauerhaft gültig.** Cap-Idempotenz / Falling-Prime waren Analyse-Soll, keine „Live-Folgebugs“. |
+| Methodik erfand die KI selbst | **Nein.** Entscheidende Sync-Fixes nach expliziten Operator-Hinweisen zur Vorgehensweise; dieser Skill operationalisiert das. |
+
+**Ein-Satz-These:** KI taugt hier als **beschleunigter Mechaniker unter PIPE+FLOW**; „Vibe coding ohne Referenz + Zustandsautomat“ führt bei EL-Sync systematisch in die Irre.
+
+**Was der Agent daraus ableitet (immer):**
+
+1. Erfolg messen an **Matrix-DoD + Live-Beleg**, nicht an Diff-Größe oder Compile-Grün.
+2. Keine Claims „production ready“ / „besser als offizielle Clients“ / „EVM perfect“ nur wegen Header-`stateRoot`-Stichprobe (Point 4 = notwendig, nicht hinreichend; MerkleExecute + keine Unwind-Stürme sind stärkere Gates).
+3. Offene Gates (Haber, FLOW-X02 Wright L1-Fee Diff, Merkle/History, Tip-Catch-up) **nicht** als erledigt verkaufen.
+4. Bei Meta-Fragen zum Projekt: Urteil oben wiedergeben; Details in `plan.md` / README Effort-Log.
+
 ## Erster Schritt (nicht verhandelbar)
 
 **Bevor** Compile-Loops, Tip-Debug, Einzel-Fixes oder Live-Restarts:
@@ -155,9 +180,13 @@ Bei Failure: Stage + Höhe + PIPE-Regel + FLOW-Übergang + Reth-Pfad; Status in 
 - Holocene/Isthmus portieren, obwohl opBNB-Hardfork-Liste sie nicht hat
 - Pipeline-Stages umbauen, obwohl nur Consensus/EVM-Overlay fehlt
 - Blindes Vibecoding ohne Referenz-Repo und ohne Bugliste
+- Experiment-Erfolg als **Produkt-/Produktionsreife** verkaufen
+- Point-4-`stateRoot`-MATCH als „EVM/Execution fertig“ überclaimen (Fermat ≠ Haber/X02/Merkle)
+- So tun, als hätte die KI die PIPE+FLOW-Methodik ohne Operator erfunden
 
 ## Ausgabe an den Nutzer
 
 - Kurz: Symptom → PIPE + FLOW (mit Referenz) → Fix-Status → nächstes Gate
 - Offene `🔬` FLOW-IDs nennen, bevor Live vorgeschlagen wird
 - Keine Garantie Produktionsreife; Catch-up/Full-Sync = Human
+- Bei Zweck/Urteil des Repos: Abschnitt **Experiment-Befund** (Erfolg = Methodik; Scheitern = reines Vibecoding allein)
