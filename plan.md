@@ -126,7 +126,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-B02 | Bodies Empty/Timeout | Empty/Timeout-Politik: kein Ban-Sturm; Retry/Backoff explizit | PIPE-005 | ✅ Bodies durch · Empty/Ban kein Stall |
 | PORT-FLOW-B03 | Bodies Buffer→Stage | In-flight / buffered / flush → Checkpoint; Stall-Zustände benennen | PIPE-005 | ✅ Bodies Checkpoint=Tip |
 | PORT-FLOW-B04 | Bodies↔Headers Kopplung | Bodies startet erst nach Headers-Checkpoint; kein stilles Warten ohne Metrik | PIPE-005 | ✅ Headers→Bodies ~18:58 CEST (08-11) |
-| PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA; Fehlerpfad ≠ Peer-Ban | PIPE-006 | 🔬 vor Sender-Live |
+| PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA; Fehlerpfad ≠ Peer-Ban | PIPE-006 | 🔄 **live** SenderRecovery ~25 %; Deposit-Fails beobachten |
 | PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | 🔬 |
 | PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth-Diff dokumentieren/fixen vor Root-Verify | PIPE-009 | 🐛 Diff bekannt |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
@@ -223,7 +223,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus-Check + `next_block_base_fee` → 0 | H* | ✅ umgesetzt · ⏳ live ungetestet (ab Wright-Höhe) |
 | PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | H* | ✅ umgesetzt · ⏳ live ungetestet (Pre-Wright-Range) |
 | PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | **B01–B04 ✅** | ✅ umgesetzt · ✅ **live** Bodies=Tip @08-12 ~03:02 CEST (s. Live Sync Progress) |
-| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery | **R01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-R01 |
+| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery | **R01 🔄 live** | ✅ umgesetzt · 🔄 **live** ~25 % @09:52 CEST (s. Live Sync Progress) |
 | PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-X01 |
 | PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-X01 |
 | PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | ⚠️ **Diff:** Reth `skip_l1_data_fee=true` für **alle** Txs post-Wright (`factory.rs`); op-geth nur `GasPrice==0` | **X02 🐛** | 🐛 **nicht umgesetzt**; Live-Root erst nach FLOW-X02-Entscheidung |
