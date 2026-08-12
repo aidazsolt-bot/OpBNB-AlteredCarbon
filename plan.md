@@ -122,12 +122,12 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
 | PORT-FLOW-H04 | Cap → Falling | `SyncTarget::Number(N)` / Tip-Outcome `old==new` **primt** Falling-Tracker (`next_request_*`) | P2P-005 | ✅ live |
 | PORT-FLOW-H05 | Headers Persistenz | ETL=`TempDir` → Checkpoint/Metriken erst nach `Writing headers`; Restart vor Write = Download von Tip neu | Upstream #6154 | ✅ **live** (2026-08-11T16:35–~16:47Z): Write `173369140` → Headers checkpoint=tip; Bodies gestartet |
-| PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | 🔄 **live Bodies** (Checkpoint↑); Invariante nachziehen / Stall beobachten |
-| PORT-FLOW-B02 | Bodies Empty/Timeout | Empty/Timeout-Politik: kein Ban-Sturm; Retry/Backoff explizit | PIPE-005 | 🔄 live · beobachten |
-| PORT-FLOW-B03 | Bodies Buffer→Stage | In-flight / buffered / flush → Checkpoint; Stall-Zustände benennen | PIPE-005 | 🔄 live · beobachten |
-| PORT-FLOW-B04 | Bodies↔Headers Kopplung | Bodies startet erst nach Headers-Checkpoint; kein stilles Warten ohne Metrik | PIPE-005 | ✅ Headers→Bodies Übergang live |
-| PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA; Fehlerpfad ≠ Peer-Ban | PIPE-006 | 🔬 vor Sender-Live |
-| PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | 🔬 |
+| PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | ✅ Bodies tip (08-12 ~03:02 CEST); FLOW-B beobachtet OK |
+| PORT-FLOW-B02 | Bodies Empty/Timeout | Empty/Timeout-Politik: kein Ban-Sturm; Retry/Backoff explizit | PIPE-005 | ✅ Bodies durch · Empty/Ban kein Stall |
+| PORT-FLOW-B03 | Bodies Buffer→Stage | In-flight / buffered / flush → Checkpoint; Stall-Zustände benennen | PIPE-005 | ✅ Bodies Checkpoint=Tip |
+| PORT-FLOW-B04 | Bodies↔Headers Kopplung | Bodies startet erst nach Headers-Checkpoint; kein stilles Warten ohne Metrik | PIPE-005 | ✅ Headers→Bodies ~18:58 CEST (08-11) |
+| PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA (Feld im Deposit-TX, kein `ecrecover`); Fehlerpfad ≠ Peer-Ban | PIPE-006 | ✅ **live OK** — Sender läuft spez-konform (~25 %, keine Recovery-Fails/Stall) |
+| PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | ✅ **Fermat live** @16:59 CEST (Point4 MATCH `9397476…9398477`; Mimir clean) · Haber ⏳ |
 | PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth-Diff dokumentieren/fixen vor Root-Verify | PIPE-009 | 🐛 Diff bekannt |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
@@ -160,7 +160,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-11 ~18:54 local:** Bodies ~**2.5 %** (ckpt≈4.3 M), ~11 k blk/s, validation_errors=0, peers=3, RX~53 Mbps. ETA Bodies ~**4–5 h** (volatil). Auto-Health: Rule `opbnb-live-sync-health` + 2h-Loop.
+- **Stand 2026-08-12 ~17:03 CEST:** siehe **Live Sync Progress** — Headers+Bodies+Sender ✅; **Execution ~10.0 M (~5.8 %)**, Fermat **Point4 MATCH**; ETA Execution ~**24–25 h** Block / konservativ **2–4 d**; Haber/X02 offen. CL `op-node` Tip-Feed + L1-re-org-Warnungen (Dataseed) = Rauschen. Auto-Health: Rule `opbnb-live-sync-health` + 2h-Loop.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -169,7 +169,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest ✅; Live Headers Falling (FLOW-H*); ETL-Write / Bodies FLOW-B* ⏳ |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 stack+nextest ✅; H+B+Sender tip; **Exec ~5.8 %** · Fermat live OK (s. Live Sync Progress) |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Migrations-Gate PIPE+FLOW in plan/Skill; finale Zahlen nach Human-Sync |
 
@@ -198,6 +198,9 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 | PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
 | PORT-STOR-009 | Startup panic: `segment operation metrics should exist` (static_file/metrics.rs) after metrics endpoint | Metrics `Default` only registered Headers/Tx/Receipts/Sidecars; heal/init-cursor hits Account/StorageChangeSets + TransactionSenders | ✅ fixed: register via `StaticFileSegment::iter()` (upstream pattern) |
+| PORT-STOR-010 | `--dev` / frische v2-DB: `Persistence … UnexpectedStaticFileBlockNumber(TransactionSenders, 1, 0)` → Fatal engine | `init_genesis` tippte nur Receipts+Transactions auf Block 0; unter `storage_v2` liegen Senders in SF, Genesis hat 0 Txs → Segment blieb untipped; erster Persist `increment_block(1)` scheitert | ✅ fixed (Session 11): wie Upstream/`bnb-chain/reth` bei `storage_v2` `get_writer`+`set_block_range(0,0)` für `TransactionSenders`; Verify: `files/dev-250ms` init zeigt `static_file_transaction-senders_*`, kein Persistence-Crash |
+| PORT-DEV-001 | `--dev --dev.block-time 250ms`/`1s`: nach ~5–7 Blöcken Dauer-Spam `Error advancing the chain: No payload`; Tip bleibt stehen | **Nur `--dev` / `LocalMiner`:** (1) `advance()` = FCU+Attrs → `resolve_kind(payload_id)`; `resolve` liefert `None` wenn Job nicht (mehr) in `payload_jobs` (Race: Job noch nicht inserted / schon removed / ID stale). (2) Parallel hartcodiert `fcu_interval=1s` mit **bare FCU** (`attrs=None`) im selben `select!` — verschärft Timing; Interval-`MissedTickBehavior::Burst` feuerzt Catch-up-Ticks. (3) Persistence/SF (STOR-010) ist **nicht** die Ursache (nach Fix kein Fatal mehr). **Mainnet/Archive-Follow:** trifft **nicht** denselben Pfad — kein `LocalMiner`; Tip-Follow = CL `newPayload` + FCU oft **ohne** Attrs. Sequencer-Build (FCU+Attrs → `getPayload`) steuert die CL zeitlich; kein 1s-bare-FCU aus LocalMiner. Ähnliches Risiko nur, wenn ein Client Attrs-Build und bare-FCU unsynchronisiert spamt (nicht op-node Normalbetrieb). | 🧊 **parked** (2026-08-11): keine Prio / kein maxperf-Rebuild dafür. Soll irgendwann funktionieren **oder** `--dev`/LocalMiner dekommissionieren (kein klarer Mehrwert für Archive-Port). Fix-Idee bleibt: bare-FCU während pending Build unterdrücken; Burst ab; Job vor Resolve. Reproduce: `files/dev-250ms` tip≈7 |
+| PORT-DEV-002 | `--dev.payload-wait-time` wirkte nicht | `DebugNodeLauncher` spawnte `LocalMiner::new` ohne `with_payload_wait_time_opt` | ✅ fixed (Session 11): Flag an `LocalMiner` durchgereicht; allein **kein** Ersatz für DEV-001 (Race bleibt) |
 | PORT-CONS-001 | Headers-Stage: `TimestampIsInPast` trotz gültiger opBNB-Kette; Peers `BadMessage`-Ban; Checkpoint 0 | Eth-`validate_against_parent_timestamp` (Sekunden). opBNB speichert Subsekunden in `mixHash` (`MilliTimestamp = Time*1000 + mixHash[:2]`, bnb-chain/op-geth); gleiche Unix-Sekunde + steigende Milli ist gültig | ✅ fixed (Session 10): `validation/milli_timestamp.rs` + `OpBeaconConsensus` für Chain-ID **204/5611**; Unit-Tests live equal-second + OP-Mainnet reject |
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed + **live** Backfill/`Preparing stage Headers` (FLOW-E01/E02). Checkpoint Headers weiter 0 bis FLOW-H05 |
 | PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
@@ -219,10 +222,10 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-002 | Headers | `MilliTimestamp` streng steigend (`mixHash[:2]`) | ✅ `milli_timestamp.rs` + OpBeaconConsensus 204/5611; Unit-Tests | H01–H05 (H05 📋) | ✅ umgesetzt · 🔄 live Falling; Milli bis Write beobachten |
 | PORT-PIPE-003 | Headers | Wright `baseFee == 0` | ✅ Consensus-Check + `next_block_base_fee` → 0 | H* | ✅ umgesetzt · ⏳ live ungetestet (ab Wright-Höhe) |
 | PORT-PIPE-004 | Headers | Pre-Wright EIP-1559 elast=2, denom=8 | ✅ `BaseFeeParams::ethereum()` in `OPBNB_*` | H* | ✅ umgesetzt · ⏳ live ungetestet (Pre-Wright-Range) |
-| PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | **B01–B04 🔄 live** | ✅ umgesetzt · 🔄 **live** Bodies Checkpoint↑ (~0.3 % @18:48) |
-| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery | **R01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-R01 |
-| PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-X01 |
-| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 🔬** | ✅ umgesetzt · ⏳ live gesperrt bis FLOW-X01 |
+| PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | **B01–B04 ✅** | ✅ umgesetzt · ✅ **live** Bodies=Tip @08-12 ~03:02 CEST (s. Live Sync Progress) |
+| PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery (`OpTransactionSigned::recover_signer` → Deposit.`from`) | **R01 ✅** | ✅ umgesetzt · ✅ **live OK** Tip @15:54 CEST (s. Live Sync Progress) |
+| PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 ✅ Fermat** | ✅ umgesetzt · ✅ **live** Exec≫Fermat; IPC stateRoot MATCH an `9397477`± (s. Live Sync Progress) |
+| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 Haber ⏳** | ✅ umgesetzt · ⏳ live ab Haber-Timestamp `1718872200` |
 | PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | ⚠️ **Diff:** Reth `skip_l1_data_fee=true` für **alle** Txs post-Wright (`factory.rs`); op-geth nur `GasPrice==0` | **X02 🐛** | 🐛 **nicht umgesetzt**; Live-Root erst nach FLOW-X02-Entscheidung |
 | PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ EL braucht keine Snow-Logik (Deposit-Parse stock OP) | — | ➖ n/a EL · 📝 CL liefert L1-Info |
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
@@ -262,7 +265,7 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 
 | Prio | ID | Scope | Aktion | Done wenn |
 | --- | --- | --- | --- | --- |
-| **P0** | — | Bodies live + FLOW-B* nachziehen; Milli/PIPE-002 | Checkpoint Bodies ↑; Empty/Ban beobachten; B01–B03 Invarianten dokumentieren | Bodies→Sender; keine Ban-Spirale |
+| **P0** | — | Execution live → FLOW-X01 Haber + X02/X03 (+ PIPE-008/009) | Fermat ✅; Haber/Wright; X02 L1-Fee Diff | Execution ohne Unwind-Sturm; Root-Stichproben an Fork-Fenstern |
 | **P1** | CLEANUP-A01 | `reth-optimism-forks` / `reth-bsc-forks` unused imports | `cargo fix -p …` oder Imports streichen | 0 unused_imports in hardfork.rs |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
 | **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
@@ -1160,4 +1163,106 @@ reicht nicht.
 - README Method finding nachgezogen.
 
 **Nächstes Gate:** FLOW-H05 (`Writing headers`) → dann FLOW-B* Analyse → erst dann Bodies-Live.
+
+### Session 11 — Dev-Miner / Genesis SF + Checkpoint (2026-08-11 evening)
+
+**Checkpoint:** `ae662153f` — *started syncing, ok for testing* (Headers done, Bodies live; docs/rules).
+
+**PORT-STOR-010:** `--dev` Fatal `UnexpectedStaticFileBlockNumber(TransactionSenders, 1, 0)` —
+`init_genesis` tippte Senders-SF nicht unter `storage_v2`. Fix wie Upstream: `set_block_range(0,0)`.
+maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persistence-Crash.
+
+**PORT-DEV-001 (parked):** LocalMiner `No payload` nach ~5–7 Blöcken — **keine Prio**, ggf. später fixen oder `--dev` dekommissionieren.
+**PORT-DEV-002:** `payload_wait_time` verdrahtet (hilft allein nicht gegen DEV-001).
+
+**Live Archive (parallel):** s. **Live Sync Progress** (Headers+Bodies+Sender tip; **Execution ~10 M / ~5.8 %**); **Fermat Point4 MATCH**. RocksDB 0 B bis History/TxLookup
+nach Execution — erwartet. Nächstes Gate: **FLOW-X01 Haber** / **FLOW-X02** (Wright L1-Fee Diff).
+
+### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
+
+**Stichprobe:** 2026-08-12 **~17:03 CEST** · instance `<archive-ct>:6060` · chain **204** · Headers-Ckpt **173 369 140** · CL-Tip (op-node) ~**173 719 k** · `up=1` · peers **13** · IPC `/tmp/<archive-ct>.ipc` (CT: `/dev/shm`→`/tmp`)
+
+| Stage | Checkpoint | Status |
+| --- | ---: | --- |
+| Headers | **173 369 140** | ✅ done (FLOW-H05 ETL ~18:35–18:47 CEST 08-11); Tip seither +~350 k (CL) |
+| Bodies | **173 369 140** | ✅ done (~**03:02 CEST** 08-12) |
+| SenderRecovery | **173 369 140** | ✅ done (~**15:54 CEST** 08-12) · FLOW-R01/PIPE-006 OK |
+| Execution | **~9 981 568** (~**5.8 %**) | 🔄 live seit ~**15:54** · **Fermat ✅** · Haber/Wright/X02/X03 offen |
+| Hashing / Merkle / History / Finish | 0 | ⏳ nach Execution |
+
+#### Health / Anomalien (17:03)
+
+| Check | Befund |
+| --- | --- |
+| Headers == Bodies == Sender Ckpt | ja (gemeinsamer Archive-Tip zum ETL/Bodies-Ende) |
+| Execution seit 15:54 | ↑ ohne Checkpoint-Regression |
+| Deposit-`from` (FLOW-R01) | **OK** |
+| `bodies_validation_errors` / `timeout_errors` | **0** |
+| `invalid_messages` | **0** |
+| `reth_blockchain_tree_reorgs` | **0** (head/safe/finalized) |
+| Point 4 (früh) | ✅ MATCH @16:33 — 1000, 100000, mid, Exec−1000 |
+| **Point 4 Fermat-Fenster** | ✅ **MATCH** @16:59 — s. unten |
+| MDBX/`storage_v2` Stichprobe | ✅ HeaderNumbers/BodyIndices = Tip+1; PlainState=0 (hashed canonical); SF Receipts/Changesets ≃ Exec |
+| Log-Datei `reth.log` | **0 B**; journald error-filter — keine Err-Treffer am EL-PID |
+| NW (Execution) | RX/TX ~**0.6–0.7 Mbit/s** eth1 |
+
+#### CL `op-node` (neben EL) — Stichprobe ~16:59 journal
+
+Erwartetes Verhalten während EL-Pipeline/Execution hinter Tip:
+
+- `Optimistically inserting unsafe L2 execution payload to drive EL sync` @ ~**173 719 k** — Tip-Feed an EL (**Soll**).
+- `Received signed execution payload from p2p` — Gossip normal.
+- `warn … possible L1 re-org` häufig — typisch bei **öffentlichem** L1-RPC (`bsc-dataseed…`, load-balanced Head-Sprünge); **kein** EL-Unwind-/Fermat-Signal.
+- Alert erst bei Payload-/Engine-**errors**, fallendem Exec-Ckpt oder Derivation-Stall.
+
+#### FLOW-X01 / PIPE-007 — Fermat `9 397 477` (2026-08-12 ~16:59 CEST)
+
+Aktivierung: Block-Fork **`9 397 477`** (op-geth `OPBNBMainNetConfig.Fermat`; Timestamp am Block `1701151200` = 2023-11-28T06:00:00Z). Exec-Ckpt zum Check **> Fermat**.
+
+| Höhe | hash / txsRoot / **stateRoot** vs public `opbnb-mainnet-rpc` |
+| --- | --- |
+| `9 397 476` (pre) | ✅ MATCH · stateRoot `0xa952ce3f…9f39dfba` |
+| **`9 397 477` (Fermat)** | ✅ **MATCH** · stateRoot `0x23b5b38c…0347b37f` · 38 txs |
+| `9 397 478` | ✅ MATCH |
+| `9 397 577` (+100) | ✅ MATCH |
+| `9 398 477` (+1000) | ✅ MATCH |
+
+Rohnotiz: `files/fermat-point4-20260812.txt`. Semantik: Canonical-Header/`stateRoot` stimmt mit Netz überein nach Exec past Fermat — notwendig für Overlay-OK, nicht allein hinreichend für „EVM perfect“ (MerkleExecute später).
+
+#### Bereits durchlaufen
+
+| Phase | Start → Ende (CEST) | Elapsed | Ergebnis |
+| --- | --- | --- | --- |
+| Headers Falling/Cap → ETL→SF | ~14:40Z Cap … Write ~18:35–18:47 (08-11) | — | Checkpoint=Tip |
+| **Bodies** | ~**18:58** (08-11) → ~**03:02** (08-12) | **~8.1 h** | 0→173 369 140 (100 %) |
+| **SenderRecovery** | ~**03:02** → ~**15:54** (08-12) | **~12.9 h** | 0→Tip (100 %) |
+| **Execution** (bisher) | ~**15:54** → Stichprobe 17:03 | **~1.15 h** | 0→~10.0 M (~5.8 %) · **Fermat durch** |
+
+Sender war **deutlich schneller** als die 09:58-Prognose (~33 h): Nachmittag-Peak ~**15–20 M** blk/h. Execution-Blockrate hoch, weil frühe Kette dünn (Entities ≪ Block-%); BSC-Fast-Vergleich: ~140× mehr Arbeit/Block dort.
+
+#### Execution Rate / ETA (volatil · Block-basiert) — Refresh 17:03
+
+| | |
+| --- | --- |
+| Rate 15 m | ~**1.86 k** blk/s (~**6.7 M** blk/h) |
+| Rate 1 h | ~**1.84 k** blk/s (~**6.6 M** blk/h) |
+| Rest bis Headers-Ckpt | ~**163 M** Blöcke (+ später Tip-Catch-up ~+350 k) |
+| **ETA Execution (Block-Rate)** | ~**24–25 h** → grob **2026-08-13 ~17:00–18:00 CEST** |
+| Konservativ (½× 1 h) | ~**~2 d** → ~**2026-08-14 abend** |
+| Entity-Rate (Arbeit≈Gas) | eher **~3–4 d** (entities ≪ Block-%) |
+| Nächstes Overlay | **Haber** (Timestamp `1718872200`) · danach **Wright** / FLOW-X02 |
+
+**Offen vor „Execution grün“:** FLOW-X01 **Haber**, FLOW-X02 (**PIPE-009** Wright L1-Fee Diff), FLOW-X03 (Persistenz storage.v2); nach Pipeline Tip-Gap Headers/Bodies nachziehen.
+
+#### Network usage (CT `<archive-ct>:9100`, `node_network_*`)
+
+| Phase | RX (typ.) | TX (typ.) | Notes |
+| --- | --- | --- | --- |
+| Headers Falling (08-11 ~16–18) | ~**25–60 Mbit/s** | — | P2P Header-Batches |
+| **Bodies** (08-11 ~19:50 → 08-12 ~03:00) | ~**140–200 Mbit/s** | niedrig | Peak ~200 Mbit/s gegen Mitternacht |
+| **SenderRecovery** (~03:02–15:54) | ~**0.5–0.8 Mbit/s** | ~**0.7–0.9 Mbit/s** | CPU-lokal |
+| **Execution** (ab ~15:54) | ~**0.6 Mbit/s** | ~**0.7 Mbit/s** | peers=13 |
+
+Kein `reth_network_*_bytes` auf `:6060` — Bandbreite über CT-Exporter `:9100`.
+
 
