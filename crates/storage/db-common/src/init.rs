@@ -150,7 +150,11 @@ where
 /// Write the genesis block if it has not already been written
 pub fn init_genesis<PF>(factory: &PF) -> Result<B256, InitDatabaseError>
 where
-    PF: DatabaseProviderFactory + StaticFileProviderFactory + ChainSpecProvider + BlockHashReader,
+    PF: DatabaseProviderFactory
+        + StaticFileProviderFactory
+        + ChainSpecProvider
+        + BlockHashReader
+        + StorageSettingsCache,
     PF::ProviderRW: StageCheckpointWriter
         + HistoryWriter
         + HeaderProvider
@@ -202,12 +206,30 @@ where
         provider_rw.save_stage_checkpoint(stage, Default::default())?;
     }
 
-    // Static file segments start empty, so we need to initialize the genesis block.
-    let segment = StaticFileSegment::Receipts;
-    static_file_provider.latest_writer(segment)?.increment_block(0)?;
+    // Static file segments start empty, so we need to initialize the block range.
+    // Align with upstream (`paradigmxyz/reth` / `bnb-chain/reth`): `get_writer` +
+    // `set_block_range` (not `latest_writer` + `increment_block`). Storage-v2 also tips
+    // `TransactionSenders` at genesis — without that, the first persisted block fails with
+    // `UnexpectedStaticFileBlockNumber(TransactionSenders, 1, 0)`.
+    // Changesets are primed via `insert_genesis_state` / `write_state` instead.
+    let genesis_block_number = 0u64;
+    let genesis_storage_settings = factory.cached_storage_settings();
 
-    let segment = StaticFileSegment::Transactions;
-    static_file_provider.latest_writer(segment)?.increment_block(0)?;
+    static_file_provider
+        .get_writer(genesis_block_number, StaticFileSegment::Receipts)?
+        .user_header_mut()
+        .set_block_range(genesis_block_number, genesis_block_number);
+    static_file_provider
+        .get_writer(genesis_block_number, StaticFileSegment::Transactions)?
+        .user_header_mut()
+        .set_block_range(genesis_block_number, genesis_block_number);
+
+    if genesis_storage_settings.storage_v2 {
+        static_file_provider
+            .get_writer(genesis_block_number, StaticFileSegment::TransactionSenders)?
+            .user_header_mut()
+            .set_block_range(genesis_block_number, genesis_block_number);
+    }
 
     // `commit_unwind`` will first commit the DB and then the static file provider, which is
     // necessary on `init_genesis`.

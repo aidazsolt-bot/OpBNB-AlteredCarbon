@@ -19,6 +19,7 @@ reth-payload-builder.workspace = true
 reth-consensus.workspace = true
 reth-node-api.workspace = true
 reth-node-builder.workspace = true
+reth-engine-local = { workspace = true, features = ["optimism"] }
 reth-tracing.workspace = true
 reth-provider = { workspace = true, features = ["optimism"] }
 reth-transaction-pool.workspace = true

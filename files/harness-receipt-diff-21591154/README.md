@@ -27,17 +27,34 @@ After the Unwind-Sturm (FLOW-X05), Execution/Bodies/Sender sit at **`21579118`**
 3. Historical state at parent **`21591153`** (i.e. Execution advanced to at least `21591153`,
    or `re-execute --from 21579119 --to 21591154` from committed state @ `21579118`)
 
-Do **not** start a full tip catch-up before the PIPE-014 fix — you will hit the same fail and
-another Headers unwind.
+Do **not** let the live pipeline Execution commit **`21591154`** before the PIPE-014 fix —
+same fail → another FLOW-X05 Headers unwind. Live Exec may advance only through parent
+**`21591153`**, then stop the node and run this harness offline.
 
 ## Produce local dump
 
 ```bash
-# from repo root; adjust datadir / binary to the archive node paths (never /tmp scratch)
-op-reth-bnb re-execute \
+# from repo root; use Session-12 rebuild-only binary (not yet installed over live)
+# adjust datadir; never /tmp scratch
+./target/maxperf/op-reth re-execute \
+  --chain opbnb \
+  --datadir /media/DataDomainNVMER40/BSCRethArchiveNode/.local/share/reth/opbnb-mainnet \
+  --from 21591154 \
+  --to 21591155 \
+  --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
+```
+
+Alternative (replay from unwind floor if parent state not yet executed to `21591153`):
+
+```bash
+./target/maxperf/op-reth re-execute \
   --chain opbnb \
   --datadir /media/DataDomainNVMER40/BSCRethArchiveNode/.local/share/reth/opbnb-mainnet \
   --from 21579119 \
+  --to 21591155 \
+  --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
+```
+
   --to 21591154 \
   --num-tasks 1 \
   --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
