@@ -55,11 +55,6 @@ Alternative (replay from unwind floor if parent state not yet executed to `21591
   --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
 ```
 
-  --to 21591154 \
-  --num-tasks 1 \
-  --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
-```
-
 On post-execution validation failure the dump contains per-tx
 `status / gasUsed / cumulativeGasUsed / logCount / txHash`.
 
