@@ -7140,7 +7140,6 @@ dependencies = [
  "op-alloy-consensus",
  "serde",
  "sha2 0.10.9",
- "snap",
  "thiserror 2.0.19",
 ]
 
@@ -11200,6 +11199,7 @@ dependencies = [
  "reth-db-api",
  "reth-db-common",
  "reth-e2e-test-utils",
+ "reth-engine-local",
  "reth-evm",
  "reth-network",
  "reth-node-api",

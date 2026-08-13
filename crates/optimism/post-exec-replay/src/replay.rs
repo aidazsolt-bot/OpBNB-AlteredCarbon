@@ -14,7 +14,7 @@ use reth_evm::{Database, execute::BlockExecutor};
 use reth_execution_errors::BlockExecutionError;
 use reth_node_api::NodePrimitives;
 use reth_optimism_evm::{
-    ConfigurePostExecEvm, PostExecExecutorExt, WarmingRefundEvent, WarmingRefundKind,
+    ConfigurePostExecEvm, PostExecExecutorExt, PostExecRefundEvent, PostExecRefundKind,
 };
 use reth_primitives_traits::{Block, BlockHeader, RecoveredBlock, SignedTransaction};
 use revm::database::State;
@@ -109,11 +109,11 @@ where
     Ok(NormalizedBlock { replay_block, original_indexes, embedded_payload, post_exec_tx_index })
 }
 
-const fn into_refund_kind(kind: WarmingRefundKind) -> PostExecReplayRefundKind {
+const fn into_refund_kind(kind: PostExecRefundKind) -> PostExecReplayRefundKind {
     match kind {
-        WarmingRefundKind::WarmAccount => PostExecReplayRefundKind::WarmAccount,
-        WarmingRefundKind::WarmSload => PostExecReplayRefundKind::WarmSload,
-        WarmingRefundKind::WarmSstore => PostExecReplayRefundKind::WarmSstore,
+        PostExecRefundKind::WarmAccount => PostExecReplayRefundKind::WarmAccount,
+        PostExecRefundKind::WarmSload => PostExecReplayRefundKind::WarmSload,
+        PostExecRefundKind::WarmSstore => PostExecReplayRefundKind::WarmSstore,
     }
 }
 
@@ -122,7 +122,7 @@ fn original_tx_index(original_indexes: &[u64], replay_tx_index: u64) -> u64 {
 }
 
 fn into_refund_event(
-    event: WarmingRefundEvent,
+    event: PostExecRefundEvent,
     claiming_replay_tx_index: u64,
     original_indexes: &[u64],
 ) -> PostExecReplayRefundEvent {
@@ -331,7 +331,7 @@ where
         executor.execute_transaction(tx)?;
     }
     let replay_entries = executor.take_post_exec_entries();
-    let warming_events_by_tx = executor.take_warming_events_by_tx();
+    let warming_events_by_tx = executor.take_refund_events_by_tx();
     let execution = executor.apply_post_execution_changes()?;
 
     let replay_payload = PostExecPayload {

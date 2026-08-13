@@ -76,7 +76,7 @@ mod factory;
 pub use factory::OpBnbOverlayFactory;
 
 pub use alloy_op_evm::{
-    post_exec::{PostExecExecutorExt, WarmingRefundEvent, WarmingRefundKind, WarmingState},
+    post_exec::{PostExecExecutorExt, PostExecRefundEvent, PostExecRefundKind},
     OpBlockExecutionCtx, OpBlockExecutorFactory, OpEvm, OpEvmFactory, PostExecMode,
     PreRefundGasUsed,
 };
@@ -201,7 +201,6 @@ where
             parent_beacon_block_root: block.header().parent_beacon_block_root(),
             extra_data: block.header().extra_data().clone(),
             post_exec_mode: post_exec_mode.unwrap_or_default(),
-            apply_pre_contract_hardfork: self.is_pre_contract_fork_block(block.header().number()),
         }
     }
 
@@ -212,7 +211,6 @@ where
         attributes: OpNextBlockEnvAttributes,
         post_exec_mode: PostExecMode,
     ) -> OpBlockExecutionCtx {
-        let next_number = parent.number().saturating_add(1);
         OpBlockExecutionCtx {
             parent_hash: parent.hash(),
             no_user_tx_activation_block: self
@@ -221,7 +219,6 @@ where
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             extra_data: attributes.extra_data,
             post_exec_mode,
-            apply_pre_contract_hardfork: self.is_pre_contract_fork_block(next_number),
         }
     }
 }
@@ -430,15 +427,13 @@ where
         )?;
 
         Ok(OpBlockExecutionCtx {
-            parent_hash: payload.parent_hash(),
+            parent_hash: payload.payload.parent_hash(),
             // No parent header on this path to detect fork-activation blocks, so the executor's
             // check is skipped; the derivation layer enforces the rule instead.
             no_user_tx_activation_block: false,
             parent_beacon_block_root: payload.sidecar.parent_beacon_block_root(),
             extra_data: payload.payload.as_v1().extra_data.clone(),
             post_exec_mode,
-            apply_pre_contract_hardfork: self
-                .is_pre_contract_fork_block(payload.payload.block_number()),
         })
     }
 
