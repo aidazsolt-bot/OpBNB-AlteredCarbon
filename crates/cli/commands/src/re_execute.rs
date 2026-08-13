@@ -49,6 +49,14 @@ pub struct Command<C: ChainSpecParser> {
     /// Continues with execution when an invalid block is encountered and collects these blocks.
     #[arg(long)]
     skip_invalid_blocks: bool,
+
+    /// On post-execution validation failure, write a JSON receipt summary for the failing block
+    /// (idx / status / gasUsed / cumulativeGasUsed / logCount / txHash) to this path.
+    ///
+    /// Intended for FLOW-X04 / PIPE-014 diffs against public `eth_getBlockReceipts`
+    /// (see `files/harness-receipt-diff-21591154/`).
+    #[arg(long, value_name = "PATH")]
+    dump_receipts_on_fail: Option<std::path::PathBuf>,
 }
 
 impl<C: ChainSpecParser> Command<C> {
@@ -105,6 +113,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
         };
 
         let skip_invalid_blocks = self.skip_invalid_blocks;
+        let dump_receipts_on_fail = self.dump_receipts_on_fail.clone();
         let (stats_tx, mut stats_rx) = mpsc::unbounded_channel();
         let (info_tx, mut info_rx) = mpsc::unbounded_channel();
         let cancellation = CancellationToken::new();
@@ -124,6 +133,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
             let stats_tx = stats_tx.clone();
             let info_tx = info_tx.clone();
             let cancellation = cancellation.clone();
+            let dump_receipts_on_fail = dump_receipts_on_fail.clone();
             tasks.spawn_blocking(move || {
                 let mut executor = evm_config.batch_executor(db_at(start_block - 1));
                 let mut executor_created = Instant::now();
@@ -157,50 +167,77 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
                             format!("Failed to validate block {} {}", block.number(), block.hash())
                         })
                     {
-                        let correct_receipts =
-                            provider_factory.receipts_by_block(block.number().into())?.unwrap();
-
-                        for (i, (receipt, correct_receipt)) in
-                            result.receipts.iter().zip(correct_receipts.iter()).enumerate()
-                        {
-                            if receipt != correct_receipt {
-                                let tx_hash = block.body().transactions()[i].tx_hash();
-                                error!(
-                                    ?receipt,
-                                    ?correct_receipt,
-                                    index = i,
-                                    ?tx_hash,
-                                    "Invalid receipt"
-                                );
-                                let expected_gas_used = correct_receipt.cumulative_gas_used() -
-                                    if i == 0 {
-                                        0
-                                    } else {
-                                        correct_receipts[i - 1].cumulative_gas_used()
-                                    };
-                                let got_gas_used = receipt.cumulative_gas_used() -
-                                    if i == 0 {
-                                        0
-                                    } else {
-                                        result.receipts[i - 1].cumulative_gas_used()
-                                    };
-                                if got_gas_used != expected_gas_used {
-                                    let mismatch = GotExpected {
-                                        expected: expected_gas_used,
-                                        got: got_gas_used,
-                                    };
-
-                                    error!(number=?block.number(), ?mismatch, "Gas usage mismatch");
-                                    if skip_invalid_blocks {
-                                        executor = evm_config.batch_executor(db_at(block.number()));
-                                        let _ = info_tx.send((block, err));
-                                        continue 'blocks;
-                                    }
-                                    return Err(err);
-                                }
+                        if let Some(path) = dump_receipts_on_fail.as_ref() {
+                            if let Err(dump_err) =
+                                dump_executed_receipts_summary(path, &block, &result.receipts)
+                            {
+                                error!(?dump_err, path = %path.display(), "Failed to dump receipts");
                             } else {
-                                continue;
+                                error!(
+                                    path = %path.display(),
+                                    number = block.number(),
+                                    hash = %block.hash(),
+                                    "Dumped executed receipts for FLOW-X04 / public RPC diff"
+                                );
                             }
+                        }
+
+                        let correct_receipts =
+                            provider_factory.receipts_by_block(block.number().into())?;
+
+                        if let Some(correct_receipts) = correct_receipts {
+                            for (i, (receipt, correct_receipt)) in
+                                result.receipts.iter().zip(correct_receipts.iter()).enumerate()
+                            {
+                                if receipt != correct_receipt {
+                                    let tx_hash = block.body().transactions()[i].tx_hash();
+                                    error!(
+                                        ?receipt,
+                                        ?correct_receipt,
+                                        index = i,
+                                        ?tx_hash,
+                                        "Invalid receipt"
+                                    );
+                                    let expected_gas_used = correct_receipt.cumulative_gas_used() -
+                                        if i == 0 {
+                                            0
+                                        } else {
+                                            correct_receipts[i - 1].cumulative_gas_used()
+                                        };
+                                    let got_gas_used = receipt.cumulative_gas_used() -
+                                        if i == 0 {
+                                            0
+                                        } else {
+                                            result.receipts[i - 1].cumulative_gas_used()
+                                        };
+                                    if got_gas_used != expected_gas_used {
+                                        let mismatch = GotExpected {
+                                            expected: expected_gas_used,
+                                            got: got_gas_used,
+                                        };
+
+                                        error!(
+                                            number=?block.number(),
+                                            ?mismatch,
+                                            "Gas usage mismatch"
+                                        );
+                                        if skip_invalid_blocks {
+                                            executor =
+                                                evm_config.batch_executor(db_at(block.number()));
+                                            let _ = info_tx.send((block, err));
+                                            continue 'blocks;
+                                        }
+                                        return Err(err);
+                                    }
+                                } else {
+                                    continue;
+                                }
+                            }
+                        } else {
+                            warn!(
+                                number = block.number(),
+                                "No local receipts to compare; use --dump-receipts-on-fail + public RPC diff"
+                            );
                         }
 
                         return Err(err);
@@ -293,4 +330,51 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
 
         Ok(())
     }
+}
+
+/// Compact receipt rows for FLOW-X04 public-RPC diffs (`files/harness-receipt-diff-*/diff_receipts.py`).
+fn dump_executed_receipts_summary<B, R>(
+    path: &std::path::Path,
+    block: &reth_primitives_traits::RecoveredBlock<B>,
+    receipts: &[R],
+) -> eyre::Result<()>
+where
+    B: reth_primitives_traits::Block,
+    R: TxReceipt,
+{
+    use alloy_primitives::hex;
+    use std::{fs, io::Write};
+
+    let mut prev_cum = 0u64;
+    let mut rows = Vec::with_capacity(receipts.len());
+    for (i, receipt) in receipts.iter().enumerate() {
+        let cum = receipt.cumulative_gas_used();
+        let gas_used = cum.saturating_sub(prev_cum);
+        prev_cum = cum;
+        let tx_hash = block.body().transactions().get(i).map(|tx| *tx.tx_hash());
+        rows.push(serde_json::json!({
+            "i": i,
+            "txHash": tx_hash.map(|h| format!("0x{}", hex::encode(h))),
+            "status": if receipt.status() { 1 } else { 0 },
+            "gasUsed": gas_used,
+            "cumulativeGasUsed": cum,
+            "logCount": receipt.logs().len(),
+        }));
+    }
+
+    let doc = serde_json::json!({
+        "source": "op-reth re-execute --dump-receipts-on-fail",
+        "blockNumber": block.number(),
+        "blockHash": format!("0x{}", hex::encode(block.hash())),
+        "receiptsRootHeader": format!("0x{}", hex::encode(block.receipts_root())),
+        "receipts": rows,
+    });
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut f = fs::File::create(path)?;
+    serde_json::to_writer_pretty(&mut f, &doc)?;
+    f.write_all(b"\n")?;
+    Ok(())
 }
