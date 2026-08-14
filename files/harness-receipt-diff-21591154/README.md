@@ -28,8 +28,24 @@ After the Unwind-Sturm (FLOW-X05), Execution/Bodies/Sender sit at **`21579118`**
    or `re-execute --from 21579119 --to 21591154` from committed state @ `21579118`)
 
 Do **not** let the live pipeline Execution commit **`21591154`** before the PIPE-014 fix —
-same fail → another FLOW-X05 Headers unwind. Live Exec may advance only through parent
-**`21591153`**, then stop the node and run this harness offline.
+same fail → another FLOW-X05 unwind (seen **twice**: 2026-08-13 and 2026-08-14).
+
+**Live height cap (preferred):**
+
+```bash
+# Pipeline stops at H; process exits when stages done
+op-reth-bnb node … --debug.max-block 21579110 --debug.terminate
+# For parent state before harness later: --debug.max-block 21591153
+```
+
+**Not a height cap:** `--debug.skip-fcu <N>` only skips N engine FCUs; pipeline still runs.
+**Does not exist:** `--debug.skip-stages`.
+
+**Journal (nspawn machine):**
+
+```bash
+journalctl -D /var/lib/machines/BSCRethArchiveNode/var/log/journal/ --since '1 hour ago'
+```
 
 ## Produce local dump
 
