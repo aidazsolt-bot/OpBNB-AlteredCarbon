@@ -395,8 +395,8 @@ impl<N: NetworkPrimitives> SessionManager<N> {
     /// by a shared atomic counter. If the bounded command channel is full but the broadcast limit
     /// hasn't been reached, the message overflows to a dedicated unbounded channel.
     pub fn send_message(&self, peer_id: &PeerId, msg: PeerMessage<N>) {
-        if let Some(session) = self.active_sessions.get(peer_id)
-            && !session.commands.send_message(msg)
+        if let Some(session) = self.active_sessions.get(peer_id) &&
+            !session.commands.send_message(msg)
         {
             self.metrics.total_outgoing_peer_messages_dropped.increment(1);
         }

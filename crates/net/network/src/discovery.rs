@@ -112,8 +112,8 @@ impl Discovery {
         // loop. Unrecognized frames from discv5 will be forwarded to the ingress handler.
         let (discv4, discv4_updates, _discv4_service, discv4_ingress, shared_socket) =
             if let Some(config) = discv4_config {
-                if let Some(discv5_config) = &mut discv5_config
-                    && discv5_config.has_matching_socket(discovery_v4_addr)
+                if let Some(discv5_config) = &mut discv5_config &&
+                    discv5_config.has_matching_socket(discovery_v4_addr)
                 {
                     let socket = bind_socket(discovery_v4_addr).await?;
 
@@ -378,8 +378,8 @@ impl Discovery {
             while let Some(Poll::Ready(Some(update))) =
                 self.discv5_updates.as_mut().map(|updates| updates.poll_next_unpin(cx))
             {
-                if let Some(discv5) = self.discv5.as_mut()
-                    && let Some(DiscoveredPeer { node_record, fork_id }) =
+                if let Some(discv5) = self.discv5.as_mut() &&
+                    let Some(DiscoveredPeer { node_record, fork_id }) =
                         discv5.on_discv5_update(update)
                 {
                     self.on_node_record_update(node_record, fork_id);

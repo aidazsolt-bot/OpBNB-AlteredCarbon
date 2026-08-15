@@ -415,16 +415,15 @@ impl<N: NetworkPrimitives> ActiveSession<N> {
                 if let Some(range_info) = self.range_info.as_ref() {
                     range_info.update(msg.earliest, msg.latest, msg.latest_hash);
                 } else {
-                    // eth/69 peer should announce range in Status; still accept mid-session updates.
+                    // eth/69 peer should announce range in Status; still accept mid-session
+                    // updates.
                     self.range_info =
                         Some(BlockRangeInfo::new(msg.earliest, msg.latest, msg.latest_hash));
                 }
 
                 // Propagate to NetworkState so Status tip / HeadersAtLeast stay in sync (pruning
                 // raises `earliest`; tip advances raise `latest`).
-                return self
-                    .try_emit_broadcast(PeerMessage::BlockRangeUpdated(msg))
-                    .into();
+                return self.try_emit_broadcast(PeerMessage::BlockRangeUpdated(msg)).into();
             }
             EthMessage::GetCells(resp) => {
                 on_request!(resp, Cells, GetCells)
@@ -580,8 +579,8 @@ impl<N: NetworkPrimitives> ActiveSession<N> {
 
     /// Returns the deadline timestamp at which the request times out
     fn request_deadline(&self) -> Instant {
-        Instant::now()
-            + Duration::from_millis(self.internal_request_timeout.load(Ordering::Relaxed))
+        Instant::now() +
+            Duration::from_millis(self.internal_request_timeout.load(Ordering::Relaxed))
     }
 
     /// Handle a Response to the peer
@@ -979,10 +978,10 @@ impl<N: NetworkPrimitives> Future for ActiveSession<N> {
 
             // Avoid one extra empty outer-loop pass after the wire is pending, unless the receive
             // pass produced work that should be driven immediately.
-            if receive_pending
-                && this.queued_outgoing.is_empty()
-                && this.pending_message_to_session.is_none()
-                && this.received_requests_from_remote.is_empty()
+            if receive_pending &&
+                this.queued_outgoing.is_empty() &&
+                this.pending_message_to_session.is_none() &&
+                this.received_requests_from_remote.is_empty()
             {
                 break 'main;
             }
@@ -1015,8 +1014,8 @@ impl<N: NetworkPrimitives> Future for ActiveSession<N> {
         if !this.inflight_requests.is_empty() {
             while this.internal_request_timeout_interval.poll_tick(cx).is_ready() {
                 // check for timed out requests
-                if this.check_timed_out_requests(Instant::now())
-                    && let Poll::Ready(Ok(_)) = this.to_session_manager.poll_reserve(cx)
+                if this.check_timed_out_requests(Instant::now()) &&
+                    let Poll::Ready(Ok(_)) = this.to_session_manager.poll_reserve(cx)
                 {
                     let msg = ActiveSessionMessage::ProtocolBreach { peer_id: this.remote_peer_id };
                     this.pending_message_to_session = Some(msg);
