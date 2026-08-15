@@ -29,6 +29,12 @@ Find the **first** transaction index where executed receipts diverge from public
 
 `--to 21591154` on `re-execute` alone would execute **zero** blocks (`54..54`).
 
+**Mid-pipeline state (Finish=0, Headers ≫ Execution):** `history_by_block_number(exec_tip)` must
+use **Latest** (PlainState tip = Execution checkpoint). Comparing only to Finish/`best_block_number()`
+skipped that path → empty accounts / `nonce … expected 0`. Fixed in
+`DatabaseProvider::try_into_history_at_block` (+ `re-execute` no longer clamps `--to` to Finish=0).
+History indices (`IndexAccountHistory`) are still required for parents **below** Exec tip.
+
 ## Preconditions (datadir)
 
 Do **not** let live pipeline Execution **commit** `21591154` before the PIPE-014 fix —
@@ -163,3 +169,23 @@ Exit code `1` = first mismatch printed (DoD for FLOW-X04). Exit `0` = all compar
 - expected receiptsRoot: `0x579924c85d951e538e7b9c5358a1acda6d1fb379af748b01274c60a283d5e50c`
 - got (live): `0x61c1b64b0df2fc07a64c4d8fabde08bf8be235bdbfa6b8543c00b9683a9fbe6b`
 - ts `1713344877` — Snow yes, Canyon/Haber/Wright no
+
+## FLOW-X04 result (2026-08-15)
+
+| Field | Value |
+| --- | --- |
+| First mismatch | **index 10** |
+| txHash | `0x7f276cf9690ae2c09aee72b2333843765ce28301e55275e09d2cfe79ddd0ff47` |
+| Call | `syncLightBlock(bytes,uint64)` → contract `0xf51ba131…` → precompile **`0x67`** |
+| gasUsed | public **717672** vs local **259171** (Δ ≈ 458501); status/logs match |
+| Root cause | Fermat overlay injected **`BEFORE_HERTZ`** (forces `validatorSetChanged=false`). op-geth always returns the **pre-update** flag (BSC Hertz semantics). When the set changes, IBC does extra SSTOREs → higher gas on public. |
+| Fix | `opbnb_precompiles/mod.rs` → `COMETBFT_LIGHT_BLOCK_VALIDATION` (Hertz). |
+| Verify | **2026-08-15 ~14:13 CEST:** `re-execute --from 21591154 --to 21591155` succeeded (no dump written = receiptsRoot match). Binary: maxperf / `dist/bin/op-reth-bnb`. |
+
+## op-geth vs Reth (roots)
+
+op-geth FullSync checks **receipt + state root in the same** `ValidateState` after `Process`.
+Reth archive: **receipt** in Execution; **state root** later in MerkleExecute. That staging
+difference is not the `21591154` fail — `got` is the trie of locally executed receipts.
+Pre-Canyon deposit nonce strip is mirrored (`EncodeIndex` / `calculate_receipt_root_optimism`
+/ `alloy-op-evm` `strip_deposit_nonce`). See `plan.md` § *op-geth vs Reth — State-/Receipt-Root*.
