@@ -125,8 +125,8 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
 | PORT-FLOW-H04 | Cap → Falling | `SyncTarget::Number(N)` / Tip-Outcome `old==new` **primt** Falling-Tracker (`next_request_*`) | P2P-005 | ✅ live |
 | PORT-FLOW-H05 | Headers Persistenz | ETL=`TempDir` → Checkpoint/Metriken erst nach `Writing headers`; Restart vor Write = Download von Tip neu | Upstream #6154 | ✅ **live** (2026-08-11T16:35–~16:47Z): Write `173369140` → Headers checkpoint=tip; Bodies gestartet |
-| PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS (modern AAAA→A); Announce = preferierte **dialbare** Adresse ≡ Listen. **`--addr <ip>`:** nur diese Familie; andere nicht initialisieren. **Live-Repro 08-15 (anonymisiert):** Bind-Default `0.0.0.0:30303` (v4-only); NAT/`admin_nodeInfo` announcte zeitweise **globale IPv6 der Node-NIC** (SLAAC/EUI-64, gleiche MAC wie privates v4 der Maschine — **nicht** Router); Ping auf announced v6 OK, **TCP:30303 refused** (kein v6-Listener); effektive Sessions über privates v4; inbound=0; Announce kann später auf Public-v4 aus HTTP-NAT umspringen. | P2P-006 | 📋 todo |
-| PORT-FLOW-N02 | NAT / UPnP → Announce | Default **`--nat any`:** (1) IGD/UPnP zuerst — sauberes Mapping **geth-style** (bevorzugt `ext=int=listen`; bei Konflikt **Alternativ-`extport`**; **kein** Hijack). Nach erfolgreichem Map: **ENR + enode + Logs** (`Started …`, `admin_nodeInfo`, disc) müssen **dieselbe** dialbare Endpoint zeigen (`publicIP:mappedExtPort`) — nicht still lokal `:30303` loggen während außen `:XYZ` gemappt ist. (2) Kein IGD → HTTP Public-IP + Listen `:30303` (Inbound ggf. tot). LXC/VMs statt Port-Kampf. | P2P-002 | 📋 todo |
+| PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS (modern AAAA→A); Announce = preferierte **dialbare** Adresse ≡ Listen. **`--addr <ip>`:** nur diese Familie; andere nicht initialisieren. **Live-Repro 08-15 (anonymisiert):** Bind-Default `0.0.0.0:30303` (v4-only); NAT/`admin_nodeInfo` announcte zeitweise **globale IPv6 der Node-NIC** (SLAAC/EUI-64, gleiche MAC wie privates v4 der Maschine — **nicht** Router); Ping auf announced v6 OK, **TCP:30303 refused** (kein v6-Listener); effektive Sessions über privates v4; inbound=0; Announce kann später auf Public-v4 aus HTTP-NAT umspringen. | P2P-006 | 📋 todo · NAT-Announce matched `--addr`-Familie seit 08-15 UPnP-Fix |
+| PORT-FLOW-N02 | NAT / UPnP → Announce | Default **`--nat any`:** UPnP geth-style (kein Hijack) → ENR/enode/Logs konsistent; Discv4 **und** Discv5 ENR (TCP=mapped RLPx; UDP=v5-Port, ggf. extra UPnP). Kein IGD → HTTP+Listen-Ports, **Familie ≡ `--addr`**. | P2P-002 | ✅ **live** 08-15 ~21:37: Alt-Ports (30303 bei Erigon), `via_upnp=true`, hairpin OK, inbound_conn≥2; `eth_*_requests_received` noch 0 |
 | PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | ✅ Bodies tip (08-12 ~03:02 CEST); FLOW-B beobachtet OK |
 | PORT-FLOW-B02 | Bodies Empty/Timeout | Empty/Timeout-Politik: kein Ban-Sturm; Retry/Backoff explizit | PIPE-005 | ✅ Bodies durch · Empty/Ban kein Stall |
 | PORT-FLOW-B03 | Bodies Buffer→Stage | In-flight / buffered / flush → Checkpoint; Stall-Zustände benennen | PIPE-005 | ✅ Bodies Checkpoint=Tip |
@@ -167,7 +167,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-15 ~19:15 CEST:** PIPE-014/X04 Hertz ✅ (`re-execute`). Live: Headers Tip **174 M**; Bodies **~48.5 M↑**; Sender **`21591154`** / Exec **`21591153`**; Peers ~7 outbound / 0 inbound. **P2P-002** Soll: `--nat any` → UPnP geth-style (kein Hijack) dann HTTP-Fallback; **P2P-006** Bind/Announce weiter offen.
+- **Stand 2026-08-15 ~21:50 CEST:** **P2P-002/FLOW-N02** UPnP live ✅ (Alt-Ports, kein Hijack vs Erigon `:30303`; Announce IPv4 `via_upnp=true`; hairpin OK; inbound_conn=2, Serve-RX noch 0). Bodies Catch-up **~133 M↑** / Tip **174 M** (~12 k blk/s, leichtere Blöcke ~0.7 MGas); ETA Bodies tip ~1 h. Sender **`21591154`** / Exec **`21591153`**. **P2P-006** Dual-Stack-Default weiter offen; NAT matched `--addr`-Familie.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -176,7 +176,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; Bodies Catch-up ~48 M; PIPE-014 offline ✅; live Exec past Fail ⏳; P2P-006 todo |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; Bodies Catch-up ~133 M; PIPE-014 offline ✅; live Exec past Fail ⏳; P2P-002 UPnP ✅; P2P-006 todo |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Migrations-Gate PIPE+FLOW in plan/Skill; finale Zahlen nach Human-Sync |
 
@@ -197,7 +197,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-STOR-006 | StorageChangeSets stub always routed to MDBX (`TODO(opbnb-port)` `Headers` placeholders in rocksdb invariants, migrate-v2, `db state`) | `StaticFileSegment::StorageChangeSets` variant, mask, writer/reader, and `either_writer` routing were never ported after AccountChangeSets SF landed | ✅ fixed (Session 9): dedicated `StorageChangeSets` segment (`.csoff` sidecar, same change-based model as AccountChangeSets); `storage_changesets_in_static_files() → storage_v2`; `EitherWriter`/`EitherReader` routing in `write_state_reverts`/`StorageReader`; `migrate-v2` now really migrates `StorageChangeSets` into static files instead of skipping |
 | PORT-STOR-002 | Kein `rocksdb/` trotz `--storage.v2` (Default true) | Feature `reth-provider/rocksdb` war nicht verdrahtet; API-Drift (0.24 CF refs, snapshot/batch, history tip, SF stub); prune Batch-Lifetimes | ✅ fixed: provider+prune rocksdb-Pfad kompiliert; `op-reth` default `rocksdb`; `cargo check -p op-reth` grün |
 | PORT-P2P-001 | opBNB EL: anfangs `peerCount=0` / Sync-Genesis trotz Tip | Stale Bootnodes; discv4; `--addr ::` discv5; ForkId; opstack CL ENRs | ✅ **live** eth-Sessions (typ. ~5–7 Peers outbound); Rest: P2P-006 Announce/Bind |
-| PORT-P2P-002 | Default `--nat any`: kein echtes UPnP; Announce ohne dialbares Mapping; 0 inbound | **Ist:** `Any`/`Upnp` = HTTP Public-IP-Stub; kein IGD-Mapping. Live 08-15: IGD an, 30303 bei Erigon `.96`; Reth `.85` eth-Requests received **0**. **Soll (`--nat any`):** (1) UPnP/IGD **geth-style** — bevorzugt `ext=int=listen`; bei belegt Alternativ-`extport`; **kein** Hijack via Vorab-`DeleteMapping`. (2) **Announce-Konsistenz:** was gemappt/dialbar ist, muss in **ENR, enode-URL und Logs** (`enode://…@ip:port`, `admin_nodeInfo`, Start-Banner) **identisch** stehen — bei `ext≠int` **nie** nur lokalen Listen-Port announcen/loggen. (3) kein IGD → HTTP-IP + Listen 30303. Ref: geth `natupnp` + `server_nat` („NAT mapped alternative port“ → `enr.TCP`/`FallbackUDP`). | 🐛 **open** · FLOW-N02 · DoD: Map ohne Hijack; ENR≡enode≡Log≡mapped ext; sonst HTTP-Fallback; Live `*_requests_received`>0 |
+| PORT-P2P-002 | Default `--nat any`: kein echtes UPnP; Announce ohne dialbares Mapping; 0 inbound | **Fix 08-15:** `reth-net-nat` + `igd-next` — UPnP zuerst (`add_port` preferred, sonst `add_any_port`, **kein** Hijack); SSDP-Timeout 10 s; Announce-IP-Familie ≡ `--addr`; discv4/discv5 `apply_nat_endpoint`; `advertised_nat` → enode/ENR/Logs; Lease-Refresh 8 min; HTTP-Fallback same-family. **Live:** Alt-Ports wenn `:30303` fremd (Erigon); `via_upnp=true`; hairpin LAN→WAN-IP OK; `incoming_connections≥2`; `eth_*_requests_received` noch 0 (Serve später). | ✅ **live** Map+Announce · FLOW-N02 · Serve-RX watch |
 | PORT-P2P-003 | Headers: Empty-Spam auf Tip-Range (`best_number`≪CL-Tip); Lagging-Peers ungenutzt; Stage hängt an unreachable Tip | **Dataflow-Soll (vor Live):** eth/68 Status oft nur Tip-**Hash** → Tip-Number-Resolve; Peer-Auswahl `HeadersAtLeast` / miss-map; Empty → Backoff **ohne** Ban; eth/69 `tip_number=max(best,range.latest)` + Range-Filter. | ✅ **live** (2026-08-11T14:40Z): Tip-Resolve + Falling ab Peer-Head ~173369140 @ ~22k hdr/s (2 Peers). Code: HeadersAtLeast/miss-map; eth/69 Range; ENGINE-003 Tip-Seed. Note: Headers-ETL=`TempDir` (Upstream [#6154](https://github.com/paradigmxyz/reth/pull/6154)) — Restart vor Write = Neustart von Tip; Checkpoint erst nach ETL→SF |
 | PORT-P2P-004 | Working-Tip-Cap vs eventual CL-Tip: Cap darf Tip/Falling nicht periodisch verwerfen | **Dataflow-Soll:** `eventual_tip` (CL) ≠ `working_tip` (max peer best). Cap einmalig auf reachable Head; `maybe_recap` **idempotent** wenn already capped — sonst Re-Loop verwirft Tip-Header. Gehört in Matrix **vor** Live, nicht erst nach Stall. | ✅ fixed + live: Cap 1×; Unit-Regression Cap→Falling |
 | PORT-P2P-005 | Cap setzt `SyncTargetBlock::Number(N)` → Falling-Tracker bleiben ungesetzt → nur Tip `total=1` dann Stall | **Dataflow-Soll:** Tip-Outcome `Number(N)` mit `old==new` (lokaler Head schon N−ε) muss `next_request_block_number` / Falling-Tracker **primen**. Gehört in Matrix mit P2P-003/004 (Downloader-Zustandsautomat), nicht als „Live-Folgebug“. | ✅ fixed + live (14:40Z): Falling `total=10000` durchgehend; Test Cap→Falling-Prime |
@@ -279,8 +279,8 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 | --- | --- | --- | --- | --- |
 | **P0** | — | **PORT-EXEC-001 / PIPE-014** offline ✅; live Exec≫`21591154`; FLOW-X05; **PORT-OPS-001** | Bodies/Sender Catch-up → Exec past Fail ohne Receipt-Unwind | Exec checkpoint ≫ `21591154` |
 | **P0** | — | Execution live → FLOW-X01 Haber + X02/X03 (+ PIPE-008/009) | Fermat ✅; Haber/Wright; X02 L1-Fee Diff | Execution ohne Unwind-Sturm; Root-Stichproben an Fork-Fenstern |
-| **P1** | — | **PORT-P2P-002 / FLOW-N02** `--nat any`: UPnP geth-style + konsistente Announce/Logs | IGD ohne Hijack; ENR≡enode≡Log = mapped `ip:extport`; sonst HTTP+`:30303` | DoD P2P-002; Live inbound / `*_requests_received` >0 |
-| **P1** | — | **PORT-P2P-006 / FLOW-N01** Dual-Stack Default + single-family `--addr` | Bind≡Announce dialbar; `--addr` = Familie only | DoD (a)+(b)+(c) |
+| **P1** | — | **PORT-P2P-002 / FLOW-N02** `--nat any`: UPnP geth-style + konsistente Announce/Logs | ✅ **live** 08-15 ~21:37 (Alt-Ports, hairpin, inbound_conn); Serve-RX noch 0 | DoD Map/ENR ✅; Serve optional post-Bodies |
+| **P1** | — | **PORT-P2P-006 / FLOW-N01** Dual-Stack Default + single-family `--addr` | Bind≡Announce dialbar; `--addr` = Familie only (NAT matched family schon) | DoD (a)+(b)+(c) |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
 | **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
 | **P1** | CLEANUP-A04 | PORT-PIPE-U05 orphan `build_pipeline.rs` | Datei löschen **oder** korrekt in CLI verdrahten | nicht mehr unreferenced on disk |
@@ -1194,7 +1194,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 **PORT-DEV-001 (parked):** LocalMiner `No payload` nach ~5–7 Blöcken — **keine Prio**, ggf. später fixen oder `--dev` dekommissionieren.
 **PORT-DEV-002:** `payload_wait_time` verdrahtet (hilft allein nicht gegen DEV-001).
 
-**Live Archive (parallel):** s. **Live Sync Progress** — Bodies ~48 M↑; Exec @`21591153`; PIPE-014 offline ✅; P2P-006 Announce-Mismatch; OPS-001/ENGINE-004/X05.
+**Live Archive (parallel):** s. **Live Sync Progress** — Bodies ~133 M↑; Exec @`21591153`; PIPE-014 offline ✅; **P2P-002 UPnP ✅**; P2P-006 Dual-Stack-Default offen; OPS-001/ENGINE-004/X05.
 
 ### Session 12 — Receipt-Root Fail / Unwind / Harness Binary (2026-08-13 → 08-15)
 
@@ -1221,17 +1221,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`BSCRethArchiveNode` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-15 **~18:57 CEST** · PIPE-014 Hertz live · Headers Tip **174 027 661** · chain **204** · peers ~7
+**Stichprobe:** 2026-08-15 **~21:50 CEST** · PIPE-014 Hertz live · **P2P-002 UPnP live** · Headers Tip **174 027 661** · chain **204** · peers ~6 outbound
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
 | Headers | **174 027 661** | ✅ Tip |
-| Bodies | **~48.5 M↑** (Catch-up) | 🔄 aktiv; body errors **0** |
+| Bodies | **~133 M↑** / Tip **174 M** (~12 k blk/s; leichte Blöcke ~0.7 MGas) | 🔄 Catch-up; ETA tip ~1 h; body errors **0** |
 | SenderRecovery | **`21591154`** | ⏳ wartet Bodies-Yield |
 | Execution | **`21591153`** | ⏳ ehem. Fail als Nächstes; `re-execute` ✅ |
 | MerkleExecute | **0** | ⏳ nach Exec past Fail |
 | History / Finish | — | ⏳ |
-| P2P Announce | FLOW-N01 / P2P-006 | 📋 Node-NIC-v6 announced, TCP:30303 refused; Sessions v4 outbound |
+| P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`, hairpin OK, inbound_conn≥2; Serve-RX 0 |
+| P2P Dual-Stack | FLOW-N01 / P2P-006 | 📋 Default Dual-Stack noch offen; `--addr` Familie matched NAT |
 
 #### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
 
@@ -1306,15 +1307,15 @@ Details + SF-Erklärung: `files/harness-receipt-diff-21591154/README.md`.
 7. Headers-Unwind: Journal ohne Batch-Progress ≠ Hang — Fortschritt an `reth_static_files_jar_provider_calls_total{…init-cursor}` / CPU messen.
 8. Point4/RPC: Live-Node hat **nur IPC** (`--ipcpath /tmp/BSCRethArchiveNode.ipc`); HTTP erst mit `--http`. Raw JSON-RPC über Unix-Socket.
 
-#### Health / Anomalien (~18:57 08-15)
+#### Health / Anomalien (~21:50 08-15)
 
 | Check | Befund |
 | --- | --- |
 | Fail-Block divergiert? | **nein** — 2× Receipt `21591154`; #3 war Merkle @ Cap-Höhe |
-| Bodies Cap vs Exec SF | Cap hist. **`21579110`** vs SF tip **`20365614`** (geheilt) — Bodies jetzt ~48 M Catch-up |
+| Bodies Cap vs Exec SF | Cap hist. **`21579110`** vs SF tip **`20365614`** (geheilt) — Bodies jetzt ~133 M Catch-up |
 | Headers Tip | ✅ **174 027 661** |
 | FLOW-X04 / PIPE-014 | ✅ closed offline · Hertz · `re-execute` ✅ · live Exec past Fail ⏳ |
-| P2P Announce | 📋 **P2P-006** Node-NIC-v6 undialbar (TCP refused); Sessions v4 outbound ~7 |
+| P2P UPnP / Announce | ✅ **P2P-002** Alt-Ports + `via_upnp`; 📋 **P2P-006** Dual-Stack-Default offen |
 | Reload/Stop Panic | 🧊 ENGINE-004 parked |
 
 #### FLOW-X01 / PIPE-007 — Fermat (hist. OK)

@@ -26,7 +26,7 @@ use reth_ethereum_forks::{EnrForkIdEntry, ForkId};
 use reth_network_peers::{NodeRecord, PeerId};
 use secp256k1::SecretKey;
 use tokio::{sync::mpsc, task};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 pub mod config;
 pub mod enr;
@@ -167,6 +167,28 @@ impl Discv5 {
     /// The port the discv5 service is listening on.
     pub const fn local_port(&self) -> u16 {
         self.local_node_record.udp_port
+    }
+
+    /// Updates the local discv5 ENR with the dialable NAT endpoint (IP + TCP/UDP ports).
+    ///
+    /// TCP should be the RLPx mapped port; UDP should be the (possibly separately mapped)
+    /// discv5 discovery port.
+    pub fn apply_nat_endpoint(&self, ip: IpAddr, tcp_port: u16, udp_port: u16) {
+        let tcp = SocketAddr::new(ip, tcp_port);
+        let udp = SocketAddr::new(ip, udp_port);
+        if !self.discv5.update_local_enr_socket(tcp, true) {
+            debug!(target: "net::discv5", %tcp, "discv5 ENR TCP socket unchanged or update failed");
+        }
+        if !self.discv5.update_local_enr_socket(udp, false) {
+            debug!(target: "net::discv5", %udp, "discv5 ENR UDP socket unchanged or update failed");
+        }
+        info!(
+            target: "net::discv5",
+            %ip,
+            tcp_port,
+            udp_port,
+            "Updated discv5 ENR with NAT endpoint"
+        );
     }
 
     /// Spawns [`discv5::Discv5`]. Returns [`discv5::Discv5`] handle in reth compatible wrapper type

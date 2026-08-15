@@ -45,6 +45,7 @@ use reth_chainspec::EnrForkIdEntry;
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
 use reth_fs_util::{self as fs, FsPathError};
 use reth_metrics::common::mpsc::MemoryBoundedSender;
+use reth_net_nat::{map_udp_port, resolve_nat_endpoint, NatEndpoint};
 use reth_network_api::{
     events::{PeerEvent, SessionInfo},
     test_utils::PeersHandle,
@@ -69,7 +70,7 @@ use std::{
 };
 use tokio::sync::mpsc::{self, error::TrySendError};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 // TODO: Inlined diagram due to a bug in aquamarine library, should become an include when it's
@@ -305,6 +306,74 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
         let discv4 = discovery.discv4();
         let discv5 = discovery.discv5();
 
+        let listen_tcp_port = listener_addr.port();
+        let listen_udp_port =
+            discv4.as_ref().map(|d| d.node_record().udp_port).unwrap_or(listen_tcp_port);
+
+        let advertised_nat: Arc<Mutex<Option<NatEndpoint>>> = Arc::new(Mutex::new(None));
+        if let Some(resolver) = nat.clone() {
+            if let Some(endpoint) = resolve_nat_endpoint(
+                resolver,
+                listen_tcp_port,
+                listen_udp_port,
+                listener_addr.ip(),
+            )
+            .await
+            {
+                if let Some(discv4) = discv4.as_ref() {
+                    discv4.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, endpoint.udp_port);
+                }
+                if let Some(discv5) = discv5.as_ref() {
+                    let v5_udp_listen = discv5.local_port();
+                    let v5_udp_ext = if v5_udp_listen == listen_udp_port {
+                        endpoint.udp_port
+                    } else if endpoint.via_upnp {
+                        match map_udp_port(v5_udp_listen, v5_udp_listen).await {
+                            Ok((ip, port)) => {
+                                if ip != endpoint.ip {
+                                    warn!(
+                                        target: "net",
+                                        discv4_ip=%endpoint.ip,
+                                        discv5_ip=%ip,
+                                        "discv5 UPnP external IP differs from discv4; using discv4 IP for ENR TCP"
+                                    );
+                                }
+                                port
+                            }
+                            Err(err) => {
+                                warn!(
+                                    target: "net",
+                                    %err,
+                                    v5_udp_listen,
+                                    "Failed to UPnP-map discv5 UDP; announcing listen port"
+                                );
+                                v5_udp_listen
+                            }
+                        }
+                    } else {
+                        v5_udp_listen
+                    };
+                    discv5.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, v5_udp_ext);
+                }
+                *advertised_nat.lock() = Some(endpoint);
+
+                let enode = NodeRecord {
+                    address: endpoint.ip,
+                    tcp_port: endpoint.tcp_port,
+                    udp_port: endpoint.udp_port,
+                    id: local_peer_id,
+                };
+                info!(
+                    target: "net",
+                    enode=%enode,
+                    via_upnp=endpoint.via_upnp,
+                    listen_tcp_port,
+                    listen_udp_port,
+                    "Announced dialable enode after NAT resolution"
+                );
+            }
+        }
+
         let num_active_peers = Arc::new(AtomicUsize::new(0));
 
         let sessions = SessionManager::new(
@@ -347,6 +416,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             discv5,
             event_sender.clone(),
             nat,
+            Arc::clone(&advertised_nat),
         );
 
         // Spawn required block peer filter if configured
@@ -496,8 +566,8 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
     /// Sends an event to the [`TransactionsManager`](crate::transactions::TransactionsManager) if
     /// configured.
     fn notify_tx_manager(&self, event: NetworkTransactionEvent<N>) {
-        if let Some(ref tx) = self.to_transactions_manager
-            && let Err(e) = tx.try_send(event)
+        if let Some(ref tx) = self.to_transactions_manager &&
+            let Err(e) = tx.try_send(event)
         {
             match e {
                 TrySendError::Full(_) => {
