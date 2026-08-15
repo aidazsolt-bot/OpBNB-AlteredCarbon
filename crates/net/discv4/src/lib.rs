@@ -424,6 +424,25 @@ impl Discv4 {
         self.send_to_service(cmd);
     }
 
+    /// Sets the udp discovery port announced in the [`NodeRecord`] / ENR.
+    pub fn set_udp_port(&self, port: u16) {
+        let cmd = Discv4Command::SetUdpPort(port);
+        self.send_to_service(cmd);
+    }
+
+    /// Sets the external IP announced in the [`NodeRecord`] / ENR.
+    pub fn set_external_ip(&self, ip: IpAddr) {
+        let cmd = Discv4Command::SetExternalIp(ip);
+        self.send_to_service(cmd);
+    }
+
+    /// Applies a full NAT endpoint (IP + TCP/UDP ports) to the local node record.
+    pub fn apply_nat_endpoint(&self, ip: IpAddr, tcp_port: u16, udp_port: u16) {
+        self.set_external_ip(ip);
+        self.set_tcp_port(tcp_port);
+        self.set_udp_port(udp_port);
+    }
+
     /// Sets the pair in the EIP-868 [`Enr`] of the node.
     ///
     /// If the key already exists, this will update it.
@@ -686,8 +705,8 @@ impl Discv4Service {
     /// [`NatResolver::ExternalAddr`]. In the case of [`NatResolver::ExternalAddr`], it will return
     /// the first IP address found for the domain associated with the discv4 UDP port.
     fn resolve_external_ip(&mut self) {
-        if let Some(r) = &self.resolve_external_ip_interval
-            && let Some(external_ip) =
+        if let Some(r) = &self.resolve_external_ip_interval &&
+            let Some(external_ip) =
                 r.resolver().clone().as_external_ip(self.local_node_record.udp_port)
         {
             self.set_external_ip_addr(external_ip);
@@ -838,8 +857,8 @@ impl Discv4Service {
             self.kbuckets
                 .closest_values(&target_key)
                 .filter(|node| {
-                    node.value.has_endpoint_proof
-                        && !self.pending_find_nodes.contains_key(&node.key.preimage().0)
+                    node.value.has_endpoint_proof &&
+                        !self.pending_find_nodes.contains_key(&node.key.preimage().0)
                 })
                 .take(MAX_NODES_PER_BUCKET)
                 .map(|n| (target_key.distance(&n.key), n.value.record)),
@@ -973,8 +992,8 @@ impl Discv4Service {
 
     /// Check if the peer has an active bond.
     fn has_bond(&self, remote_id: PeerId, remote_ip: IpAddr) -> bool {
-        if let Some(timestamp) = self.received_pongs.last_pong(remote_id, remote_ip)
-            && timestamp.elapsed() < self.config.bond_expiration
+        if let Some(timestamp) = self.received_pongs.last_pong(remote_id, remote_ip) &&
+            timestamp.elapsed() < self.config.bond_expiration
         {
             return true;
         }
@@ -1292,8 +1311,8 @@ impl Discv4Service {
             return;
         }
 
-        if self.pending_pings.contains_key(&node.id)
-            || self.pending_find_nodes.contains_key(&node.id)
+        if self.pending_pings.contains_key(&node.id) ||
+            self.pending_find_nodes.contains_key(&node.id)
         {
             return;
         }
@@ -1864,6 +1883,20 @@ impl Discv4Service {
                         } else {
                             let _ = self.local_eip_868_enr.set_tcp6(port, &self.secret_key);
                         }
+                        *self.shared_node_record.lock() = self.local_node_record;
+                    }
+                    Discv4Command::SetUdpPort(port) => {
+                        debug!(target: "discv4", %port, "Update udp port");
+                        self.local_node_record.udp_port = port;
+                        if self.local_node_record.address.is_ipv4() {
+                            let _ = self.local_eip_868_enr.set_udp4(port, &self.secret_key);
+                        } else {
+                            let _ = self.local_eip_868_enr.set_udp6(port, &self.secret_key);
+                        }
+                        *self.shared_node_record.lock() = self.local_node_record;
+                    }
+                    Discv4Command::SetExternalIp(external_ip) => {
+                        self.set_external_ip_addr(external_ip);
                     }
 
                     Discv4Command::Terminated => {
@@ -2167,6 +2200,8 @@ enum Discv4Command {
     Add(NodeRecord),
     AddBootNode(NodeRecord),
     SetTcpPort(u16),
+    SetUdpPort(u16),
+    SetExternalIp(IpAddr),
     SetEIP868RLPPair { key: Vec<u8>, rlp: Bytes },
     Ban(PeerId, IpAddr),
     BanPeer(PeerId),
@@ -2426,9 +2461,9 @@ impl CachedFindNode {
         secret_key: &secp256k1::SecretKey,
         expire: u64,
     ) -> (Bytes, B256) {
-        if let Some(c) = cache.as_ref()
-            && c.target == target
-            && c.cached_at.elapsed() < ttl
+        if let Some(c) = cache.as_ref() &&
+            c.target == target &&
+            c.cached_at.elapsed() < ttl
         {
             return (c.payload.clone(), c.hash);
         }
@@ -2825,8 +2860,8 @@ mod tests {
         })
         .await;
 
-        let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
-            + 10000000000000;
+        let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() +
+            10000000000000;
         let msg = Neighbours { nodes: vec![service2.local_node_record], expire: expiry };
         service.on_neighbours(msg, record.tcp_addr(), id);
         // wait for the processed ping

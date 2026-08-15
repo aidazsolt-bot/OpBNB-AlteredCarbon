@@ -13,14 +13,14 @@ use reth_eth_wire::{
     NetworkPrimitives, NewPooledTransactionHashes, SharedTransactions,
 };
 use reth_ethereum_forks::Head;
+use reth_net_nat::NatEndpoint;
 use reth_network_api::{
-    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
+    events::{EngineMessage, NetworkPeersEvents, PeerEvent, PeerEventStream},
     test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, CellCustody, DiscoveryEvent, EngineRxProvider, NetworkError, NetworkEvent,
-    NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
-    PeersInfo,
+    BlockDownloaderProvider, CellCustody, DiscoveryEvent, EngineRxProvider, NetworkError,
+    NetworkEvent, NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest,
+    Peers, PeersInfo,
 };
-use reth_network_api::events::EngineMessage;
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
 use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
 use reth_network_types::{PeerAddr, PeerKind, Reputation, ReputationChangeKind};
@@ -35,8 +35,7 @@ use std::{
 };
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
-    oneshot,
-    Mutex as TokioMutex,
+    oneshot, Mutex as TokioMutex,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -68,6 +67,7 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
         discv5: Option<Discv5>,
         event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
         nat: Option<NatResolver>,
+        advertised_nat: Arc<Mutex<Option<NatEndpoint>>>,
     ) -> Self {
         let inner = NetworkInner {
             num_active_peers,
@@ -86,6 +86,7 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
             discv5,
             event_sender,
             nat,
+            advertised_nat,
         };
         Self { inner: Arc::new(inner) }
     }
@@ -262,6 +263,14 @@ impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
     }
 
     fn local_node_record(&self) -> NodeRecord {
+        if let Some(endpoint) = *self.inner.advertised_nat.lock() {
+            return NodeRecord {
+                address: endpoint.ip,
+                tcp_port: endpoint.tcp_port,
+                udp_port: endpoint.udp_port,
+                id: *self.peer_id(),
+            };
+        }
         if let Some(discv4) = &self.inner.discv4 {
             // Note: the discv4 services uses the same `nat` so we can directly return the node
             // record here
@@ -579,6 +588,8 @@ struct NetworkInner<N: NetworkPrimitives = EthNetworkPrimitives> {
     event_sender: EventSender<NetworkEvent<PeerRequest<N>>>,
     /// The NAT resolver
     nat: Option<NatResolver>,
+    /// Advertised dialable endpoint after UPnP / public-IP resolution (ENR/enode source of truth).
+    advertised_nat: Arc<Mutex<Option<NatEndpoint>>>,
 }
 
 /// Provides access to modify the network's additional protocol handlers.

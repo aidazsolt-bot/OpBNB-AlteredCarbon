@@ -429,7 +429,7 @@ maxperf-op: ## Builds `op-reth` with the most aggressive optimisations (opBNB/OP
 	RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml
 	@mkdir -p $(BIN_DIR)
 	# Install as op-reth-bnb so we never overwrite a generic/op-stack `op-reth` on PATH.
-	@cp -f "$(CARGO_TARGET_DIR)/maxperf/op-reth" "$(BIN_DIR)/op-reth-bnb"
+	install -m 755 "$(CARGO_TARGET_DIR)/maxperf/op-reth" "$(BIN_DIR)/op-reth-bnb"
 	@echo "Installed $(BIN_DIR)/op-reth-bnb (maxperf, default chain opbnb)"
 
 .PHONY: maxperf-bsc
