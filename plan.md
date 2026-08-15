@@ -133,7 +133,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | ✅ **Fermat live** · ⛔ **blocked** Receipt-Root @ `21591154` (vor Haber) · Haber ⏳ |
 | PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth-Diff dokumentieren/fixen vor Root-Verify | PIPE-009 | 🐛 Diff bekannt · **nicht** Ursache von `21591154` (pre-Wright) |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
-| PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | 📋 Harness ready · **Operator startet** offline `re-execute --dump-receipts-on-fail` mit `target/maxperf/op-reth` sobald Bodies/Sender ≥ parent + Exec ≤`21591153` · DoD: first-mismatch Index |
+| PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | 🔬 offline: Bodies+Sender →`21591154`; Exec →`21591153` (SF tip ≠ Bodies Cap — 08-15 heal @`20365614`); dann `re-execute --from 21591154 --to 21591155` (half-open). DoD: first-mismatch Index · s. Harness-README |
 | PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 **3×** live (2× Receipt @`21591154` + **08-14 ~13:43** Merkle @`21579110`→unwind_to=0); Tip gerettet per Kill vor Headers-Commit; **Ops:** Process-Stop ≫ `max-block` als Park |
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
@@ -165,7 +165,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-14 ~21:26 CEST:** Clean Cap-Rebuild: Bodies+Sender **`21579110`** fertig; **Execution ~6.49 M** → Cap (~ETA ~5 h); Headers Tip **174.0 M**. Point4 via **IPC** `/tmp/BSCRethArchiveNode.ipc` MATCH @`1000`/`100000`/`6384710` (kein HTTP-RPC ohne `--http`). Ops: Process-Stop ≫ dirty `max-block`; PORT-OPS-001/ENGINE-004. Nächstes: Exec→Cap→Merkle oder offline FLOW-X04. Details: **Live Sync Progress**.
+- **Stand 2026-08-15 ~10:50 CEST:** Offline FLOW-X04: Bodies+Sender Cap→`21591154` ✅; Exec `stage run` von ChangeSets-SF-Tip **`20365614`→`21591153`** (nicht Bodies-Cap — Gap = Exec hinter Bodies nach Unwind#3; heal kappte nur Sidecar). Danach `re-execute --from 21591154 --to 21591155` (half-open). Headers Tip **174.0 M**. Details: **Live Sync Progress** + `files/harness-receipt-diff-21591154/README.md`.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -174,7 +174,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; Bodies+Sender Cap ✅; Exec ~6.5 M→`21579110`; Fail @ **21591154** über Cap |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; offline X04: Bodies/Sender→`21591154`; Exec SF→`21591153` (from `20365614`); Fail-Block noch offen |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Migrations-Gate PIPE+FLOW in plan/Skill; finale Zahlen nach Human-Sync |
 
@@ -452,18 +452,17 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 8 (Chat `d6ebb428…`, Snapshot **2026-08-09 ~14:30 UTC**) | ~12:18 – ~14:25 UTC (**~2,1 h** Commit-Span; ~1,4 h Chat-Wall) | Auto/Composer (kein per-request Model-Ledger im Transcript) | Transcript-Proxy **~0,11M Tokens** (÷4); billed meter n/a | (Proxy) | ~816 Tool-Calls; 11.288 `ai_code_hashes`; 350 assistant / 18 user msgs | op-evm→payload/rpc/node/cli/`op-reth` grün; opBNB init+RPC smoke; nextest chainspec/forks 23/23; Details: `files/cursor-session8-metrics.json` |
 | Cursor Session 9 (Chat `6a6455c9…` + Vorabend `9be255b9…` PORT-STOR-006, Snapshot **2026-08-10 ~08:30 UTC**) | Vorabend SCS-Port unterbrochen; Resume **05:57–~08:30 UTC** (**~2,5 h** Chat-Wall inkl. EF-Rootcause); Commit-Span **06:06–~08:27 UTC** | Auto/Composer + Task-Subagents (inherit); kein per-request Model-Ledger | Transcript-Proxy kombiniert **~97K+** Tokens (÷4, früher Snapshot ~97K; Session fortgesetzt); billed meter n/a | (Proxy) | Resume früh: 12 user / 118 assistant; **250** tool_use; danach EF-Deep-Dive (Bytecode Compact) | **PORT-STOR-006**; stages **106**; op-stack nextest; EF **v17.0** + Compact-Fix → **61/62** suites; Details: `files/cursor-session9-metrics.json` |
 | Cursor Session 10 cont. (Chat `84eb0b61…`, Snapshot **2026-08-11 ~16:50 UTC+2**) | Live-Sync P2P-003/004/005: **~12:00–16:50** (**~4,8 h** Wall) inkl. Nachziehen der Dataflow-Lücken + **3× maxperf-op** (~20–23 min/Link, JOBS=1) | Auto/Composer | Transcript-Proxy n/a | (Proxy) | Matrix-Soll Tip-Resolve/Cap/Falling (Analyse nachgezogen); eth/69; Unit-Tests; Live-Verify | **P2P-003/004/005 live ✅** Falling @~22k hdr/s. Rebuilds: eth69~23 min, Cap~20 min, Falling~21 min. Tests: fetch 43/43, reverse_headers 11/11. ETL-TempDir = Upstream-Design |
-| Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-13 ~16:00 CEST**) | Receipt-Fail + Unwind + Rebuild + Ops-Gate (**~nachmittag** Wall) | Auto/Composer | Transcript-Proxy n/a | (Proxy) | PIPE-014/X04/X05 Doku; `re-execute --dump-receipts-on-fail`; op-alloy `#22304` API-Align; maxperf rebuild-only ~22 min | **EXEC-001** open; Bodies rebuild; Harness → Operator; Upstream-Check: trail **2.4.1**, paradigm **2.5.0**, bnb-chain/reth~**2.2** + reth#209/reth-bsc#449 WIP **2.4.1**, kein 2.5 |
-| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-14 ~13:35 CEST**) | 2. Fail + debug-Cap-Klarstellung | Auto/Composer | Transcript-Proxy n/a | (Proxy) | Journal-Verify same `21591154`; `skip-fcu`≠Höhen-Cap; Live **`max-block 21579110`+`terminate`** → MerkleExecute | Ops-Gate dokumentiert; FLOW-X04 weiter offen |
-| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-14 ~18:01 CEST**) | max-block-Sturm + Reload-Panic + Tip-Rettung | Auto/Composer | Transcript-Proxy n/a | (Proxy) | Merkle @`21579110`→unwind_to=0; Kill rettet Headers Tip; Bodies clean Cap-Rebuild; PORT-OPS-001/ENGINE-004; Headers-Unwind-Log-Inkonsistenz | Clean Cap→Merkle oder offline X04; Process-Stop ≫ Cap |
-| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-14 ~21:26 CEST**) | Cap Exec + IPC Point4 | Auto/Composer | Transcript-Proxy n/a | (Proxy) | Bodies+Sender Cap ✅; Exec ~6.5 M; IPC Point4 MATCH; Doku OPS-001/ENGINE-004 | Exec→Cap→Merkle; kein HTTP ohne `--http` |
+| Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-15 ~10:54 CEST**, kumulativ 08-12→15) | Kalender **~66,5 h** (08-12 16:27–08-15 10:54); **6** Interaktiv-Cluster **~4,5 h** Span (Gap>90 min; +Pad ≈**~6 h**) | Auto/Composer (+1 Task) | Transcript-Proxy: Msg-Text **~72 K** Tok (÷4); File **~216 K** Tok (÷4); billed n/a | (Proxy) | **84** user / **367** asst; **567** tool_use (Shell 219, Read 113, StrReplace 108, Grep 93); Details: `files/cursor-session12-metrics.json` | **EXEC-001** open; PIPE-014/X04/X05; Harness+dump-flag; OPS-001/ENGINE-004; Cap Bodies/Sender; offline X04 Exec `20365614→21591153`; SF≠Cap dokumentiert |
+| Cursor Session 12 cont. (Teil-Snapshots 08-13…08-15) | s. Cluster in Metrics-JSON | Auto/Composer | (in kumulierter Zeile) | (Proxy) | Fail#1–3; Tip-Rettung; Cap; offline X04/SF-Heal; CLI inkl. vs half-open | Dump `re-execute 54..55` nach Exec-fertig |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
 > verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
-> bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; Cursor-Kosten nur über Account-Dashboard.
-> Quellen: Copilot `/root/.copilot/session-store.db`; Cursor `agent-transcripts/` +
-> `~/.cursor/ai-tracking/ai-code-tracking.db`.
+> bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; **Cursor Session 12** nur Proxy
+> (~72 K–216 K Tok Content, **~4,5–6 h** Interaktiv-Wall) — **billed** nur Account-Dashboard /
+> Abo (Context-Resend ≫ Content-Proxy). Quellen: Copilot `/root/.copilot/session-store.db`;
+> Cursor `agent-transcripts/` + `files/cursor-session12-metrics.json`.
 
 ## Nächste Schritte (unmittelbar, in Reihenfolge)
 
@@ -1189,11 +1188,13 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 **PORT-DEV-001 (parked):** LocalMiner `No payload` nach ~5–7 Blöcken — **keine Prio**, ggf. später fixen oder `--dev` dekommissionieren.
 **PORT-DEV-002:** `payload_wait_time` verdrahtet (hilft allein nicht gegen DEV-001).
 
-**Live Archive (parallel):** s. **Live Sync Progress** — Cap Bodies+Sender ✅; Exec ~6.5 M→`21579110`; Point4 IPC MATCH; PORT-OPS-001/ENGINE-004; nächstes Cap-Merkle oder **FLOW-X04**.
+**Live Archive (parallel):** s. **Live Sync Progress** — offline FLOW-X04 Exec `20365614→21591153`; Bodies/Sender bis Fail-Block; PORT-OPS-001/ENGINE-004; ChangeSets-SF ≠ Bodies-Cap.
 
-### Session 12 — Receipt-Root Fail / Unwind / Harness Binary (2026-08-13 → 08-14)
+### Session 12 — Receipt-Root Fail / Unwind / Harness Binary (2026-08-13 → 08-15)
 
 **Chat:** `ea987bef…` · Gates: **PORT-PIPE-014** + **PORT-FLOW-X04/X05** · **PORT-OPS-001** · **PORT-ENGINE-004**.
+
+**Aufwand (Snapshot 08-15 ~10:54 CEST):** Kalender ~66,5 h; Interaktiv-Cluster **~4,5–6 h**; **84**/ **367** user/asst; **567** tools; Token-Proxy **~72 K** (Msg) / **~216 K** (File÷4); billed n/a → `files/cursor-session12-metrics.json`.
 
 | Thema | Ergebnis |
 | --- | --- |
@@ -1202,6 +1203,8 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 | Live Fail #3 | 08-14 **13:43 CEST** — MerkleExecute state-root @ **`21579110`** nach dirty `max-block` (Stages schon > H → Skip) → **unwind_to=0** |
 | Bodies-Referenz | Grafana: 1. Tip-Lauf **0→173.37 M in 8.25 h @ ~5.8 k/s**; Rebuilds nach Unwind |
 | Harness | `files/harness-receipt-diff-21591154/` + `re-execute --dump-receipts-on-fail`; Binary `target/maxperf/op-reth` |
+| CLI ranges | **`stage run`**: inkl. `from..=to` · Exec max **`21591153`** · Bodies/Sender bis **`21591154`** · Bodies `--from` = Cap (**nicht** Cap+1). **`re-execute`**: half-open `from..to` → `--from 21591154 --to 21591155` = nur Fail-Block |
+| SF vs Cap (08-15) | ChangeSets tip **`20365614`** nach three-way heal (`header_claims=365615`); Bodies Cap **`21579110`** ≠ Exec; `missing … 20365615` wenn Exec `--from` Cap |
 | Debug-Flags | **`--debug.max-block <H>`** = Pipeline-Höhen-Cap (Stages mit Checkpoint **> H** werden **geskippt** — kein Re-Exec) · **`--debug.terminate`** nach Pipeline · **`--debug.skip-fcu <N>`** = nur N Engine-FCUs (**kein** Block-Stop) · **`--debug.skip-stages` existiert nicht** |
 | Reload/Stop | **PORT-ENGINE-004:** Panic `SelectNextSome polled after terminated` (consensus engine) — parked |
 | Headers Unwind-Log | Kein batch-`Stage unwound done=false` (nur Start + finales `done=true`); Fortschritt via `headers init-cursor` / CPU — Observability-Bug unter FLOW-X05 |
@@ -1212,16 +1215,20 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`BSCRethArchiveNode` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-14 **~21:26 CEST** · instance `BSCRethArchiveNode:6060` · chain **204** · pid **45959** · Flags: `--debug.max-block 21579110 --debug.terminate --debug.skip-fcu 21579110` · **RPC:** IPC `/tmp/BSCRethArchiveNode.ipc` only (kein `--http` → kein `:8545`)
+**Stichprobe:** 2026-08-15 **~10:50 CEST** · offline FLOW-X04 (kein Live-Pipeline-Exec am Fail-Block) · Headers Tip **174 027 661** · chain **204**
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
 | Headers | **174 027 661** | ✅ Tip gerettet (Kill ~17:49 während Tip→0-Unwind vor Commit) |
-| Bodies | **21579110** | ✅ Cap fertig ~19:49 |
-| SenderRecovery | **21579110** | ✅ Cap fertig ~20:48 |
-| Execution | **~6.49 M** → **`target=21579110`** | 🔄 ~670–770 Mgas/s; ETA Cap ~**~5 h**; Fail-Block **`21591154`** über Cap |
-| MerkleExecute | **0** | ⏳ nach Clean Exec→Hashing |
-| History / Finish | — | ⏳; dann `--debug.terminate` Exit |
+| Bodies | Cap **`21579110`** → offline **`21591154`** | ✅ Cap 08-14; X04 Bodies `stage run` Cap→Fail-Block 08-15 |
+| SenderRecovery | Cap **`21579110`** → offline **`21591154`** | ✅ analog Bodies |
+| Execution | ChangeSets SF tip war **`20365614`** → target **`21591153`** | 🔄 offline `stage run` (nicht Cap `21579110` als `--from`); Fail-Block **`21591154`** absichtlich **nicht** committen |
+| MerkleExecute | **0** / n/a | ⏳ nach PIPE-014 Fix + sauberem Exec past Fail |
+| History / Finish | — | ⏳ |
+
+#### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
+
+Account/Storage-ChangeSets-SF folgen **Execution**, nicht Bodies. Nach Unwind#3 + Cap-Rebuild lagen Bodies/Sender bei Cap, Exec/SF weit dahinter. Three-way heal am Jar `…_20000000_20499999`: `header_claims=365615`, `sidecar_has=379384` → Truncate Sidecar auf Header → Tip **`20365614`**. Heal hat **nicht** von Cap nach unten geschnitten — nur uncommitted Sidecar (~14 k). Danach: Exec `--from 20365614 --to 21591153`.
 
 #### ALERT — PORT-EXEC-001 / PIPE-014 (Fails 08-13 + **08-14**)
 
@@ -1241,6 +1248,17 @@ Stage encountered a validation error: receipt root mismatch:
 | Ruled out | PIPE-009 Wright · Canyon deposit_version · „anderer“ Bad-Block am 08-14 |
 | Fixture / Harness | `files/receipts-21591154-public.json` · `files/harness-receipt-diff-21591154/` |
 
+#### FLOW-X04 — Offline CLI (verbindliche Höhen)
+
+| Step | Command | `--from` | `--to` | Notes |
+| --- | --- | ---: | ---: | --- |
+| Bodies | `stage run … bodies` | **`21579110`** (Cap) | **`21591154`** | inkl.; **nicht** Cap+1 |
+| Sender | `stage run … senderrecovery` | **`21579110`** | **`21591154`** | inkl. |
+| Execution | `stage run … execution` | **SF/Exec tip** (z. B. `20365614`) | **`21591153`** | inkl. Parent; **nie** `21591154` bis Fix |
+| Dump | `re-execute --dump-receipts-on-fail` | **`21591154`** | **`21591155`** | half-open = nur Fail-Block; State @ `21591153` |
+
+Details + SF-Erklärung: `files/harness-receipt-diff-21591154/README.md`.
+
 #### FLOW-X05 — Unwind-Stürme
 
 | # | Zeit (CEST) | Effekt |
@@ -1249,27 +1267,27 @@ Stage encountered a validation error: receipt root mismatch:
 | 2 | 08-14 10:49→ | **Same** `bad_block=21591154`; Sender/Bodies erneut → Floor; **Headers Tip blieb** |
 | 3 | 08-14 13:43→ | Merkle state-root @ **`21579110`** (dirty Cap) → Hashing/Exec/Sender/Bodies/Headers **unwind_to=0**; Kill ~17:49 rettet Headers-Tip-Commit |
 | Cap rebuild | 08-14 ~17:53→ | Bodies **0→21579110** clean; Headers Tip vorhanden |
+| X04 offline | 08-15 → | Bodies/Sender→`21591154`; Exec SF `20365614`→`21591153` |
 
 **Ops (verbindlich bis PIPE-014 Fix):**
 
 1. **Stabilster Park vor Bad-Block:** Process **stop** (nicht Reload), bevor Execution den Fail-Block anfasst.
 2. **`--debug.max-block <H>`** nur für **Clean-Rebuild** wenn alle relevanten Stage-Checkpoints **≤ H** (sonst Skip → PORT-OPS-001). Optional `--debug.terminate`.
 3. **`--debug.skip-fcu`** ist **kein** Höhen-Stop.
-4. Offline Harness: `target/maxperf/op-reth re-execute --dump-receipts-on-fail …` → `diff_receipts.py`.
-5. Journal: `journalctl -D /var/lib/machines/BSCRethArchiveNode/var/log/journal/`.
-6. Headers-Unwind: Journal ohne Batch-Progress ≠ Hang — Fortschritt an `reth_static_files_jar_provider_calls_total{…init-cursor}` / CPU messen.
-7. Point4/RPC: Live-Node hat **nur IPC** (`--ipcpath /tmp/BSCRethArchiveNode.ipc`); HTTP erst mit `--http`. Raw JSON-RPC über Unix-Socket (kein HTTP/1.1 über curl ohne Extra-Flags).
+4. Offline Harness: Bodies/Sender→`21591154`, Exec→`21591153`, dann `re-execute --from 21591154 --to 21591155 --dump-receipts-on-fail` → `diff_receipts.py`.
+5. Exec `--from` = **ChangeSets-SF tip**, nicht Bodies-Cap (sonst `missing static file data`).
+6. Journal: `journalctl -D /var/lib/machines/BSCRethArchiveNode/var/log/journal/`.
+7. Headers-Unwind: Journal ohne Batch-Progress ≠ Hang — Fortschritt an `reth_static_files_jar_provider_calls_total{…init-cursor}` / CPU messen.
+8. Point4/RPC: Live-Node hat **nur IPC** (`--ipcpath /tmp/BSCRethArchiveNode.ipc`); HTTP erst mit `--http`. Raw JSON-RPC über Unix-Socket.
 
-#### Health / Anomalien (~21:26 08-14)
+#### Health / Anomalien (~10:50 08-15)
 
 | Check | Befund |
 | --- | --- |
 | Fail-Block divergiert? | **nein** — 2× Receipt `21591154`; #3 war Merkle @ Cap-Höhe |
-| Pipeline Cap aktiv | **ja** (Bodies+Sender Cap ✅; Exec →`21579110`) |
+| Bodies Cap vs Exec SF | Cap **`21579110`** vs SF tip **`20365614`** (geheilt) — erwartet nach Unwind#3 |
 | Headers Tip | ✅ **174 027 661** |
-| Peers / body validation | peers **5**; validation/timeout/invalid_msg **0** |
-| Point 4 (IPC) | ✅ MATCH @`1000` / `100000` / `6384710` (hash+stateRoot+txRoot vs Public); `eth_blockNumber`=`0` solange Finish=0 |
-| Fermat Point4 (hist.) | ✅ MATCH 08-12 |
+| FLOW-X04 | 🔬 Exec Catch-up →`21591153` dann Dump |
 | Reload/Stop Panic | 🧊 ENGINE-004 parked |
 
 #### FLOW-X01 / PIPE-007 — Fermat (hist. OK)
@@ -1290,7 +1308,9 @@ Siehe `files/fermat-point4-20260812.txt`. **Haber** noch nicht erreicht.
 | Headers Tip→0 (abgebrochen) | 08-14 17:30→17:49 | ~19 min | Kill; Tip-Commit verhindert |
 | Bodies Cap clean | 08-14 17:53→19:49 | ~2 h | **0→21579110** ✅ |
 | Sender Cap | 08-14 →20:48 | ~1 h | **21579110** ✅ |
-| Execution Cap | 08-14 ~20:48→ | 🔄 | ~6.49 M @ 21:26 →`21579110` |
+| Execution Cap | 08-14 ~20:48→ | — | gestoppt / SF tip später **`20365614`** |
+| X04 Bodies/Sender | 08-15 | — | Cap→**`21591154`** ✅ |
+| X04 Execution | 08-15 ~08:32→ | 🔄 | **`20365614`→`21591153`** |
 
 #### Network usage (CT `BSCRethArchiveNode:9100`, `node_network_*`)
 
