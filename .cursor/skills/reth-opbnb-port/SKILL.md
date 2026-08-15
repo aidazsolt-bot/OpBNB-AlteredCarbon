@@ -23,6 +23,8 @@ description: >-
 Dieser Fork ist ein **Methodik-/Prozess-Experiment** (README *Project Notice* / *About This Fork*):
 wie weit KI-Assistenten einen archivierten, protokollkritischen Client (Reth/opBNB) revitalisieren
 können — **kein** Produkt, **keine** Produktionsreife, **keine** Haftung.
+**Ergebnisse nur für Privatpersonen** (persönlich/nicht-kommerziell); **kein** kommerzieller oder
+Unternehmens-Einsatz — siehe `NOTICE-PERSONAL-USE.md` (nicht GPL/Public Domain: die erlauben Kommerz).
 
 **Urteil (Stand 2026-08-12, Live Archive past Fermat):**
 
