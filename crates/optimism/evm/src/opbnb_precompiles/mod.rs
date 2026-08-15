@@ -42,10 +42,13 @@ pub fn opbnb_precompiles(spec: OpSpecId, flags: OpBnbPrecompileFlags) -> Precomp
 fn build_overlay(spec: OpSpecId, flags: OpBnbPrecompileFlags) -> Precompiles {
     let mut precompiles = OpPrecompiles::new_with_spec(spec).precompiles().clone();
     if flags.fermat {
-        // Match op-geth Fermat / Cancun / Fjord maps: always before-hertz CometBFT on opBNB.
+        // op-geth `cometBFTLightBlockValidate` @ 0x67 always returns the pre-update
+        // `validatorSetChanged` (BSC Hertz semantics). There is no opBNB "before Hertz"
+        // map — injecting BEFORE_HERTZ forced `false` and skipped IBC validator-set
+        // SSTOREs → under-gas receipts (FLOW-X04 / PIPE-014 @ 21591154 tx#10).
         precompiles.extend([
             bls::BLS_SIGNATURE_VALIDATION,
-            cometbft::COMETBFT_LIGHT_BLOCK_VALIDATION_BEFORE_HERTZ,
+            cometbft::COMETBFT_LIGHT_BLOCK_VALIDATION,
         ]);
     }
     if flags.haber_p256 {

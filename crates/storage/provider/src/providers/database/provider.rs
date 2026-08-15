@@ -264,6 +264,10 @@ impl<TX: DbTx + 'static, N: NodeTypes> DatabaseProvider<TX, N> {
         let mut block_number =
             self.block_number(block_hash)?.ok_or(ProviderError::BlockHashNotFound(block_hash))?;
         let pipeline_consistency = self.build_pipeline_consistency()?;
+        // See `try_into_history_at_block`: Latest iff query == Execution / PlainState tip.
+        if pipeline_consistency.execution_tip == Some(block_number) {
+            return Ok(Box::new(LatestStateProviderRef::new(self)))
+        }
         if block_number == self.best_block_number().unwrap_or_default() &&
             block_number == self.last_block_number().unwrap_or_default() &&
             pipeline_consistency.account_inconsistency().is_none() &&
@@ -875,11 +879,17 @@ impl<TX: DbTx + 'static, N: NodeTypes> TryIntoHistoricalStateProvider for Databa
         self,
         mut block_number: BlockNumber,
     ) -> ProviderResult<StateProviderBox> {
-        // If the block number matches the best block on disk, we can normally use the latest
-        // state provider. However, during pipeline sync the Execution stage may have advanced
-        // PlainState beyond the Finish checkpoint, so LatestStateProvider would return data
-        // from a future block. Only take the fast path when there is no pipeline gap.
         let pipeline_consistency = self.build_pipeline_consistency()?;
+        // PlainState / hashed tip advances with the Execution stage. During staged sync,
+        // `best_block_number()` is the Finish checkpoint (often 0) while Headers tip is far
+        // ahead — comparing only to Finish never selects Latest at the Execution tip, and
+        // HistoricalStateProvider then fails open (empty history indices → NotYetWritten).
+        // Latest is correct iff the requested block is exactly the Execution tip.
+        if pipeline_consistency.execution_tip == Some(block_number) {
+            return Ok(Box::new(LatestStateProvider::new(self)))
+        }
+        // Fully-synced / tip path: Finish catch-up equals the requested block and history
+        // indices are not behind PlainState (bnb-chain/reth#113).
         if block_number == self.best_block_number().unwrap_or_default() &&
             pipeline_consistency.account_inconsistency().is_none() &&
             pipeline_consistency.storage_inconsistency().is_none()

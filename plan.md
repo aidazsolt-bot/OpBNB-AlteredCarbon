@@ -133,7 +133,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | ✅ **Fermat live** · ⛔ **blocked** Receipt-Root @ `21591154` (vor Haber) · Haber ⏳ |
 | PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth-Diff dokumentieren/fixen vor Root-Verify | PIPE-009 | 🐛 Diff bekannt · **nicht** Ursache von `21591154` (pre-Wright) |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
-| PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | 🔬 offline: Bodies+Sender →`21591154`; Exec →`21591153` (SF tip ≠ Bodies Cap — 08-15 heal @`20365614`); dann `re-execute --from 21591154 --to 21591155` (half-open). DoD: first-mismatch Index · s. Harness-README |
+| PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | ✅ **closed** · idx=10 `syncLightBlock`/`0x67` · Hertz-Overlay · `re-execute 54..55` ✅ (08-15 ~14:13 CEST, kein Dump) |
 | PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 **3×** live (2× Receipt @`21591154` + **08-14 ~13:43** Merkle @`21579110`→unwind_to=0); Tip gerettet per Kill vor Headers-Commit; **Ops:** Process-Stop ≫ `max-block` als Park |
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
@@ -165,7 +165,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-15 ~11:47 CEST:** Offline FLOW-X04 laufend (Exec→`21591153`). **op-geth vs Reth Root-Pipeline** dokumentiert (ValidateState eager vs Execution+MerkleExecute staged) — Diff ist Timing, nicht andere Trie-Formel; Fail `21591154` = Receipt-Content (PIPE-014), nicht State-Root-Staging. Details: **Live Sync Progress** + Harness-README.
+- **Stand 2026-08-15 ~14:20 CEST:** PIPE-014/X04 **fix verified** — `re-execute --from 21591154 --to 21591155` ✅ (ReceiptsRoot match, kein Dump). Live Archive neu gestartet (Bodies ≫ Fail; Exec noch `@21591153` bis Sender nachzieht). Ursache war Fermat-Overlay `BEFORE_HERTZ` vs op-geth Hertz `validatorSetChanged`.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -174,7 +174,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; offline X04: Bodies/Sender→`21591154`; Exec SF→`21591153` (from `20365614`); Fail-Block noch offen |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H Tip **174 M**; PIPE-014/X04 Hertz-Fix ✅ `re-execute`; live Bodies Catch-up, Exec @`21591153`→past Fail |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Migrations-Gate PIPE+FLOW in plan/Skill; finale Zahlen nach Human-Sync |
 
@@ -207,7 +207,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-DEV-001 | `--dev --dev.block-time 250ms`/`1s`: nach ~5–7 Blöcken Dauer-Spam `Error advancing the chain: No payload`; Tip bleibt stehen | **Nur `--dev` / `LocalMiner`:** (1) `advance()` = FCU+Attrs → `resolve_kind(payload_id)`; `resolve` liefert `None` wenn Job nicht (mehr) in `payload_jobs` (Race: Job noch nicht inserted / schon removed / ID stale). (2) Parallel hartcodiert `fcu_interval=1s` mit **bare FCU** (`attrs=None`) im selben `select!` — verschärft Timing; Interval-`MissedTickBehavior::Burst` feuerzt Catch-up-Ticks. (3) Persistence/SF (STOR-010) ist **nicht** die Ursache (nach Fix kein Fatal mehr). **Mainnet/Archive-Follow:** trifft **nicht** denselben Pfad — kein `LocalMiner`; Tip-Follow = CL `newPayload` + FCU oft **ohne** Attrs. Sequencer-Build (FCU+Attrs → `getPayload`) steuert die CL zeitlich; kein 1s-bare-FCU aus LocalMiner. Ähnliches Risiko nur, wenn ein Client Attrs-Build und bare-FCU unsynchronisiert spamt (nicht op-node Normalbetrieb). | 🧊 **parked** (2026-08-11): keine Prio / kein maxperf-Rebuild dafür. Soll irgendwann funktionieren **oder** `--dev`/LocalMiner dekommissionieren (kein klarer Mehrwert für Archive-Port). Fix-Idee bleibt: bare-FCU während pending Build unterdrücken; Burst ab; Job vor Resolve. Reproduce: `files/dev-250ms` tip≈7 |
 | PORT-DEV-002 | `--dev.payload-wait-time` wirkte nicht | `DebugNodeLauncher` spawnte `LocalMiner::new` ohne `with_payload_wait_time_opt` | ✅ fixed (Session 11): Flag an `LocalMiner` durchgereicht; allein **kein** Ersatz für DEV-001 (Race bleibt) |
 | PORT-CONS-001 | Headers-Stage: `TimestampIsInPast` trotz gültiger opBNB-Kette; Peers `BadMessage`-Ban; Checkpoint 0 | Eth-`validate_against_parent_timestamp` (Sekunden). opBNB speichert Subsekunden in `mixHash` (`MilliTimestamp = Time*1000 + mixHash[:2]`, bnb-chain/op-geth); gleiche Unix-Sekunde + steigende Milli ist gültig | ✅ fixed (Session 10): `validation/milli_timestamp.rs` + `OpBeaconConsensus` für Chain-ID **204/5611**; Unit-Tests live equal-second + OP-Mainnet reject |
-| PORT-EXEC-001 | Archive Execution: `receipt root mismatch` @ **`21591154`** (`got 0x61c1b64b…` ≠ `expected 0x579924c8…` = public header); danach Unwind-Sturm | Pre-Canyon / post-Snow / pre-Haber/Wright (`ts=1713344877`). Hardfork-Gating + Regolith deposit-nonce-Strip wirken korrekt; **PIPE-009 Wright nicht Ursache**. Vermutlich falsche Receipt-**Inhalte** (status/gasUsed/logs) ≥1 User-Tx. 2× live Unwind auf Floor **`21579118`**; Headers Tip wieder **~174.0 M** | 🐛 **open** · PIPE-014 / FLOW-X04/X05 · Fixture+Harness ready · **Ops:** Process-Stop vor Exec-Fail ≫ Cap; offline dump mit `target/maxperf/op-reth` |
+| PORT-EXEC-001 | Archive Execution: `receipt root mismatch` @ **`21591154`** (`got 0x61c1b64b…` ≠ `expected 0x579924c8…`); Unwind-Sturm 2× | FLOW-X04 idx=10 `syncLightBlock`→`0x67`; Overlay war **BEFORE_HERTZ**; Fix = Hertz `COMETBFT_LIGHT_BLOCK_VALIDATION`. `re-execute` ✅ 08-15. | ✅ **fix verified** (offline re-exec) · 🔄 live Exec past Fail pending · FLOW-X05 Ops weiter |
 | PORT-ENGINE-004 | `systemctl` Reload/Stop: Panic `SelectNextSome polled after terminated` in Critical task `consensus engine` | Shutdown-Pfad Engine/`futures_util::SelectNextSome` nach Stream-Ende noch gepollt (Reload 08-14 13:29 + Stop 17:49) | 🧊 **parked** — später analysieren; Tip/DB nicht primär betroffen |
 | PORT-OPS-001 | `--debug.max-block H` als „Park vor Fail“ → Merkle-Fail @ H + `unwind_to=0` | Wenn Stage-Checkpoints **bereits > H**: Pipeline skippt Bodies/Exec (`Stage reached target… skipping`) → Hashing/Merkle auf Restzustand; 08-14 13:43 `bad_block=21579110` state-root mismatch (`got 0x99a6…` / `expected 0x1817…` ≠ Public `0x7b77…`) → Unwind Tip→0 | 🐛 **Ops-Gate** · Cap nur für **Clean-Rebuild** 0…H wenn Checkpoints ≤ H; sonst Process-Stop |
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed + **live** Backfill/`Preparing stage Headers` (FLOW-E01/E02). Checkpoint Headers weiter 0 bis FLOW-H05 |
@@ -239,7 +239,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
 | PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008) | S01–S02 | ✅ umgesetzt · ⏳ live ungetestet (Archive-Last / SF-Unwind) |
 | PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | ✅ Hardfork + `is_pre_contract_fork_block`; Mainnet ohne Fork | — | ✅ umgesetzt · 📋 Verify nur bei Testnet-Archive (Mainnet n/a) |
-| PORT-PIPE-014 | Execution pre-Canyon | Receipt-**Content**-Parity vs op-geth (status/gasUsed/logs/cumGas), nicht nur Regolith-Nonce-Strip / Canyon-`deposit_receipt_version` | Code: Overlay+OP-Receipt-Pfad; Live Fail @ `21591154` | **X04 🔬** | 🐛 **live Fail** 2026-08-13T11:36Z · expected=public · DoD: first divergent tx via FLOW-X04 · siehe PORT-EXEC-001 |
+| PORT-PIPE-014 | Execution pre-Canyon | Receipt-**Content**-Parity vs op-geth (status/gasUsed/logs/cumGas), nicht nur Regolith-Nonce-Strip / Canyon-`deposit_receipt_version` | Code: Overlay Hertz @ `0x67`; Live Fail @ `21591154` | **X04 ✅** | ✅ first-mismatch idx=10 · Fix Hertz · `re-execute` ✅ · 🔄 live Exec≫Fail |
 
 #### Unused / ersetzt / Orphan (PORT-PIPE-U*)
 
@@ -253,7 +253,7 @@ Portierte Helper oder Alt-Pfade ohne Call-Site — **nicht** mit „fehlender St
 | PORT-PIPE-U04 | `is_haber_active_at_timestamp` (Optimism-Trait) | In **optimism**-Crates unbenutzt; Overlay nutzt `fork(Haber)` in `config.rs`. (BSC-Crates haben eigene Haber-API.) | ♻️ ersetzt (OP-Pfad) · BSC separat |
 | PORT-PIPE-U05 | `crates/optimism/cli/src/commands/build_pipeline.rs` (`build_import_pipeline`) | **Nicht** in `commands/mod.rs` eingebunden → kompiliert nicht mit. Live-Import: `reth_cli_commands::import::build_import_pipeline` + Node-`DefaultStages`. Stale Merge-Artefakt (falsche `DefaultStages::new`-Arity historisch). | ⚠️ orphan · löschen oder an CLI anbinden · **kein Live-Sync-Pfad** |
 | PORT-PIPE-U06 | Alt-CLI `TriePrefetch` / `--enable-prefetch` / `--optimize.enable-execution-cache` | Beim v2.4.1-Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache (siehe PORT-CLI-002). | ♻️ ersetzt (Upstream-Engine) · 📝 bewusst nicht wiederbelebt · 🔜 nur falls Produkt-Parity zu altem BSC-Fork |
-| PORT-PIPE-U07 | `COMETBFT_LIGHT_BLOCK_VALIDATION` (+ `…_run`) und `…_PASTEUR` (+ `…_run_pasteur`, per-byte gas) in `opbnb_precompiles/cometbft.rs` | **dead_code** bei `maxperf-op`. Overlay (`opbnb_precompiles/mod.rs`) injiziert nur `COMETBFT_LIGHT_BLOCK_VALIDATION_BEFORE_HERTZ`. op-geth opBNB (`contracts.go`) hat **eine** `cometBFTLightBlockValidate` @ `0x67` mit flat gas — kein Hertz/Pasteur-Switch. Hertz/Pasteur = BSC-Era-Varianten, mitkopiert. | 📝 by design für **opBNB** (BEFORE_HERTZ ≈ op-geth) · ⚠️ BSC-Varianten tot im OP-Crate · 🔜 nachportieren/verdrahten nur wenn `reth-bsc` denselben Precompile-Pfad braucht; sonst löschen/cfg-gaten |
+| PORT-PIPE-U07 | `COMETBFT_LIGHT_BLOCK_VALIDATION_BEFORE_HERTZ` + `…_PASTEUR` in `opbnb_precompiles/cometbft.rs` | Overlay injectiert jetzt **`COMETBFT_LIGHT_BLOCK_VALIDATION`** (Hertz = op-geth). BEFORE_HERTZ/Pasteur = BSC-Era; tot im OP-Pfad. **Früher falsch:** BEFORE_HERTZ ≈ op-geth — op-geth hat immer pre-update `validatorSetChanged` (PIPE-014). | ✅ Overlay-Fix 08-15 · ⚠️ BEFORE_HERTZ/Pasteur tot · 🔜 cfg-gaten/löschen oder nach `reth-bsc` |
 | PORT-PIPE-U08 | Unused imports in `optimism/hardforks/src/hardfork.rs` (+ Spiegel `bsc/hardforks`) | `Box`/`format`/`String`/`Display`/`FromStr` nach Macro-Refactor übrig (`maxperf-op` warn). | 🧹 CLEANUP-A01 · kein Port-Gap |
 | PORT-PIPE-U09 | `reth-engine-tree`: unused crate dep `reth_trie_prefetch` | Prefetch-Crate hängt noch als Dependency, Code-Pfad entfernt (U06). | ♻️ ersetzt · 🧹 Dep entfernen (CLEANUP-A02) |
 | PORT-PIPE-U10 | `reth-stages`: `load_history_indices` / `load_indices` / `LoadMode` | storage.v2/EitherWriter-Port hat alten History-Load-Pfad obsolet gemacht; Funktionen blieben liegen. | ♻️ ersetzt (v2 history writers) · 🧹 löschen oder hinter Feature · Verify: PIPE-012 |
@@ -274,13 +274,13 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 
 | Prio | ID | Scope | Aktion | Done wenn |
 | --- | --- | --- | --- | --- |
-| **P0** | — | **PORT-EXEC-001 / PIPE-014** Receipt-Root @ `21591154` + FLOW-X04; FLOW-X05 3×; **PORT-OPS-001** max-block Skip-Falle | First-mismatch Index; Fix; Process-Stop vor Fail; Cap nur Clean-Rebuild | Exec past `21591154` ohne Receipt-Mismatch; plan Status ✅ |
+| **P0** | — | **PORT-EXEC-001 / PIPE-014** @ `21591154` (**fix verified** offline); FLOW-X05 3× hist.; **PORT-OPS-001** | Live Exec past Fail; kein neuer Receipt-Unwind; Cap nur Clean-Rebuild | Exec checkpoint ≫ `21591154`; plan EXEC-001 ✅ live |
 | **P0** | — | Execution live → FLOW-X01 Haber + X02/X03 (+ PIPE-008/009) | Fermat ✅; Haber/Wright; X02 L1-Fee Diff | Execution ohne Unwind-Sturm; Root-Stichproben an Fork-Fenstern |
 | **P1** | CLEANUP-A01 | `reth-optimism-forks` / `reth-bsc-forks` unused imports | `cargo fix -p …` oder Imports streichen | 0 unused_imports in hardfork.rs |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, trie-sparse/parallel, db, provider, rpc-*, optimism-rpc, …) | `Cargo.toml` deps entfernen **oder** `use x as _;` nur wo Feature-gated nötig; danach `zepter` + `make lint-toml` | `maxperf-op` ohne `unused_crate_dependencies` in angefassten Crates |
 | **P1** | CLEANUP-A03 | `reth-provider` unused imports + `chain_spec` field + rocksdb unreachable-pub | fix imports; Feld nutzen/`_`/entfernen; `pub` → `pub(crate)` wo intern | `cargo fix -p reth-provider` clean für unused |
 | **P1** | CLEANUP-A04 | PORT-PIPE-U05 orphan `build_pipeline.rs` | Datei löschen **oder** korrekt in CLI verdrahten | nicht mehr unreferenced on disk |
-| **P2** | CLEANUP-A05 | PORT-PIPE-U07 CometBFT Hertz/Pasteur | Entscheiden: (a) `cfg(feature = "bsc")` / nach `reth-bsc-evm` verschieben, oder (b) im OP-Crate löschen, BEFORE_HERTZ behalten | `reth-optimism-evm` ohne dead_code CometBFT-Warnungen |
+| **P2** | CLEANUP-A05 | PORT-PIPE-U07 CometBFT BEFORE_HERTZ/Pasteur | Overlay nutzt Hertz (op-geth). Entscheiden: (a) BEFORE_HERTZ/Pasteur nach `reth-bsc-evm`, oder (b) im OP-Crate löschen | `reth-optimism-evm` ohne dead_code CometBFT-Warnungen |
 | **P2** | CLEANUP-A06 | PORT-PIPE-U10/U11/U16 stages/prune/cli checksum | Toten History/Prune/Checksum-Code entfernen **oder** an storage.v2 anbinden + Test | keine dead_code auf genannten Symbolen **oder** nextest-Beleg |
 | **P2** | CLEANUP-A07 | Trivial unused imports (payload-primitives, config, eth-wire, txpool, rpc, node-builder, stages HeaderTy, …) | `cargo fix` sweep gezielt | Warning-Anzahl spürbar ↓ |
 | **P3** | CLEANUP-B | Legacy tree/beacon: `blockchain-tree-api` deprecated types; beacon stub dead fields; engine-tree deps auf tree-api | Migrate Callers → `RecoveredBlock` / Engine-Events; unnötige deps streichen | keine `SealedBlockWithSenders` Warnungen in Hot-Crates **oder** crate `allow`/entfernen dokumentiert |
@@ -455,6 +455,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-15 ~10:54 CEST**, kumulativ 08-12→15) | Kalender **~66,5 h** (08-12 16:27–08-15 10:54); **6** Interaktiv-Cluster **~4,5 h** Span (Gap>90 min; +Pad ≈**~6 h**) | Auto/Composer (+1 Task) | Transcript-Proxy: Msg-Text **~72 K** Tok (÷4); File **~216 K** Tok (÷4); billed n/a | (Proxy) | **84** user / **367** asst; **567** tool_use (Shell 219, Read 113, StrReplace 108, Grep 93); Details: `files/cursor-session12-metrics.json` | **EXEC-001** open; PIPE-014/X04/X05; Harness+dump-flag; OPS-001/ENGINE-004; Cap Bodies/Sender; offline X04 Exec `20365614→21591153`; SF≠Cap dokumentiert |
 | Cursor Session 12 cont. (Teil-Snapshots 08-13…08-15) | s. Cluster in Metrics-JSON | Auto/Composer | (in kumulierter Zeile) | (Proxy) | Fail#1–3; Tip-Rettung; Cap; offline X04/SF-Heal; CLI inkl. vs half-open | Dump `re-execute 54..55` nach Exec-fertig |
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~11:47 CEST**) | op-geth↔Reth Root-Pipeline-Doku | Auto/Composer | (Session-12-Proxy) | (Proxy) | ValidateState eager vs Exec+Merkle staged; alloy-op-evm Path-Dep; PIPE-014 bleibt Content | FLOW-X04 Dump; Merkle später |
+| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~14:20 CEST**) | PIPE-014 Hertz-Fix + Verify + Live Restart | Auto/Composer | (Session-12-Proxy) | (Proxy) | FLOW-X04 idx=10 `syncLightBlock`; Overlay Hertz; `re-execute` ✅; maxperf→`dist/bin`; live Bodies Catch-up | Live Exec≫`21591154`; FLOW-X05 watch |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -1216,15 +1217,15 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`BSCRethArchiveNode` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-15 **~10:50 CEST** · offline FLOW-X04 (kein Live-Pipeline-Exec am Fail-Block) · Headers Tip **174 027 661** · chain **204**
+**Stichprobe:** 2026-08-15 **~14:20 CEST** · PIPE-014 Hertz-Fix live · Headers Tip **174 027 661** · chain **204**
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
-| Headers | **174 027 661** | ✅ Tip gerettet (Kill ~17:49 während Tip→0-Unwind vor Commit) |
-| Bodies | Cap **`21579110`** → offline **`21591154`** | ✅ Cap 08-14; X04 Bodies `stage run` Cap→Fail-Block 08-15 |
-| SenderRecovery | Cap **`21579110`** → offline **`21591154`** | ✅ analog Bodies |
-| Execution | ChangeSets SF tip war **`20365614`** → target **`21591153`** | 🔄 offline `stage run` (nicht Cap `21579110` als `--from`); Fail-Block **`21591154`** absichtlich **nicht** committen |
-| MerkleExecute | **0** / n/a | ⏳ nach PIPE-014 Fix + sauberem Exec past Fail |
+| Headers | **174 027 661** | ✅ Tip |
+| Bodies | **~21.88 M+** ↑ (live Catch-up) | 🔄 aktiv; body errors **0** |
+| SenderRecovery | **`21591154`** | ⏳ wartet bis Bodies-Stage yieldet |
+| Execution | **`21591153`** | ⏳ nächster Block = ehem. Fail; offline `re-execute` ✅ |
+| MerkleExecute | **0** | ⏳ nach Exec past Fail |
 | History / Finish | — | ⏳ |
 
 #### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
@@ -1247,7 +1248,10 @@ Stage encountered a validation error: receipt root mismatch:
 | Forks | Regolith ✅ · **Snow ✅** · Canyon/Haber/Wright/Ecotone **❌** · Fermat ✅ |
 | Public `receiptsRoot` | = error **expected** |
 | Ruled out | PIPE-009 Wright · Canyon deposit_version · „anderer“ Bad-Block am 08-14 |
-| Fixture / Harness | `files/receipts-21591154-public.json` · `files/harness-receipt-diff-21591154/` |
+| FLOW-X04 first mismatch | **idx=10** · `syncLightBlock(bytes,uint64)` → `0x67` · gas public **717672** / local **259171** · status=1 logCount=1 beide |
+| Root cause / Fix | Overlay `BEFORE_HERTZ` vs op-geth Hertz `validatorSetChanged` · → `COMETBFT_LIGHT_BLOCK_VALIDATION` |
+| Verify | **`re-execute` ✅** 08-15 ~14:13 CEST (54..55, kein Dump) · maxperf `dist/bin/op-reth-bnb` |
+| Fixture / Harness | `files/receipts-21591154-public.json` · `files/harness-receipt-diff-21591154/` (+ `tx10.json`) |
 
 #### op-geth vs Reth — State-/Receipt-Root in der Pipeline (08-15)
 
@@ -1304,7 +1308,7 @@ Details + SF-Erklärung: `files/harness-receipt-diff-21591154/README.md`.
 | Fail-Block divergiert? | **nein** — 2× Receipt `21591154`; #3 war Merkle @ Cap-Höhe |
 | Bodies Cap vs Exec SF | Cap **`21579110`** vs SF tip **`20365614`** (geheilt) — erwartet nach Unwind#3 |
 | Headers Tip | ✅ **174 027 661** |
-| FLOW-X04 | 🔬 Exec Catch-up →`21591153` dann Dump |
+| FLOW-X04 | ✅ closed · Hertz-Fix · `re-execute` ✅ |
 | Reload/Stop Panic | 🧊 ENGINE-004 parked |
 
 #### FLOW-X01 / PIPE-007 — Fermat (hist. OK)
