@@ -469,8 +469,8 @@ impl PeersManager {
 
     /// Bans the peer temporarily with the configured ban timeout
     fn ban_peer(&mut self, peer_id: PeerId) {
-        let ban_duration = if let Some(peer) = self.peers.get(&peer_id)
-            && (peer.is_trusted() || peer.is_static())
+        let ban_duration = if let Some(peer) = self.peers.get(&peer_id) &&
+            (peer.is_trusted() || peer.is_static())
         {
             // For misbehaving trusted or static peers, we provide a bit more leeway when
             // penalizing them.
@@ -788,9 +788,9 @@ impl PeersManager {
                 peer.state = PeerConnectionState::Idle;
                 peer.mark_disconnected();
 
-                if peer.severe_backoff_counter > self.max_backoff_count
-                    && !peer.is_trusted()
-                    && !peer.is_static()
+                if peer.severe_backoff_counter > self.max_backoff_count &&
+                    !peer.is_trusted() &&
+                    !peer.is_static()
                 {
                     // mark peer for removal if it has been backoff too many times and is _not_
                     // trusted or static
@@ -949,8 +949,8 @@ impl PeersManager {
     /// This follows [`Self::remove_peer`] and does not override trusted status. Remove trusted
     /// peers from the trusted set before banning them.
     pub(crate) fn ban_peer_by_admin(&mut self, peer_id: PeerId) {
-        if self.trusted_peer_ids.contains(&peer_id)
-            || self.peers.get(&peer_id).is_some_and(Peer::is_trusted)
+        if self.trusted_peer_ids.contains(&peer_id) ||
+            self.peers.get(&peer_id).is_some_and(Peer::is_trusted)
         {
             return;
         }
@@ -962,8 +962,8 @@ impl PeersManager {
     /// Removes the peer from the ban list and resets its reputation.
     pub(crate) fn unban_peer_by_admin(&mut self, peer_id: PeerId) {
         self.ban_list.unban_peer(&peer_id);
-        if let Some(peer) = self.peers.get_mut(&peer_id)
-            && peer.is_banned()
+        if let Some(peer) = self.peers.get_mut(&peer_id) &&
+            peer.is_banned()
         {
             peer.unban();
             self.queued_actions.push_back(PeerAction::UnBanPeer { peer_id });
@@ -1068,10 +1068,10 @@ impl PeersManager {
     /// Returns `None` if no peer is available.
     fn best_unconnected(&mut self) -> Option<(PeerId, &mut Peer)> {
         let mut unconnected = self.peers.iter_mut().filter(|(_, peer)| {
-            !peer.is_backed_off()
-                && !peer.is_banned()
-                && peer.state.is_unconnected()
-                && (!self.trusted_nodes_only || peer.is_trusted())
+            !peer.is_backed_off() &&
+                !peer.is_banned() &&
+                peer.state.is_unconnected() &&
+                (!self.trusted_nodes_only || peer.is_trusted())
         });
 
         // keep track of the best peer, if there's one
@@ -1126,11 +1126,11 @@ impl PeersManager {
                     PeerConnectionState::In => inbound_at_capacity,
                     _ => false,
                 };
-                (eligible
-                    && !peer.is_trusted()
-                    && !peer.is_static()
-                    && !self.trusted_peer_ids.contains(peer_id)
-                    && peer.connected_for_at_least(now, PEER_ROTATION_MIN_UPTIME))
+                (eligible &&
+                    !peer.is_trusted() &&
+                    !peer.is_static() &&
+                    !self.trusted_peer_ids.contains(peer_id) &&
+                    peer.connected_for_at_least(now, PEER_ROTATION_MIN_UPTIME))
                 .then_some(*peer_id)
             })
             .collect::<Vec<_>>();
@@ -1334,8 +1334,8 @@ impl ConnectionInfo {
 
     ///  Returns `true` if there's still capacity to perform an outgoing connection.
     const fn has_out_capacity(&self) -> bool {
-        self.num_pending_out < self.config.max_concurrent_outbound_dials
-            && self.num_outbound < self.config.max_outbound
+        self.num_pending_out < self.config.max_concurrent_outbound_dials &&
+            self.num_outbound < self.config.max_outbound
     }
 
     /// Returns `true` if all active outbound slots are occupied (ignoring pending dials).

@@ -193,7 +193,8 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         debug_assert!(!self.active_peers.contains_key(&peer), "Already connected; not possible");
 
         // eth/69+ advertises the tip number in Status. eth/66–68 only send the tip hash — resolve
-        // the number with one GetBlockHeaders(hash, limit=1) when it is not already in the local DB.
+        // the number with one GetBlockHeaders(hash, limit=1) when it is not already in the local
+        // DB.
         let known_number = status
             .latest_block
             .or_else(|| self.client.block_number(status.blockhash).ok().flatten());
@@ -494,8 +495,8 @@ impl<N: NetworkPrimitives> NetworkState<N> {
                 self.state_fetcher.on_pending_disconnect(&peer_id);
                 self.queued_messages.push_back(StateAction::Disconnect { peer_id, reason });
             }
-            PeerAction::DisconnectBannedIncoming { peer_id }
-            | PeerAction::DisconnectUntrustedIncoming { peer_id } => {
+            PeerAction::DisconnectBannedIncoming { peer_id } |
+            PeerAction::DisconnectUntrustedIncoming { peer_id } => {
                 self.state_fetcher.on_pending_disconnect(&peer_id);
                 self.queued_messages.push_back(StateAction::Disconnect { peer_id, reason: None });
             }

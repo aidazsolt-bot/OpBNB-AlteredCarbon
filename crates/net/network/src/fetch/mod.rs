@@ -161,8 +161,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     ///
     /// Returns `true` if this a newer block
     pub(crate) fn update_peer_block(&mut self, peer_id: &PeerId, hash: B256, number: u64) -> bool {
-        if let Some(peer) = self.peers.get_mut(peer_id)
-            && number > peer.best_number
+        if let Some(peer) = self.peers.get_mut(peer_id) &&
+            number > peer.best_number
         {
             peer.best_hash = hash;
             peer.best_number = number;
@@ -187,11 +187,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
         match &peer.range_info {
             Some(info) => info.update(earliest, latest, latest_hash),
             None => {
-                peer.range_info = Some(crate::session::BlockRangeInfo::new(
-                    earliest,
-                    latest,
-                    latest_hash,
-                ));
+                peer.range_info =
+                    Some(crate::session::BlockRangeInfo::new(earliest, latest, latest_hash));
             }
         }
         // Always sync tip from the announcement (includes reorgs that lower `latest`).
@@ -249,8 +246,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             }
 
             // replace best peer if this peer has better rtt and both have same range quality
-            if maybe_better.1.timeout() < best_peer.1.timeout()
-                && !maybe_better.1.last_response_likely_bad
+            if maybe_better.1.timeout() < best_peer.1.timeout() &&
+                !maybe_better.1.last_response_likely_bad
             {
                 best_peer = maybe_better;
             }
@@ -262,8 +259,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     /// Returns whether any connected peer can serve BAL requests.
     fn has_eth71_peer(&self) -> bool {
         self.peers.values().any(|peer| {
-            !matches!(peer.state, PeerState::Closing)
-                && peer.capabilities.supports_eth_at_least(&EthVersion::Eth71)
+            !matches!(peer.state, PeerState::Closing) &&
+                peer.capabilities.supports_eth_at_least(&EthVersion::Eth71)
         })
     }
 
@@ -280,8 +277,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
             // instead of waiting for future peer churn.
             if self.should_fail_fast(&request) {
                 request.send_err_response(RequestError::UnsupportedCapability);
-            } else if let Some(n) = request.headers_at_least_number()
-                && self.no_peer_can_serve_headers_at_least(n)
+            } else if let Some(n) = request.headers_at_least_number() &&
+                self.no_peer_can_serve_headers_at_least(n)
             {
                 // All idle peers have a Status head below `n` (or miss). Completing as empty
                 // unblocks the reverse headers downloader so it can cap the working tip.
@@ -359,8 +356,8 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
     /// Returns `true` if `request` cannot be served by any currently connected peer and should
     /// fail immediately instead of waiting for future peer churn.
     fn should_fail_fast(&self, request: &DownloadRequest<N>) -> bool {
-        (request.is_optional_bal() && !self.has_eth71_peer())
-            || (request.is_snap() && !self.has_snap_peer())
+        (request.is_optional_bal() && !self.has_eth71_peer()) ||
+            (request.is_snap() && !self.has_snap_peer())
     }
 
     /// Returns `true` when every **idle** peer cannot serve `HeadersAtLeast(number)`.
@@ -478,9 +475,9 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
         // Empty Number-origin responses are valid ("I don't have these blocks"). Remember the
         // origin so we ask this peer for earlier batches instead of spamming the same range
         // (op-geth `headerPeerMiss` style). Never disconnect for this.
-        if let Some(req) = resp.as_ref()
-            && matches!(&res, Ok(headers) if headers.is_empty())
-            && let BlockHashOrNumber::Number(origin) = req.request.start
+        if let Some(req) = resp.as_ref() &&
+            matches!(&res, Ok(headers) if headers.is_empty()) &&
+            let BlockHashOrNumber::Number(origin) = req.request.start
         {
             if let Some(peer) = self.peers.get_mut(&peer_id) {
                 peer.header_miss.insert(origin);
@@ -488,12 +485,12 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
         }
 
         // Learn Status head from successful replies (eth/66–68 often start with best_number=0).
-        if let Ok(headers) = &res
-            && let Some(highest) = headers.iter().map(|h| h.number()).max()
-            && highest > 0
+        if let Ok(headers) = &res &&
+            let Some(highest) = headers.iter().map(|h| h.number()).max() &&
+            highest > 0
         {
-            if let Some(peer) = self.peers.get_mut(&peer_id)
-                && highest > peer.best_number
+            if let Some(peer) = self.peers.get_mut(&peer_id) &&
+                highest > peer.best_number
             {
                 peer.best_number = highest;
                 self.refresh_max_peer_best_number();
@@ -778,9 +775,9 @@ impl Peer {
             BestPeerRequirements::HeadersAtLeast(_) => self.tip_number() > other.tip_number(),
             // Version/capability-based filtering happens in `next_best_peer`, so by the time we
             // get here both peers already satisfy the requirement.
-            BestPeerRequirements::None
-            | BestPeerRequirements::EthVersion(_)
-            | BestPeerRequirements::SupportsSnap => false,
+            BestPeerRequirements::None |
+            BestPeerRequirements::EthVersion(_) |
+            BestPeerRequirements::SupportsSnap => false,
         }
     }
 }
@@ -891,11 +888,11 @@ impl<N: NetworkPrimitives> DownloadRequest<N> {
     /// Returns the requested priority of this request
     const fn get_priority(&self) -> &Priority {
         match self {
-            Self::GetBlockHeaders { priority, .. }
-            | Self::GetBlockBodies { priority, .. }
-            | Self::GetBlockAccessLists { priority, .. }
-            | Self::GetReceipts { priority, .. }
-            | Self::GetSnap { priority, .. } => priority,
+            Self::GetBlockHeaders { priority, .. } |
+            Self::GetBlockBodies { priority, .. } |
+            Self::GetBlockAccessLists { priority, .. } |
+            Self::GetReceipts { priority, .. } |
+            Self::GetSnap { priority, .. } => priority,
         }
     }
 
@@ -1706,8 +1703,9 @@ mod tests {
         assert_eq!(fetcher.peers[&peer_id].tip_number(), 50_000);
         assert!(!fetcher.peers[&peer_id]
             .satisfies(&BestPeerRequirements::FullBlockRange(1_500..=1_600)));
-        assert!(fetcher.peers[&peer_id]
-            .satisfies(&BestPeerRequirements::FullBlockRange(2_000..=2_100)));
+        assert!(
+            fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::FullBlockRange(2_000..=2_100))
+        );
         // Header below earliest still ok
         assert!(fetcher.peers[&peer_id].satisfies(&BestPeerRequirements::HeadersAtLeast(1_500)));
     }
@@ -1771,10 +1769,7 @@ mod tests {
             range_info: None,
             supports_snap: false,
         });
-        assert_eq!(
-            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)),
-            None
-        );
+        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)), None);
 
         // After GetBlockHeaders(Status.blockhash, limit=1) resolves the number:
         assert!(fetcher.update_peer_block(&peer_id, B256::random(), 173_274_244));
@@ -1824,10 +1819,9 @@ mod tests {
 
         let (tx, mut rx) = oneshot::channel();
         let request = HeadersRequest::falling(500u64.into(), 1000);
-        fetcher.inflight_headers_requests.insert(
-            peer_id,
-            Request { request: request.clone(), response: tx },
-        );
+        fetcher
+            .inflight_headers_requests
+            .insert(peer_id, Request { request: request.clone(), response: tx });
         fetcher.peers.get_mut(&peer_id).unwrap().state = PeerState::GetBlockHeaders;
 
         let outcome = fetcher.on_block_headers_response(peer_id, Ok(vec![]));
