@@ -179,7 +179,7 @@ members = [
     "testing/ef-tests/",
     "testing/testing-utils",
     "testing/runner",
-    "crates/tracing-otlp",
+    "crates/tracing-otlp", "files/depprobe-igd",
 ]
 default-members = ["bin/reth"]
 exclude = ["docs/cli"]
@@ -667,6 +667,7 @@ tower-http = "0.6"
 # p2p
 discv5 = { git = "https://github.com/sigp/discv5", rev = "7663c00" }
 if-addrs = "0.14"
+igd-next = { version = "0.17", default-features = false, features = ["aio_tokio"] }
 
 # rpc
 jsonrpsee = "0.26.0"
