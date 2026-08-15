@@ -1190,7 +1190,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 **PORT-DEV-001 (parked):** LocalMiner `No payload` nach ~5–7 Blöcken — **keine Prio**, ggf. später fixen oder `--dev` dekommissionieren.
 **PORT-DEV-002:** `payload_wait_time` verdrahtet (hilft allein nicht gegen DEV-001).
 
-**Live Archive (parallel):** s. **Live Sync Progress** — offline FLOW-X04 Exec `20365614→21591153`; Bodies/Sender bis Fail-Block; PORT-OPS-001/ENGINE-004; ChangeSets-SF ≠ Bodies-Cap.
+**Live Archive (parallel):** s. **Live Sync Progress** — PIPE-014/X04 Hertz ✅ `re-execute`; live Bodies Catch-up; Exec @`21591153`→past Fail pending; PORT-OPS-001/ENGINE-004; FLOW-X05 watch.
 
 ### Session 12 — Receipt-Root Fail / Unwind / Harness Binary (2026-08-13 → 08-15)
 
