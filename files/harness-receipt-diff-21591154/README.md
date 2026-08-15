@@ -163,3 +163,11 @@ Exit code `1` = first mismatch printed (DoD for FLOW-X04). Exit `0` = all compar
 - expected receiptsRoot: `0x579924c85d951e538e7b9c5358a1acda6d1fb379af748b01274c60a283d5e50c`
 - got (live): `0x61c1b64b0df2fc07a64c4d8fabde08bf8be235bdbfa6b8543c00b9683a9fbe6b`
 - ts `1713344877` — Snow yes, Canyon/Haber/Wright no
+
+## op-geth vs Reth (roots)
+
+op-geth FullSync checks **receipt + state root in the same** `ValidateState` after `Process`.
+Reth archive: **receipt** in Execution; **state root** later in MerkleExecute. That staging
+difference is not the `21591154` fail — `got` is the trie of locally executed receipts.
+Pre-Canyon deposit nonce strip is mirrored (`EncodeIndex` / `calculate_receipt_root_optimism`
+/ `alloy-op-evm` `strip_deposit_nonce`). See `plan.md` § *op-geth vs Reth — State-/Receipt-Root*.

@@ -165,7 +165,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-15 ~10:50 CEST:** Offline FLOW-X04: Bodies+Sender Cap→`21591154` ✅; Exec `stage run` von ChangeSets-SF-Tip **`20365614`→`21591153`** (nicht Bodies-Cap — Gap = Exec hinter Bodies nach Unwind#3; heal kappte nur Sidecar). Danach `re-execute --from 21591154 --to 21591155` (half-open). Headers Tip **174.0 M**. Details: **Live Sync Progress** + `files/harness-receipt-diff-21591154/README.md`.
+- **Stand 2026-08-15 ~11:47 CEST:** Offline FLOW-X04 laufend (Exec→`21591153`). **op-geth vs Reth Root-Pipeline** dokumentiert (ValidateState eager vs Execution+MerkleExecute staged) — Diff ist Timing, nicht andere Trie-Formel; Fail `21591154` = Receipt-Content (PIPE-014), nicht State-Root-Staging. Details: **Live Sync Progress** + Harness-README.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -454,6 +454,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 10 cont. (Chat `84eb0b61…`, Snapshot **2026-08-11 ~16:50 UTC+2**) | Live-Sync P2P-003/004/005: **~12:00–16:50** (**~4,8 h** Wall) inkl. Nachziehen der Dataflow-Lücken + **3× maxperf-op** (~20–23 min/Link, JOBS=1) | Auto/Composer | Transcript-Proxy n/a | (Proxy) | Matrix-Soll Tip-Resolve/Cap/Falling (Analyse nachgezogen); eth/69; Unit-Tests; Live-Verify | **P2P-003/004/005 live ✅** Falling @~22k hdr/s. Rebuilds: eth69~23 min, Cap~20 min, Falling~21 min. Tests: fetch 43/43, reverse_headers 11/11. ETL-TempDir = Upstream-Design |
 | Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-15 ~10:54 CEST**, kumulativ 08-12→15) | Kalender **~66,5 h** (08-12 16:27–08-15 10:54); **6** Interaktiv-Cluster **~4,5 h** Span (Gap>90 min; +Pad ≈**~6 h**) | Auto/Composer (+1 Task) | Transcript-Proxy: Msg-Text **~72 K** Tok (÷4); File **~216 K** Tok (÷4); billed n/a | (Proxy) | **84** user / **367** asst; **567** tool_use (Shell 219, Read 113, StrReplace 108, Grep 93); Details: `files/cursor-session12-metrics.json` | **EXEC-001** open; PIPE-014/X04/X05; Harness+dump-flag; OPS-001/ENGINE-004; Cap Bodies/Sender; offline X04 Exec `20365614→21591153`; SF≠Cap dokumentiert |
 | Cursor Session 12 cont. (Teil-Snapshots 08-13…08-15) | s. Cluster in Metrics-JSON | Auto/Composer | (in kumulierter Zeile) | (Proxy) | Fail#1–3; Tip-Rettung; Cap; offline X04/SF-Heal; CLI inkl. vs half-open | Dump `re-execute 54..55` nach Exec-fertig |
+| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~11:47 CEST**) | op-geth↔Reth Root-Pipeline-Doku | Auto/Composer | (Session-12-Proxy) | (Proxy) | ValidateState eager vs Exec+Merkle staged; alloy-op-evm Path-Dep; PIPE-014 bleibt Content | FLOW-X04 Dump; Merkle später |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -1247,6 +1248,22 @@ Stage encountered a validation error: receipt root mismatch:
 | Public `receiptsRoot` | = error **expected** |
 | Ruled out | PIPE-009 Wright · Canyon deposit_version · „anderer“ Bad-Block am 08-14 |
 | Fixture / Harness | `files/receipts-21591154-public.json` · `files/harness-receipt-diff-21591154/` |
+
+#### op-geth vs Reth — State-/Receipt-Root in der Pipeline (08-15)
+
+Referenz: `bnb-chain_op-geth.git` FullSync `InsertChain` → `ValidateState`; Trail: Execution → … → MerkleExecute. Path-Dep Receipt-Build: `optimism.git/rust/alloy-op-evm` (`block/mod.rs` deposit fields + `strip_deposit_nonce`).
+
+| | **bnb op-geth FullSync** | **reth-trail staged** |
+| --- | --- | --- |
+| Wann Receipt-Root | Sofort in `ValidateState`: `DeriveSha` / `EncodeIndex` (`core/block_validator.go`, `types/receipt.go`) | Sofort in **Execution**: `calculate_receipt_root_optimism` (`proof.rs`; Regolith∧¬Canyon strippt `deposit_nonce`) |
+| Wann State-Root | Sofort: `statedb.IntermediateRoot` vs `header.Root` (gleiches `ValidateState`, außer `skipRoot`) | **Später** in **MerkleExecute** über hashed tables vs Header — Execution prüft **kein** `stateRoot` |
+| Modell | In-Memory StateDB + MPT pro Block | Bundle/Changesets → Plain(+hashed v2) → Hashing → Merkle |
+| Fail @ `21591154` | würde Receipt in `ValidateState` failen | failt in Execution → Merkle nie erreicht |
+| Live Fail #3 Cap | — | Merkle state-root @ dirty Cap (OPS-001), nicht IntermediateRoot-Formel |
+
+**Semantik die State-Root später drehen kann (nicht Ursache von `21591154`):** L1-fee → `OptimismL1FeeRecipient` (pre-Wright immer); **PIPE-009** Wright: op-geth skip nur `GasPrice==0`, Reth `skip_l1_data_fee=true` für alle Txs (`factory.rs`); Deposit gas/tip; Fermat/Haber precompiles; Snow nur via CL L1-price → L1 attributes (nicht Receipt-RLP). L1-Fee-**RPC-Felder** gehören nicht in den Receipt-Trie.
+
+**Folgerung:** Staging-Unterschied erklärt nicht `got≠expected` Receipts. DoD bleibt FLOW-X04 Receipt-Content-Diff; danach MerkleExecute ≈ op-geth-`IntermediateRoot`-Gate.
 
 #### FLOW-X04 — Offline CLI (verbindliche Höhen)
 
