@@ -1,4 +1,9 @@
 //! Re-execute blocks from database in parallel.
+//!
+//! Parent state for `--from N` is loaded at block `N - 1` via
+//! [`StateProviderFactory::history_by_block_number`]. Mid-pipeline (Finish still 0, Headers ≫
+//! Execution) that resolves to [`LatestStateProvider`] when `N - 1` equals the Execution
+//! checkpoint (PlainState tip) — see `DatabaseProvider::try_into_history_at_block`.
 
 use crate::common::{
     AccessRights, CliComponentsBuilder, CliNodeComponents, CliNodeTypes, Environment,
@@ -15,10 +20,11 @@ use reth_evm::{execute::Executor, ConfigureEvm};
 use reth_primitives_traits::{format_gas_throughput, BlockBody, GotExpected};
 use reth_provider::{
     BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory, ReceiptProvider,
-    StaticFileProviderFactory, TransactionVariant,
+    StageCheckpointReader, StaticFileProviderFactory, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages::stages::calculate_gas_used_from_headers;
+use reth_stages_types::StageId;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -38,7 +44,9 @@ pub struct Command<C: ChainSpecParser> {
     #[arg(long, default_value = "1")]
     from: u64,
 
-    /// The height to end at. Defaults to the latest block.
+    /// The height to end at (exclusive upper bound of the executed range is not used; this is the
+    /// last block number **plus one** in the half-open loop `from..to`). Defaults to the highest
+    /// available header on disk when Finish is still 0 (staged sync).
     #[arg(long)]
     to: Option<u64>,
 
@@ -77,20 +85,41 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
         let components = components(provider_factory.chain_spec());
 
         let min_block = self.from;
-        let best_block = DatabaseProviderFactory::database_provider_ro(&provider_factory)?
-            .best_block_number()?;
-        let mut max_block = best_block;
+        let provider_ro = DatabaseProviderFactory::database_provider_ro(&provider_factory)?;
+        // Finish checkpoint (= `best_block_number`) is 0 until the pipeline completes — do not
+        // use it as the sole `--to` cap mid-sync (would clamp to 0 and underflow the range).
+        let finish_tip = provider_ro.best_block_number()?;
+        let headers_tip = provider_ro.last_block_number()?;
+        let execution_tip = provider_ro
+            .get_stage_checkpoint(StageId::Execution)?
+            .map(|c| c.block_number)
+            .unwrap_or(0);
+        let available_tip = headers_tip.max(finish_tip).max(execution_tip);
+
+        let mut max_block = if finish_tip > 0 { finish_tip } else { available_tip };
         if let Some(to) = self.to {
-            if to > best_block {
+            if to > available_tip {
                 warn!(
                     requested = to,
-                    best_block,
-                    "Requested --to is beyond available chain head; clamping to best block"
+                    available_tip,
+                    finish_tip,
+                    headers_tip,
+                    execution_tip,
+                    "Requested --to is beyond headers/execution on disk; clamping"
                 );
+                max_block = available_tip;
             } else {
                 max_block = to;
             }
-        };
+        }
+
+        if max_block <= min_block {
+            eyre::bail!(
+                "invalid re-execute range: --from {min_block} --to {max_block} \
+                 (need to > from; finish_tip={finish_tip} headers_tip={headers_tip} \
+                 execution_tip={execution_tip})"
+            );
+        }
 
         let num_tasks = self.num_tasks.unwrap_or_else(|| {
             std::thread::available_parallelism().map(|n| n.get() as u64).unwrap_or(10)
@@ -99,9 +128,21 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
         let total_blocks = max_block - min_block;
         let total_gas = calculate_gas_used_from_headers(
             &provider_factory.static_file_provider(),
-            min_block..=max_block,
+            min_block..=max_block.saturating_sub(1),
         )?;
+        let num_tasks = num_tasks.min(total_blocks.max(1));
         let blocks_per_task = total_blocks / num_tasks;
+
+        info!(
+            target: "reth::cli",
+            from = min_block,
+            to = max_block,
+            execution_tip,
+            finish_tip,
+            headers_tip,
+            num_tasks,
+            "Re-execute range (parent state at from-1; Latest if from-1 == Execution tip)"
+        );
 
         let db_at = {
             let provider_factory = provider_factory.clone();
@@ -147,7 +188,11 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
 
                     let block = provider_factory
                         .recovered_block(block.into(), TransactionVariant::NoHash)?
-                        .unwrap();
+                        .ok_or_else(|| {
+                            eyre::eyre!(
+                                "missing recovered block {block} (body/senders not in database)"
+                            )
+                        })?;
 
                     let result = match executor.execute_one(&block) {
                         Ok(result) => result,
