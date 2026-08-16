@@ -38,7 +38,8 @@ MILESTONES=(
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
   "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
   "284525276c|chore: decommission Docker images, compose, and related CI/docs"
-  "HEAD|chore: disable GitHub Actions CI for public mirror"
+  "dfec68cb1a|chore: disable GitHub Actions CI for public mirror"
+  "HEAD|docs: no usable public snapshots; sync from network"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
