@@ -400,9 +400,9 @@ where
         self.metrics.snap_requests_received_total.increment(1);
 
         let result = match request {
-            SnapProtocolMessage::GetAccountRange(_)
-            | SnapProtocolMessage::GetStorageRanges(_)
-            | SnapProtocolMessage::GetByteCodes(_) => Err(RequestError::UnsupportedCapability),
+            SnapProtocolMessage::GetAccountRange(_) |
+            SnapProtocolMessage::GetStorageRanges(_) |
+            SnapProtocolMessage::GetByteCodes(_) => Err(RequestError::UnsupportedCapability),
             SnapProtocolMessage::GetBlockAccessLists(mut req) => {
                 req.block_hashes.truncate(MAX_BLOCK_ACCESS_LISTS_SERVE);
                 let limit = GetBlockAccessListLimit::ResponseSizeSoftLimit(

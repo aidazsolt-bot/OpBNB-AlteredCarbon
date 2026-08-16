@@ -24,7 +24,12 @@ use crate::{config::opbnb_precompile_flags, opbnb_precompiles::opbnb_precompiles
 
 /// Factory that can apply opBNB precompile / Wright L1-fee overlays onto EVMs it creates.
 pub trait OpBnbOverlayFactory: EvmFactory<Spec = OpSpecId, BlockEnv = BlockEnv> {
-    /// Inject Fermat/Haber precompiles and Wright `skip_l1_data_fee` when the chainspec says so.
+    /// Inject Fermat/Haber precompiles and Wright L1-fee mode when the chainspec says so.
+    ///
+    /// Wright sets `L1BlockInfo::skip_l1_data_fee = true`. In `op-revm` that flag means
+    /// **skip L1 data fee only when `tx.gas_price() == 0`** (gasless), matching
+    /// `bnb-chain/op-geth` `state_transition.go` (`GasPrice==0 && IsWright`). Paid txs still
+    /// pay L1 cost.
     fn apply_opbnb_overlays<DB, I>(
         chain_spec: &(impl Hardforks + OpHardforks),
         evm: &mut Self::Evm<DB, I>,
@@ -111,6 +116,7 @@ fn apply_opbnb_overlays_to_op_evm<DB, I, Tx>(
     if !flags.is_empty() {
         *Evm::components_mut(evm).2 = opbnb_precompiles(input.cfg_env.spec, flags);
     }
+    // Enable Wright gasless-L1-fee mode (op-revm still requires gas_price==0 to skip).
     if chain_spec.fork(OptimismHardfork::Wright).active_at_timestamp(timestamp) {
         evm.ctx_mut().chain.skip_l1_data_fee = true;
     }
@@ -118,4 +124,57 @@ fn apply_opbnb_overlays_to_op_evm<DB, I, Tx>(
 
 fn u256_to_u64(value: U256) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_evm::EvmEnv;
+    use alloy_op_evm::OpTx;
+    use reth_optimism_chainspec::OPBNB_MAINNET;
+    use revm::{context::BlockEnv, database::EmptyDB};
+
+    #[test]
+    fn wright_sets_skip_l1_data_fee_flag_only() {
+        // Mainnet Wright timestamp / first block (~32984677 @ 1724738400).
+        let wright_ts = 1_724_738_400_u64;
+        let chain_spec = OPBNB_MAINNET.clone();
+        assert!(chain_spec.fork(OptimismHardfork::Wright).active_at_timestamp(wright_ts));
+        assert!(!chain_spec.fork(OptimismHardfork::Wright).active_at_timestamp(wright_ts - 1));
+
+        let factory = OpEvmFactory::<OpTx>::default();
+        let mut pre = factory.create_evm_with_opbnb_overlays(
+            chain_spec.as_ref(),
+            EmptyDB::default(),
+            EvmEnv {
+                cfg_env: Default::default(),
+                block_env: BlockEnv {
+                    number: U256::from(32_984_677_u64),
+                    timestamp: U256::from(wright_ts - 1),
+                    ..Default::default()
+                },
+            },
+        );
+        assert!(
+            !pre.ctx_mut().chain.skip_l1_data_fee,
+            "pre-Wright must leave skip_l1_data_fee false"
+        );
+
+        let mut post = factory.create_evm_with_opbnb_overlays(
+            chain_spec.as_ref(),
+            EmptyDB::default(),
+            EvmEnv {
+                cfg_env: Default::default(),
+                block_env: BlockEnv {
+                    number: U256::from(32_984_677_u64),
+                    timestamp: U256::from(wright_ts),
+                    ..Default::default()
+                },
+            },
+        );
+        assert!(
+            post.ctx_mut().chain.skip_l1_data_fee,
+            "Wright must enable skip_l1_data_fee (gas_price==0 gate lives in op-revm)"
+        );
+    }
 }
