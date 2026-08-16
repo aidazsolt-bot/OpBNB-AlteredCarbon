@@ -167,7 +167,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-15 ~22:44 CEST (Nacht):** Bodies **Tip ✅** `174 027 661`. **SenderRecovery** Catch-up **~22.0 M↑** / Tip **174 M** (ETA ~4–5 h). Exec noch **`21591153`** (wartet Sender-Yield; ehem. Fail `21591154` danach). P2P-002 UPnP ✅; inbound_conn≥4, Serve-RX weiter 0; P2P-006 offen.
+- **Stand 2026-08-16 ~08:02 CEST:** H+Bodies+Sender **Tip ✅** `174 027 661`. **Execution** live **~22.60 M↑** (~8.6 %; ~65 blk/s; ~0.46 Ggas/s) — **past Fail `21591154` ✅** (PIPE-014 Hertz live). Rest ~151 M Blöcke → ETA Tip grob **~3 Wochen** (22–27 d; später schwerere Blöcke → eher 3–4 Wo). Merkle/History ⏳. P2P-002 UPnP ✅; peers ~12; P2P-006 offen.
 
 ## Todo-Status (Stand 2026-08-11)
 
@@ -176,7 +176,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H+Bodies Tip **174 M**; Sender ~22 M↑; PIPE-014 offline ✅; live Exec past Fail ⏳; P2P-002 UPnP ✅; P2P-006 todo |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 H+Bodies+Sender Tip **174 M**; Exec ~22.6 M↑ past Fail ✅; ETA Tip ~3 Wo; PIPE-014 live; P2P-002 ✅; P2P-006 todo |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Migrations-Gate PIPE+FLOW in plan/Skill; finale Zahlen nach Human-Sync |
 
@@ -1194,7 +1194,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 **PORT-DEV-001 (parked):** LocalMiner `No payload` nach ~5–7 Blöcken — **keine Prio**, ggf. später fixen oder `--dev` dekommissionieren.
 **PORT-DEV-002:** `payload_wait_time` verdrahtet (hilft allein nicht gegen DEV-001).
 
-**Live Archive (parallel):** s. **Live Sync Progress** — Bodies Tip ✅; SenderRecovery Catch-up; Exec @`21591153`; PIPE-014 offline ✅; **P2P-002 UPnP ✅**; P2P-006 offen; OPS-001/ENGINE-004/X05.
+**Live Archive (parallel):** s. **Live Sync Progress** — H/B/Sender Tip ✅; Exec ~22.6 M↑ past `21591154` ✅; ETA Tip ~3 Wo; PIPE-014 live; **P2P-002 UPnP ✅**; P2P-006 offen; OPS-001/ENGINE-004/X05.
 
 ### Session 12 — Receipt-Root Fail / Unwind / Harness Binary (2026-08-13 → 08-15)
 
@@ -1221,18 +1221,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`BSCRethArchiveNode` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-15 **~22:44 CEST** · Bodies Tip erreicht · SenderRecovery aktiv · P2P-002 UPnP live · chain **204** · peers ~6
+**Stichprobe:** 2026-08-16 **~08:02 CEST** · Execution past Fail · chain **204** · peers ~12
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
 | Headers | **174 027 661** | ✅ Tip |
-| Bodies | **174 027 661** | ✅ Tip (Catch-up 08-15 Abend; validation_errors **0**) |
-| SenderRecovery | **~22.0 M↑** / Tip **174 M** | 🔄 aktiv (~22:42 CEST gestartet; ETA ~4–5 h) |
-| Execution | **`21591153`** | ⏳ wartet Sender ≥ Tip bzw. Yield; ehem. Fail `21591154` danach; `re-execute` ✅ |
-| MerkleExecute | **0** | ⏳ nach Exec past Fail |
+| Bodies | **174 027 661** | ✅ Tip; validation_errors **0** |
+| SenderRecovery | **174 027 661** | ✅ Tip (~03:38 CEST) |
+| Execution | **~22.60 M↑** / Tip **174 M** (~8.6 %) | 🔄 **past `21591154` ✅** (Start ~03:38); ~65 blk/s; ETA Tip **~3 Wochen** |
+| MerkleExecute | **0** | ⏳ nach Exec Tip |
 | History / Finish | — | ⏳ |
-| P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`, hairpin OK, inbound_conn≥4; Serve-RX 0 |
-| P2P Dual-Stack | FLOW-N01 / P2P-006 | 📋 Default Dual-Stack noch offen; `--addr` Familie matched NAT |
+| P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`; Serve-RX 0 |
+| P2P Dual-Stack | FLOW-N01 / P2P-006 | 📋 Default Dual-Stack noch offen |
 
 #### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
 
@@ -1307,16 +1307,15 @@ Details + SF-Erklärung: `files/harness-receipt-diff-21591154/README.md`.
 7. Headers-Unwind: Journal ohne Batch-Progress ≠ Hang — Fortschritt an `reth_static_files_jar_provider_calls_total{…init-cursor}` / CPU messen.
 8. Point4/RPC: Live-Node hat **nur IPC** (`--ipcpath /tmp/BSCRethArchiveNode.ipc`); HTTP erst mit `--http`. Raw JSON-RPC über Unix-Socket.
 
-#### Health / Anomalien (~22:44 08-15)
+#### Health / Anomalien (~08:02 08-16)
 
 | Check | Befund |
 | --- | --- |
-| Fail-Block divergiert? | **nein** — 2× Receipt `21591154`; #3 war Merkle @ Cap-Höhe |
-| Bodies | ✅ Tip **174 027 661**; validation **0**; unexpected_errors=18 (Altbestand) |
-| SenderRecovery | 🔄 **~22 M↑** / Tip **174 M**; ETA ~4–5 h (Nachtlauf) |
+| Fail-Block `21591154` live? | ✅ **durch** — Exec ≫ Fail seit ~03:46 CEST (`21607621`+); PIPE-014 Hertz bestätigt |
+| Bodies / Sender | ✅ Tip **174 027 661**; body validation **0** |
+| Execution | 🔄 **~22.60 M** / Tip **174 M** (~8.6 %); ~65 blk/s; ETA Tip **~3 Wochen** |
 | Headers Tip | ✅ **174 027 661** |
-| FLOW-X04 / PIPE-014 | ✅ closed offline · Hertz · `re-execute` ✅ · live Exec past Fail ⏳ (nach Sender) |
-| P2P UPnP / Announce | ✅ **P2P-002** Alt-Ports + `via_upnp`; 📋 **P2P-006** Dual-Stack-Default offen |
+| P2P UPnP / Announce | ✅ **P2P-002**; 📋 **P2P-006** offen |
 | Reload/Stop Panic | 🧊 ENGINE-004 parked |
 
 #### FLOW-X01 / PIPE-007 — Fermat (hist. OK)
@@ -1341,7 +1340,8 @@ Siehe `files/fermat-point4-20260812.txt`. **Haber** noch nicht erreicht.
 | X04 Bodies/Sender | 08-15 | — | Cap→**`21591154`** ✅ |
 | X04 Execution | 08-15 ~08:32→ | 🔄 | **`20365614`→`21591153`** |
 | Bodies Catch-up (Tip) | 08-15 ~19→~22:42 | ~3 h | Tip **174 027 661** ✅ |
-| SenderRecovery (3.) | 08-15 ~22:42→ | 🔄 Nacht | Floor ~**`21591154`** → Tip **174 M**; ETA ~4–5 h |
+| SenderRecovery (3.) | 08-15 ~22:42→08-16 ~03:38 | ~5 h | Tip **174 027 661** ✅ |
+| Execution (past Fail → Tip) | 08-16 ~03:38→ | 🔄 | Floor **`21591153`** → Tip **174 M**; past `21591154` ✅; ETA ~3 Wo |
 
 #### Network usage (CT `BSCRethArchiveNode:9100`, `node_network_*`)
 
