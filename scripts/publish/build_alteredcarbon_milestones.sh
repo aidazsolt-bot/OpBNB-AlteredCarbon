@@ -26,6 +26,8 @@ MILESTONES=(
   "e080ef0edc|fix(op): Hertz precompile overlay for PIPE-014 receipt-root"
   "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
+  "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
+  "HEAD|chore: disable GitHub Actions CI for public mirror"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
@@ -35,10 +37,12 @@ export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
 cd "$REPO"
 git fetch "$REMOTE" 2>/dev/null || true
+TIP_SHA="$(git rev-parse HEAD)"
 
 rm -rf "$WT"
 git worktree add --detach "$WT" HEAD
 cd "$WT"
+git branch -D "$BRANCH" >/dev/null 2>&1 || true
 git checkout --orphan "$BRANCH"
 git rm -rf . >/dev/null 2>&1 || true
 # clean untracked from orphan switch
@@ -47,6 +51,9 @@ git clean -fdx >/dev/null 2>&1 || true
 for entry in "${MILESTONES[@]}"; do
   sha="${entry%%|*}"
   msg="${entry#*|}"
+  if [[ "$sha" == "HEAD" ]]; then
+    sha="$TIP_SHA"
+  fi
   if ! git -C "$REPO" cat-file -e "${sha}^{commit}"; then
     echo "missing commit $sha" >&2
     exit 1
