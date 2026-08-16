@@ -1,0 +1,51 @@
+{
+  "snapshot_local": "2026-08-16T08:35:00+02:00",
+  "parent_chat_id": "ea987bef-9554-4951-95b5-c526fbb31dd7",
+  "session_label": "Cursor Session 12 cont. (UPnP P2P-002, Bodies Tip, Exec past Fail, X02, CLEANUP-A02)",
+  "note": "Billed Cursor token meter unavailable on disk. Figures are transcript activity + content-size proxies (chars\u00f74). Not an invoice. Extends Session 12 chat ea987bef\u2026 through 08-16 morning.",
+  "wall_clock": {
+    "local_tz": "Europe/Berlin (UTC+2)",
+    "first_user_query_local": "2026-08-12 16:27",
+    "snapshot_last_user_query_local": "2026-08-16 08:30",
+    "calendar_span_hours": 88.05,
+    "interactive_clusters_added_since_0815": [
+      {
+        "start": "2026-08-15 19:00",
+        "end": "2026-08-15 22:45",
+        "span_hours": 3.75,
+        "note": "UPnP/NAT, docs commits, Bodies catch-up watch"
+      },
+      {
+        "start": "2026-08-16 07:55",
+        "end": "2026-08-16 08:35",
+        "span_hours": 0.67,
+        "note": "Exec ETA, X02+CLEANUP-A02, roadmap/docs/effort"
+      }
+    ],
+    "method": "Pad clusters are approximate; overnight Exec/Sender unsupervised"
+  },
+  "transcript": {
+    "path": "<agent-transcripts>/ea987bef-9554-4951-95b5-c526fbb31dd7/ea987bef-9554-4951-95b5-c526fbb31dd7.jsonl",
+    "lines": 1063,
+    "size_bytes": 1582362,
+    "token_proxy_filesize_div4": 395590
+  },
+  "live_sync_at_snapshot": {
+    "chain_id": 204,
+    "headers_bodies_sender_tip": 174027661,
+    "execution_checkpoint": 22727925,
+    "execution_pct_approx": 8.6,
+    "past_fail_21591154": true,
+    "eta_haber_hours": "16-19",
+    "eta_wright_days": "1.5-2",
+    "eta_tip_weeks": "3-4",
+    "blk_per_s_approx": 65
+  },
+  "milestones_this_window": [
+    "PORT-P2P-002 / FLOW-N02 UPnP live",
+    "Bodies + Sender Tip",
+    "Execution past 21591154 (PIPE-014 Hertz live)",
+    "FLOW-X02 / PIPE-009 analysis: code \u2261 op-geth (Unit)",
+    "CLEANUP-A02 partial dep removals"
+  ]
+}

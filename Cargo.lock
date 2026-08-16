@@ -4346,27 +4346,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fixed-map"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86ed19add84e8cb9e8cc5f7074de0324247149ffef0b851e215fb0edc50c229b"
-dependencies = [
- "fixed-map-derive",
- "serde",
-]
-
-[[package]]
-name = "fixed-map-derive"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dc7a9cb3326bafb80642c5ce99b39a2c0702d4bfa8ee8a3e773791a6cbe2407"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8712,48 +8691,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reth-blockchain-tree"
-version = "2.4.1"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-genesis",
- "alloy-primitives",
- "aquamarine",
- "assert_matches",
- "dashmap 6.2.1",
- "indexmap 2.14.0",
- "linked_hash_set",
- "metrics",
- "parking_lot",
- "reth-blockchain-tree-api",
- "reth-chainspec",
- "reth-consensus",
- "reth-db",
- "reth-db-api",
- "reth-evm",
- "reth-evm-ethereum",
- "reth-execution-errors",
- "reth-execution-types",
- "reth-metrics 2.4.1",
- "reth-network",
- "reth-node-types",
- "reth-primitives",
- "reth-primitives-traits 2.4.1",
- "reth-provider",
- "reth-revm",
- "reth-stages-api",
- "reth-storage-errors",
- "reth-testing-utils",
- "reth-trie",
- "reth-trie-db",
- "reth-trie-parallel",
- "reth-trie-prefetch",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "reth-blockchain-tree-api"
 version = "2.4.1"
 dependencies = [
@@ -9708,22 +9645,12 @@ dependencies = [
  "eyre",
  "futures-util",
  "op-alloy-rpc-types-engine",
- "reth-beacon-consensus",
  "reth-chainspec",
- "reth-consensus",
  "reth-engine-primitives",
- "reth-engine-service",
- "reth-engine-tree",
  "reth-ethereum-engine-primitives",
- "reth-evm",
  "reth-payload-builder",
  "reth-payload-primitives",
- "reth-payload-validator",
  "reth-primitives-traits 2.4.1",
- "reth-provider",
- "reth-prune",
- "reth-rpc-types-compat",
- "reth-stages-api",
  "reth-storage-api",
  "reth-transaction-pool",
  "tokio",
@@ -9770,7 +9697,6 @@ dependencies = [
  "reth-engine-tree",
  "reth-ethereum-consensus",
  "reth-ethereum-engine-primitives",
- "reth-ethereum-primitives",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-exex-types",
@@ -9808,9 +9734,6 @@ dependencies = [
  "metrics",
  "moka",
  "rayon",
- "reth-beacon-consensus",
- "reth-blockchain-tree",
- "reth-blockchain-tree-api",
  "reth-chain-state",
  "reth-chainspec",
  "reth-consensus",
@@ -9845,7 +9768,6 @@ dependencies = [
  "reth-trie-common",
  "reth-trie-db",
  "reth-trie-parallel",
- "reth-trie-prefetch",
  "reth-trie-sparse",
  "revm",
  "schnellru",
@@ -9860,8 +9782,6 @@ name = "reth-engine-util"
 version = "2.4.1"
 dependencies = [
  "alloy-consensus",
- "alloy-primitives",
- "alloy-rlp",
  "alloy-rpc-types-engine",
  "eyre",
  "futures",
@@ -11508,17 +11428,14 @@ dependencies = [
  "alloy-consensus",
  "alloy-primitives",
  "alloy-rpc-types",
- "derive_more 2.1.1",
  "futures-util",
  "metrics",
  "reth-chain-state",
  "reth-ethereum-engine-primitives",
- "reth-execution-cache",
  "reth-metrics 2.4.1",
  "reth-payload-builder-primitives",
  "reth-payload-primitives",
  "reth-primitives-traits 2.4.1",
- "reth-trie-parallel",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -11758,7 +11675,6 @@ dependencies = [
  "assert_matches",
  "itertools 0.14.0",
  "metrics",
- "rayon",
  "reth-config",
  "reth-db",
  "reth-db-api",
@@ -12428,10 +12344,8 @@ dependencies = [
  "alloy-primitives",
  "clap",
  "derive_more 2.1.1",
- "fixed-map",
  "insta",
  "reth-nippy-jar",
- "reth-stages-types",
  "serde",
  "serde_json",
  "strum 0.27.2",
