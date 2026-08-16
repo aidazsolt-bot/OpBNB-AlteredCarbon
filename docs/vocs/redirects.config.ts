@@ -3,7 +3,8 @@ export const redirects: Record<string, string> = {
   // Installation redirects
   '/installation/installation': '/installation/overview',
   '/binaries': '/installation/binaries',
-  '/docker': '/installation/docker',
+  '/docker': '/installation/overview',
+  '/installation/docker': '/installation/overview',
   '/source': '/installation/source',
   // Run a node redirects
   '/run/run-a-node': '/run/overview',

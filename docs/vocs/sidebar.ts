@@ -35,10 +35,6 @@ export const sidebar: SidebarItem[] = [
                         link: "/installation/binaries"
                     },
                     {
-                        text: "Docker",
-                        link: "/installation/docker"
-                    },
-                    {
                         text: "Build from Source",
                         link: "/installation/source"
                     },

@@ -35,9 +35,6 @@ EEST_TESTS_TAG := v4.5.0
 EEST_TESTS_URL := https://github.com/ethereum/execution-spec-tests/releases/download/$(EEST_TESTS_TAG)/fixtures_stable.tar.gz
 EEST_TESTS_DIR := ./testing/ef-tests/execution-spec-tests
 
-# The docker image name
-DOCKER_IMAGE_NAME ?= ghcr.io/paradigmxyz/reth
-
 # Features in reth/op-reth binary crate other than "ethereum" and "optimism"
 BIN_OTHER_FEATURES := asm-keccak jemalloc jemalloc-prof min-error-logs min-warn-logs min-info-logs min-debug-logs min-trace-logs
 
@@ -111,8 +108,8 @@ bsc-build-native-%:
 # These commands require that:
 #
 # - `cross` is installed (`cargo install cross`).
-# - Docker is running.
-# - The current user is in the `docker` group.
+# - Note: `cross` historically used Docker; this fork does not ship Docker
+#   images or compose stacks — prefer native `build-native-*` / local cargo.
 #
 # The resulting binaries will be created in the `target/` directory.
 
@@ -147,7 +144,7 @@ bsc-build-%:
 		cross build --bin bsc-reth --target $* --features "bsc $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/bsc/bin/Cargo.toml
 
 # Unfortunately we can't easily use cross to build for Darwin because of licensing issues.
-# If we wanted to, we would need to build a custom Docker image with the SDK available.
+# Prefer native Darwin targets below.
 #
 # Note: You must set `SDKROOT` and `MACOSX_DEPLOYMENT_TARGET`. These can be found using `xcrun`.
 #
@@ -239,155 +236,6 @@ $(EEST_TESTS_DIR):
 .PHONY: ef-tests
 ef-tests: $(EF_TESTS_DIR) $(EEST_TESTS_DIR) ## Runs Legacy and EEST tests.
 	cargo nextest run --no-fail-fast -p ef-tests --release --features ef-tests
-
-##@ Docker
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: docker-build-push
-docker-build-push: ## Build and push a cross-arch Docker image tagged with the latest git tag.
-	$(call docker_build_push,$(GIT_TAG),$(GIT_TAG))
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: docker-build-push-git-sha
-docker-build-push-git-sha: ## Build and push a cross-arch Docker image tagged with the latest git sha.
-	$(call docker_build_push,$(GIT_SHA),$(GIT_SHA))
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: docker-build-push-latest
-docker-build-push-latest: ## Build and push a cross-arch Docker image tagged with the latest git tag and `latest`.
-	$(call docker_build_push,$(GIT_TAG),latest)
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --name cross-builder`
-.PHONY: docker-build-push-nightly
-docker-build-push-nightly: ## Build and push cross-arch Docker image tagged with the latest git tag with a `-nightly` suffix, and `latest-nightly`.
-	$(call docker_build_push,$(GIT_TAG)-nightly,latest-nightly)
-
-# Create a cross-arch Docker image with the given tags and push it
-define docker_build_push
-	$(MAKE) build-x86_64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/amd64
-	cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/reth $(BIN_DIR)/amd64/reth
-
-	$(MAKE) build-aarch64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/arm64
-	cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/reth $(BIN_DIR)/arm64/reth
-
-	docker buildx build --file ./Dockerfile.cross . \
-		--platform linux/amd64,linux/arm64 \
-		--tag $(DOCKER_IMAGE_NAME):$(1) \
-		--tag $(DOCKER_IMAGE_NAME):$(2) \
-		--provenance=false \
-		--push
-endef
-
-##@ Optimism docker
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: op-docker-build-push
-op-docker-build-push: ## Build and push a cross-arch Docker image tagged with the latest git tag.
-	$(call op_docker_build_push,$(GIT_TAG),$(GIT_TAG))
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: op-docker-build-push-git-sha
-op-docker-build-push-git-sha: ## Build and push a cross-arch Docker image tagged with the latest git sha.
-	$(call op_docker_build_push,$(GIT_SHA),$(GIT_SHA))
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: op-docker-build-push-latest
-op-docker-build-push-latest: ## Build and push a cross-arch Docker image tagged with the latest git tag and `latest`.
-	$(call op_docker_build_push,$(GIT_TAG),latest)
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --name cross-builder`
-.PHONY: op-docker-build-push-nightly
-op-docker-build-push-nightly: ## Build and push cross-arch Docker image tagged with the latest git tag with a `-nightly` suffix, and `latest-nightly`.
-	$(call op_docker_build_push,$(GIT_TAG)-nightly,latest-nightly)
-
-# Create a cross-arch Docker image with the given tags and push it
-define op_docker_build_push
-	$(MAKE) op-build-x86_64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/amd64
-	cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/op-reth $(BIN_DIR)/amd64/op-reth
-
-	$(MAKE) op-build-aarch64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/arm64
-	cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/op-reth $(BIN_DIR)/arm64/op-reth
-
-	docker buildx build --file ./DockerfileOp.cross . \
-		--platform linux/amd64,linux/arm64 \
-		--tag $(DOCKER_IMAGE_NAME):$(1) \
-		--tag $(DOCKER_IMAGE_NAME):$(2) \
-		--provenance=false \
-		--push
-endef
-
-##@ BSC docker
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: bsc-docker-build-push
-bsc-docker-build-push: ## Build and push a cross-arch Docker image tagged with the latest git tag.
-	$(call bsc_docker_build_push,$(GIT_TAG),$(GIT_TAG))
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --driver docker-container --name cross-builder`
-.PHONY: bsc-docker-build-push-latest
-bsc-docker-build-push-latest: ## Build and push a cross-arch Docker image tagged with the latest git tag and `latest`.
-	$(call bsc_docker_build_push,$(GIT_TAG),latest)
-
-# Note: This requires a buildx builder with emulation support. For example:
-#
-# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
-# `docker buildx create --use --name cross-builder`
-.PHONY: bsc-docker-build-push-nightly
-bsc-docker-build-push-nightly: ## Build and push cross-arch Docker image tagged with the latest git tag with a `-nightly` suffix, and `latest-nightly`.
-	$(call bsc_docker_build_push,$(GIT_TAG)-nightly,latest-nightly)
-
-# Create a cross-arch Docker image with the given tags and push it
-define bsc_docker_build_push
-	$(MAKE) bsc-build-x86_64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/amd64
-	cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/bsc-reth $(BIN_DIR)/amd64/bsc-reth
-
-	$(MAKE) bsc-build-aarch64-unknown-linux-gnu
-	mkdir -p $(BIN_DIR)/arm64
-	cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/bsc-reth $(BIN_DIR)/arm64/bsc-reth
-
-	docker buildx build --file ./DockerfileBsc.cross . \
-		--platform linux/amd64,linux/arm64 \
-		--tag $(DOCKER_IMAGE_NAME):$(1) \
-		--tag $(DOCKER_IMAGE_NAME):$(2) \
-		--provenance=false \
-		--push
-endef
-
 
 ##@ Other
 

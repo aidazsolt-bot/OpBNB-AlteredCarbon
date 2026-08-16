@@ -6,13 +6,12 @@ description: Installation instructions for Reth and hardware recommendations.
 
 Reth runs on Linux and macOS (Windows tracked).
 
-There are three core methods to obtain Reth:
+There are two core methods to obtain Reth in this fork:
 
 -   [Pre-built binaries](/installation/binaries)
--   [Docker images](/installation/docker)
 -   [Building from source.](/installation/source)
 
 :::note
-If you have Docker installed, we recommend using the [Docker Compose](/installation/docker#using-docker-compose) configuration
-that will get you Reth, Lighthouse (Consensus Client), Prometheus and Grafana running and syncing with just one command.
+Docker images, Docker Compose stacks, and related CI publish jobs are **not** maintained in this
+fork. Prefer native binaries (`make maxperf-op`, cargo install) and host process managers.
 :::

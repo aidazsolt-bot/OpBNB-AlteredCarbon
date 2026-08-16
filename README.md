@@ -182,29 +182,6 @@ opt out; see `bsc-reth node --help` under Engine).
 
 You can run `bsc-reth --help` for command explanations.
 
-For running bsc-reth with docker, please use the following command:
-
-```shell
-# for mainnet
-export network=bsc
-
-# for testnet
-# export network=bsc-testnet
-
-# check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/bsc-reth
-export version=latest
-
-# the directory where reth data will be stored
-export data_dir=/xxx/xxx
-
-docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data \
-    --name bsc-reth ghcr.io/bnb-chain/bsc-reth:${version} node \
-    --datadir=/data \
-    --chain=${network} \
-    --http \
-    --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs
-```
 
 ### Snapshots
 
@@ -313,38 +290,6 @@ not wired on this rebase; use `--engine.*` prewarming/cache flags instead.
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be
 found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
 
-For running op-reth with docker, please use the following command:
-
-```shell
-# for mainnet
-export network=mainnet
-export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
-
-# for testnet
-# export network=testnet
-# export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
-
-# check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/op-reth
-export version=latest
-
-# the directory where reth data will be stored
-export data_dir=/xxx/xxx
-
-# the directory where the jwt.txt file is stored
-export jwt_dir=/xxx/xxx
-
-docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
-    --name op-reth ghcr.io/bnb-chain/op-reth:${version} node \
-    --datadir=/data \
-    --chain=opbnb-${network} \
-    --rollup.sequencer-http=${L2_RPC} \
-    --authrpc.addr="0.0.0.0" \
-    --authrpc.port=8551 \
-    --authrpc.jwtsecret=/jwt/jwt.txt \
-    --http \
-    --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory /data/logs
-```
 
 ## Contribution
 

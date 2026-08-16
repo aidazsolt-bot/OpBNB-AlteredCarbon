@@ -144,17 +144,9 @@ Reth supports OTLP via the `tracing` crate, meaning logs and traces can be expor
 
 If you already have a backend set up on your infrastructure, you can point reth to export its traces by providing the `--tracing-otlp` argument.
 
-To run Jaeger locally, you can read the [Jaeger setup docs](https://www.jaegertracing.io/docs/2.11/getting-started/).
-This should run Jaeger with the otlp port `4318` and the dashboard port `16686`:
-```bash
-docker run --rm --name jaeger \
-  -p 16686:16686 \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  -p 5778:5778 \
-  -p 9411:9411 \
-  cr.jaegertracing.io/jaegertracing/jaeger:2.11.0
-```
+To run Jaeger locally, follow the [Jaeger setup docs](https://www.jaegertracing.io/docs/2.11/getting-started/)
+(native binary or your own process manager — this fork does not ship Docker run recipes).
+Aim for OTLP on port `4318` / gRPC `4317` and the UI on `16686`.
 
 Now we can provide the `--tracing-otlp` argument with reth:
 

@@ -10,10 +10,10 @@ up to date.
 - [**Prometheus**](./prometheus/prometheus.yml): An example Prometheus configuration.
 - [**Grafana**](./grafana/): Example Grafana dashboards & data sources.
 
-### Docker Compose
-
-To run Reth, Grafana or Prometheus with Docker Compose, refer to
-the [docker docs](https://reth.rs/installation/docker#using-docker-compose).
+:::note
+Docker Compose for this stack has been removed from the fork. Run Prometheus/Grafana as host
+services (or your own orchestration) pointing at the node's `--metrics` endpoint.
+:::
 
 ### Grafana
 
