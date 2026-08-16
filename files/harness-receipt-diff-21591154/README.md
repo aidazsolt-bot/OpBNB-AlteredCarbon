@@ -121,7 +121,7 @@ Dirty Cap when stages already **> H** → PORT-OPS-001 (skip → Merkle fail →
 **Journal (nspawn):**
 
 ```bash
-journalctl -D /var/lib/machines/BSCRethArchiveNode/var/log/journal/ --since '1 hour ago'
+journalctl -D /var/lib/machines/<archive-ct>/var/log/journal/ --since '1 hour ago'
 ```
 
 ## Produce local dump
@@ -133,7 +133,7 @@ Datadir exclusive (no parallel node writing the same DB). Prefer binary with dum
 # from repo root; half-open: executes ONLY 21591154; state @ 21591153
 ./target/maxperf/op-reth re-execute \
   --chain opbnb-mainnet \
-  --datadir /media/DataDomainNVMER40/BSCRethArchiveNode/.local/share/reth/opbnb-mainnet \
+  --datadir /media/<datadir-vol>/<archive-ct>/.local/share/reth/opbnb-mainnet \
   --from 21591154 \
   --to 21591155 \
   --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json
@@ -144,7 +144,7 @@ Alternative (replay from unwind floor if parent state not yet at `21591153`):
 ```bash
 ./target/maxperf/op-reth re-execute \
   --chain opbnb-mainnet \
-  --datadir /media/DataDomainNVMER40/BSCRethArchiveNode/.local/share/reth/opbnb-mainnet \
+  --datadir /media/<datadir-vol>/<archive-ct>/.local/share/reth/opbnb-mainnet \
   --from 21579119 \
   --to 21591155 \
   --dump-receipts-on-fail files/harness-receipt-diff-21591154/local-executed-receipts.json

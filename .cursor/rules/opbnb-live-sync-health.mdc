@@ -5,13 +5,17 @@ alwaysApply: true
 
 # Live Sync Health Checks (opBNB Archive)
 
+**Paths (anonymized in-repo):** resolve `<archive-ct>`, `<datadir-vol>`, `<host-lan-ip>`,
+`<host-global-ipv6>` from gitignored `.cursor/local/opbnb-archive-paths.env` when present;
+never commit real hostnames/IPv4/IPv6/LAN addresses into docs or rules.
+
 While this workspace is active **and** a live opBNB archive sync is running
-(`BSCRethArchiveNode` / `op-reth-bnb`), run the checks below **automatically**
+(`<archive-ct>` / `op-reth-bnb`), run the checks below **automatically**
 without waiting for the user to ask — at least every **2–3 hours of wall clock**
 in a long session, and once near the start of any new agent turn that touches
 sync/P2P/pipeline/docs.
 
-## Point 1 — Mimir (`http://grafana/api/v1/query`, instance `BSCRethArchiveNode:6060`)
+## Point 1 — Mimir (`http://grafana/api/v1/query`, instance `<archive-ct>:6060`)
 
 Query and report:
 
@@ -20,7 +24,7 @@ Query and report:
 - `reth_downloaders_bodies_timeout_errors` / `unexpected_errors` → **0**
 - `reth_network_invalid_messages_received` → **0**
 - `bodies_total_downloaded` ≈ `bodies_total_flushed` ≈ Bodies checkpoint (while Bodies active)
-- `reth_network_connected_peers`, eth1 RX/TX via `BSCRethArchiveNode:9100` if useful
+- `reth_network_connected_peers`, eth1 RX/TX via `<archive-ct>:9100` if useful
 - Rough ETA from stage rate vs remaining to Headers tip
 
 **Alert the user** if validation/timeout/unexpected errors rise, checkpoint resets,
@@ -28,7 +32,7 @@ downloaded≪flushed gap grows, peers drop to 0 / Ban-Sturm, or Execution/Merkle
 
 ## Point 2 — Logs
 
-Log: `/media/DataDomainNVMER40/BSCRethArchiveNode/.cache/reth/logs/opbnb-mainnet/reth.log`
+Log: `/media/<datadir-vol>/<archive-ct>/.cache/reth/logs/opbnb-mainnet/reth.log`
 
 ```bash
 rg -i 'validation error|Invalid block|BadMessage|mismatch|unwind|state root' "$LOG" | tail
@@ -38,7 +42,7 @@ Healthy: empty (or only historical) + ongoing `Committed …` for the active sta
 
 ## Point 3 — Occasional hash spot-check (Bodies phase; not every cycle)
 
-When RPC is reachable (or via host `10.0.0.85`), compare 3–5 heights
+When RPC is reachable (or via host `<host-lan-ip>`), compare 3–5 heights
 `< Bodies checkpoint` against public opBNB **mainnet** RPC
 (`https://opbnb-mainnet-rpc.bnbchain.org`):
 
