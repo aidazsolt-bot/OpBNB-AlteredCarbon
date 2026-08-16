@@ -1,8 +1,8 @@
 //! Stream wrapper that skips specified number of FCUs.
 
 use futures::{Stream, StreamExt};
-use reth_beacon_consensus::{BeaconEngineMessage, OnForkChoiceUpdated};
-use reth_engine_primitives::EngineTypes;
+use reth_engine_primitives::{BeaconEngineMessage, OnForkChoiceUpdated};
+use reth_payload_primitives::PayloadTypes;
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},
@@ -32,10 +32,10 @@ impl<S> EngineSkipFcu<S> {
     }
 }
 
-impl<S, Engine> Stream for EngineSkipFcu<S>
+impl<S, T> Stream for EngineSkipFcu<S>
 where
-    S: Stream<Item = BeaconEngineMessage<Engine>>,
-    Engine: EngineTypes,
+    S: Stream<Item = BeaconEngineMessage<T>>,
+    T: PayloadTypes,
 {
     type Item = S::Item;
 
@@ -45,29 +45,19 @@ where
         loop {
             let next = ready!(this.stream.poll_next_unpin(cx));
             let item = match next {
-                Some(BeaconEngineMessage::ForkchoiceUpdated {
-                    state,
-                    payload_attrs,
-                    tx,
-                    version,
-                }) => {
+                Some(BeaconEngineMessage::ForkchoiceUpdated { state, payload_attrs, tx }) => {
                     if this.skipped < this.threshold {
                         *this.skipped += 1;
                         tracing::warn!(target: "engine::stream::skip_fcu", ?state, ?payload_attrs, threshold=this.threshold, skipped=this.skipped, "Skipping FCU");
                         let _ = tx.send(Ok(OnForkChoiceUpdated::syncing()));
-                        continue
+                        continue;
                     }
                     *this.skipped = 0;
-                    Some(BeaconEngineMessage::ForkchoiceUpdated {
-                        state,
-                        payload_attrs,
-                        tx,
-                        version,
-                    })
+                    Some(BeaconEngineMessage::ForkchoiceUpdated { state, payload_attrs, tx })
                 }
                 next => next,
             };
-            return Poll::Ready(item)
+            return Poll::Ready(item);
         }
     }
 }

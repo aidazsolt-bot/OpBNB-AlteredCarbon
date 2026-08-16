@@ -1,5 +1,6 @@
-use super::Header;
-use alloy_eips::BlockNumHash;
+use super::{BlockHeader, Header};
+use crate::InMemorySize;
+use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
 use alloy_primitives::{BlockNumber, B256, U256};
@@ -9,14 +10,21 @@ use core::mem;
 use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
+use crate::sync::OnceLock;
+use crate::NodePrimitives;
+
+/// Sealed header type for a [`NodePrimitives`] implementation.
+pub type SealedHeaderFor<N> = SealedHeader<<N as NodePrimitives>::BlockHeader>;
 
 /// A [`Header`] that is sealed at a precalculated hash, use [`SealedHeader::unseal()`] if you want
 /// to modify header.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, AsRef, Deref, Serialize, Deserialize)]
+#[derive(Debug, Clone, AsRef, Deref, Serialize, Deserialize)]
 #[add_arbitrary_tests(rlp)]
 pub struct SealedHeader<H = Header> {
-    /// Locked Header hash.
-    hash: BlockHash,
+    /// Locked Header hash, lazily computed if the header was created via
+    /// [`SealedHeader::new_unhashed`].
+    #[serde(skip)]
+    hash: OnceLock<BlockHash>,
     /// Locked Header fields.
     #[as_ref]
     #[deref]
@@ -26,51 +34,137 @@ pub struct SealedHeader<H = Header> {
 impl<H> SealedHeader<H> {
     /// Creates the sealed header with the corresponding block hash.
     #[inline]
-    pub const fn new(header: H, hash: BlockHash) -> Self {
-        Self { header, hash }
+    pub fn new(header: H, hash: BlockHash) -> Self {
+        Self { header, hash: OnceLock::from(hash) }
     }
-}
 
-impl SealedHeader {
-    /// Returns the sealed Header fields.
+    /// Creates a sealed header without hashing the header up front. The hash will be computed
+    /// lazily the first time it's requested.
     #[inline]
-    pub const fn header(&self) -> &Header {
+    pub fn new_unhashed(header: H) -> Self {
+        Self { header, hash: OnceLock::new() }
+    }
+
+    /// Returns the sealed header fields.
+    #[inline]
+    pub const fn header(&self) -> &H {
         &self.header
     }
 
-    /// Returns header/block hash.
-    #[inline]
-    pub const fn hash(&self) -> BlockHash {
-        self.hash
+    /// Clone the header.
+    pub fn clone_header(&self) -> H
+    where
+        H: Clone,
+    {
+        self.header.clone()
     }
 
-    /// Extract raw header that can be modified.
-    pub fn unseal(self) -> Header {
+    /// Consumes the type and returns the wrapped header.
+    #[inline]
+    pub fn into_header(self) -> H {
         self.header
     }
 
-    /// This is the inverse of [`Header::seal_slow`] which returns the raw header and hash.
-    pub fn split(self) -> (Header, BlockHash) {
-        (self.header, self.hash)
+    /// Extract raw header that can be modified.
+    #[inline]
+    pub fn unseal(self) -> H {
+        self.header
+    }
+}
+
+impl<H: Sealable> SealedHeader<H> {
+    /// Hashes the header and creates a sealed header from it and its hash.
+    pub fn seal_slow(header: H) -> Self {
+        let hash = header.hash_slow();
+        Self::new(header, hash)
     }
 
+    /// Returns the block hash, computing and caching it if not already available.
+    #[inline]
+    pub fn hash(&self) -> BlockHash {
+        *self.hash.get_or_init(|| self.header.hash_slow())
+    }
+
+    /// This is the inverse of [`SealedHeader::seal_slow`] which returns the raw header and hash.
+    pub fn split(self) -> (H, BlockHash) {
+        let hash = self.hash();
+        (self.header, hash)
+    }
+
+    /// Returns a reference to the block hash, computing and caching it if not already available.
+    #[inline]
+    pub fn hash_ref(&self) -> &BlockHash {
+        self.hash.get_or_init(|| self.header.hash_slow())
+    }
+
+    /// Returns references to both the header and hash without taking ownership.
+    pub fn split_ref(&self) -> (&H, &BlockHash) {
+        (self.header(), self.hash_ref())
+    }
+}
+
+impl<H: Sealable> SealedHeader<&H> {
+    /// Maps a `SealedHeader<&H>` to a `SealedHeader<H>` by cloning the header.
+    pub fn cloned(self) -> SealedHeader<H>
+    where
+        H: Clone,
+    {
+        let Self { hash, header } = self;
+        SealedHeader { hash, header: header.clone() }
+    }
+}
+
+impl<H: Sealable> SealedHeader<H> {
+    /// Converts from &`SealedHeader<H>` to `SealedHeader<&H>`.
+    pub fn sealed_ref(&self) -> SealedHeader<&H> {
+        SealedHeader { hash: self.hash.clone(), header: &self.header }
+    }
+}
+
+impl<H: BlockHeader + Sealable> SealedHeader<H> {
     /// Return the number hash tuple.
     pub fn num_hash(&self) -> BlockNumHash {
-        BlockNumHash::new(self.number, self.hash)
+        BlockNumHash::new(self.header.number(), self.hash())
     }
 
+    /// Return a [`BlockWithParent`] for this header.
+    pub fn block_with_parent(&self) -> BlockWithParent {
+        BlockWithParent { parent: self.parent_hash(), block: self.num_hash() }
+    }
+}
+
+impl<H: InMemorySize> InMemorySize for SealedHeader<H> {
     /// Calculates a heuristic for the in-memory size of the [`SealedHeader`].
     #[inline]
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         self.header.size() + mem::size_of::<BlockHash>()
     }
 }
 
-impl Default for SealedHeader {
+impl<H: Sealable> PartialEq for SealedHeader<H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
+}
+
+impl<H: Sealable> Eq for SealedHeader<H> {}
+
+impl<H: Sealable> core::hash::Hash for SealedHeader<H> {
+    fn hash<Ha: core::hash::Hasher>(&self, state: &mut Ha) {
+        self.hash().hash(state)
+    }
+}
+
+impl<H: Default + Sealable> Default for SealedHeader<H> {
     fn default() -> Self {
-        let sealed = Header::default().seal_slow();
-        let (header, hash) = sealed.into_parts();
-        Self { header, hash }
+        Self::seal_slow(H::default())
+    }
+}
+
+impl<H: Sealable> From<SealedHeader<H>> for alloy_consensus::Sealed<H> {
+    fn from(value: SealedHeader<H>) -> Self {
+        let (header, hash) = value.split();
+        Self::new_unchecked(header, hash)
     }
 }
 
@@ -95,40 +189,50 @@ impl Decodable for SealedHeader {
         // update original buffer
         *buf = *b;
 
-        Ok(Self { header, hash })
+        Ok(Self::new(header, hash))
     }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-impl SealedHeader {
+impl<H: super::test_utils::TestHeader> SealedHeader<H> {
+    /// Returns a mutable reference to the header.
+    pub fn header_mut(&mut self) -> &mut H {
+        &mut self.header
+    }
+
     /// Updates the block header.
-    pub fn set_header(&mut self, header: Header) {
+    pub fn set_header(&mut self, header: H) {
         self.header = header
     }
 
     /// Updates the block hash.
     pub fn set_hash(&mut self, hash: BlockHash) {
-        self.hash = hash
+        self.hash = OnceLock::from(hash)
     }
 
     /// Updates the parent block hash.
     pub fn set_parent_hash(&mut self, hash: BlockHash) {
-        self.header.parent_hash = hash
+        self.header.set_parent_hash(hash)
     }
 
     /// Updates the block number.
     pub fn set_block_number(&mut self, number: BlockNumber) {
-        self.header.number = number;
+        self.header.set_block_number(number);
+    }
+
+    /// Updates the block timestamp.
+    pub fn set_timestamp(&mut self, timestamp: u64) {
+        self.header.set_timestamp(timestamp);
     }
 
     /// Updates the block state root.
     pub fn set_state_root(&mut self, state_root: B256) {
-        self.header.state_root = state_root;
+        self.header.set_state_root(state_root);
     }
 
     /// Updates the block difficulty.
     pub fn set_difficulty(&mut self, difficulty: U256) {
-        self.header.difficulty = difficulty;
+        self.header.set_difficulty(difficulty);
     }
 }
 
@@ -146,46 +250,37 @@ impl<'a> arbitrary::Arbitrary<'a> for SealedHeader {
 /// Bincode-compatible [`SealedHeader`] serde implementation.
 #[cfg(feature = "serde-bincode-compat")]
 pub(super) mod serde_bincode_compat {
-    use alloy_consensus::serde_bincode_compat::Header;
-    use alloy_primitives::BlockHash;
+    use crate::serde_bincode_compat::SerdeBincodeCompat;
+    use alloy_primitives::{BlockHash, Sealable};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
     /// Bincode-compatible [`super::SealedHeader`] serde implementation.
-    ///
-    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
-    /// ```rust
-    /// use reth_primitives_traits::{serde_bincode_compat, SealedHeader};
-    /// use serde::{Deserialize, Serialize};
-    /// use serde_with::serde_as;
-    ///
-    /// #[serde_as]
-    /// #[derive(Serialize, Deserialize)]
-    /// struct Data {
-    ///     #[serde_as(as = "serde_bincode_compat::SealedHeader")]
-    ///     header: SealedHeader,
-    /// }
-    /// ```
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct SealedHeader<'a> {
+    #[derive(derive_more::Debug, Serialize, Deserialize)]
+    #[debug(bound(H::BincodeRepr<'a>: core::fmt::Debug))]
+    pub struct SealedHeader<'a, H: Sealable + SerdeBincodeCompat = super::Header> {
         hash: BlockHash,
-        header: Header<'a>,
+        header: H::BincodeRepr<'a>,
     }
 
-    impl<'a> From<&'a super::SealedHeader> for SealedHeader<'a> {
-        fn from(value: &'a super::SealedHeader) -> Self {
-            Self { hash: value.hash, header: Header::from(&value.header) }
+    impl<'a, H: Sealable + SerdeBincodeCompat> From<&'a super::SealedHeader<H>>
+        for SealedHeader<'a, H>
+    {
+        fn from(value: &'a super::SealedHeader<H>) -> Self {
+            Self { hash: value.hash(), header: value.header.as_repr() }
         }
     }
 
-    impl<'a> From<SealedHeader<'a>> for super::SealedHeader {
-        fn from(value: SealedHeader<'a>) -> Self {
-            Self { hash: value.hash, header: value.header.into() }
+    impl<'a, H: Sealable + SerdeBincodeCompat> From<SealedHeader<'a, H>> for super::SealedHeader<H> {
+        fn from(value: SealedHeader<'a, H>) -> Self {
+            Self::new(SerdeBincodeCompat::from_repr(value.header), value.hash)
         }
     }
 
-    impl SerializeAs<super::SealedHeader> for SealedHeader<'_> {
-        fn serialize_as<S>(source: &super::SealedHeader, serializer: S) -> Result<S::Ok, S::Error>
+    impl<H: Sealable + SerdeBincodeCompat> SerializeAs<super::SealedHeader<H>>
+        for SealedHeader<'_, H>
+    {
+        fn serialize_as<S>(source: &super::SealedHeader<H>, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
@@ -193,8 +288,10 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<'de> DeserializeAs<'de, super::SealedHeader> for SealedHeader<'de> {
-        fn deserialize_as<D>(deserializer: D) -> Result<super::SealedHeader, D::Error>
+    impl<'de, H: Sealable + SerdeBincodeCompat> DeserializeAs<'de, super::SealedHeader<H>>
+        for SealedHeader<'de, H>
+    {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::SealedHeader<H>, D::Error>
         where
             D: Deserializer<'de>,
         {
@@ -202,10 +299,20 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
+    impl<H: Sealable + SerdeBincodeCompat> SerdeBincodeCompat for super::SealedHeader<H> {
+        type BincodeRepr<'a> = SealedHeader<'a, H>;
+        fn as_repr(&self) -> Self::BincodeRepr<'_> {
+            self.into()
+        }
+
+        fn from_repr(repr: Self::BincodeRepr<'_>) -> Self {
+            repr.into()
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::super::{serde_bincode_compat, SealedHeader};
-
         use arbitrary::Arbitrary;
         use rand::Rng;
         use reth_testing_utils::generators;

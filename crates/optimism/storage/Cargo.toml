@@ -11,17 +11,24 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-reth-primitives.workspace = true
+# reth
+reth-optimism-primitives = { workspace = true, features = ["serde", "reth-codec"] }
+reth-storage-api = { workspace = true, features = ["db-api"] }
+
+# ethereum
+alloy-consensus.workspace = true
 
 [dev-dependencies]
-reth-codecs.workspace = true
-reth-db-api.workspace = true
+reth-codecs = { workspace = true, features = ["test-utils"] }
 reth-prune-types.workspace = true
 reth-stages-types.workspace = true
 
 [features]
-optimism = [
-	"reth-primitives/optimism",
-	"reth-codecs/optimism",
-	"reth-db-api/optimism"
+default = ["std"]
+std = [
+    "reth-storage-api/std",
+    "reth-prune-types/std",
+    "reth-stages-types/std",
+    "alloy-consensus/std",
+    "reth-optimism-primitives/std",
 ]

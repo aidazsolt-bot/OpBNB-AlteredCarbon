@@ -1,15 +1,23 @@
-use crate::{providers::StaticFileProvider, HashingWriter, ProviderFactory, TrieWriter};
+use crate::{
+    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBBuilder, StaticFileProvider},
+    HashingWriter, ProviderFactory, TrieWriter,
+};
 use alloy_primitives::B256;
 use reth_chainspec::{ChainSpec, MAINNET};
 use reth_db::{
-    test_utils::{create_test_rw_db, create_test_static_files_dir, TempDatabase},
+    test_utils::{
+        create_test_rocksdb_dir, create_test_rw_db, create_test_static_files_dir, TempDatabase,
+    },
     DatabaseEnv,
 };
 use reth_errors::ProviderResult;
-use reth_node_types::{NodeTypesWithDB, NodeTypesWithDBAdapter};
-use reth_primitives::{Account, StorageEntry};
+use reth_ethereum_engine_primitives::EthEngineTypes;
+use reth_node_types::NodeTypesWithDBAdapter;
+use reth_primitives_traits::{Account, StorageEntry};
 use reth_trie::StateRoot;
-use reth_trie_db::DatabaseStateRoot;
+use reth_trie_db::{
+    DatabaseHashedCursorFactory, DatabaseStateRoot, DatabaseTrieCursorFactory, PackedKeyAdapter,
+};
 use std::sync::Arc;
 
 pub mod blocks;
@@ -22,10 +30,11 @@ pub use reth_chain_state::test_utils::TestCanonStateSubscriptions;
 
 /// Mock [`reth_node_types::NodeTypes`] for testing.
 pub type MockNodeTypes = reth_node_types::AnyNodeTypesWithEngine<
-    (),
+    reth_ethereum_primitives::EthPrimitives,
     reth_ethereum_engine_primitives::EthEngineTypes,
     reth_chainspec::ChainSpec,
-    reth_trie_db::MerklePatriciaTrie,
+    crate::EthStorage,
+    EthEngineTypes,
 >;
 
 /// Mock [`reth_node_types::NodeTypesWithDB`] for testing.
@@ -41,17 +50,32 @@ pub fn create_test_provider_factory() -> ProviderFactory<MockNodeTypesWithDB> {
 pub fn create_test_provider_factory_with_chain_spec(
     chain_spec: Arc<ChainSpec>,
 ) -> ProviderFactory<MockNodeTypesWithDB> {
+    create_test_provider_factory_with_node_types::<MockNodeTypes>(chain_spec)
+}
+
+/// Creates test provider factory with provided chain spec.
+pub fn create_test_provider_factory_with_node_types<N: NodeTypesForProvider>(
+    chain_spec: Arc<N::ChainSpec>,
+) -> ProviderFactory<NodeTypesWithDBAdapter<N, Arc<TempDatabase<DatabaseEnv>>>> {
     let (static_dir, _) = create_test_static_files_dir();
+    let (rocksdb_dir, _) = create_test_rocksdb_dir();
     let db = create_test_rw_db();
+    // `keep()` so RocksDB/static-file paths are not deleted while providers still hold them.
+    // Dropping the TempDir at the end of this function previously raced under parallel EF cases.
     ProviderFactory::new(
         db,
         chain_spec,
-        StaticFileProvider::read_write(static_dir.into_path()).expect("static file provider"),
+        StaticFileProvider::read_write(static_dir.keep()).expect("static file provider"),
+        RocksDBBuilder::new(rocksdb_dir.keep())
+            .with_default_tables()
+            .build()
+            .expect("failed to create test RocksDB provider"),
     )
+    .expect("failed to create test provider factory")
 }
 
 /// Inserts the genesis alloc from the provided chain spec into the trie.
-pub fn insert_genesis<N: NodeTypesWithDB<ChainSpec = ChainSpec>>(
+pub fn insert_genesis<N: ProviderNodeTypes<ChainSpec = ChainSpec>>(
     provider_factory: &ProviderFactory<N>,
     chain_spec: Arc<N::ChainSpec>,
 ) -> ProviderResult<B256> {
@@ -74,10 +98,12 @@ pub fn insert_genesis<N: NodeTypesWithDB<ChainSpec = ChainSpec>>(
     });
     provider.insert_storage_for_hashing(alloc_storage)?;
 
-    let (root, updates) = StateRoot::from_tx(provider.tx_ref())
-        .root_with_updates()
-        .map_err(Into::<reth_db::DatabaseError>::into)?;
-    provider.write_trie_updates(&updates).unwrap();
+    let (root, updates) = StateRoot::<
+        DatabaseTrieCursorFactory<_, PackedKeyAdapter>,
+        DatabaseHashedCursorFactory<_>,
+    >::from_tx(provider.tx_ref())
+    .root_with_updates()?;
+    provider.write_trie_updates(updates).unwrap();
 
     provider.commit()?;
 

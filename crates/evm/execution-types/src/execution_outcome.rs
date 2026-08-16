@@ -1,15 +1,24 @@
 use crate::BlockExecutionOutput;
+use alloc::{vec, vec::Vec};
 use alloy_eips::eip7685::Requests;
-use alloy_primitives::{Address, BlockNumber, Bloom, Log, B256, U256};
-use reth_primitives::{
-    logs_bloom, parlia::Snapshot, Account, Bytecode, Receipt, Receipts, StorageEntry,
-};
-use reth_trie::HashedPostState;
+use alloy_primitives::{logs_bloom, map::HashMap, Address, BlockNumber, Bloom, Log, B256, U256};
+use reth_primitives::parlia::Snapshot;
+use reth_primitives_traits::{Account, Bytecode, Receipt, StorageEntry};
+use reth_trie_common::{HashedPostState, KeyHasher};
 use revm::{
-    db::{states::BundleState, BundleAccount},
-    primitives::AccountInfo,
+    database::{states::BundleState, BundleAccount},
+    state::AccountInfo,
 };
-use std::collections::HashMap;
+
+/// Type used to initialize revms bundle state.
+pub type BundleStateInit =
+    HashMap<Address, (Option<Account>, Option<Account>, HashMap<B256, (U256, U256)>)>;
+
+/// Types used inside `RevertsInit` to initialize revms reverts.
+pub type AccountRevertInit = (Option<Option<Account>>, Vec<StorageEntry>);
+
+/// Type used to initialize revms reverts.
+pub type RevertsInit = HashMap<BlockNumber, HashMap<Address, AccountRevertInit>>;
 
 /// Represents a changed account
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,17 +42,15 @@ impl ChangedAccount {
 ///
 /// The `ExecutionOutcome` structure aggregates the state changes over an arbitrary number of
 /// blocks, capturing the resulting state, receipts, and requests following the execution.
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ExecutionOutcome {
+pub struct ExecutionOutcome<T = reth_ethereum_primitives::Receipt> {
     /// Bundle state with reverts.
     pub bundle: BundleState,
     /// The collection of receipts.
     /// Outer vector stores receipts for each block sequentially.
     /// The inner vector stores receipts ordered by transaction number.
-    ///
-    /// If receipt is None it means it is pruned.
-    pub receipts: Receipts,
+    pub receipts: Vec<Vec<T>>,
     /// First block of bundle state.
     pub first_block: BlockNumber,
     /// The collection of EIP-7685 requests.
@@ -58,24 +65,26 @@ pub struct ExecutionOutcome {
     pub snapshots: Vec<Snapshot>,
 }
 
-/// Type used to initialize revms bundle state.
-pub type BundleStateInit =
-    HashMap<Address, (Option<Account>, Option<Account>, HashMap<B256, (U256, U256)>)>;
+impl<T> Default for ExecutionOutcome<T> {
+    fn default() -> Self {
+        Self {
+            bundle: Default::default(),
+            receipts: Default::default(),
+            first_block: Default::default(),
+            requests: Default::default(),
+            snapshots: Default::default(),
+        }
+    }
+}
 
-/// Types used inside `RevertsInit` to initialize revms reverts.
-pub type AccountRevertInit = (Option<Option<Account>>, Vec<StorageEntry>);
-
-/// Type used to initialize revms reverts.
-pub type RevertsInit = HashMap<BlockNumber, HashMap<Address, AccountRevertInit>>;
-
-impl ExecutionOutcome {
+impl<T> ExecutionOutcome<T> {
     /// Creates a new `ExecutionOutcome`.
     ///
     /// This constructor initializes a new `ExecutionOutcome` instance with the provided
     /// bundle state, receipts, first block number, and EIP-7685 requests.
     pub const fn new(
         bundle: BundleState,
-        receipts: Receipts,
+        receipts: Vec<Vec<T>>,
         first_block: BlockNumber,
         requests: Vec<Requests>,
     ) -> Self {
@@ -88,7 +97,7 @@ impl ExecutionOutcome {
     /// bundle state, receipts, first block number, EIP-7685 requests and snapshots.
     pub const fn new_with_snapshots(
         bundle: BundleState,
-        receipts: Receipts,
+        receipts: Vec<Vec<T>>,
         first_block: BlockNumber,
         requests: Vec<Requests>,
         snapshots: Vec<Snapshot>,
@@ -104,7 +113,7 @@ impl ExecutionOutcome {
         state_init: BundleStateInit,
         revert_init: RevertsInit,
         contracts_init: impl IntoIterator<Item = (B256, Bytecode)>,
-        receipts: Receipts,
+        receipts: Vec<Vec<T>>,
         first_block: BlockNumber,
         requests: Vec<Requests>,
     ) -> Self {
@@ -123,7 +132,7 @@ impl ExecutionOutcome {
                 )
             }),
             reverts.into_iter().map(|(_, reverts)| {
-                // does not needs to be sorted, it is done when taking reverts.
+                // does not need to be sorted, it is done when taking reverts.
                 reverts.into_iter().map(|(address, (original, storage))| {
                     (
                         address,
@@ -138,18 +147,49 @@ impl ExecutionOutcome {
         Self { bundle, receipts, first_block, requests, snapshots: vec![] }
     }
 
+    /// Creates a new `ExecutionOutcome` from a single block execution result.
+    pub fn single(block_number: u64, output: BlockExecutionOutput<T>) -> Self {
+        Self {
+            bundle: output.state,
+            receipts: vec![output.result.receipts],
+            first_block: block_number,
+            requests: vec![output.result.requests],
+            snapshots: vec![output.snapshot.unwrap_or_default()],
+        }
+    }
+
+    /// Creates a new `ExecutionOutcome` from multiple [`BlockExecutionResult`]s.
+    pub fn from_blocks(
+        first_block: u64,
+        bundle: BundleState,
+        results: Vec<crate::BlockExecutionResult<T>>,
+    ) -> Self {
+        let mut value = Self {
+            bundle,
+            first_block,
+            receipts: Vec::with_capacity(results.len()),
+            requests: Vec::with_capacity(results.len()),
+            snapshots: vec![],
+        };
+        for result in results {
+            value.receipts.push(result.receipts);
+            value.requests.push(result.requests);
+        }
+        value
+    }
+
     /// Return revm bundle state.
     pub const fn state(&self) -> &BundleState {
         &self.bundle
     }
 
     /// Returns mutable revm bundle state.
-    pub fn state_mut(&mut self) -> &mut BundleState {
+    pub const fn state_mut(&mut self) -> &mut BundleState {
         &mut self.bundle
     }
 
     /// Set first block.
-    pub fn set_first_block(&mut self, first_block: BlockNumber) {
+    pub const fn set_first_block(&mut self, first_block: BlockNumber) {
         self.first_block = first_block;
     }
 
@@ -165,7 +205,12 @@ impl ExecutionOutcome {
 
     /// Get account if account is known.
     pub fn account(&self, address: &Address) -> Option<Option<Account>> {
-        self.bundle.account(address).map(|a| a.info.clone().map(Into::into))
+        self.bundle.account(address).map(|a| a.info.as_ref().map(Into::into))
+    }
+
+    /// Returns the state [`BundleAccount`] for the given account.
+    pub fn account_state(&self, address: &Address) -> Option<&BundleAccount> {
+        self.bundle.account(address)
     }
 
     /// Get storage if value is known.
@@ -182,86 +227,75 @@ impl ExecutionOutcome {
 
     /// Returns [`HashedPostState`] for this execution outcome.
     /// See [`HashedPostState::from_bundle_state`] for more info.
-    pub fn hash_state_slow(&self) -> HashedPostState {
-        HashedPostState::from_bundle_state(&self.bundle.state)
+    pub fn hash_state_slow<KH: KeyHasher>(&self) -> HashedPostState {
+        HashedPostState::from_bundle_state::<KH>(&self.bundle.state)
     }
 
     /// Transform block number to the index of block.
-    pub fn block_number_to_index(&self, block_number: BlockNumber) -> Option<usize> {
+    pub const fn block_number_to_index(&self, block_number: BlockNumber) -> Option<usize> {
         if self.first_block > block_number {
-            return None
+            return None;
         }
         let index = block_number - self.first_block;
         if index >= self.receipts.len() as u64 {
-            return None
+            return None;
         }
         Some(index as usize)
     }
 
-    /// Returns an iterator over all block logs.
-    pub fn logs(&self, block_number: BlockNumber) -> Option<impl Iterator<Item = &Log>> {
-        let index = self.block_number_to_index(block_number)?;
-        Some(self.receipts[index].iter().filter_map(|r| Some(r.as_ref()?.logs.iter())).flatten())
-    }
-
-    /// Return blocks logs bloom
-    pub fn block_logs_bloom(&self, block_number: BlockNumber) -> Option<Bloom> {
-        Some(logs_bloom(self.logs(block_number)?))
-    }
-
     /// Returns the receipt root for all recorded receipts.
     /// Note: this function calculated Bloom filters for every receipt and created merkle trees
-    /// of receipt. This is a expensive operation.
-    pub fn receipts_root_slow(&self, _block_number: BlockNumber) -> Option<B256> {
-        #[cfg(feature = "optimism")]
-        panic!("This should not be called in optimism mode. Use `optimism_receipts_root_slow` instead.");
-        #[cfg(not(feature = "optimism"))]
-        self.receipts.root_slow(
-            self.block_number_to_index(_block_number)?,
-            reth_primitives::proofs::calculate_receipt_root_no_memo,
-        )
-    }
-
-    /// Returns the receipt root for all recorded receipts.
-    /// Note: this function calculated Bloom filters for every receipt and created merkle trees
-    /// of receipt. This is a expensive operation.
+    /// of receipt. This is an expensive operation.
     pub fn generic_receipts_root_slow(
         &self,
         block_number: BlockNumber,
-        f: impl FnOnce(&[&Receipt]) -> B256,
+        f: impl FnOnce(&[T]) -> B256,
     ) -> Option<B256> {
-        self.receipts.root_slow(self.block_number_to_index(block_number)?, f)
+        Some(f(self.receipts.get(self.block_number_to_index(block_number)?)?))
     }
 
     /// Returns reference to receipts.
-    pub const fn receipts(&self) -> &Receipts {
+    pub const fn receipts(&self) -> &Vec<Vec<T>> {
         &self.receipts
     }
 
     /// Returns mutable reference to receipts.
-    pub fn receipts_mut(&mut self) -> &mut Receipts {
+    pub const fn receipts_mut(&mut self) -> &mut Vec<Vec<T>> {
         &mut self.receipts
     }
 
     /// Return all block receipts
-    pub fn receipts_by_block(&self, block_number: BlockNumber) -> &[Option<Receipt>] {
+    pub fn receipts_by_block(&self, block_number: BlockNumber) -> &[T] {
         let Some(index) = self.block_number_to_index(block_number) else { return &[] };
         &self.receipts[index]
     }
 
+    /// Returns an iterator over receipt slices, one per block.
+    ///
+    /// This is a more ergonomic alternative to `receipts()` that yields slices
+    /// instead of requiring indexing into a nested `Vec<Vec<T>>`.
+    pub fn receipts_iter(&self) -> impl Iterator<Item = &[T]> + '_ {
+        self.receipts.iter().map(|v| v.as_slice())
+    }
+
     /// Is execution outcome empty.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Number of blocks in the execution outcome.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.receipts.len()
     }
 
     /// Return first block of the execution outcome
     pub const fn first_block(&self) -> BlockNumber {
         self.first_block
+    }
+
+    /// Return last block of the execution outcome
+    pub const fn last_block(&self) -> BlockNumber {
+        (self.first_block + self.len() as u64).saturating_sub(1)
     }
 
     /// Revert the state to the given block number.
@@ -296,9 +330,12 @@ impl ExecutionOutcome {
     /// # Panics
     ///
     /// If the target block number is not included in the state block range.
-    pub fn split_at(self, at: BlockNumber) -> (Option<Self>, Self) {
+    pub fn split_at(self, at: BlockNumber) -> (Option<Self>, Self)
+    where
+        T: Clone,
+    {
         if at == self.first_block {
-            return (None, self)
+            return (None, self);
         }
 
         let (mut lower_state, mut higher_state) = (self.clone(), self);
@@ -308,7 +345,7 @@ impl ExecutionOutcome {
 
         // Truncate higher state to [at..].
         let at_idx = higher_state.block_number_to_index(at).unwrap();
-        higher_state.receipts = higher_state.receipts.split_off(at_idx).into();
+        higher_state.receipts = higher_state.receipts.split_off(at_idx);
         // Ensure that there are enough requests to truncate.
         // Sometimes we just have receipts and no requests.
         if at_idx < higher_state.requests.len() {
@@ -327,28 +364,29 @@ impl ExecutionOutcome {
     /// In most cases this would be true.
     pub fn extend(&mut self, other: Self) {
         self.bundle.extend(other.bundle);
-        self.receipts.extend(other.receipts.receipt_vec);
+        self.receipts.extend(other.receipts);
         self.requests.extend(other.requests);
+        self.snapshots.extend(other.snapshots);
     }
 
     /// Prepends present the state with the given `BundleState`.
     /// It adds changes from the given state but does not override any existing changes.
     ///
-    /// Reverts  and receipts are not updated.
+    /// Reverts and receipts are not updated.
     pub fn prepend_state(&mut self, mut other: BundleState) {
         let other_len = other.reverts.len();
         // take this bundle
-        let this_bundle = std::mem::take(&mut self.bundle);
+        let this_bundle = core::mem::take(&mut self.bundle);
         // extend other bundle with this
         other.extend(this_bundle);
         // discard other reverts
         other.take_n_reverts(other_len);
         // swap bundles
-        std::mem::swap(&mut self.bundle, &mut other)
+        core::mem::swap(&mut self.bundle, &mut other)
     }
 
     /// Create a new instance with updated receipts.
-    pub fn with_receipts(mut self, receipts: Receipts) -> Self {
+    pub fn with_receipts(mut self, receipts: Vec<Vec<T>>) -> Self {
         self.receipts = receipts;
         self
     }
@@ -371,27 +409,157 @@ impl ExecutionOutcome {
     }
 }
 
-impl From<(BlockExecutionOutput<Receipt>, BlockNumber)> for ExecutionOutcome {
-    fn from(value: (BlockExecutionOutput<Receipt>, BlockNumber)) -> Self {
-        Self {
-            bundle: value.0.state,
-            receipts: Receipts::from(value.0.receipts),
-            first_block: value.1,
-            requests: vec![value.0.requests],
-            snapshots: vec![value.0.snapshot.unwrap_or_default()],
-        }
+impl<T: Receipt<Log = Log>> ExecutionOutcome<T> {
+    /// Returns an iterator over all block logs.
+    pub fn logs(&self, block_number: BlockNumber) -> Option<impl Iterator<Item = &Log>> {
+        let index = self.block_number_to_index(block_number)?;
+        Some(self.receipts[index].iter().flat_map(|r| r.logs()))
+    }
+
+    /// Return blocks logs bloom
+    pub fn block_logs_bloom(&self, block_number: BlockNumber) -> Option<Bloom> {
+        Some(logs_bloom(self.logs(block_number)?))
     }
 }
 
+impl ExecutionOutcome {
+    /// Returns the ethereum receipt root for all recorded receipts.
+    ///
+    /// Note: this function calculated Bloom filters for every receipt and created merkle trees
+    /// of receipt. This is an expensive operation.
+    pub fn ethereum_receipts_root(&self, block_number: BlockNumber) -> Option<B256> {
+        self.generic_receipts_root_slow(
+            block_number,
+            reth_ethereum_primitives::Receipt::calculate_receipt_root_no_memo,
+        )
+    }
+}
+
+impl<T> From<(BlockExecutionOutput<T>, BlockNumber)> for ExecutionOutcome<T> {
+    fn from((output, block_number): (BlockExecutionOutput<T>, BlockNumber)) -> Self {
+        Self::single(block_number, output)
+    }
+}
+
+#[cfg(feature = "serde-bincode-compat")]
+pub(super) mod serde_bincode_compat {
+    use alloc::{borrow::Cow, vec::Vec};
+    use alloy_eips::eip7685::Requests;
+    use alloy_primitives::{BlockNumber, Bytes};
+    use reth_primitives_traits::Receipt;
+    use revm::database::BundleState;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_with::{DeserializeAs, SerializeAs};
+
+    /// Bincode-compatible [`super::ExecutionOutcome`] serde implementation.
+    ///
+    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
+    /// ```rust
+    /// use reth_execution_types::{serde_bincode_compat, ExecutionOutcome};
+    /// use serde::{Deserialize, Serialize};
+    /// use serde_with::serde_as;
+    ///
+    /// #[serde_as]
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Data {
+    ///     #[serde_as(as = "serde_bincode_compat::ExecutionOutcome<'_>")]
+    ///     chain: ExecutionOutcome,
+    /// }
+    /// ```
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct ExecutionOutcome<'a> {
+        bundle: Cow<'a, BundleState>,
+        receipts: Vec<Vec<Bytes>>,
+        first_block: BlockNumber,
+        #[expect(clippy::owned_cow)]
+        requests: Cow<'a, Vec<Requests>>,
+    }
+
+    impl<'a, T> From<&'a super::ExecutionOutcome<T>> for ExecutionOutcome<'a>
+    where
+        T: Receipt,
+    {
+        fn from(value: &'a super::ExecutionOutcome<T>) -> Self {
+            ExecutionOutcome {
+                bundle: Cow::Borrowed(&value.bundle),
+                receipts: value
+                    .receipts
+                    .iter()
+                    .map(|vec| {
+                        vec.iter().map(|receipt| Bytes::from(alloy_rlp::encode(receipt))).collect()
+                    })
+                    .collect(),
+                first_block: value.first_block,
+                requests: Cow::Borrowed(&value.requests),
+            }
+        }
+    }
+
+    impl<T> From<ExecutionOutcome<'_>> for super::ExecutionOutcome<T>
+    where
+        T: Receipt,
+    {
+        fn from(value: ExecutionOutcome<'_>) -> Self {
+            Self {
+                bundle: value.bundle.into_owned(),
+                receipts: value
+                    .receipts
+                    .into_iter()
+                    .map(|vec| {
+                        vec.into_iter()
+                            .map(|rlp| {
+                                T::decode(&mut rlp.as_ref())
+                                    .expect("invalid RLP for receipt in serde_bincode_compat")
+                            })
+                            .collect()
+                    })
+                    .collect(),
+                first_block: value.first_block,
+                requests: value.requests.into_owned(),
+                // Parlia/BSC-specific snapshots are not part of the wire-compatible
+                // bincode representation; default to empty on deserialize.
+                snapshots: Vec::new(),
+            }
+        }
+    }
+
+    impl<T> SerializeAs<super::ExecutionOutcome<T>> for ExecutionOutcome<'_>
+    where
+        T: Receipt,
+    {
+        fn serialize_as<S>(
+            source: &super::ExecutionOutcome<T>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            ExecutionOutcome::from(source).serialize(serializer)
+        }
+    }
+
+    impl<'de, T> DeserializeAs<'de, super::ExecutionOutcome<T>> for ExecutionOutcome<'de>
+    where
+        T: Receipt,
+    {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::ExecutionOutcome<T>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            ExecutionOutcome::deserialize(deserializer).map(Into::into)
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     #[cfg(not(feature = "optimism"))]
     use alloy_primitives::bytes;
     use alloy_primitives::{Address, B256};
-    use reth_primitives::Receipts;
     #[cfg(not(feature = "optimism"))]
-    use reth_primitives::{LogData, TxType};
+    use alloy_primitives::{LogData, TxType};
+    use reth_ethereum_primitives::Receipt;
+    use reth_trie_common::KeccakKeyHasher;
 
     #[test]
     #[cfg(not(feature = "optimism"))]
@@ -403,15 +571,13 @@ mod tests {
             vec![],
         );
 
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(Receipt {
-                tx_type: TxType::Legacy,
-                cumulative_gas_used: 46913,
-                logs: vec![],
-                success: true,
-            })]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![Receipt {
+            tx_type: TxType::Legacy,
+            cumulative_gas_used: 46913,
+            logs: vec![],
+            status: true.into(),
+        }]];
 
         // Create a Requests object with a vector of requests
         let requests = vec![Requests::new(vec![bytes!("dead"), bytes!("beef"), bytes!("beebee")])];
@@ -466,15 +632,13 @@ mod tests {
     #[test]
     #[cfg(not(feature = "optimism"))]
     fn test_block_number_to_index() {
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(Receipt {
-                tx_type: TxType::Legacy,
-                cumulative_gas_used: 46913,
-                logs: vec![],
-                success: true,
-            })]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![Receipt {
+            tx_type: TxType::Legacy,
+            cumulative_gas_used: 46913,
+            logs: vec![],
+            status: true.into(),
+        }]];
 
         // Define the first block number
         let first_block = 123;
@@ -502,15 +666,13 @@ mod tests {
     #[test]
     #[cfg(not(feature = "optimism"))]
     fn test_get_logs() {
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(Receipt {
-                tx_type: TxType::Legacy,
-                cumulative_gas_used: 46913,
-                logs: vec![Log::<LogData>::default()],
-                success: true,
-            })]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![Receipt {
+            tx_type: TxType::Legacy,
+            cumulative_gas_used: 46913,
+            logs: vec![Log::<LogData>::default()],
+            status: true.into(),
+        }]];
 
         // Define the first block number
         let first_block = 123;
@@ -535,15 +697,13 @@ mod tests {
     #[test]
     #[cfg(not(feature = "optimism"))]
     fn test_receipts_by_block() {
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(Receipt {
-                tx_type: TxType::Legacy,
-                cumulative_gas_used: 46913,
-                logs: vec![Log::<LogData>::default()],
-                success: true,
-            })]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![Receipt {
+            tx_type: TxType::Legacy,
+            cumulative_gas_used: 46913,
+            logs: vec![Log::<LogData>::default()],
+            status: true.into(),
+        }]];
 
         // Define the first block number
         let first_block = 123;
@@ -564,30 +724,28 @@ mod tests {
         // Assert that the receipts for block number 123 match the expected receipts
         assert_eq!(
             receipts_by_block,
-            vec![&Some(Receipt {
+            vec![&Receipt {
                 tx_type: TxType::Legacy,
                 cumulative_gas_used: 46913,
                 logs: vec![Log::<LogData>::default()],
-                success: true,
-            })]
+                status: true.into(),
+            }]
         );
     }
 
     #[test]
     #[cfg(not(feature = "optimism"))]
     fn test_receipts_len() {
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(Receipt {
-                tx_type: TxType::Legacy,
-                cumulative_gas_used: 46913,
-                logs: vec![Log::<LogData>::default()],
-                success: true,
-            })]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![Receipt {
+            tx_type: TxType::Legacy,
+            cumulative_gas_used: 46913,
+            logs: vec![Log::<LogData>::default()],
+            status: true.into(),
+        }]];
 
-        // Create an empty Receipts object
-        let receipts_empty = Receipts { receipt_vec: vec![] };
+        // Create an empty receipts vector
+        let receipts_empty: Vec<Vec<Receipt>> = vec![];
 
         // Define the first block number
         let first_block = 123;
@@ -608,7 +766,7 @@ mod tests {
         // Assert that exec_res is not empty
         assert!(!exec_res.is_empty());
 
-        // Create a ExecutionOutcome object with an empty Receipts object
+        // Create a ExecutionOutcome object with an empty receipts vector
         let exec_res_empty_receipts = ExecutionOutcome {
             bundle: Default::default(), // Default value for bundle
             receipts: receipts_empty,   // Include the empty receipts
@@ -632,13 +790,11 @@ mod tests {
             tx_type: TxType::Legacy,
             cumulative_gas_used: 46913,
             logs: vec![],
-            success: true,
+            status: true.into(),
         };
 
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![vec![Some(receipt.clone())], vec![Some(receipt.clone())]],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![receipt.clone()], vec![receipt.clone()]];
 
         // Define the first block number
         let first_block = 123;
@@ -664,7 +820,7 @@ mod tests {
         assert!(exec_res.revert_to(123));
 
         // Assert that the receipts are properly cut after reverting to the initial block number.
-        assert_eq!(exec_res.receipts, Receipts { receipt_vec: vec![vec![Some(receipt)]] });
+        assert_eq!(exec_res.receipts, vec![vec![receipt]]);
 
         // Assert that the requests are properly cut after reverting to the initial block number.
         assert_eq!(exec_res.requests, vec![Requests::new(vec![request])]);
@@ -686,11 +842,11 @@ mod tests {
             tx_type: TxType::Legacy,
             cumulative_gas_used: 46913,
             logs: vec![],
-            success: true,
+            status: true.into(),
         };
 
-        // Create a Receipts object containing the receipt.
-        let receipts = Receipts { receipt_vec: vec![vec![Some(receipt.clone())]] };
+        // Create a vector of receipt vectors containing the receipt.
+        let receipts = vec![vec![receipt.clone()]];
 
         // Create a request.
         let request = bytes!("deadbeef");
@@ -718,9 +874,7 @@ mod tests {
             exec_res,
             ExecutionOutcome {
                 bundle: Default::default(),
-                receipts: Receipts {
-                    receipt_vec: vec![vec![Some(receipt.clone())], vec![Some(receipt)]]
-                },
+                receipts: vec![vec![receipt.clone()], vec![receipt]],
                 requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
                 first_block: 123,
                 snapshots: vec![],
@@ -736,17 +890,11 @@ mod tests {
             tx_type: TxType::Legacy,
             cumulative_gas_used: 46913,
             logs: vec![],
-            success: true,
+            status: true.into(),
         };
 
-        // Create a Receipts object with a vector of receipt vectors
-        let receipts = Receipts {
-            receipt_vec: vec![
-                vec![Some(receipt.clone())],
-                vec![Some(receipt.clone())],
-                vec![Some(receipt.clone())],
-            ],
-        };
+        // Create a vector of receipt vectors
+        let receipts = vec![vec![receipt.clone()], vec![receipt.clone()], vec![receipt.clone()]];
 
         // Define the first block number
         let first_block = 123;
@@ -777,7 +925,7 @@ mod tests {
         // Define the expected lower ExecutionOutcome after splitting
         let lower_execution_outcome = ExecutionOutcome {
             bundle: Default::default(),
-            receipts: Receipts { receipt_vec: vec![vec![Some(receipt.clone())]] },
+            receipts: vec![vec![receipt.clone()]],
             requests: vec![Requests::new(vec![request.clone()])],
             first_block,
             snapshots: vec![],
@@ -786,9 +934,7 @@ mod tests {
         // Define the expected higher ExecutionOutcome after splitting
         let higher_execution_outcome = ExecutionOutcome {
             bundle: Default::default(),
-            receipts: Receipts {
-                receipt_vec: vec![vec![Some(receipt.clone())], vec![Some(receipt)]],
-            },
+            receipts: vec![vec![receipt.clone()], vec![receipt]],
             requests: vec![Requests::new(vec![request.clone()]), Requests::new(vec![request])],
             first_block: 124,
             snapshots: vec![],
@@ -847,9 +993,9 @@ mod tests {
             },
         );
 
-        let execution_outcome = ExecutionOutcome {
+        let execution_outcome: ExecutionOutcome = ExecutionOutcome {
             bundle: bundle_state,
-            receipts: Receipts::default(),
+            receipts: vec![],
             first_block: 0,
             requests: vec![],
             snapshots: vec![],
@@ -872,5 +1018,11 @@ mod tests {
             nonce: 2,
             balance: U256::from(200)
         }));
+    }
+
+    #[test]
+    fn test_hash_state_slow_uses_keccak_hasher() {
+        let execution_outcome: ExecutionOutcome = ExecutionOutcome::default();
+        let _ = execution_outcome.hash_state_slow::<KeccakKeyHasher>();
     }
 }

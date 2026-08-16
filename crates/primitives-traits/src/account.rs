@@ -5,22 +5,23 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use derive_more::Deref;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm_primitives::{AccountInfo, Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable};
+use revm::{bytecode::{Bytecode as RevmBytecode, BytecodeDecodeError}, state::AccountInfo};
 use serde::{Deserialize, Serialize};
 
-/// Identifier for [`LegacyRaw`](RevmBytecode::LegacyRaw).
+/// Identifier for legacy raw bytecode (stored without jump-table analysis).
 const LEGACY_RAW_BYTECODE_ID: u8 = 0;
 
 /// Identifier for removed bytecode variant.
 const REMOVED_BYTECODE_ID: u8 = 1;
 
-/// Identifier for [`LegacyAnalyzed`](RevmBytecode::LegacyAnalyzed).
+/// Identifier for [`LegacyAnalyzed`](revm::bytecode::BytecodeKind::LegacyAnalyzed) bytecode.
 const LEGACY_ANALYZED_BYTECODE_ID: u8 = 2;
 
-/// Identifier for [`Eof`](RevmBytecode::Eof).
+/// Identifier for the (now-removed) EOF bytecode variant. Kept for backwards-compatible decoding
+/// of old database entries.
 const EOF_BYTECODE_ID: u8 = 3;
 
-/// Identifier for [`Eip7702`](RevmBytecode::Eip7702).
+/// Identifier for [`Eip7702`](revm::bytecode::BytecodeKind::Eip7702) bytecode.
 const EIP7702_BYTECODE_ID: u8 = 4;
 
 /// An Ethereum account.
@@ -45,15 +46,36 @@ impl Account {
     /// After `SpuriousDragon` empty account is defined as account with nonce == 0 && balance == 0
     /// && bytecode = None (or hash is [`KECCAK_EMPTY`]).
     pub fn is_empty(&self) -> bool {
-        self.nonce == 0 &&
-            self.balance.is_zero() &&
-            self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
+        self.nonce == 0
+            && self.balance.is_zero()
+            && self.bytecode_hash.map_or(true, |hash| hash == KECCAK_EMPTY)
     }
 
     /// Returns an account bytecode's hash.
     /// In case of no bytecode, returns [`KECCAK_EMPTY`].
     pub fn get_bytecode_hash(&self) -> B256 {
         self.bytecode_hash.unwrap_or(KECCAK_EMPTY)
+    }
+
+    /// Converts the account into a trie account with the given storage root.
+    pub fn into_trie_account(self, storage_root: B256) -> alloy_trie::TrieAccount {
+        let Self { nonce, balance, bytecode_hash } = self;
+        alloy_trie::TrieAccount {
+            nonce,
+            balance,
+            storage_root,
+            code_hash: bytecode_hash.unwrap_or(KECCAK_EMPTY),
+        }
+    }
+}
+
+impl From<alloy_trie::TrieAccount> for Account {
+    fn from(account: alloy_trie::TrieAccount) -> Self {
+        Self {
+            nonce: account.nonce,
+            balance: account.balance,
+            bytecode_hash: (account.code_hash != KECCAK_EMPTY).then_some(account.code_hash),
+        }
     }
 }
 
@@ -75,7 +97,7 @@ impl Bytecode {
         Self(RevmBytecode::new_raw(bytes))
     }
 
-    /// Creates a new raw [`revm_primitives::Bytecode`].
+    /// Creates a new raw [`revm::primitives::Bytecode`].
     ///
     /// Returns an error on incorrect Bytecode format.
     #[inline]
@@ -89,35 +111,20 @@ impl Compact for Bytecode {
     where
         B: bytes::BufMut + AsMut<[u8]>,
     {
-        let bytecode = match &self.0 {
-            RevmBytecode::LegacyRaw(bytes) => bytes,
-            RevmBytecode::LegacyAnalyzed(analyzed) => analyzed.bytecode(),
-            RevmBytecode::Eof(eof) => eof.raw(),
-            RevmBytecode::Eip7702(eip7702) => eip7702.raw(),
-        };
+        let bytecode = if self.0.is_eip7702() { self.0.bytes() } else { self.0.original_bytes() };
         buf.put_u32(bytecode.len() as u32);
         buf.put_slice(bytecode.as_ref());
-        let len = match &self.0 {
-            RevmBytecode::LegacyRaw(_) => {
-                buf.put_u8(LEGACY_RAW_BYTECODE_ID);
-                1
-            }
-            // [`REMOVED_BYTECODE_ID`] has been removed.
-            RevmBytecode::LegacyAnalyzed(analyzed) => {
-                buf.put_u8(LEGACY_ANALYZED_BYTECODE_ID);
-                buf.put_u64(analyzed.original_len() as u64);
-                let map = analyzed.jump_table().as_slice();
-                buf.put_slice(map);
-                1 + 8 + map.len()
-            }
-            RevmBytecode::Eof(_) => {
-                buf.put_u8(EOF_BYTECODE_ID);
-                1
-            }
-            RevmBytecode::Eip7702(_) => {
-                buf.put_u8(EIP7702_BYTECODE_ID);
-                1
-            }
+        let len = if self.0.is_eip7702() {
+            buf.put_u8(EIP7702_BYTECODE_ID);
+            1
+        } else {
+            // Legacy analyzed bytecode.
+            buf.put_u8(LEGACY_ANALYZED_BYTECODE_ID);
+            let original_len = bytecode.len() as u64;
+            buf.put_u64(original_len);
+            let map = self.0.legacy_jump_table().map(|jt| jt.as_slice()).unwrap_or(&[]);
+            buf.put_slice(map);
+            1 + 8 + map.len()
         };
         len + bytecode.len() + 4
     }
@@ -135,13 +142,16 @@ impl Compact for Bytecode {
             REMOVED_BYTECODE_ID => {
                 unreachable!("Junk data in database: checked Bytecode variant was removed")
             }
-            LEGACY_ANALYZED_BYTECODE_ID => Self(unsafe {
-                RevmBytecode::new_analyzed(
-                    bytes,
-                    buf.read_u64::<BigEndian>().unwrap() as usize,
-                    JumpTable::from_slice(buf),
-                )
-            }),
+            LEGACY_ANALYZED_BYTECODE_ID => {
+                // Consume the legacy jump-table trailer, then re-analyze from the original
+                // bytes. `to_compact` historically stores *unpadded* original bytes with the
+                // analyzed jump table; restoring via `new_analyzed` without padding violates
+                // revm 41 interpreter invariants (OOB immediates) and shows up as wrong gas
+                // in EF tests (e.g. PUSH0 fixtures). Match revm's serde Deserialize path.
+                let _original_len = buf.read_u64::<BigEndian>().unwrap() as usize;
+                let _jump_table = buf;
+                Self(RevmBytecode::new_raw(bytes))
+            }
             EOF_BYTECODE_ID | EIP7702_BYTECODE_ID => {
                 // EOF and EIP-7702 bytecode objects will be decoded from the raw bytecode
                 Self(RevmBytecode::new_raw(bytes))
@@ -173,6 +183,17 @@ impl From<AccountInfo> for Account {
     }
 }
 
+impl From<&AccountInfo> for Account {
+    fn from(revm_acc: &AccountInfo) -> Self {
+        let code_hash = revm_acc.code_hash;
+        Self {
+            balance: revm_acc.balance,
+            nonce: revm_acc.nonce,
+            bytecode_hash: (code_hash != KECCAK_EMPTY).then_some(code_hash),
+        }
+    }
+}
+
 impl From<Account> for AccountInfo {
     fn from(reth_acc: Account) -> Self {
         Self {
@@ -180,6 +201,7 @@ impl From<Account> for AccountInfo {
             nonce: reth_acc.nonce,
             code_hash: reth_acc.bytecode_hash.unwrap_or(KECCAK_EMPTY),
             code: None,
+            account_id: None,
         }
     }
 }
@@ -188,7 +210,6 @@ impl From<Account> for AccountInfo {
 mod tests {
     use super::*;
     use alloy_primitives::{hex_literal::hex, B256, U256};
-    use revm_primitives::LegacyAnalyzedBytecode;
 
     #[test]
     fn test_account() {
@@ -244,17 +265,23 @@ mod tests {
         assert_eq!(len, 7);
 
         let mut buf = vec![];
-        let bytecode = Bytecode(RevmBytecode::LegacyAnalyzed(LegacyAnalyzedBytecode::new(
-            Bytes::from(&hex!("ffff")),
-            2,
-            JumpTable::from_slice(&[0]),
-        )));
+        let bytecode = Bytecode::new_raw(Bytes::from(&hex!("ffff")));
         let len = bytecode.to_compact(&mut buf);
-        assert_eq!(len, 16);
-
         let (decoded, remainder) = Bytecode::from_compact(&buf, len);
-        assert_eq!(decoded, bytecode);
+        assert_eq!(decoded.original_byte_slice(), bytecode.original_byte_slice());
         assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn test_bytecode_analyzed_roundtrip_reanalyzes_padding() {
+        // Compact historically persisted unpadded bytes + jump table; decode must re-analyze so
+        // revm 41 padding invariants hold (PUSH0 EF fixtures depend on this).
+        let bytecode = Bytecode::new_raw(Bytes::from(&hex!("60015f55")));
+        let mut buf = vec![];
+        let len = bytecode.to_compact(&mut buf);
+        let (decoded, remainder) = Bytecode::from_compact(&buf, len);
+        assert!(remainder.is_empty());
+        assert_eq!(decoded.original_byte_slice(), &hex!("60015f55"));
     }
 
     #[test]

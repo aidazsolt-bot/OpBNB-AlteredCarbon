@@ -1,29 +1,82 @@
-use super::{ReceiptMask, SidecarMask, TransactionMask};
 use crate::{
     add_static_file_mask,
-    static_file::mask::{ColumnSelectorOne, ColumnSelectorTwo, HeaderMask},
-    HeaderTerminalDifficulties, RawValue, Receipts, Transactions,
+    static_file::mask::{ColumnSelectorOne, ColumnSelectorTwo},
+    HeaderTerminalDifficulties, RawValue, Transactions,
 };
-use alloy_primitives::BlockHash;
+use alloy_primitives::{Address, BlockHash};
 use reth_db_api::table::Table;
-use reth_primitives::Header;
-use reth_primitives_traits::BlobSidecars;
+use reth_db_api::models::StorageBeforeTx;
+use reth_db_api::AccountChangeSets;
 
 // HEADER MASKS
-add_static_file_mask!(HeaderMask, Header, 0b001);
-add_static_file_mask!(HeaderMask, <HeaderTerminalDifficulties as Table>::Value, 0b010);
-add_static_file_mask!(HeaderMask, BlockHash, 0b100);
-add_static_file_mask!(HeaderMask, Header, BlockHash, 0b101);
-add_static_file_mask!(HeaderMask, <HeaderTerminalDifficulties as Table>::Value, BlockHash, 0b110);
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single header from Headers static file segment"]
+    HeaderMask<H>, H, 0b001
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a total difficulty value from Headers static file segment"]
+    TotalDifficultyMask, <HeaderTerminalDifficulties as Table>::Value, 0b010
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a block hash value from Headers static file segment"]
+    BlockHashMask, BlockHash, 0b100
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a header along with block hash from Headers static file segment"]
+    HeaderWithHashMask<H>, H, BlockHash, 0b101
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a total difficulty along with block hash from Headers static file segment"]
+    TDWithHashMask,
+    <HeaderTerminalDifficulties as Table>::Value,
+    BlockHash,
+    0b110
+}
 
 // RECEIPT MASKS
-add_static_file_mask!(ReceiptMask, <Receipts as Table>::Value, 0b1);
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single receipt from `Receipts` static file segment"]
+    ReceiptMask<R>, R, 0b1
+}
 
 // TRANSACTION MASKS
-add_static_file_mask!(TransactionMask, <Transactions as Table>::Value, 0b1);
-add_static_file_mask!(TransactionMask, RawValue<<Transactions as Table>::Value>, 0b1);
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single transaction from `Transactions` static file segment"]
+    TransactionMask<T>, T, 0b1
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single raw transaction from `Transactions` static file segment"]
+    RawTransactionMask<T>, RawValue<<Transactions as Table>::Value>, 0b1
+}
 
-// SIDECARS MASKS
-add_static_file_mask!(SidecarMask, BlobSidecars, 0b01);
-add_static_file_mask!(SidecarMask, BlockHash, 0b10);
-add_static_file_mask!(SidecarMask, BlobSidecars, BlockHash, 0b11);
+// TRANSACTION SENDER MASKS
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single transaction sender from `TransactionSenders` static file segment"]
+    TransactionSenderMask, Address, 0b1
+}
+
+// SIDECAR MASKS
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single blob sidecar from `Sidecars` static file segment"]
+    SidecarMask<S>, S, 0b01
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a block hash from `Sidecars` static file segment"]
+    SidecarBlockHashMask, BlockHash, 0b10
+}
+add_static_file_mask! {
+    #[doc = "Mask for selecting a blob sidecar together with block hash from `Sidecars` static file segment"]
+    SidecarWithHashMask<S>, S, BlockHash, 0b11
+}
+
+// ACCOUNT CHANGESET MASKS
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single changeset from `AccountChangesets` static file segment"]
+    AccountChangesetMask, <AccountChangeSets as reth_db_api::table::Table>::Value, 0b1
+}
+
+// STORAGE CHANGESET MASKS
+add_static_file_mask! {
+    #[doc = "Mask for selecting a single changeset from `StorageChangeSets` static file segment"]
+    StorageChangesetMask, StorageBeforeTx, 0b1
+}

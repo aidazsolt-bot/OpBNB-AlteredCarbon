@@ -1,4 +1,3 @@
-//! Compatibility functions for rpc `Transaction` type.
 mod signature;
 
 pub use signature::*;
@@ -6,18 +5,13 @@ pub use signature::*;
 use std::fmt;
 
 use alloy_consensus::Transaction as _;
-use alloy_rpc_types::{
-    request::{TransactionInput, TransactionRequest},
+use alloy_rpc_types_eth::{
+    transaction::{TransactionInput, TransactionRequest},
     TransactionInfo,
 };
 use reth_primitives::{TransactionSigned, TransactionSignedEcRecovered, TxType};
 use serde::{Deserialize, Serialize};
 
-/// Create a new rpc transaction result for a mined transaction, using the given block hash,
-/// number, and tx index fields to populate the corresponding fields in the rpc result.
-///
-/// The block hash, number, and tx index fields should be from the original block where the
-/// transaction was mined.
 pub fn from_recovered_with_block_context<T: TransactionCompat>(
     tx: TransactionSignedEcRecovered,
     tx_info: TransactionInfo,
@@ -26,8 +20,6 @@ pub fn from_recovered_with_block_context<T: TransactionCompat>(
     resp_builder.fill(tx, tx_info)
 }
 
-/// Create a new rpc transaction result for a _pending_ signed transaction, setting block
-/// environment related fields to `None`.
 pub fn from_recovered<T: TransactionCompat>(
     tx: TransactionSignedEcRecovered,
     resp_builder: &T,
@@ -35,9 +27,7 @@ pub fn from_recovered<T: TransactionCompat>(
     resp_builder.fill(tx, TransactionInfo::default())
 }
 
-/// Builds RPC transaction w.r.t. network.
 pub trait TransactionCompat: Send + Sync + Unpin + Clone + fmt::Debug {
-    /// RPC transaction response type.
     type Transaction: Serialize
         + for<'de> Deserialize<'de>
         + Send
@@ -47,9 +37,6 @@ pub trait TransactionCompat: Send + Sync + Unpin + Clone + fmt::Debug {
         + Default
         + fmt::Debug;
 
-    ///
-    /// Formats gas price and max fee per gas for RPC transaction response w.r.t. network specific
-    /// transaction type.
     fn gas_price(signed_tx: &TransactionSigned, base_fee: Option<u64>) -> GasPrice {
         #[allow(unreachable_patterns)]
         match signed_tx.tx_type() {
@@ -57,8 +44,6 @@ pub trait TransactionCompat: Send + Sync + Unpin + Clone + fmt::Debug {
                 GasPrice { gas_price: Some(signed_tx.max_fee_per_gas()), max_fee_per_gas: None }
             }
             TxType::Eip1559 | TxType::Eip4844 | TxType::Eip7702 => {
-                // the gas price field for EIP1559 is set to `min(tip, gasFeeCap - baseFee) +
-                // baseFee`
                 let gas_price = base_fee
                     .and_then(|base_fee| {
                         signed_tx.effective_tip_per_gas(base_fee).map(|tip| tip + base_fee as u128)
@@ -74,51 +59,37 @@ pub trait TransactionCompat: Send + Sync + Unpin + Clone + fmt::Debug {
         }
     }
 
-    /// Create a new rpc transaction result for a _pending_ signed transaction, setting block
-    /// environment related fields to `None`.
     fn fill(&self, tx: TransactionSignedEcRecovered, tx_inf: TransactionInfo) -> Self::Transaction;
-
-    /// Truncates the input of a transaction to only the first 4 bytes.
-    // todo: remove in favour of using constructor on `TransactionResponse` or similar
-    // <https://github.com/alloy-rs/alloy/issues/1315>.
     fn otterscan_api_truncate_input(tx: &mut Self::Transaction);
-
-    /// Returns the transaction type.
-    // todo: remove when alloy TransactionResponse trait it updated.
     fn tx_type(tx: &Self::Transaction) -> u8;
 }
 
-/// Gas price and max fee per gas for a transaction. Helper type to format transaction RPC response.
 #[derive(Debug, Default)]
 pub struct GasPrice {
-    /// Gas price for transaction.
     pub gas_price: Option<u128>,
-    /// Max fee per gas for transaction.
     pub max_fee_per_gas: Option<u128>,
 }
 
-/// Convert [`TransactionSignedEcRecovered`] to [`TransactionRequest`]
 pub fn transaction_to_call_request(tx: TransactionSignedEcRecovered) -> TransactionRequest {
     let from = tx.signer();
-    let to = Some(tx.transaction.to().into());
-    let gas = tx.transaction.gas_limit();
-    let value = tx.transaction.value();
-    let input = tx.transaction.input().clone();
-    let nonce = tx.transaction.nonce();
-    let chain_id = tx.transaction.chain_id();
-    let access_list = tx.transaction.access_list().cloned();
-    let max_fee_per_blob_gas = tx.transaction.max_fee_per_blob_gas();
-    let authorization_list = tx.transaction.authorization_list().map(|l| l.to_vec());
-    let blob_versioned_hashes = tx.transaction.blob_versioned_hashes();
-    let tx_type = tx.transaction.tx_type();
+    let to = Some(tx.to().into());
+    let gas = tx.gas_limit();
+    let value = tx.value();
+    let input = tx.input().clone();
+    let nonce = tx.nonce();
+    let chain_id = tx.chain_id();
+    let access_list = tx.access_list().cloned();
+    let max_fee_per_blob_gas = tx.max_fee_per_blob_gas();
+    let authorization_list = tx.authorization_list().map(|l| l.to_vec());
+    let blob_versioned_hashes = tx.blob_versioned_hashes().map(|hashes| hashes.to_vec());
+    let tx_type = tx.tx_type();
 
-    // fees depending on the transaction type
     let (gas_price, max_fee_per_gas) = if tx.is_dynamic_fee() {
         (None, Some(tx.max_fee_per_gas()))
     } else {
         (Some(tx.max_fee_per_gas()), None)
     };
-    let max_priority_fee_per_gas = tx.transaction.max_priority_fee_per_gas();
+    let max_priority_fee_per_gas = tx.max_priority_fee_per_gas();
 
     TransactionRequest {
         from: Some(from),

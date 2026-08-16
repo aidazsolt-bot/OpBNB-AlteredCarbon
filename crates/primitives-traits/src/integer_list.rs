@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
-use bytes::BufMut;
+#[cfg(feature = "std")]
+use bytes::BufMut as _;
 use core::fmt;
 use derive_more::Deref;
 use roaring::RoaringTreemap;
@@ -78,6 +79,7 @@ impl IntegerList {
     }
 
     /// Serializes a [`IntegerList`] into a sequence of bytes.
+    #[cfg(feature = "std")]
     pub fn to_mut_bytes<B: bytes::BufMut>(&self, buf: &mut B) {
         self.0.serialize_into(buf.writer()).unwrap();
     }

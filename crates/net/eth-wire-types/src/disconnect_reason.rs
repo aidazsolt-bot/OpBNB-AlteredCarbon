@@ -6,7 +6,7 @@ use derive_more::Display;
 use reth_codecs_derive::add_arbitrary_tests;
 use thiserror::Error;
 
-/// RLPx disconnect reason.
+/// `RLPx` disconnect reason.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Display)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
@@ -83,10 +83,10 @@ impl Encodable for DisconnectReason {
     /// The [`Encodable`] implementation for [`DisconnectReason`] encodes the disconnect reason in
     /// a single-element RLP list.
     fn encode(&self, out: &mut dyn BufMut) {
-        vec![*self as u8].encode(out);
+        alloy_rlp::encode_list(&[*self as u8], out);
     }
     fn length(&self) -> usize {
-        vec![*self as u8].length()
+        alloy_rlp::list_length(&[*self as u8])
     }
 }
 
@@ -95,9 +95,9 @@ impl Decodable for DisconnectReason {
     /// reason encoded a single byte or a RLP list containing the disconnect reason.
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         if buf.is_empty() {
-            return Err(alloy_rlp::Error::InputTooShort)
+            return Err(alloy_rlp::Error::InputTooShort);
         } else if buf.len() > 2 {
-            return Err(alloy_rlp::Error::Overflow)
+            return Err(alloy_rlp::Error::Overflow);
         }
 
         if buf.len() > 1 {
@@ -106,14 +106,14 @@ impl Decodable for DisconnectReason {
             let header = Header::decode(buf)?;
 
             if !header.list {
-                return Err(alloy_rlp::Error::UnexpectedString)
+                return Err(alloy_rlp::Error::UnexpectedString);
             }
 
             if header.payload_length != 1 {
                 return Err(alloy_rlp::Error::ListLengthMismatch {
                     expected: 1,
                     got: header.payload_length,
-                })
+                });
             }
         }
 

@@ -7,7 +7,7 @@ use bytes::{Buf, BufMut};
 use core::mem;
 use derive_more::{Deref, DerefMut, From, IntoIterator};
 use reth_codecs::Compact;
-use revm_primitives::U256;
+use revm::primitives::U256;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(feature = "std"))]
@@ -82,11 +82,11 @@ impl BlobSidecars {
 
 impl Encodable for BlobSidecar {
     fn encode(&self, out: &mut dyn BufMut) {
-        let payload_length = self.blob_transaction_sidecar.length() +
-            self.block_number.length() +
-            self.block_hash.length() +
-            self.tx_index.length() +
-            self.tx_hash.length();
+        let payload_length = self.blob_transaction_sidecar.length()
+            + self.block_number.length()
+            + self.block_hash.length()
+            + self.tx_index.length()
+            + self.tx_hash.length();
 
         let list_header_self = alloy_rlp::Header { list: false, payload_length };
         list_header_self.encode(out);
@@ -107,11 +107,11 @@ impl Encodable for BlobSidecar {
     }
 
     fn length(&self) -> usize {
-        let payload_length = self.blob_transaction_sidecar.length() +
-            self.block_number.length() +
-            self.block_hash.length() +
-            self.tx_index.length() +
-            self.tx_hash.length();
+        let payload_length = self.blob_transaction_sidecar.length()
+            + self.block_number.length()
+            + self.block_hash.length()
+            + self.tx_index.length()
+            + self.tx_hash.length();
 
         let list_header_self = alloy_rlp::Header { list: false, payload_length };
         let list_header_self_length = list_header_self.length();
@@ -122,13 +122,13 @@ impl Encodable for BlobSidecar {
         };
         let header_length = list_header_tx_sidecar.length();
 
-        list_header_self_length +
-            header_length +
-            self.blob_transaction_sidecar.length() +
-            self.block_number.length() +
-            self.block_hash.length() +
-            self.tx_index.length() +
-            self.tx_hash.length()
+        list_header_self_length
+            + header_length
+            + self.blob_transaction_sidecar.length()
+            + self.block_number.length()
+            + self.block_hash.length()
+            + self.tx_index.length()
+            + self.tx_hash.length()
     }
 }
 

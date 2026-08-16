@@ -9,6 +9,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod signed;
 
+pub mod error;
+pub mod execute;
+pub mod recover;
+
+pub use alloy_consensus::transaction::{Recovered, SignerRecoverable, TransactionMeta, TxHashRef};
+pub use execute::FillTxEnv;
+
 #[allow(dead_code)]
 /// Abstraction of a transaction.
 pub trait Transaction:

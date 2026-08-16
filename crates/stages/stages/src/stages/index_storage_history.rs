@@ -1,13 +1,17 @@
-use super::{collect_history_indices, load_history_indices};
+use super::{collect_history_indices, collect_storage_history_indices, load_storage_history};
 use crate::{StageCheckpoint, StageId};
 use reth_config::config::{EtlConfig, IndexHistoryConfig};
-use reth_db::tables;
 use reth_db_api::{
     models::{storage_sharded_key::StorageShardedKey, AddressStorageKey, BlockNumberAddress},
-    table::Decode,
+    tables,
     transaction::DbTxMut,
+    Tables,
 };
-use reth_provider::{DBProvider, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter};
+use reth_provider::{
+    DBProvider, EitherWriter, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter,
+    RocksDBProviderFactory, StaticFileProviderFactory, StorageSettingsCache,
+};
+use reth_storage_api::StorageChangeSetReader;
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use std::fmt::Debug;
@@ -46,8 +50,15 @@ impl Default for IndexStorageHistoryStage {
 
 impl<Provider> Stage<Provider> for IndexStorageHistoryStage
 where
-    Provider:
-        DBProvider<Tx: DbTxMut> + PruneCheckpointWriter + HistoryWriter + PruneCheckpointReader,
+    Provider: DBProvider<Tx: DbTxMut>
+        + HistoryWriter
+        + PruneCheckpointReader
+        + PruneCheckpointWriter
+        + StorageSettingsCache
+        + RocksDBProviderFactory
+        + StorageChangeSetReader
+        + StaticFileProviderFactory
+        + reth_provider::NodePrimitivesProvider,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -70,23 +81,22 @@ where
                 )
             })
             .transpose()?
-            .flatten()
+            .flatten() &&
+            target_prunable_block > input.checkpoint().block_number
         {
-            if target_prunable_block > input.checkpoint().block_number {
-                input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
+            input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
 
-                // Save prune checkpoint only if we don't have one already.
-                // Otherwise, pruner may skip the unpruned range of blocks.
-                if provider.get_prune_checkpoint(PruneSegment::StorageHistory)?.is_none() {
-                    provider.save_prune_checkpoint(
-                        PruneSegment::StorageHistory,
-                        PruneCheckpoint {
-                            block_number: Some(target_prunable_block),
-                            tx_number: None,
-                            prune_mode,
-                        },
-                    )?;
-                }
+            // Save prune checkpoint only if we don't have one already.
+            // Otherwise, pruner may skip the unpruned range of blocks.
+            if provider.get_prune_checkpoint(PruneSegment::StorageHistory)?.is_none() {
+                provider.save_prune_checkpoint(
+                    PruneSegment::StorageHistory,
+                    PruneCheckpoint {
+                        block_number: Some(target_prunable_block),
+                        tx_number: None,
+                        prune_mode,
+                    },
+                )?;
             }
         }
 
@@ -96,16 +106,32 @@ where
 
         let mut range = input.next_block_range();
         let first_sync = input.checkpoint().block_number == 0;
+        let use_rocksdb = provider.cached_storage_settings().storage_v2;
 
         // On first sync we might have history coming from genesis. We clear the table since it's
         // faster to rebuild from scratch.
         if first_sync {
+            #[cfg(all(unix, feature = "rocksdb"))]
+            if use_rocksdb {
+                // Note: RocksDB clear() executes immediately (not deferred to commit like MDBX),
+                // but this is safe for first_sync because if we crash before commit, the
+                // checkpoint stays at 0 and we'll just clear and rebuild again on restart. The
+                // source data (changesets) is intact.
+                provider.rocksdb_provider().clear::<tables::StoragesHistory>()?;
+            } else {
+                provider.tx_ref().clear::<tables::StoragesHistory>()?;
+            }
+            // Without the rocksdb feature, EitherWriter falls back to MDBX even when
+            // `storage_v2` is set — clear MDBX so append-only load does not hit genesis rows.
+            #[cfg(not(all(unix, feature = "rocksdb")))]
             provider.tx_ref().clear::<tables::StoragesHistory>()?;
             range = 0..=*input.next_block_range().end();
         }
 
-        info!(target: "sync::stages::index_storage_history::exec", ?first_sync, "Collecting indices");
-        let collector =
+        info!(target: "sync::stages::index_storage_history::exec", ?first_sync, ?use_rocksdb, "Collecting indices");
+        let collector = if provider.cached_storage_settings().storage_v2 {
+            collect_storage_history_indices(provider, range.clone(), &self.etl_config)?
+        } else {
             collect_history_indices::<_, tables::StorageChangeSets, tables::StoragesHistory, _>(
                 provider,
                 BlockNumberAddress::range(range.clone()),
@@ -114,19 +140,22 @@ where
                 },
                 |(key, value)| (key.block_number(), AddressStorageKey((key.address(), value.key))),
                 &self.etl_config,
-            )?;
+            )?
+        };
 
         info!(target: "sync::stages::index_storage_history::exec", "Loading indices into database");
-        load_history_indices::<_, tables::StoragesHistory, _>(
-            provider,
-            collector,
-            first_sync,
-            |AddressStorageKey((address, storage_key)), highest_block_number| {
-                StorageShardedKey::new(address, storage_key, highest_block_number)
-            },
-            StorageShardedKey::decode_owned,
-            |key| AddressStorageKey((key.address, key.sharded_key.key)),
-        )?;
+
+        provider.with_rocksdb_batch_auto_commit(|rocksdb_batch| {
+            let mut writer = EitherWriter::new_storages_history(provider, rocksdb_batch)?;
+            load_storage_history(collector, first_sync, &mut writer)
+                .map_err(|e| reth_provider::ProviderError::other(Box::new(e)))?;
+            Ok(((), writer.into_raw_rocksdb_batch()))
+        })?;
+
+        if use_rocksdb {
+            provider.commit_pending_rocksdb_batches()?;
+            provider.rocksdb_provider().flush(&[Tables::StoragesHistory.name()])?;
+        }
 
         Ok(ExecOutput { checkpoint: StageCheckpoint::new(*range.end()), done: true })
     }
@@ -140,7 +169,7 @@ where
         let (range, unwind_progress, _) =
             input.unwind_block_range_with_threshold(self.commit_threshold);
 
-        provider.unwind_storage_history_indices_range(BlockNumberAddress::range(range))?;
+        provider.unwind_storage_history_indices_range(range)?;
 
         Ok(UnwindOutput { checkpoint: StageCheckpoint::new(unwind_progress) })
     }
@@ -155,7 +184,6 @@ mod tests {
     };
     use alloy_primitives::{address, b256, Address, BlockNumber, B256, U256};
     use itertools::Itertools;
-    use reth_db::BlockNumberList;
     use reth_db_api::{
         cursor::DbCursorRO,
         models::{
@@ -163,8 +191,9 @@ mod tests {
             StoredBlockBodyIndices,
         },
         transaction::DbTx,
+        BlockNumberList,
     };
-    use reth_primitives::StorageEntry;
+    use reth_primitives_traits::StorageEntry;
     use reth_provider::{providers::StaticFileWriter, DatabaseProviderFactory};
     use reth_testing_utils::generators::{
         self, random_block_range, random_changeset_range, random_contract_account_range,
@@ -172,9 +201,9 @@ mod tests {
     };
     use std::collections::BTreeMap;
 
-    const ADDRESS: Address = address!("0000000000000000000000000000000000000001");
+    const ADDRESS: Address = address!("0x0000000000000000000000000000000000000001");
     const STORAGE_KEY: B256 =
-        b256!("0000000000000000000000000000000000000000000000000000000000000001");
+        b256!("0x0000000000000000000000000000000000000000000000000000000000000001");
 
     const LAST_BLOCK_IN_FULL_SHARD: BlockNumber = NUM_OF_INDICES_IN_SHARD as BlockNumber;
     const MAX_BLOCK: BlockNumber = NUM_OF_INDICES_IN_SHARD as BlockNumber + 2;

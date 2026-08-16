@@ -2,6 +2,18 @@ use alloy_primitives::{B256, U256};
 use reth_codecs::{add_arbitrary_tests, Compact};
 use serde::{Deserialize, Serialize};
 
+/// Trait for `DupSort` table values that contain a subkey.
+///
+/// This trait allows extracting the subkey from a value during database iteration,
+/// enabling proper range queries and filtering on `DupSort` tables.
+pub trait ValueWithSubKey {
+    /// The type of the subkey.
+    type SubKey;
+
+    /// Extract the subkey from the value.
+    fn get_subkey(&self) -> Self::SubKey;
+}
+
 /// Account storage entry.
 ///
 /// `key` is the subkey when used as a value in the `StorageChangeSets` table.
@@ -25,6 +37,14 @@ impl StorageEntry {
 impl From<(B256, U256)> for StorageEntry {
     fn from((key, value): (B256, U256)) -> Self {
         Self { key, value }
+    }
+}
+
+impl ValueWithSubKey for StorageEntry {
+    type SubKey = B256;
+
+    fn get_subkey(&self) -> Self::SubKey {
+        self.key
     }
 }
 

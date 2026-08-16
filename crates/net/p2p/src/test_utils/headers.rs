@@ -10,12 +10,11 @@ use crate::{
     },
     priority::Priority,
 };
-use alloy_primitives::Sealable;
+use alloy_consensus::Header;
 use futures::{Future, FutureExt, Stream, StreamExt};
-use reth_consensus::{test_utils::TestConsensus, Consensus};
 use reth_eth_wire_types::HeadersDirection;
 use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives::{Header, SealedHeader};
+use reth_primitives_traits::SealedHeader;
 use std::{
     fmt,
     pin::Pin,
@@ -31,7 +30,6 @@ use tokio::sync::Mutex;
 #[derive(Debug)]
 pub struct TestHeaderDownloader {
     client: TestHeadersClient,
-    consensus: Arc<TestConsensus>,
     limit: u64,
     download: Option<TestDownload>,
     queued_headers: Vec<SealedHeader>,
@@ -40,19 +38,13 @@ pub struct TestHeaderDownloader {
 
 impl TestHeaderDownloader {
     /// Instantiates the downloader with the mock responses
-    pub const fn new(
-        client: TestHeadersClient,
-        consensus: Arc<TestConsensus>,
-        limit: u64,
-        batch_size: usize,
-    ) -> Self {
-        Self { client, consensus, limit, download: None, batch_size, queued_headers: Vec::new() }
+    pub const fn new(client: TestHeadersClient, limit: u64, batch_size: usize) -> Self {
+        Self { client, limit, download: None, batch_size, queued_headers: Vec::new() }
     }
 
     fn create_download(&self) -> TestDownload {
         TestDownload {
             client: self.client.clone(),
-            consensus: Arc::clone(&self.consensus),
             limit: self.limit,
             fut: None,
             buffer: vec![],
@@ -62,6 +54,8 @@ impl TestHeaderDownloader {
 }
 
 impl HeaderDownloader for TestHeaderDownloader {
+    type Header = Header;
+
     fn update_local_head(&mut self, _head: SealedHeader) {}
 
     fn update_sync_target(&mut self, _target: SyncTarget) {}
@@ -72,13 +66,13 @@ impl HeaderDownloader for TestHeaderDownloader {
 }
 
 impl Stream for TestHeaderDownloader {
-    type Item = HeadersDownloaderResult<Vec<SealedHeader>>;
+    type Item = HeadersDownloaderResult<Vec<SealedHeader>, Header>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         loop {
             if this.queued_headers.len() == this.batch_size {
-                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))))
+                return Poll::Ready(Some(Ok(std::mem::take(&mut this.queued_headers))));
             }
             if this.download.is_none() {
                 this.download = Some(this.create_download());
@@ -96,7 +90,6 @@ type TestHeadersFut = Pin<Box<dyn Future<Output = PeerRequestResult<Vec<Header>>
 
 struct TestDownload {
     client: TestHeadersClient,
-    consensus: Arc<TestConsensus>,
     limit: u64,
     fut: Option<TestHeadersFut>,
     buffer: Vec<SealedHeader>,
@@ -122,7 +115,6 @@ impl fmt::Debug for TestDownload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TestDownload")
             .field("client", &self.client)
-            .field("consensus", &self.consensus)
             .field("limit", &self.limit)
             .field("buffer", &self.buffer)
             .field("done", &self.done)
@@ -138,45 +130,28 @@ impl Stream for TestDownload {
 
         loop {
             if let Some(header) = this.buffer.pop() {
-                return Poll::Ready(Some(Ok(header)))
+                return Poll::Ready(Some(Ok(header)));
             } else if this.done {
-                return Poll::Ready(None)
-            }
-
-            let empty = SealedHeader::default();
-            if let Err(error) = this.consensus.validate_header_against_parent(&empty, &empty) {
-                this.done = true;
-                return Poll::Ready(Some(Err(DownloadError::HeaderValidation {
-                    hash: empty.hash(),
-                    number: empty.number,
-                    error: Box::new(error),
-                })))
+                return Poll::Ready(None);
             }
 
             match ready!(this.get_or_init_fut().poll_unpin(cx)) {
                 Ok(resp) => {
                     // Skip head and seal headers
-                    let mut headers = resp
-                        .1
-                        .into_iter()
-                        .skip(1)
-                        .map(|header| {
-                            let sealed = header.seal_slow();
-                            let (header, seal) = sealed.into_parts();
-                            SealedHeader::new(header, seal)
-                        })
-                        .collect::<Vec<_>>();
+                    let mut headers =
+                        resp.1.into_iter().skip(1).map(SealedHeader::seal_slow).collect::<Vec<_>>();
                     headers.sort_unstable_by_key(|h| h.number);
-                    headers.into_iter().for_each(|h| this.buffer.push(h));
+                    for h in headers {
+                        this.buffer.push(h);
+                    }
                     this.done = true;
-                    continue
                 }
                 Err(err) => {
                     this.done = true;
                     return Poll::Ready(Some(Err(match err {
                         RequestError::Timeout => DownloadError::Timeout,
                         _ => DownloadError::RequestError(err),
-                    })))
+                    })));
                 }
             }
         }
@@ -184,17 +159,35 @@ impl Stream for TestDownload {
 }
 
 /// A test client for fetching headers
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TestHeadersClient {
     responses: Arc<Mutex<Vec<Header>>>,
     error: Arc<Mutex<Option<RequestError>>>,
     request_attempts: Arc<AtomicU64>,
+    /// `u64::MAX` means unknown / no peers (see [`DownloadClient::max_peer_best_number`]).
+    max_peer_best: Arc<AtomicU64>,
+}
+
+impl Default for TestHeadersClient {
+    fn default() -> Self {
+        Self {
+            responses: Default::default(),
+            error: Default::default(),
+            request_attempts: Default::default(),
+            max_peer_best: Arc::new(AtomicU64::new(u64::MAX)),
+        }
+    }
 }
 
 impl TestHeadersClient {
     /// Return the number of times client was polled
     pub fn request_attempts(&self) -> u64 {
         self.request_attempts.load(Ordering::SeqCst)
+    }
+
+    /// Sets the advertised max peer best number used by reachable-head capping tests.
+    pub fn set_max_peer_best(&self, best: Option<u64>) {
+        self.max_peer_best.store(best.unwrap_or(u64::MAX), Ordering::SeqCst);
     }
 
     /// Adds headers to the set.
@@ -224,9 +217,19 @@ impl DownloadClient for TestHeadersClient {
     fn num_connected_peers(&self) -> usize {
         0
     }
+
+    fn max_peer_best_number(&self) -> Option<u64> {
+        let n = self.max_peer_best.load(Ordering::SeqCst);
+        if n == u64::MAX {
+            None
+        } else {
+            Some(n)
+        }
+    }
 }
 
 impl HeadersClient for TestHeadersClient {
+    type Header = Header;
     type Output = TestHeadersFut;
 
     fn get_headers_with_priority(
@@ -241,7 +244,7 @@ impl HeadersClient for TestHeadersClient {
 
         Box::pin(async move {
             if let Some(err) = &mut *error.lock().await {
-                return Err(err.clone())
+                return Err(err.clone());
             }
 
             let mut lock = responses.lock().await;

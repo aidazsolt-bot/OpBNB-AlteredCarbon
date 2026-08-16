@@ -1,16 +1,16 @@
-use alloy_primitives::{bytes::BufMut, keccak256, B256};
+use alloy_primitives::{b256, bytes::BufMut, keccak256, Address, B256};
 use itertools::Itertools;
 use reth_config::config::{EtlConfig, HashingConfig};
-use reth_db::tables;
 use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRW},
-    models::{BlockNumberAddress, CompactU256},
+    models::CompactU256,
     table::Decompress,
+    tables,
     transaction::{DbTx, DbTxMut},
 };
 use reth_etl::Collector;
-use reth_primitives::StorageEntry;
-use reth_provider::{DBProvider, HashingWriter, StatsReader, StorageReader};
+use reth_primitives_traits::StorageEntry;
+use reth_provider::{DBProvider, HashingWriter, StatsReader, StorageReader, StorageSettingsCache};
 use reth_stages_api::{
     EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
     StorageHashingCheckpoint, UnwindInput, UnwindOutput,
@@ -27,6 +27,10 @@ const MAXIMUM_CHANNELS: usize = 10_000;
 
 /// Maximum number of storage entries to hash per rayon worker job.
 const WORKER_CHUNK_SIZE: usize = 100;
+
+/// Keccak256 hash of the zero address.
+const HASHED_ZERO_ADDRESS: B256 =
+    b256!("0x5380c7b7ae81a58eb98d9c78de4a1fd7fd9535fc953ed2be602daaa41767312a");
 
 /// Storage hashing stage hashes plain storage.
 /// This is preparation before generating intermediate hashes and calculating Merkle tree root.
@@ -55,7 +59,7 @@ impl StorageHashingStage {
 impl Default for StorageHashingStage {
     fn default() -> Self {
         Self {
-            clean_threshold: 500_000,
+            clean_threshold: 5_000_000,
             commit_threshold: 100_000,
             etl_config: EtlConfig::default(),
         }
@@ -64,7 +68,11 @@ impl Default for StorageHashingStage {
 
 impl<Provider> Stage<Provider> for StorageHashingStage
 where
-    Provider: DBProvider<Tx: DbTxMut> + StorageReader + HashingWriter + StatsReader,
+    Provider: DBProvider<Tx: DbTxMut>
+        + StorageReader
+        + HashingWriter
+        + StatsReader
+        + StorageSettingsCache,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -76,6 +84,11 @@ where
         let tx = provider.tx_ref();
         if input.target_reached() {
             return Ok(ExecOutput::done(input.checkpoint()))
+        }
+
+        // Execution writes hashed state directly when it is canonical.
+        if provider.cached_storage_settings().use_hashed_state() {
+            return Ok(ExecOutput::done(input.checkpoint().with_block_number(input.target())));
         }
 
         let (from_block, to_block) = input.next_block_range().into_inner();
@@ -101,16 +114,22 @@ where
                 let chunk = chunk.collect::<Result<Vec<_>, _>>()?;
                 // Spawn the hashing task onto the global rayon pool
                 rayon::spawn(move || {
+                    // Cache hashed address since PlainStorageState is sorted by address
+                    let (mut last_addr, mut hashed_addr) = (Address::ZERO, HASHED_ZERO_ADDRESS);
                     for (address, slot) in chunk {
+                        if address != last_addr {
+                            last_addr = address;
+                            hashed_addr = keccak256(address);
+                        }
                         let mut addr_key = Vec::with_capacity(64);
-                        addr_key.put_slice(keccak256(address).as_slice());
+                        addr_key.put_slice(hashed_addr.as_slice());
                         addr_key.put_slice(keccak256(slot.key).as_slice());
                         let _ = tx.send((addr_key, CompactU256::from(slot.value)));
                     }
                 });
 
                 // Flush to ETL when channels length reaches MAXIMUM_CHANNELS
-                if !channels.is_empty() && channels.len() % MAXIMUM_CHANNELS == 0 {
+                if !channels.is_empty() && channels.len().is_multiple_of(MAXIMUM_CHANNELS) {
                     collect(&mut channels, &mut collector)?;
                 }
             }
@@ -121,7 +140,7 @@ where
             let interval = (total_hashes / 10).max(1);
             let mut cursor = tx.cursor_dup_write::<tables::HashedStorages>()?;
             for (index, item) in collector.iter()?.enumerate() {
-                if index > 0 && index % interval == 0 {
+                if index > 0 && index.is_multiple_of(interval) {
                     info!(
                         target: "sync::stages::hashing_storage",
                         progress = %format!("{:.2}%", (index as f64 / total_hashes as f64) * 100.0),
@@ -169,7 +188,7 @@ where
         let (range, unwind_progress, _) =
             input.unwind_block_range_with_threshold(self.commit_threshold);
 
-        provider.unwind_storage_hashing_range(BlockNumberAddress::range(range))?;
+        provider.unwind_storage_hashing_range(range)?;
 
         let mut stage_checkpoint =
             input.checkpoint.storage_hashing_stage_checkpoint().unwrap_or_default();
@@ -219,7 +238,8 @@ mod tests {
         cursor::{DbCursorRW, DbDupCursorRO},
         models::StoredBlockBodyIndices,
     };
-    use reth_primitives::SealedBlock;
+    use reth_ethereum_primitives::Block;
+    use reth_primitives_traits::SealedBlock;
     use reth_provider::providers::StaticFileWriter;
     use reth_testing_utils::generators::{
         self, random_block_range, random_contract_account_range, BlockRangeParams,
@@ -265,7 +285,7 @@ mod tests {
                         },
                         ..
                     }) if processed == previous_checkpoint.progress.processed + 1 &&
-                        total == runner.db.table::<tables::PlainStorageState>().unwrap().len() as u64);
+                        total == runner.db.count_entries::<tables::PlainStorageState>().unwrap() as u64);
 
                     // Continue from checkpoint
                     input.checkpoint = Some(checkpoint);
@@ -279,7 +299,7 @@ mod tests {
                         },
                         ..
                     }) if processed == total &&
-                        total == runner.db.table::<tables::PlainStorageState>().unwrap().len() as u64);
+                        total == runner.db.count_entries::<tables::PlainStorageState>().unwrap() as u64);
 
                 // Validate the stage execution
                 assert!(
@@ -328,7 +348,7 @@ mod tests {
     }
 
     impl ExecuteStageTestRunner for StorageHashingTestRunner {
-        type Seed = Vec<SealedBlock>;
+        type Seed = Vec<SealedBlock<Block>>;
 
         fn seed_execution(&mut self, input: ExecInput) -> Result<Self::Seed, TestRunnerError> {
             let stage_progress = input.next_block();
@@ -344,7 +364,8 @@ mod tests {
                 BlockRangeParams { parent: Some(B256::ZERO), tx_count: 0..3, ..Default::default() },
             );
 
-            self.db.insert_headers(blocks.iter().map(|block| &block.header))?;
+            self.db.insert_headers(blocks.iter().map(|block| block.sealed_header()))?;
+            let mut tx_hash_numbers = Vec::new();
 
             let iter = blocks.iter();
             let mut next_tx_num = 0;
@@ -353,30 +374,25 @@ mod tests {
                 // Insert last progress data
                 let block_number = progress.number;
                 self.db.commit(|tx| {
-                    progress.body.transactions.iter().try_for_each(
+                    progress.body().transactions.iter().try_for_each(
                         |transaction| -> Result<(), reth_db::DatabaseError> {
-                            tx.put::<tables::TransactionHashNumbers>(
-                                transaction.hash(),
-                                next_tx_num,
-                            )?;
-                            tx.put::<tables::Transactions>(
-                                next_tx_num,
-                                transaction.clone().into(),
-                            )?;
+                            tx_hash_numbers.push((*transaction.tx_hash(), next_tx_num));
+                            tx.put::<tables::Transactions>(next_tx_num, transaction.clone())?;
 
-                            let (addr, _) =
-                                accounts.get_mut(rng.gen::<usize>() % n_accounts as usize).unwrap();
+                            let (addr, _) = accounts
+                                .get_mut((rng.random::<u64>() % n_accounts) as usize)
+                                .unwrap();
 
                             for _ in 0..2 {
                                 let new_entry = StorageEntry {
-                                    key: keccak256([rng.gen::<u8>()]),
-                                    value: U256::from(rng.gen::<u8>() % 30 + 1),
+                                    key: keccak256([rng.random::<u8>()]),
+                                    value: U256::from(rng.random::<u8>() % 30 + 1),
                                 };
                                 self.insert_storage_entry(
                                     tx,
                                     (block_number, *addr).into(),
                                     new_entry,
-                                    progress.header.number == stage_progress,
+                                    progress.number == stage_progress,
                                 )?;
                             }
 
@@ -386,22 +402,22 @@ mod tests {
                     )?;
 
                     // Randomize rewards
-                    let has_reward: bool = rng.gen();
+                    let has_reward: bool = rng.random();
                     if has_reward {
                         self.insert_storage_entry(
                             tx,
                             (block_number, Address::random()).into(),
                             StorageEntry {
                                 key: keccak256("mining"),
-                                value: U256::from(rng.gen::<u32>()),
+                                value: U256::from(rng.random::<u32>()),
                             },
-                            progress.header.number == stage_progress,
+                            progress.number == stage_progress,
                         )?;
                     }
 
                     let body = StoredBlockBodyIndices {
                         first_tx_num,
-                        tx_count: progress.body.transactions.len() as u64,
+                        tx_count: progress.transaction_count() as u64,
                     };
 
                     first_tx_num = next_tx_num;
@@ -410,6 +426,7 @@ mod tests {
                     Ok(())
                 })?;
             }
+            self.db.insert_tx_hash_numbers(tx_hash_numbers)?;
 
             Ok(blocks)
         }
@@ -536,7 +553,7 @@ mod tests {
                     }
 
                     if !entry.value.is_zero() {
-                        storage_cursor.upsert(bn_address.address(), entry)?;
+                        storage_cursor.upsert(bn_address.address(), &entry)?;
                     }
                 }
                 Ok(())

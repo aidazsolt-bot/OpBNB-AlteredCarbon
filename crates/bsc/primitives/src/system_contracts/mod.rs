@@ -12,7 +12,7 @@ use reth_bsc_forks::BscHardfork;
 use reth_chainspec::{ChainSpec, EthChainSpec};
 use reth_ethereum_forks::Hardforks;
 use reth_primitives::TransactionSigned;
-use revm_primitives::Bytecode;
+use revm::bytecode::Bytecode;
 use thiserror::Error;
 
 pub const VALIDATOR_CONTRACT: &str = "0x0000000000000000000000000000000000001000";
@@ -274,8 +274,8 @@ where
 {
     let mut m = HashMap::new();
     for (fork, condition) in spec.forks_iter() {
-        if condition.transitions_at_block(block_number) ||
-            condition.transitions_at_timestamp(block_time, parent_block_time)
+        if condition.transitions_at_block(block_number)
+            || condition.transitions_at_timestamp(block_time, parent_block_time)
         {
             if let Ok(contracts) = get_system_contract_codes(spec, fork.name()) {
                 for (k, v) in &contracts {
@@ -310,7 +310,7 @@ pub fn is_system_transaction(tx: &TransactionSigned, sender: Address, coinbase: 
 mod tests {
     use super::*;
     use alloy_primitives::address;
-    use revm_primitives::hex;
+    use alloy_primitives::hex;
 
     #[test]
     fn test_get_system_contract_code() {

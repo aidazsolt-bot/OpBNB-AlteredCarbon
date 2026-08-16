@@ -1,10 +1,10 @@
 //! Perform DNS lookups
 
-use parking_lot::RwLock;
-use std::{collections::HashMap, future::Future};
+use dashmap::DashMap;
+pub use hickory_resolver::{net::NetError, TokioResolver};
+use hickory_resolver::{proto::rr::RData, ConnectionProvider};
+use std::future::Future;
 use tracing::trace;
-pub use trust_dns_resolver::{error::ResolveError, TokioAsyncResolver};
-use trust_dns_resolver::{name_server::ConnectionProvider, AsyncResolver};
 
 /// A type that can lookup DNS entries
 pub trait Resolver: Send + Sync + Unpin + 'static {
@@ -12,7 +12,7 @@ pub trait Resolver: Send + Sync + Unpin + 'static {
     fn lookup_txt(&self, query: &str) -> impl Future<Output = Option<String>> + Send;
 }
 
-impl<P: ConnectionProvider> Resolver for AsyncResolver<P> {
+impl<P: ConnectionProvider> Resolver for hickory_resolver::Resolver<P> {
     async fn lookup_txt(&self, query: &str) -> Option<String> {
         // See: [AsyncResolver::txt_lookup]
         // > *hint* queries that end with a '.' are fully qualified names and are cheaper lookups
@@ -23,8 +23,11 @@ impl<P: ConnectionProvider> Resolver for AsyncResolver<P> {
                 None
             }
             Ok(lookup) => {
-                let txt = lookup.into_iter().next()?;
-                let entry = txt.iter().next()?;
+                let txt = lookup.answers().iter().find_map(|r| match &r.data {
+                    RData::TXT(txt) => Some(txt),
+                    _ => None,
+                })?;
+                let entry = txt.txt_data.first()?;
                 String::from_utf8(entry.to_vec()).ok()
             }
         }
@@ -33,7 +36,7 @@ impl<P: ConnectionProvider> Resolver for AsyncResolver<P> {
 
 /// An asynchronous DNS resolver
 ///
-/// See also [`TokioAsyncResolver`]
+/// See also [`TokioResolver`]
 ///
 /// ```
 /// # fn t() {
@@ -43,24 +46,24 @@ impl<P: ConnectionProvider> Resolver for AsyncResolver<P> {
 /// ```
 ///
 /// Note: This [Resolver] can send multiple lookup attempts, See also
-/// [`ResolverOpts`](trust_dns_resolver::config::ResolverOpts) which configures 2 attempts (1 retry)
+/// [`ResolverOpts`](hickory_resolver::config::ResolverOpts) which configures 2 attempts (1 retry)
 /// by default.
 #[derive(Clone, Debug)]
-pub struct DnsResolver(TokioAsyncResolver);
+pub struct DnsResolver(TokioResolver);
 
 // === impl DnsResolver ===
 
 impl DnsResolver {
-    /// Create a new resolver by wrapping the given [`AsyncResolver`]
-    pub const fn new(resolver: TokioAsyncResolver) -> Self {
+    /// Create a new resolver by wrapping the given [`TokioResolver`].
+    pub const fn new(resolver: TokioResolver) -> Self {
         Self(resolver)
     }
 
     /// Constructs a new Tokio based Resolver with the system configuration.
     ///
     /// This will use `/etc/resolv.conf` on Unix OSes and the registry on Windows.
-    pub fn from_system_conf() -> Result<Self, ResolveError> {
-        TokioAsyncResolver::tokio_from_system_conf().map(Self::new)
+    pub fn from_system_conf() -> Result<Self, NetError> {
+        TokioResolver::builder_tokio()?.build().map(Self::new)
     }
 }
 
@@ -72,25 +75,25 @@ impl Resolver for DnsResolver {
 
 /// A [Resolver] that uses an in memory map to lookup entries
 #[derive(Debug, Default)]
-pub struct MapResolver(RwLock<HashMap<String, String>>);
+pub struct MapResolver(DashMap<String, String>);
 
 // === impl MapResolver ===
 
 impl MapResolver {
     /// Inserts a key-value pair into the map.
     pub fn insert(&self, k: String, v: String) -> Option<String> {
-        self.0.write().insert(k, v)
+        self.0.insert(k, v)
     }
 
     /// Returns the value corresponding to the key
     pub fn get(&self, k: &str) -> Option<String> {
-        self.0.read().get(k).cloned()
+        self.0.get(k).map(|entry| entry.value().clone())
     }
 
     /// Removes a key from the map, returning the value at the key if the key was previously in the
     /// map.
     pub fn remove(&self, k: &str) -> Option<String> {
-        self.0.write().remove(k)
+        self.0.remove(k).map(|(_, v)| v)
     }
 }
 

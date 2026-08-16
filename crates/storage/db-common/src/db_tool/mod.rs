@@ -2,17 +2,16 @@
 
 use boyer_moore_magiclen::BMByte;
 use eyre::Result;
-use reth_db::{RawTable, TableRawRow};
 use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRO},
     database::Database,
     table::{Decode, Decompress, DupSort, Table, TableRow},
     transaction::{DbTx, DbTxMut},
-    DatabaseError,
+    DatabaseError, RawTable, TableRawRow,
 };
 use reth_fs_util as fs;
 use reth_node_types::NodeTypesWithDB;
-use reth_provider::{providers::ProviderNodeTypes, ChainSpecProvider, ProviderFactory};
+use reth_provider::{providers::ProviderNodeTypes, ChainSpecProvider, DBProvider, ProviderFactory};
 use std::{path::Path, rc::Rc, sync::Arc};
 use tracing::info;
 
@@ -51,18 +50,18 @@ impl<N: NodeTypesWithDB> DbTool<N> {
                     let (key, value) = (k.into_key(), v.into_value());
 
                     if key.len() + value.len() < filter.min_row_size {
-                        return None
+                        return None;
                     }
                     if key.len() < filter.min_key_size {
-                        return None
+                        return None;
                     }
                     if value.len() < filter.min_value_size {
-                        return None
+                        return None;
                     }
 
                     let result = || {
                         if filter.only_count {
-                            return None
+                            return None;
                         }
                         Some((
                             <T as Table>::Key::decode(&key).unwrap(),
@@ -72,16 +71,16 @@ impl<N: NodeTypesWithDB> DbTool<N> {
 
                     match &*bmb {
                         Some(searcher) => {
-                            if searcher.find_first_in(&value).is_some() ||
-                                searcher.find_first_in(&key).is_some()
+                            if searcher.find_first_in(&value).is_some()
+                                || searcher.find_first_in(&key).is_some()
                             {
                                 hits += 1;
-                                return result()
+                                return result();
                             }
                         }
                         None => {
                             hits += 1;
-                            return result()
+                            return result();
                         }
                     }
                 }
@@ -131,11 +130,12 @@ impl<N: ProviderNodeTypes> DbTool<N> {
             .map_err(|e| eyre::eyre!(e))
     }
 
-    /// Drops the database and the static files at the given path.
-    pub fn drop(
+    /// Drops the database, the static files and ExEx WAL at the given paths.
+    pub fn drop<P: AsRef<Path>>(
         &self,
-        db_path: impl AsRef<Path>,
-        static_files_path: impl AsRef<Path>,
+        db_path: P,
+        static_files_path: P,
+        exex_wal_path: P,
     ) -> Result<()> {
         let db_path = db_path.as_ref();
         info!(target: "reth::cli", "Dropping database at {:?}", db_path);
@@ -145,6 +145,12 @@ impl<N: ProviderNodeTypes> DbTool<N> {
         info!(target: "reth::cli", "Dropping static files at {:?}", static_files_path);
         fs::remove_dir_all(static_files_path)?;
         fs::create_dir_all(static_files_path)?;
+
+        if exex_wal_path.as_ref().exists() {
+            let exex_wal_path = exex_wal_path.as_ref();
+            info!(target: "reth::cli", "Dropping ExEx WAL at {:?}", exex_wal_path);
+            fs::remove_dir_all(exex_wal_path)?;
+        }
 
         Ok(())
     }
@@ -179,12 +185,12 @@ pub struct ListFilter {
 
 impl ListFilter {
     /// If `search` has a list of bytes, then filter for rows that have this sequence.
-    pub fn has_search(&self) -> bool {
+    pub const fn has_search(&self) -> bool {
         !self.search.is_empty()
     }
 
     /// Updates the page with new `skip` and `len` values.
-    pub fn update_page(&mut self, skip: usize, len: usize) {
+    pub const fn update_page(&mut self, skip: usize, len: usize) {
         self.skip = skip;
         self.len = len;
     }

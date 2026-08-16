@@ -2,14 +2,16 @@
 
 use crate::{
     segments::{PruneInput, Segment},
-    Metrics, PrunerError, PrunerEvent,
+    Metrics, PruneLimiter, PrunerError, PrunerEvent,
 };
 use alloy_primitives::BlockNumber;
 use reth_exex_types::FinishedExExHeight;
 use reth_provider::{
     DBProvider, DatabaseProviderFactory, PruneCheckpointReader, PruneCheckpointWriter,
+    StageCheckpointReader,
 };
-use reth_prune_types::{PruneLimiter, PruneProgress, PruneSegment, PrunerOutput};
+use reth_prune_types::{PruneProgress, PrunedSegmentInfo, PrunerOutput};
+use reth_stages_types::StageId;
 use reth_static_file_types::{find_fixed_range, StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE};
 use reth_tokio_util::{EventSender, EventStream};
 use std::{
@@ -25,8 +27,6 @@ pub type PrunerResult = Result<PrunerOutput, PrunerError>;
 
 /// The pruner type itself with the result of [`Pruner::run`]
 pub type PrunerWithResult<S, DB> = (Pruner<S, DB>, PrunerResult);
-
-type PrunerStats = Vec<(PruneSegment, usize, PruneProgress)>;
 
 /// Pruner with preset provider factory.
 pub type PrunerWithFactory<PF> = Pruner<<PF as DatabaseProviderFactory>::ProviderRW, PF>;
@@ -88,7 +88,9 @@ impl<Provider> Pruner<Provider, ()> {
 
 impl<PF> Pruner<PF::ProviderRW, PF>
 where
-    PF: DatabaseProviderFactory,
+    PF: DatabaseProviderFactory<
+        ProviderRW: PruneCheckpointWriter + PruneCheckpointReader + StageCheckpointReader,
+    >,
 {
     /// Crates a new pruner with the given provider factory.
     #[allow(clippy::too_many_arguments)]
@@ -120,7 +122,7 @@ where
 
 impl<Provider, S> Pruner<Provider, S>
 where
-    Provider: PruneCheckpointReader + PruneCheckpointWriter,
+    Provider: PruneCheckpointReader + PruneCheckpointWriter + StageCheckpointReader,
 {
     /// Listen for events on the pruner.
     pub fn events(&self) -> EventStream<PrunerEvent> {
@@ -194,14 +196,15 @@ where
     /// be pruned according to the highest `static_files`. Segments are parts of the database that
     /// represent one or more tables.
     ///
-    /// Returns [`PrunerStats`], total number of entries pruned, and [`PruneProgress`].
+    /// Returns a list of stats per pruned segment, total number of entries pruned, and
+    /// [`PruneProgress`].
     fn prune_segments(
         &mut self,
         provider: &Provider,
         tip_block_number: BlockNumber,
         limiter: &mut PruneLimiter,
-    ) -> Result<(PrunerStats, usize, PrunerOutput), PrunerError> {
-        let mut stats = PrunerStats::new();
+    ) -> Result<(Vec<PrunedSegmentInfo>, usize, PrunerOutput), PrunerError> {
+        let mut stats = Vec::with_capacity(self.segments.len());
         let mut pruned = 0;
         let mut output = PrunerOutput {
             progress: PruneProgress::Finished,
@@ -221,6 +224,19 @@ where
                 .transpose()?
                 .flatten()
             {
+                // Check if segment has a required stage that must be finished first
+                if let Some(required_stage) = segment.required_stage() &&
+                    !is_stage_finished(provider, required_stage)?
+                {
+                    debug!(
+                        target: "pruner",
+                        segment = ?segment.segment(),
+                        ?required_stage,
+                        "Segment's required stage not finished, skipping"
+                    );
+                    continue
+                }
+
                 debug!(
                     target: "pruner",
                     segment = ?segment.segment(),
@@ -269,7 +285,11 @@ where
                 if segment_output.pruned > 0 {
                     limiter.increment_deleted_entries_count_by(segment_output.pruned);
                     pruned += segment_output.pruned;
-                    stats.push((segment.segment(), segment_output.pruned, segment_output.progress));
+                    stats.push(PrunedSegmentInfo {
+                        segment: segment.segment(),
+                        pruned: segment_output.pruned,
+                        progress: segment_output.progress,
+                    });
                 }
             } else {
                 debug!(target: "pruner", segment = ?segment.segment(), purpose = ?segment.purpose(), "Nothing to prune for the segment");
@@ -402,7 +422,9 @@ fn delete_static_files(path: &Path) {
 
 impl<PF> Pruner<PF::ProviderRW, PF>
 where
-    PF: DatabaseProviderFactory<ProviderRW: PruneCheckpointWriter + PruneCheckpointReader>,
+    PF: DatabaseProviderFactory<
+        ProviderRW: PruneCheckpointWriter + PruneCheckpointReader + StageCheckpointReader,
+    >,
 {
     /// Run the pruner. This will only prune data up to the highest finished ExEx height, if there
     /// are no ExExes.
@@ -415,6 +437,16 @@ where
         provider.commit()?;
         result
     }
+}
+
+/// Checks if the given stage has caught up with the `Finish` stage.
+fn is_stage_finished<Provider: StageCheckpointReader>(
+    provider: &Provider,
+    stage_id: StageId,
+) -> Result<bool, PrunerError> {
+    let stage_checkpoint = provider.get_stage_checkpoint(stage_id)?.map(|c| c.block_number);
+    let finish_checkpoint = provider.get_stage_checkpoint(StageId::Finish)?.map(|c| c.block_number);
+    Ok(stage_checkpoint >= finish_checkpoint)
 }
 
 #[cfg(test)]

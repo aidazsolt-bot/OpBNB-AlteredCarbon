@@ -29,6 +29,7 @@ alloy-consensus.workspace = true
 alloy-eips.workspace = true
 
 # op
+op-alloy-consensus.workspace = true
 op-alloy-rpc-types.workspace = true
 
 # io
@@ -50,6 +51,7 @@ std = [
     "alloy-genesis/std",
     "alloy-primitives/std",
     "alloy-eips/std",
+    "op-alloy-consensus/std",
     "op-alloy-rpc-types/std",
     "reth-chainspec/std",
     "reth-ethereum-forks/std",

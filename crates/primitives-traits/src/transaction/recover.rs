@@ -1,0 +1,30 @@
+//! Helpers for recovering signers from a set of transactions
+
+use crate::{transaction::signed::RecoveryError, SignedTransaction};
+use alloc::vec::Vec;
+use alloy_primitives::Address;
+
+/// Recovers a list of signers from a transaction list iterator.
+///
+/// Returns `Err(RecoveryError)`, if some transaction's signature is invalid.
+pub fn recover_signers<'a, I, T>(txes: I) -> Result<Vec<Address>, RecoveryError>
+where
+    T: SignedTransaction + 'a,
+    I: IntoIterator<Item = &'a T>,
+{
+    txes.into_iter().map(|tx| tx.recover_signer().ok_or_else(RecoveryError::new)).collect()
+}
+
+/// Recovers a list of signers from a transaction list iterator _without ensuring that the
+/// signature has a low `s` value_.
+///
+/// Returns `Err(RecoveryError)`, if some transaction's signature is invalid.
+pub fn recover_signers_unchecked<'a, I, T>(txes: I) -> Result<Vec<Address>, RecoveryError>
+where
+    T: SignedTransaction + 'a,
+    I: IntoIterator<Item = &'a T>,
+{
+    txes.into_iter()
+        .map(|tx| SignedTransaction::recover_signer_unchecked(tx).ok_or_else(RecoveryError::new))
+        .collect()
+}

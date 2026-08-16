@@ -64,7 +64,7 @@ where
     }
 
     /// Returns an iterator over database items.
-    #[allow(clippy::should_implement_trait)]
+    #[expect(clippy::should_implement_trait)]
     pub fn into_iter<Key, Value>(self) -> IntoIter<K, Key, Value>
     where
         Key: TableObject,
@@ -100,7 +100,7 @@ where
                 assert_ne!(data_ptr, data_val.iov_base);
                 let key_out = {
                     // MDBX wrote in new key
-                    if key_ptr == key_val.iov_base {
+                    if ptr::eq(key_ptr, key_val.iov_base) {
                         None
                     } else {
                         Some(Key::decode_val::<K>(txn, key_val)?)
@@ -211,7 +211,7 @@ where
     }
 
     /// Position at next data item
-    #[allow(clippy::should_implement_trait)]
+    #[expect(clippy::should_implement_trait)]
     pub fn next<Key, Value>(&mut self) -> Result<Option<(Key, Value)>>
     where
         Key: TableObject,
@@ -312,7 +312,7 @@ where
     }
 
     /// Position at first key-value pair greater than or equal to specified, return both key and
-    /// data, and the return code depends on a exact match.
+    /// data, and the return code depends on an exact match.
     ///
     /// For non DupSort-ed collections this works the same as [`Self::set_range()`], but returns
     /// [false] if key found exactly and [true] if greater key was found.
@@ -371,7 +371,7 @@ where
     {
         let res: Result<Option<((), ())>> = self.set_range(key);
         if let Err(error) = res {
-            return Iter::Err(Some(error))
+            return Iter::Err(Some(error));
         };
         Iter::new(self, ffi::MDBX_GET_CURRENT, ffi::MDBX_NEXT)
     }
@@ -406,7 +406,7 @@ where
     {
         let res: Result<Option<((), ())>> = self.set_range(key);
         if let Err(error) = res {
-            return IterDup::Err(Some(error))
+            return IterDup::Err(Some(error));
         };
         IterDup::new(self, ffi::MDBX_GET_CURRENT)
     }
@@ -422,7 +422,7 @@ where
             Ok(Some(_)) => (),
             Ok(None) => {
                 let _: Result<Option<((), ())>> = self.last();
-                return Iter::new(self, ffi::MDBX_NEXT, ffi::MDBX_NEXT)
+                return Iter::new(self, ffi::MDBX_NEXT, ffi::MDBX_NEXT);
             }
             Err(error) => return Iter::Err(Some(error)),
         };

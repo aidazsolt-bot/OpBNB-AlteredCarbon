@@ -13,67 +13,93 @@ workspace = true
 [dependencies]
 # Reth
 reth-chainspec.workspace = true
-reth-ethereum-forks.workspace = true
 reth-evm.workspace = true
-reth-primitives.workspace = true
-reth-revm.workspace = true
+reth-primitives-traits.workspace = true
 reth-execution-errors.workspace = true
 reth-execution-types.workspace = true
-reth-prune-types.workspace = true
-reth-consensus.workspace = true
+reth-storage-errors.workspace = true
+
+reth-rpc-eth-api = { workspace = true, optional = true }
 
 # ethereum
 alloy-eips.workspace = true
+alloy-evm.workspace = true
 alloy-primitives.workspace = true
+alloy-op-evm.workspace = true
 op-alloy-consensus.workspace = true
+op-alloy-rpc-types = { workspace = true, optional = true }
+alloy-rpc-types-eth = { workspace = true, optional = true }
+op-alloy-rpc-types-engine.workspace = true
 alloy-consensus.workspace = true
 
 # Optimism
-reth-optimism-consensus.workspace = true
 reth-optimism-chainspec.workspace = true
+reth-optimism-consensus.workspace = true
 reth-optimism-forks.workspace = true
+reth-optimism-primitives.workspace = true
 
 # revm
 revm.workspace = true
-revm-primitives.workspace = true
+op-revm.workspace = true
+
+# opBNB Fermat/Haber precompiles
+bls_on_arkworks.workspace = true
+cometbft.workspace = true
+cometbft-light-client.workspace = true
+cometbft-light-client-verifier.workspace = true
+cometbft-proto.workspace = true
+prost.workspace = true
 
 # misc
-derive_more.workspace = true
-tracing.workspace = true
-
-# async
-tokio = { workspace = true, features = ["sync", "time"] }
+thiserror.workspace = true
 
 [dev-dependencies]
 reth-evm = { workspace = true, features = ["test-utils"] }
 reth-revm = { workspace = true, features = ["test-utils"] }
-reth-primitives = { workspace = true, features = ["test-utils"] }
-reth-optimism-chainspec.workspace = true
 alloy-genesis.workspace = true
-alloy-consensus.workspace = true
+serde_json.workspace = true
+reth-optimism-primitives = { workspace = true, features = ["arbitrary"] }
+reth-optimism-chainspec = { workspace = true }
 
 [features]
 default = ["std"]
 std = [
-	"reth-consensus/std",
-	"reth-primitives/std",
 	"reth-revm/std",
 	"alloy-consensus/std",
 	"alloy-eips/std",
 	"alloy-genesis/std",
 	"alloy-primitives/std",
-	"revm-primitives/std",
-	"revm/std"
+	"reth-primitives-traits/std",
+	"revm/std",
+	"reth-optimism-primitives/std",
+	"reth-optimism-forks/std",
+	"thiserror/std",
+	"op-alloy-consensus/std",
+	"reth-chainspec/std",
+	"reth-optimism-consensus/std",
+	"reth-optimism-chainspec/std",
+	"reth-execution-errors/std",
+	"reth-execution-types/std",
+	"alloy-evm/std",
+	"alloy-op-evm/std",
+	"op-revm/std",
+	"reth-evm/std",
+	"op-alloy-rpc-types-engine/std",
+	"reth-storage-errors/std",
+	"op-alloy-rpc-types?/std",
+	"alloy-rpc-types-eth?/std"
 ]
-optimism = [
-	"reth-primitives/optimism",
-	"reth-execution-types/optimism",
-	"reth-optimism-consensus/optimism",
-	"revm/optimism",
-	"revm-primitives/optimism",
-	"reth-chainspec/optimism"
+portable = [
+	"reth-revm/portable",
+	"op-revm/portable",
+	"revm/portable",
 ]
-opbnb = [
-    "reth-primitives/opbnb",
-    "revm-primitives/opbnb",
+rpc = [
+	"reth-rpc-eth-api",
+	"reth-optimism-primitives/serde",
+	"reth-optimism-primitives/reth-codec",
+	"alloy-evm/rpc",
+	"alloy-op-evm/rpc",
+	"op-alloy-rpc-types",
+	"alloy-rpc-types-eth",
 ]

@@ -1,8 +1,8 @@
-//! Simple RLPx Ping Pong protocol that also support sending messages,
+//! Simple RLPx Ping Pong protocol that also supports sending messages,
 //! following [RLPx specs](https://github.com/ethereum/devp2p/blob/master/rlpx.md)
 
 use alloy_primitives::bytes::{Buf, BufMut, BytesMut};
-use reth_eth_wire::{protocol::Protocol, Capability};
+use reth_ethereum::network::eth_wire::{protocol::Protocol, Capability};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl CustomRlpxProtoMessage {
             message: CustomRlpxProtoMessageKind::PingMessage(msg.into()),
         }
     }
-    /// Creates a ping message
+    /// Creates a pong message
     pub fn pong_message(msg: impl Into<String>) -> Self {
         Self {
             message_type: CustomRlpxProtoMessageId::PongMessage,
@@ -75,8 +75,8 @@ impl CustomRlpxProtoMessage {
         buf.put_u8(self.message_type as u8);
         match &self.message {
             CustomRlpxProtoMessageKind::Ping | CustomRlpxProtoMessageKind::Pong => {}
-            CustomRlpxProtoMessageKind::PingMessage(msg) |
-            CustomRlpxProtoMessageKind::PongMessage(msg) => {
+            CustomRlpxProtoMessageKind::PingMessage(msg)
+            | CustomRlpxProtoMessageKind::PongMessage(msg) => {
                 buf.put(msg.as_bytes());
             }
         }

@@ -1,0 +1,19 @@
+---
+description: Zwingend reth-opbnb-port + rust-best-practices bei jedem Session-Start laden
+alwaysApply: true
+---
+
+# Pflicht-Skills (Session-Start)
+
+**Zwingend — keine Ausnahme.** In diesem Repo bei **jeder** Agent-Session:
+
+1. **Erste Aktionen** (vor Analyse, Fixes, Builds, Commits) — beide Skills lesen und befolgen:
+   - `Read` → `.cursor/skills/reth-opbnb-port/SKILL.md`
+   - `Read` → `.cursor/skills/rust-best-practices/SKILL.md`
+2. Laut opBNB-Skill: `plan.md` *Migrations-Gate* — offene **`PORT-PIPE-00x` und `PORT-FLOW-*`**
+   für die nächste Stage nennen. Fehlt FLOW → zuerst analysieren/eintragen, dann Code/Live.
+3. Laut Rust-Skill: idiomatisch, typed errors, keine Hot-Path-Clones, Reth Type-Ordering / fmt+clippy.
+4. Danach erst die User-Aufgabe.
+
+Compile-Grün ≠ Sync-Korrekt. PIPE ohne FLOW = Regeln ohne Zustandsautomat (Session-10-Lektion).
+Ohne beide geladenen Skills keine Arbeit in diesem Repo.

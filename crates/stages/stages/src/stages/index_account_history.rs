@@ -1,9 +1,12 @@
-use super::{collect_history_indices, load_history_indices};
-use alloy_primitives::Address;
+use crate::stages::utils::collect_history_indices;
+
+use super::{collect_account_history_indices, load_account_history};
 use reth_config::config::{EtlConfig, IndexHistoryConfig};
-use reth_db::tables;
-use reth_db_api::{models::ShardedKey, table::Decode, transaction::DbTxMut};
-use reth_provider::{DBProvider, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter};
+use reth_db_api::{models::ShardedKey, tables, transaction::DbTxMut, Tables};
+use reth_provider::{
+    DBProvider, EitherWriter, HistoryWriter, PruneCheckpointReader, PruneCheckpointWriter,
+    RocksDBProviderFactory, StorageSettingsCache,
+};
 use reth_prune_types::{PruneCheckpoint, PruneMode, PrunePurpose, PruneSegment};
 use reth_stages_api::{
     ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
@@ -44,8 +47,14 @@ impl Default for IndexAccountHistoryStage {
 
 impl<Provider> Stage<Provider> for IndexAccountHistoryStage
 where
-    Provider:
-        DBProvider<Tx: DbTxMut> + HistoryWriter + PruneCheckpointReader + PruneCheckpointWriter,
+    Provider: DBProvider<Tx: DbTxMut>
+        + HistoryWriter
+        + PruneCheckpointReader
+        + PruneCheckpointWriter
+        + reth_storage_api::ChangeSetReader
+        + reth_provider::StaticFileProviderFactory
+        + StorageSettingsCache
+        + RocksDBProviderFactory,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -68,23 +77,22 @@ where
                 )
             })
             .transpose()?
-            .flatten()
+            .flatten() &&
+            target_prunable_block > input.checkpoint().block_number
         {
-            if target_prunable_block > input.checkpoint().block_number {
-                input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
+            input.checkpoint = Some(StageCheckpoint::new(target_prunable_block));
 
-                // Save prune checkpoint only if we don't have one already.
-                // Otherwise, pruner may skip the unpruned range of blocks.
-                if provider.get_prune_checkpoint(PruneSegment::AccountHistory)?.is_none() {
-                    provider.save_prune_checkpoint(
-                        PruneSegment::AccountHistory,
-                        PruneCheckpoint {
-                            block_number: Some(target_prunable_block),
-                            tx_number: None,
-                            prune_mode,
-                        },
-                    )?;
-                }
+            // Save prune checkpoint only if we don't have one already.
+            // Otherwise, pruner may skip the unpruned range of blocks.
+            if provider.get_prune_checkpoint(PruneSegment::AccountHistory)?.is_none() {
+                provider.save_prune_checkpoint(
+                    PruneSegment::AccountHistory,
+                    PruneCheckpoint {
+                        block_number: Some(target_prunable_block),
+                        tx_number: None,
+                        prune_mode,
+                    },
+                )?;
             }
         }
 
@@ -94,33 +102,56 @@ where
 
         let mut range = input.next_block_range();
         let first_sync = input.checkpoint().block_number == 0;
+        let use_rocksdb = provider.cached_storage_settings().storage_v2;
 
         // On first sync we might have history coming from genesis. We clear the table since it's
         // faster to rebuild from scratch.
         if first_sync {
+            #[cfg(all(unix, feature = "rocksdb"))]
+            if use_rocksdb {
+                // Note: RocksDB clear() executes immediately (not deferred to commit like MDBX),
+                // but this is safe for first_sync because if we crash before commit, the
+                // checkpoint stays at 0 and we'll just clear and rebuild again on restart. The
+                // source data (changesets) is intact.
+                provider.rocksdb_provider().clear::<tables::AccountsHistory>()?;
+            } else {
+                provider.tx_ref().clear::<tables::AccountsHistory>()?;
+            }
+            // Without the rocksdb feature, EitherWriter falls back to MDBX even when
+            // `storage_v2` is set — clear MDBX so append-only load does not hit genesis rows.
+            #[cfg(not(all(unix, feature = "rocksdb")))]
             provider.tx_ref().clear::<tables::AccountsHistory>()?;
             range = 0..=*input.next_block_range().end();
         }
 
-        info!(target: "sync::stages::index_account_history::exec", ?first_sync, "Collecting indices");
-        let collector =
+        info!(target: "sync::stages::index_account_history::exec", ?first_sync, ?use_rocksdb, "Collecting indices");
+
+        let collector = if provider.cached_storage_settings().storage_v2 {
+            // Use the provider-based collection that can read from static files.
+            collect_account_history_indices(provider, range.clone(), &self.etl_config)?
+        } else {
             collect_history_indices::<_, tables::AccountChangeSets, tables::AccountsHistory, _>(
                 provider,
                 range.clone(),
                 ShardedKey::new,
                 |(index, value)| (index, value.address),
                 &self.etl_config,
-            )?;
+            )?
+        };
 
         info!(target: "sync::stages::index_account_history::exec", "Loading indices into database");
-        load_history_indices::<_, tables::AccountsHistory, _>(
-            provider,
-            collector,
-            first_sync,
-            ShardedKey::new,
-            ShardedKey::<Address>::decode_owned,
-            |key| key.key,
-        )?;
+
+        provider.with_rocksdb_batch_auto_commit(|rocksdb_batch| {
+            let mut writer = EitherWriter::new_accounts_history(provider, rocksdb_batch)?;
+            load_account_history(collector, first_sync, &mut writer)
+                .map_err(|e| reth_provider::ProviderError::other(Box::new(e)))?;
+            Ok(((), writer.into_raw_rocksdb_batch()))
+        })?;
+
+        if use_rocksdb {
+            provider.commit_pending_rocksdb_batches()?;
+            provider.rocksdb_provider().flush(&[Tables::AccountsHistory.name()])?;
+        }
 
         Ok(ExecOutput { checkpoint: StageCheckpoint::new(*range.end()), done: true })
     }
@@ -150,7 +181,6 @@ mod tests {
     };
     use alloy_primitives::{address, BlockNumber, B256};
     use itertools::Itertools;
-    use reth_db::BlockNumberList;
     use reth_db_api::{
         cursor::DbCursorRO,
         models::{
@@ -158,6 +188,7 @@ mod tests {
             StoredBlockBodyIndices,
         },
         transaction::DbTx,
+        BlockNumberList,
     };
     use reth_provider::{providers::StaticFileWriter, DatabaseProviderFactory};
     use reth_testing_utils::generators::{
@@ -166,7 +197,7 @@ mod tests {
     };
     use std::collections::BTreeMap;
 
-    const ADDRESS: Address = address!("0000000000000000000000000000000000000001");
+    const ADDRESS: Address = address!("0x0000000000000000000000000000000000000001");
 
     const LAST_BLOCK_IN_FULL_SHARD: BlockNumber = NUM_OF_INDICES_IN_SHARD as BlockNumber;
     const MAX_BLOCK: BlockNumber = NUM_OF_INDICES_IN_SHARD as BlockNumber + 2;

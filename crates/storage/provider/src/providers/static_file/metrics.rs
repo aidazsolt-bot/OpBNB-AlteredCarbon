@@ -3,13 +3,13 @@ use std::{collections::HashMap, time::Duration};
 use itertools::Itertools;
 use metrics::{Counter, Gauge, Histogram};
 use reth_metrics::Metrics;
-use reth_primitives::StaticFileSegment;
+use reth_static_file_types::{StaticFileMap, StaticFileSegment};
 use strum::{EnumIter, IntoEnumIterator};
 
 /// Metrics for the static file provider.
 #[derive(Debug)]
 pub struct StaticFileProviderMetrics {
-    segments: HashMap<StaticFileSegment, StaticFileSegmentMetrics>,
+    segments: StaticFileMap<StaticFileSegmentMetrics>,
     segment_operations: HashMap<
         (StaticFileSegment, StaticFileProviderOperation),
         StaticFileProviderOperationMetrics,
@@ -18,6 +18,9 @@ pub struct StaticFileProviderMetrics {
 
 impl Default for StaticFileProviderMetrics {
     fn default() -> Self {
+        // Must cover every `StaticFileSegment` variant. Consistency heal / init-cursor
+        // records metrics for AccountChangeSets, StorageChangeSets, and TransactionSenders
+        // under storage.v2; a partial list panics with "segment operation metrics should exist".
         Self {
             segments: StaticFileSegment::iter()
                 .map(|segment| {
@@ -66,18 +69,15 @@ impl StaticFileProviderMetrics {
         operation: StaticFileProviderOperation,
         duration: Option<Duration>,
     ) {
-        self.segment_operations
+        let segment_operation = self
+            .segment_operations
             .get(&(segment, operation))
-            .expect("segment operation metrics should exist")
-            .calls_total
-            .increment(1);
+            .expect("segment operation metrics should exist");
+
+        segment_operation.calls_total.increment(1);
 
         if let Some(duration) = duration {
-            self.segment_operations
-                .get(&(segment, operation))
-                .expect("segment operation metrics should exist")
-                .write_duration_seconds
-                .record(duration.as_secs_f64());
+            segment_operation.write_duration_seconds.record(duration.as_secs_f64());
         }
     }
 

@@ -1,23 +1,35 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 // The `bsc` feature must be enabled to use this crate.
-#![cfg(feature = "bsc")]
 
-#[global_allocator]
-static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
+#[cfg(not(feature = "bsc"))]
+fn main() {
+    eprintln!("bsc-reth requires the `bsc` feature to be enabled");
+    std::process::exit(1);
+}
 
+#[cfg(feature = "bsc")]
 use clap::{Args, Parser};
+#[cfg(feature = "bsc")]
 use reth_bsc_cli::{BscChainSpecParser, Cli};
+#[cfg(feature = "bsc")]
 use reth_bsc_node::{node::BscAddOns, BscNode};
+#[cfg(feature = "bsc")]
 use reth_node_builder::{
     engine_tree_config::{
         TreeConfig, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD,
     },
     EngineNodeLauncher,
 };
+#[cfg(feature = "bsc")]
 use reth_provider::providers::BlockchainProvider2;
+#[cfg(feature = "bsc")]
 use tracing::warn;
 
-/// Parameters for configuring the engine
+#[cfg(feature = "bsc")]
+#[global_allocator]
+static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
+
+#[cfg(feature = "bsc")]
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 #[command(next_help_heading = "Engine")]
 pub struct EngineArgs {
@@ -41,6 +53,7 @@ pub struct EngineArgs {
     pub memory_block_buffer_target: u64,
 }
 
+#[cfg(feature = "bsc")]
 impl Default for EngineArgs {
     fn default() -> Self {
         Self {

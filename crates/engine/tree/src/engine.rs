@@ -5,16 +5,15 @@ use crate::{
     chain::{ChainHandler, FromOrchestrator, HandlerEvent},
     download::{BlockDownloader, DownloadAction, DownloadOutcome},
 };
-use alloy_primitives::B256;
+use alloy_primitives::{map::B256Set, B256};
+use crossbeam_channel::Sender;
 use futures::{Stream, StreamExt};
-use reth_beacon_consensus::{BeaconConsensusEngineEvent, BeaconEngineMessage};
-use reth_chain_state::ExecutedBlock;
-use reth_engine_primitives::EngineTypes;
-use reth_primitives::SealedBlockWithSenders;
+use reth_engine_primitives::{BeaconEngineMessage, ConsensusEngineEvent};
+use reth_ethereum_primitives::EthPrimitives;
+use reth_payload_primitives::{BuiltPayloadExecutedBlock, PayloadTypes};
+use reth_primitives_traits::{Block, NodePrimitives, SealedBlock};
 use std::{
-    collections::HashSet,
     fmt::Display,
-    sync::mpsc::Sender,
     task::{ready, Context, Poll},
 };
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -59,14 +58,14 @@ impl<T, S, D> EngineHandler<T, S, D> {
     }
 
     /// Returns a mutable reference to the request handler.
-    pub fn handler_mut(&mut self) -> &mut T {
+    pub const fn handler_mut(&mut self) -> &mut T {
         &mut self.handler
     }
 }
 
 impl<T, S, D> ChainHandler for EngineHandler<T, S, D>
 where
-    T: EngineRequestHandler,
+    T: EngineRequestHandler<Block = D::Block>,
     S: Stream + Send + Sync + Unpin + 'static,
     <S as Stream>::Item: Into<T::Request>,
     D: BlockDownloader,
@@ -86,7 +85,7 @@ where
                     RequestHandlerEvent::HandlerEvent(ev) => {
                         return match ev {
                             HandlerEvent::BackfillAction(target) => {
-                                // bubble up backfill sync request request
+                                // bubble up backfill sync request
                                 self.downloader.on_action(DownloadAction::Clear);
                                 Poll::Ready(HandlerEvent::BackfillAction(target))
                             }
@@ -104,20 +103,19 @@ where
                 }
             }
 
+            // Advance the downloader before draining CL messages. Under sustained Engine API
+            // flood (e.g. opBNB tip NewPayload/FCU), always-ready `incoming_requests` previously
+            // starved `downloader.poll`, so full-block futures never completed into
+            // `DownloadedBlocks` and backfill never started.
+            if let Poll::Ready(DownloadOutcome::Blocks(blocks)) = self.downloader.poll(cx) {
+                self.handler.on_event(FromEngine::DownloadedBlocks(blocks));
+                continue
+            }
+
             // pop the next incoming request
             if let Poll::Ready(Some(req)) = self.incoming_requests.poll_next_unpin(cx) {
                 // and delegate the request to the handler
                 self.handler.on_event(FromEngine::Request(req.into()));
-                // skip downloading in this iteration to allow the handler to process the request
-                continue
-            }
-
-            // advance the downloader
-            if let Poll::Ready(outcome) = self.downloader.poll(cx) {
-                if let DownloadOutcome::Blocks(blocks) = outcome {
-                    // delegate the downloaded blocks to the handler
-                    self.handler.on_event(FromEngine::DownloadedBlocks(blocks));
-                }
                 continue
             }
 
@@ -139,9 +137,11 @@ pub trait EngineRequestHandler: Send + Sync {
     type Event: Send;
     /// The request type this handler can process.
     type Request;
+    /// Type of the block sent in [`FromEngine::DownloadedBlocks`] variant.
+    type Block: Block;
 
     /// Informs the handler about an event from the [`EngineHandler`].
-    fn on_event(&mut self, event: FromEngine<Self::Request>);
+    fn on_event(&mut self, event: FromEngine<Self::Request, Self::Block>);
 
     /// Advances the handler.
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<RequestHandlerEvent<Self::Event>>;
@@ -167,31 +167,32 @@ pub trait EngineRequestHandler: Send + Sync {
 /// In case required blocks are missing, the handler will request them from the network, by emitting
 /// a download request upstream.
 #[derive(Debug)]
-pub struct EngineApiRequestHandler<Request> {
+pub struct EngineApiRequestHandler<Request, N: NodePrimitives> {
     /// channel to send messages to the tree to execute the payload.
-    to_tree: Sender<FromEngine<Request>>,
+    to_tree: Sender<FromEngine<Request, N::Block>>,
     /// channel to receive messages from the tree.
-    from_tree: UnboundedReceiver<EngineApiEvent>,
+    from_tree: UnboundedReceiver<EngineApiEvent<N>>,
 }
 
-impl<Request> EngineApiRequestHandler<Request> {
+impl<Request, N: NodePrimitives> EngineApiRequestHandler<Request, N> {
     /// Creates a new `EngineApiRequestHandler`.
     pub const fn new(
-        to_tree: Sender<FromEngine<Request>>,
-        from_tree: UnboundedReceiver<EngineApiEvent>,
+        to_tree: Sender<FromEngine<Request, N::Block>>,
+        from_tree: UnboundedReceiver<EngineApiEvent<N>>,
     ) -> Self {
         Self { to_tree, from_tree }
     }
 }
 
-impl<Request> EngineRequestHandler for EngineApiRequestHandler<Request>
+impl<Request, N: NodePrimitives> EngineRequestHandler for EngineApiRequestHandler<Request, N>
 where
     Request: Send,
 {
-    type Event = BeaconConsensusEngineEvent;
+    type Event = ConsensusEngineEvent<N>;
     type Request = Request;
+    type Block = N::Block;
 
-    fn on_event(&mut self, event: FromEngine<Self::Request>) {
+    fn on_event(&mut self, event: FromEngine<Self::Request, Self::Block>) {
         // delegate to the tree
         let _ = self.to_tree.send(event);
     }
@@ -230,7 +231,7 @@ impl EngineApiKind {
         matches!(self, Self::Ethereum)
     }
 
-    /// Returns true if this is the ethereum variant
+    /// Returns true if this is the opstack variant
     pub const fn is_opstack(&self) -> bool {
         matches!(self, Self::OpStack)
     }
@@ -238,73 +239,75 @@ impl EngineApiKind {
 
 /// The request variants that the engine API handler can receive.
 #[derive(Debug)]
-pub enum EngineApiRequest<T: EngineTypes> {
+pub enum EngineApiRequest<T: PayloadTypes, N: NodePrimitives> {
     /// A request received from the consensus engine.
     Beacon(BeaconEngineMessage<T>),
     /// Request to insert an already executed block, e.g. via payload building.
-    InsertExecutedBlock(ExecutedBlock),
+    InsertExecutedBlock(BuiltPayloadExecutedBlock<N>),
 }
 
-impl<T: EngineTypes> Display for EngineApiRequest<T> {
+impl<T: PayloadTypes, N: NodePrimitives> Display for EngineApiRequest<T, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Beacon(msg) => msg.fmt(f),
-            Self::InsertExecutedBlock(block) => {
-                write!(f, "InsertExecutedBlock({:?})", block.block().num_hash())
+            Self::InsertExecutedBlock(payload) => {
+                write!(f, "InsertExecutedBlock({:?})", payload.recovered_block.num_hash())
             }
         }
     }
 }
 
-impl<T: EngineTypes> From<BeaconEngineMessage<T>> for EngineApiRequest<T> {
+impl<T: PayloadTypes, N: NodePrimitives> From<BeaconEngineMessage<T>> for EngineApiRequest<T, N> {
     fn from(msg: BeaconEngineMessage<T>) -> Self {
         Self::Beacon(msg)
     }
 }
 
-impl<T: EngineTypes> From<EngineApiRequest<T>> for FromEngine<EngineApiRequest<T>> {
-    fn from(req: EngineApiRequest<T>) -> Self {
+impl<T: PayloadTypes, N: NodePrimitives> From<EngineApiRequest<T, N>>
+    for FromEngine<EngineApiRequest<T, N>, N::Block>
+{
+    fn from(req: EngineApiRequest<T, N>) -> Self {
         Self::Request(req)
     }
 }
 
 /// Events emitted by the engine API handler.
 #[derive(Debug)]
-pub enum EngineApiEvent {
+pub enum EngineApiEvent<N: NodePrimitives = EthPrimitives> {
     /// Event from the consensus engine.
     // TODO(mattsse): find a more appropriate name for this variant, consider phasing it out.
-    BeaconConsensus(BeaconConsensusEngineEvent),
+    BeaconConsensus(ConsensusEngineEvent<N>),
     /// Backfill action is needed.
     BackfillAction(BackfillAction),
     /// Block download is needed.
     Download(DownloadRequest),
 }
 
-impl EngineApiEvent {
+impl<N: NodePrimitives> EngineApiEvent<N> {
     /// Returns `true` if the event is a backfill action.
     pub const fn is_backfill_action(&self) -> bool {
         matches!(self, Self::BackfillAction(_))
     }
 }
 
-impl From<BeaconConsensusEngineEvent> for EngineApiEvent {
-    fn from(event: BeaconConsensusEngineEvent) -> Self {
+impl<N: NodePrimitives> From<ConsensusEngineEvent<N>> for EngineApiEvent<N> {
+    fn from(event: ConsensusEngineEvent<N>) -> Self {
         Self::BeaconConsensus(event)
     }
 }
 
 /// Events received from the engine.
 #[derive(Debug)]
-pub enum FromEngine<Req> {
+pub enum FromEngine<Req, B: Block> {
     /// Event from the top level orchestrator.
     Event(FromOrchestrator),
     /// Request from the engine.
     Request(Req),
     /// Downloaded blocks from the network.
-    DownloadedBlocks(Vec<SealedBlockWithSenders>),
+    DownloadedBlocks(Vec<SealedBlock<B>>),
 }
 
-impl<Req: Display> Display for FromEngine<Req> {
+impl<Req: Display, B: Block> Display for FromEngine<Req, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Event(ev) => write!(f, "Event({ev:?})"),
@@ -316,7 +319,7 @@ impl<Req: Display> Display for FromEngine<Req> {
     }
 }
 
-impl<Req> From<FromOrchestrator> for FromEngine<Req> {
+impl<Req, B: Block> From<FromOrchestrator> for FromEngine<Req, B> {
     fn from(event: FromOrchestrator) -> Self {
         Self::Event(event)
     }
@@ -335,7 +338,7 @@ pub enum RequestHandlerEvent<T> {
 #[derive(Debug)]
 pub enum DownloadRequest {
     /// Download the given set of blocks.
-    BlockSet(HashSet<B256>),
+    BlockSet(B256Set),
     /// Download the given range of blocks.
     BlockRange(B256, u64),
 }
@@ -343,6 +346,6 @@ pub enum DownloadRequest {
 impl DownloadRequest {
     /// Returns a [`DownloadRequest`] for a single block.
     pub fn single_block(hash: B256) -> Self {
-        Self::BlockSet(HashSet::from([hash]))
+        Self::BlockSet(B256Set::from_iter([hash]))
     }
 }

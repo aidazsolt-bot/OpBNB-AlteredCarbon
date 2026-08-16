@@ -14,19 +14,26 @@ workspace = true
 [dependencies]
 reth-codecs.workspace = true
 
-alloy-consensus = { workspace = true, features = ["serde"] }
+alloy-consensus = { workspace = true, features = ["serde", "k256"] }
 alloy-eips.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
+alloy-rpc-types-eth = { workspace = true, optional = true }
+alloy-trie.workspace = true
 
-revm-primitives = { workspace = true, features = ["serde"] }
+revm = { workspace = true, features = ["serde"] }
+alloy-evm.workspace = true
+
+# op (optional)
+op-alloy-consensus = { workspace = true, optional = true, features = ["k256"] }
 
 # misc
 byteorder = "1"
 derive_more.workspace = true
 roaring = "0.10.2"
 serde_with = { workspace = true, optional = true }
+thiserror.workspace = true
 
 # required by reth-codecs
 bytes.workspace = true
@@ -58,8 +65,15 @@ std = [
 	"alloy-eips/std",
 	"alloy-genesis/std",
 	"alloy-primitives/std",
-	"revm-primitives/std",
-	"serde/std"
+	"alloy-trie/std",
+	"revm/std",
+	"serde/std",
+	"bytes/std",
+	"op-alloy-consensus?/std",
+]
+op = [
+	"dep:op-alloy-consensus",
+	"op-alloy-consensus/serde",
 ]
 test-utils = [
 	"arbitrary",
@@ -73,12 +87,25 @@ arbitrary = [
 	"dep:proptest",
 	"dep:proptest-arbitrary-interop",
 	"alloy-eips/arbitrary",
-	"revm-primitives/arbitrary",
+	"revm/arbitrary",
 	"reth-codecs/arbitrary"
 ]
 serde-bincode-compat = [
 	"serde_with",
 	"alloy-consensus/serde-bincode-compat",
-	"alloy-eips/serde-bincode-compat"
+	"alloy-eips/serde-bincode-compat",
+	"op-alloy-consensus?/serde-bincode-compat",
 ]
 bsc = []
+secp256k1 = [
+    "alloy-consensus/secp256k1",
+    "revm/secp256k1",
+]
+rayon = []
+quanta = []
+serde = []
+reth-codec = [
+    "reth-codecs/alloy",
+    "op-alloy-consensus?/reth-codec",
+]
+rpc-compat = ["alloy-rpc-types-eth"]

@@ -17,7 +17,7 @@ pub trait TableObject: Sized {
         _: *const ffi::MDBX_txn,
         data_val: ffi::MDBX_val,
     ) -> Result<Self, Error> {
-        let s = slice::from_raw_parts(data_val.iov_base as *const u8, data_val.iov_len);
+        let s = unsafe { slice::from_raw_parts(data_val.iov_base as *const u8, data_val.iov_len) };
         Self::decode(s)
     }
 }
@@ -32,7 +32,7 @@ impl TableObject for Cow<'_, [u8]> {
         _txn: *const ffi::MDBX_txn,
         data_val: ffi::MDBX_val,
     ) -> Result<Self, Error> {
-        let s = slice::from_raw_parts(data_val.iov_base as *const u8, data_val.iov_len);
+        let s = unsafe { slice::from_raw_parts(data_val.iov_base as *const u8, data_val.iov_len) };
 
         #[cfg(feature = "return-borrowed")]
         {
@@ -41,8 +41,10 @@ impl TableObject for Cow<'_, [u8]> {
 
         #[cfg(not(feature = "return-borrowed"))]
         {
-            let is_dirty = (!K::IS_READ_ONLY) &&
-                crate::error::mdbx_result(ffi::mdbx_is_dirty(_txn, data_val.iov_base))?;
+            let is_dirty = (!K::IS_READ_ONLY)
+                && crate::error::mdbx_result(unsafe {
+                    ffi::mdbx_is_dirty(_txn, data_val.iov_base)
+                })?;
 
             Ok(if is_dirty { Cow::Owned(s.to_vec()) } else { Cow::Borrowed(s) })
         }
@@ -81,7 +83,7 @@ impl TableObject for ObjectLength {
 impl<const LEN: usize> TableObject for [u8; LEN] {
     fn decode(data_val: &[u8]) -> Result<Self, Error> {
         if data_val.len() != LEN {
-            return Err(Error::DecodeErrorLenDiff)
+            return Err(Error::DecodeErrorLenDiff);
         }
         let mut a = [0; LEN];
         a[..].copy_from_slice(data_val);

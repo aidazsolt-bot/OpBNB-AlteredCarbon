@@ -1,90 +1,115 @@
 //! Blocks/Headers management for the p2p network.
 
+use crate::{
+    budget::DEFAULT_BUDGET_TRY_DRAIN_DOWNLOADERS, metered_poll_nested_stream_with_budget,
+    metrics::EthRequestHandlerMetrics,
+};
+use alloy_consensus::{BlockHeader, ReceiptWithBloom};
+use alloy_eips::BlockHashOrNumber;
+use alloy_rlp::Encodable;
+use futures::StreamExt;
+use reth_eth_wire::{
+    snap::{BlockAccessListsMessage, SnapProtocolMessage},
+    BlockAccessLists, BlockBodies, BlockHeaders, Cells, EthNetworkPrimitives, GetBlockAccessLists,
+    GetBlockBodies, GetBlockHeaders, GetCells, GetNodeData, GetReceipts, GetReceipts70,
+    HeadersDirection, NetworkPrimitives, NodeData, Receipts, Receipts69, Receipts70,
+};
+use reth_network_api::test_utils::PeersHandle;
+use reth_network_p2p::{
+    error::{RequestError, RequestResult},
+    snap::client::SnapResponse,
+};
+use reth_network_peers::PeerId;
+use reth_primitives_traits::Block;
+use reth_storage_api::{BalProvider, BlockReader, GetBlockAccessListLimit, HeaderProvider};
+use reth_transaction_pool::{blobstore::NoopBlobStore, BlobStore};
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
-
-use alloy_eips::BlockHashOrNumber;
-use alloy_rlp::Encodable;
-use futures::StreamExt;
-use reth_eth_wire::{
-    BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, GetNodeData, GetReceipts,
-    HeadersDirection, NodeData, Receipts,
-};
-use reth_network_api::test_utils::PeersHandle;
-use reth_network_p2p::error::RequestResult;
-use reth_network_peers::PeerId;
-use reth_primitives::{BlockBody, Header};
-use reth_storage_api::{BlockReader, HeaderProvider, ReceiptProvider};
 use tokio::sync::{mpsc::Receiver, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-
-use crate::{
-    budget::DEFAULT_BUDGET_TRY_DRAIN_DOWNLOADERS, metered_poll_nested_stream_with_budget,
-    metrics::EthRequestHandlerMetrics,
-};
 
 // Limits: <https://github.com/ethereum/go-ethereum/blob/b0d44338bbcefee044f1f635a84487cbbd8f0538/eth/protocols/eth/handler.go#L34-L56>
 
 /// Maximum number of receipts to serve.
 ///
 /// Used to limit lookups.
-const MAX_RECEIPTS_SERVE: usize = 1024;
+pub const MAX_RECEIPTS_SERVE: usize = 1024;
 
 /// Maximum number of block headers to serve.
 ///
 /// Used to limit lookups.
-const MAX_HEADERS_SERVE: usize = 1024;
+pub const MAX_HEADERS_SERVE: usize = 1024;
 
 /// Maximum number of block headers to serve.
 ///
 /// Used to limit lookups. With 24KB block sizes nowadays, the practical limit will always be
 /// `SOFT_RESPONSE_LIMIT`.
-const MAX_BODIES_SERVE: usize = 1024;
+pub const MAX_BODIES_SERVE: usize = 1024;
 
-/// Maximum size of replies to data retrievals.
-const SOFT_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
+/// Maximum number of block access lists to serve.
+///
+/// Used to limit lookups.
+pub const MAX_BLOCK_ACCESS_LISTS_SERVE: usize = 1024;
+
+/// Maximum number of cell lookups to serve.
+///
+/// Used to limit lookups.
+pub const MAX_CELLS_SERVE: usize = 1024;
+
+/// Maximum size of replies to data retrievals: 2MB
+pub const SOFT_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 
 /// Manages eth related requests on top of the p2p network.
 ///
 /// This can be spawned to another task and is supposed to be run as background service.
 #[derive(Debug)]
 #[must_use = "Manager does nothing unless polled."]
-pub struct EthRequestHandler<C> {
+pub struct EthRequestHandler<C, N: NetworkPrimitives = EthNetworkPrimitives> {
     /// The client type that can interact with the chain.
     client: C,
+    /// Blob store used for serving blob cell requests.
+    blob_store: Box<dyn BlobStore>,
     /// Used for reporting peers.
     // TODO use to report spammers
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     peers: PeersHandle,
     /// Incoming request from the [`NetworkManager`](crate::NetworkManager).
-    incoming_requests: ReceiverStream<IncomingEthRequest>,
+    incoming_requests: ReceiverStream<IncomingEthRequest<N>>,
     /// Metrics for the eth request handler.
     metrics: EthRequestHandlerMetrics,
 }
 
 // === impl EthRequestHandler ===
-impl<C> EthRequestHandler<C> {
+impl<C, N: NetworkPrimitives> EthRequestHandler<C, N> {
     /// Create a new instance
-    pub fn new(client: C, peers: PeersHandle, incoming: Receiver<IncomingEthRequest>) -> Self {
+    pub fn new(client: C, peers: PeersHandle, incoming: Receiver<IncomingEthRequest<N>>) -> Self {
         Self {
             client,
+            blob_store: Box::<NoopBlobStore>::default(),
             peers,
             incoming_requests: ReceiverStream::new(incoming),
             metrics: Default::default(),
         }
     }
+
+    /// Set blob store for the request handler
+    pub fn with_blob_store(mut self, blob_store: Box<dyn BlobStore>) -> Self {
+        self.blob_store = blob_store;
+        self
+    }
 }
 
-impl<C> EthRequestHandler<C>
+impl<C, N> EthRequestHandler<C, N>
 where
-    C: BlockReader + HeaderProvider + ReceiptProvider,
+    N: NetworkPrimitives,
+    C: BlockReader,
 {
     /// Returns the list of requested headers
-    fn get_headers_response(&self, request: GetBlockHeaders) -> Vec<Header> {
+    fn get_headers_response(&self, request: GetBlockHeaders) -> Vec<C::Header> {
         let GetBlockHeaders { start_block, limit, skip, direction } = request;
 
         let mut headers = Vec::new();
@@ -93,7 +118,7 @@ where
             BlockHashOrNumber::Hash(start) => start.into(),
             BlockHashOrNumber::Number(num) => {
                 let Some(hash) = self.client.block_hash(num).unwrap_or_default() else {
-                    return headers
+                    return headers;
                 };
                 hash.into()
             }
@@ -104,12 +129,23 @@ where
 
         for _ in 0..limit {
             if let Some(header) = self.client.header_by_hash_or_number(block).unwrap_or_default() {
+                let number = header.number();
+                let parent_hash = header.parent_hash();
+
+                total_bytes += header.length();
+                headers.push(header);
+
+                if headers.len() >= MAX_HEADERS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
+                    break;
+                }
+
                 match direction {
                     HeadersDirection::Rising => {
-                        if let Some(next) = (header.number + 1).checked_add(skip) {
+                        if let Some(next) = number.checked_add(1).and_then(|n| n.checked_add(skip))
+                        {
                             block = next.into()
                         } else {
-                            break
+                            break;
                         }
                     }
                     HeadersDirection::Falling => {
@@ -117,26 +153,19 @@ where
                             // prevent under flows for block.number == 0 and `block.number - skip <
                             // 0`
                             if let Some(next) =
-                                header.number.checked_sub(1).and_then(|num| num.checked_sub(skip))
+                                number.checked_sub(1).and_then(|num| num.checked_sub(skip))
                             {
                                 block = next.into()
                             } else {
-                                break
+                                break;
                             }
                         } else {
-                            block = header.parent_hash.into()
+                            block = parent_hash.into()
                         }
                     }
                 }
-
-                total_bytes += header.length();
-                headers.push(header);
-
-                if headers.len() >= MAX_HEADERS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
-                }
             } else {
-                break
+                break;
             }
         }
 
@@ -147,7 +176,7 @@ where
         &self,
         _peer_id: PeerId,
         request: GetBlockHeaders,
-        response: oneshot::Sender<RequestResult<BlockHeaders>>,
+        response: oneshot::Sender<RequestResult<BlockHeaders<C::Header>>>,
     ) {
         self.metrics.eth_headers_requests_received_total.increment(1);
         let headers = self.get_headers_response(request);
@@ -158,25 +187,24 @@ where
         &self,
         _peer_id: PeerId,
         request: GetBlockBodies,
-        response: oneshot::Sender<RequestResult<BlockBodies>>,
+        response: oneshot::Sender<RequestResult<BlockBodies<<C::Block as Block>::Body>>>,
     ) {
         self.metrics.eth_bodies_requests_received_total.increment(1);
         let mut bodies = Vec::new();
 
         let mut total_bytes = 0;
 
-        for hash in request.0 {
+        for hash in request {
             if let Some(block) = self.client.block_by_hash(hash).unwrap_or_default() {
-                let body: BlockBody = block.into();
-
+                let body = block.into_body();
                 total_bytes += body.length();
                 bodies.push(body);
 
                 if bodies.len() >= MAX_BODIES_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -187,44 +215,228 @@ where
         &self,
         _peer_id: PeerId,
         request: GetReceipts,
-        response: oneshot::Sender<RequestResult<Receipts>>,
+        response: oneshot::Sender<RequestResult<Receipts<C::Receipt>>>,
     ) {
         self.metrics.eth_receipts_requests_received_total.increment(1);
 
-        let mut receipts = Vec::new();
+        let receipts = self.get_receipts_response(request, |receipts_by_block| {
+            receipts_by_block.into_iter().map(ReceiptWithBloom::from).collect::<Vec<_>>()
+        });
 
+        let _ = response.send(Ok(Receipts(receipts)));
+    }
+
+    fn on_receipts69_request(
+        &self,
+        _peer_id: PeerId,
+        request: GetReceipts,
+        response: oneshot::Sender<RequestResult<Receipts69<C::Receipt>>>,
+    ) {
+        self.metrics.eth_receipts_requests_received_total.increment(1);
+
+        let receipts = self.get_receipts_response(request, |receipts_by_block| {
+            // skip bloom filter for eth69
+            receipts_by_block
+        });
+
+        let _ = response.send(Ok(Receipts69(receipts)));
+    }
+
+    /// Handles partial responses for [`GetReceipts70`] queries.
+    ///
+    /// This will adhere to the soft limit but allow filling the last vec partially.
+    fn on_receipts70_request(
+        &self,
+        _peer_id: PeerId,
+        request: GetReceipts70,
+        response: oneshot::Sender<RequestResult<Receipts70<C::Receipt>>>,
+    ) {
+        self.metrics.eth_receipts_requests_received_total.increment(1);
+
+        let GetReceipts70 { first_block_receipt_index, block_hashes } = request;
+
+        let mut receipts = Vec::new();
+        let mut total_bytes = 0usize;
+        let mut last_block_incomplete = false;
+
+        for (idx, hash) in block_hashes.into_iter().enumerate() {
+            if idx >= MAX_RECEIPTS_SERVE {
+                break;
+            }
+
+            let Some(mut block_receipts) =
+                self.client.receipts_by_block(BlockHashOrNumber::Hash(hash)).unwrap_or_default()
+            else {
+                break;
+            };
+
+            if idx == 0 && first_block_receipt_index > 0 {
+                let skip = first_block_receipt_index as usize;
+                if skip >= block_receipts.len() {
+                    block_receipts.clear();
+                } else {
+                    block_receipts.drain(0..skip);
+                }
+            }
+
+            let block_size = block_receipts.length();
+
+            if total_bytes + block_size <= SOFT_RESPONSE_LIMIT {
+                total_bytes += block_size;
+                receipts.push(block_receipts);
+                continue;
+            }
+
+            let mut partial_block = Vec::new();
+            for receipt in block_receipts {
+                let receipt_size = receipt.length();
+                if total_bytes + receipt_size > SOFT_RESPONSE_LIMIT {
+                    break;
+                }
+                total_bytes += receipt_size;
+                partial_block.push(receipt);
+            }
+
+            receipts.push(partial_block);
+            last_block_incomplete = true;
+            break;
+        }
+
+        let _ = response.send(Ok(Receipts70 { last_block_incomplete, receipts }));
+    }
+
+    #[inline]
+    fn get_receipts_response<T, F>(&self, request: GetReceipts, transform_fn: F) -> Vec<Vec<T>>
+    where
+        F: Fn(Vec<C::Receipt>) -> Vec<T>,
+        T: Encodable,
+    {
+        let mut receipts = Vec::new();
         let mut total_bytes = 0;
 
-        for hash in request.0 {
+        for hash in request {
             if let Some(receipts_by_block) =
                 self.client.receipts_by_block(BlockHashOrNumber::Hash(hash)).unwrap_or_default()
             {
-                let receipt = receipts_by_block
-                    .into_iter()
-                    .map(|receipt| receipt.with_bloom())
-                    .collect::<Vec<_>>();
-
-                total_bytes += receipt.length();
-                receipts.push(receipt);
+                let transformed_receipts = transform_fn(receipts_by_block);
+                total_bytes += transformed_receipts.length();
+                receipts.push(transformed_receipts);
 
                 if receipts.len() >= MAX_RECEIPTS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 
-        let _ = response.send(Ok(Receipts(receipts)));
+        receipts
+    }
+
+    fn on_cells_request(
+        &self,
+        _peer_id: PeerId,
+        request: GetCells,
+        response: oneshot::Sender<RequestResult<Cells>>,
+    ) {
+        let mut cells_response = Cells { cell_mask: request.cell_mask, ..Default::default() };
+
+        for hash in request.hashes.into_iter().take(MAX_CELLS_SERVE) {
+            let Some(cells) =
+                self.blob_store.get_cells(hash, request.cell_mask).unwrap_or_default()
+            else {
+                continue;
+            };
+
+            cells_response.hashes.push(hash);
+            cells_response.cells.push(cells);
+
+            if cells_response.length() > SOFT_RESPONSE_LIMIT {
+                break;
+            }
+        }
+
+        let _ = response.send(Ok(cells_response));
+    }
+}
+
+impl<C, N> EthRequestHandler<C, N>
+where
+    N: NetworkPrimitives,
+    C: BalProvider,
+{
+    /// Handles [`GetBlockAccessLists`] queries.
+    ///
+    /// EIP-8159 defines the final `BlockAccessLists` response semantics:
+    /// <https://eips.ethereum.org/EIPS/eip-8159>
+    fn on_block_access_lists_request(
+        &self,
+        _peer_id: PeerId,
+        mut request: GetBlockAccessLists,
+        response: oneshot::Sender<RequestResult<BlockAccessLists>>,
+    ) {
+        self.metrics.eth_block_access_lists_requests_received_total.increment(1);
+        request.0.truncate(MAX_BLOCK_ACCESS_LISTS_SERVE);
+
+        let limit = GetBlockAccessListLimit::ResponseSizeSoftLimit(SOFT_RESPONSE_LIMIT);
+        let access_lists =
+            self.client.bal_store().get_by_hashes_with_limit(&request.0, limit).unwrap_or_default();
+        let _ = response.send(Ok(BlockAccessLists(access_lists)));
+    }
+
+    /// Handles `snap/2` (EIP-8189) requests.
+    ///
+    /// `GetAccountRange`/`GetStorageRanges`/`GetByteCodes` stay unsupported until a real
+    /// state-trie-backed store exists; an empty response would falsely claim served data.
+    /// `GetBlockAccessLists` is answered from the same [`BalProvider`] store eth71's
+    /// `GetBlockAccessLists` uses, since both serve the same
+    /// underlying data.
+    fn on_snap_request(
+        &self,
+        _peer_id: PeerId,
+        request: SnapProtocolMessage,
+        response: oneshot::Sender<RequestResult<SnapResponse>>,
+    ) {
+        self.metrics.snap_requests_received_total.increment(1);
+
+        let result = match request {
+            SnapProtocolMessage::GetAccountRange(_) |
+            SnapProtocolMessage::GetStorageRanges(_) |
+            SnapProtocolMessage::GetByteCodes(_) => Err(RequestError::UnsupportedCapability),
+            SnapProtocolMessage::GetBlockAccessLists(mut req) => {
+                req.block_hashes.truncate(MAX_BLOCK_ACCESS_LISTS_SERVE);
+                let limit = GetBlockAccessListLimit::ResponseSizeSoftLimit(
+                    (req.response_bytes as usize).min(SOFT_RESPONSE_LIMIT),
+                );
+                let block_access_lists = self
+                    .client
+                    .bal_store()
+                    .get_by_hashes_with_limit(&req.block_hashes, limit)
+                    .unwrap_or_default();
+                Ok(SnapResponse::BlockAccessLists(BlockAccessListsMessage {
+                    request_id: req.request_id,
+                    block_access_lists: BlockAccessLists(block_access_lists),
+                }))
+            }
+            // The peer sent us a response-shaped message instead of a request; not something we
+            // asked for.
+            _ => Err(RequestError::BadResponse),
+        };
+
+        let _ = response.send(result);
     }
 }
 
 /// An endless future.
 ///
 /// This should be spawned or used as part of `tokio::select!`.
-impl<C> Future for EthRequestHandler<C>
+impl<C, N> Future for EthRequestHandler<C, N>
 where
-    C: BlockReader + HeaderProvider + Unpin,
+    N: NetworkPrimitives,
+    C: BalProvider
+        + BlockReader<Block = N::Block, Receipt = N::Receipt>
+        + HeaderProvider<Header = N::BlockHeader>
+        + Unpin,
 {
     type Output = ();
 
@@ -252,6 +464,21 @@ where
                     IncomingEthRequest::GetReceipts { peer_id, request, response } => {
                         this.on_receipts_request(peer_id, request, response)
                     }
+                    IncomingEthRequest::GetReceipts69 { peer_id, request, response } => {
+                        this.on_receipts69_request(peer_id, request, response)
+                    }
+                    IncomingEthRequest::GetReceipts70 { peer_id, request, response } => {
+                        this.on_receipts70_request(peer_id, request, response)
+                    }
+                    IncomingEthRequest::GetBlockAccessLists { peer_id, request, response } => {
+                        this.on_block_access_lists_request(peer_id, request, response)
+                    }
+                    IncomingEthRequest::GetCells { peer_id, request, response } => {
+                        this.on_cells_request(peer_id, request, response)
+                    }
+                    IncomingEthRequest::GetSnap { peer_id, request, response } => {
+                        this.on_snap_request(peer_id, request, response)
+                    }
                 }
             },
         );
@@ -262,7 +489,6 @@ where
         if maybe_more_incoming_requests {
             // make sure we're woken up again
             cx.waker().wake_by_ref();
-            return Poll::Pending
         }
 
         Poll::Pending
@@ -271,7 +497,7 @@ where
 
 /// All `eth` request related to blocks delegated by the network.
 #[derive(Debug)]
-pub enum IncomingEthRequest {
+pub enum IncomingEthRequest<N: NetworkPrimitives = EthNetworkPrimitives> {
     /// Request Block headers from the peer.
     ///
     /// The response should be sent through the channel.
@@ -281,7 +507,7 @@ pub enum IncomingEthRequest {
         /// The specific block headers requested.
         request: GetBlockHeaders,
         /// The channel sender for the response containing block headers.
-        response: oneshot::Sender<RequestResult<BlockHeaders>>,
+        response: oneshot::Sender<RequestResult<BlockHeaders<N::BlockHeader>>>,
     },
     /// Request Block bodies from the peer.
     ///
@@ -292,7 +518,7 @@ pub enum IncomingEthRequest {
         /// The specific block bodies requested.
         request: GetBlockBodies,
         /// The channel sender for the response containing block bodies.
-        response: oneshot::Sender<RequestResult<BlockBodies>>,
+        response: oneshot::Sender<RequestResult<BlockBodies<N::BlockBody>>>,
     },
     /// Request Node Data from the peer.
     ///
@@ -314,6 +540,218 @@ pub enum IncomingEthRequest {
         /// The specific receipts requested.
         request: GetReceipts,
         /// The channel sender for the response containing receipts.
-        response: oneshot::Sender<RequestResult<Receipts>>,
+        response: oneshot::Sender<RequestResult<Receipts<N::Receipt>>>,
     },
+    /// Request Receipts from the peer without bloom filter.
+    ///
+    /// The response should be sent through the channel.
+    GetReceipts69 {
+        /// The ID of the peer to request receipts from.
+        peer_id: PeerId,
+        /// The specific receipts requested.
+        request: GetReceipts,
+        /// The channel sender for the response containing Receipts69.
+        response: oneshot::Sender<RequestResult<Receipts69<N::Receipt>>>,
+    },
+    /// Request Receipts from the peer using eth/70.
+    ///
+    /// The response should be sent through the channel.
+    GetReceipts70 {
+        /// The ID of the peer to request receipts from.
+        peer_id: PeerId,
+        /// The specific receipts requested including the `firstBlockReceiptIndex`.
+        request: GetReceipts70,
+        /// The channel sender for the response containing Receipts70.
+        response: oneshot::Sender<RequestResult<Receipts70<N::Receipt>>>,
+    },
+    /// Request Block Access Lists from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetBlockAccessLists {
+        /// The ID of the peer to request block access lists from.
+        peer_id: PeerId,
+        /// The requested block hashes.
+        request: GetBlockAccessLists,
+        /// The channel sender for the response containing block access lists.
+        response: oneshot::Sender<RequestResult<BlockAccessLists>>,
+    },
+    /// Request Cells from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetCells {
+        /// The ID of the peer to request cells from.
+        peer_id: PeerId,
+        /// The requested block hashes.
+        request: GetCells,
+        /// The channel sender for the response containing cells.
+        response: oneshot::Sender<RequestResult<Cells>>,
+    },
+    /// Request a `snap/2` message from the peer.
+    ///
+    /// The response should be sent through the channel.
+    GetSnap {
+        /// The ID of the peer to request from.
+        peer_id: PeerId,
+        /// The `snap/2` request.
+        request: SnapProtocolMessage,
+        /// The channel sender for the response.
+        response: oneshot::Sender<RequestResult<SnapResponse>>,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_eips::{
+        eip4844::{BlobAndProofV1, BlobAndProofV2, BlobCellsAndProofsV1},
+        eip7594::{BlobTransactionSidecarVariant, Cell},
+    };
+    use alloy_primitives::{TxHash, B128, B256};
+    use reth_network_api::test_utils::PeersHandle;
+    use reth_storage_api::noop::NoopProvider;
+    use reth_transaction_pool::blobstore::{BlobStoreCleanupStat, BlobStoreError};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use tokio::sync::mpsc;
+
+    #[derive(Debug, Default)]
+    struct CountingBlobStore {
+        get_cells_calls: Arc<AtomicUsize>,
+    }
+
+    impl BlobStore for CountingBlobStore {
+        fn insert(
+            &self,
+            _tx: B256,
+            _data: BlobTransactionSidecarVariant,
+        ) -> Result<(), BlobStoreError> {
+            Ok(())
+        }
+
+        fn insert_all(
+            &self,
+            _txs: Vec<(B256, BlobTransactionSidecarVariant)>,
+        ) -> Result<(), BlobStoreError> {
+            Ok(())
+        }
+
+        fn delete(&self, _tx: B256) -> Result<(), BlobStoreError> {
+            Ok(())
+        }
+
+        fn delete_all(&self, _txs: Vec<B256>) -> Result<(), BlobStoreError> {
+            Ok(())
+        }
+
+        fn cleanup(&self) -> BlobStoreCleanupStat {
+            BlobStoreCleanupStat::default()
+        }
+
+        fn get(
+            &self,
+            _tx: B256,
+        ) -> Result<Option<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
+            Ok(None)
+        }
+
+        fn contains(&self, _tx: B256) -> Result<bool, BlobStoreError> {
+            Ok(false)
+        }
+
+        fn get_all(
+            &self,
+            _txs: Vec<B256>,
+        ) -> Result<Vec<(B256, Arc<BlobTransactionSidecarVariant>)>, BlobStoreError> {
+            Ok(vec![])
+        }
+
+        fn get_exact(
+            &self,
+            txs: Vec<B256>,
+        ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
+            if txs.is_empty() {
+                return Ok(vec![]);
+            }
+
+            Err(BlobStoreError::MissingSidecar(txs[0]))
+        }
+
+        fn get_by_versioned_hashes_v1(
+            &self,
+            versioned_hashes: &[B256],
+        ) -> Result<Vec<Option<BlobAndProofV1>>, BlobStoreError> {
+            Ok(vec![None; versioned_hashes.len()])
+        }
+
+        fn get_by_versioned_hashes_v2(
+            &self,
+            _versioned_hashes: &[B256],
+        ) -> Result<Option<Vec<BlobAndProofV2>>, BlobStoreError> {
+            Ok(None)
+        }
+
+        fn get_by_versioned_hashes_v3(
+            &self,
+            versioned_hashes: &[B256],
+        ) -> Result<Vec<Option<BlobAndProofV2>>, BlobStoreError> {
+            Ok(vec![None; versioned_hashes.len()])
+        }
+
+        fn get_by_versioned_hashes_v4(
+            &self,
+            versioned_hashes: &[B256],
+            _indices_bitarray: B128,
+        ) -> Result<Vec<Option<BlobCellsAndProofsV1>>, BlobStoreError> {
+            Ok(vec![None; versioned_hashes.len()])
+        }
+
+        fn has_versioned_hashes(
+            &self,
+            versioned_hashes: &[B256],
+        ) -> Result<Vec<bool>, BlobStoreError> {
+            Ok(vec![false; versioned_hashes.len()])
+        }
+
+        fn get_cells(
+            &self,
+            _tx_hash: TxHash,
+            _indices_bitarray: B128,
+        ) -> Result<Option<Vec<Cell>>, BlobStoreError> {
+            self.get_cells_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(None)
+        }
+
+        fn data_size_hint(&self) -> Option<usize> {
+            Some(0)
+        }
+
+        fn blobs_len(&self) -> usize {
+            0
+        }
+    }
+
+    #[tokio::test]
+    async fn get_cells_request_limits_blob_store_lookups() {
+        let (peers_tx, _) = mpsc::unbounded_channel();
+        let (_incoming_tx, incoming_rx) = mpsc::channel(1);
+        let get_cells_calls = Arc::new(AtomicUsize::new(0));
+        let blob_store = CountingBlobStore { get_cells_calls: Arc::clone(&get_cells_calls) };
+        let handler = EthRequestHandler::<NoopProvider>::new(
+            NoopProvider::default(),
+            PeersHandle::new(peers_tx),
+            incoming_rx,
+        )
+        .with_blob_store(Box::new(blob_store));
+        let (response, rx) = oneshot::channel();
+        let request =
+            GetCells { hashes: vec![B256::ZERO; MAX_CELLS_SERVE + 1], cell_mask: B128::default() };
+
+        handler.on_cells_request(PeerId::default(), request, response);
+
+        let cells = rx.await.unwrap().unwrap();
+        assert!(cells.hashes.is_empty());
+        assert_eq!(get_cells_calls.load(Ordering::Relaxed), MAX_CELLS_SERVE);
+    }
 }

@@ -8,6 +8,10 @@ use core::{
 };
 
 use alloy_chains::Chain;
+use alloy_op_hardforks::{
+    OpHardfork, OP_MAINNET_ISTHMUS_TIMESTAMP, OP_MAINNET_JOVIAN_TIMESTAMP,
+    OP_SEPOLIA_ISTHMUS_TIMESTAMP, OP_SEPOLIA_JOVIAN_TIMESTAMP,
+};
 use alloy_primitives::U256;
 use reth_ethereum_forks::{hardfork, ChainHardforks, EthereumHardfork, ForkCondition, Hardfork};
 #[cfg(feature = "serde")]
@@ -25,6 +29,8 @@ hardfork!(
         Regolith,
         /// `Fermat`
         Fermat,
+        /// Snow (opBNB): L1 gas-price calculation uses median of last 21 BSC blocks.
+        Snow,
         /// <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#canyon>.
         Canyon,
         /// Ecotone: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#ecotone>.
@@ -37,6 +43,10 @@ hardfork!(
         Wright,
         /// Fjord: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#fjord>
         Fjord,
+        /// Volta (opBNB): shortens L2 block interval to 500ms.
+        Volta,
+        /// Fourier (opBNB): shortens L2 block interval to 250ms.
+        Fourier,
         /// Granite: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#granite>
         Granite,
         /// Holocene: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#holocene>
@@ -171,6 +181,8 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Bedrock => Some(0),
+                // bnb-chain/op-geth `OPBNBMainNetConfig.Fermat`
+                Self::Fermat => Some(9_397_477),
                 _ => None,
             },
         )
@@ -200,6 +212,8 @@ impl OptimismHardfork {
             |fork| match fork {
                 Self::Bedrock => Some(0),
                 Self::PreContractForkBlock => Some(5805494),
+                // bnb-chain/op-geth `OPBNBTestNetConfig.Fermat`
+                Self::Fermat => Some(12_113_000),
                 _ => None,
             },
         )
@@ -286,10 +300,18 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Regolith => Some(0),
-                Self::Fermat => Some(1701151200),
+                // Fermat is block-activated — see `opbnb_mainnet_activation_block`.
+                // Apr-15-2024 06:00 AM +UTC — bnb-chain/opbnb op-node/chaincfg
+                Self::Snow => Some(1713160800),
                 Self::Canyon => Some(1718870400),
                 Self::Ecotone => Some(1718871600),
                 Self::Haber => Some(1718872200),
+                Self::Wright => Some(1724738400),
+                Self::Fjord => Some(1727157600),
+                // Apr-21-2025 03:00 AM +UTC
+                Self::Volta => Some(1745204400),
+                // Jan-07-2026 03:00 AM +UTC
+                Self::Fourier => Some(1767754800),
                 _ => None,
             },
         )
@@ -306,10 +328,18 @@ impl OptimismHardfork {
             },
             |fork| match fork {
                 Self::Regolith => Some(0),
-                Self::Fermat => Some(1698991506),
+                // Fermat is block-activated — see `opbnb_testnet_activation_block`.
+                // May-15-2024 06:00 AM +UTC — bnb-chain/opbnb op-node/chaincfg
+                Self::Snow => Some(1715752800),
                 Self::Canyon => Some(1715753400),
                 Self::Ecotone => Some(1715754600),
                 Self::Haber => Some(1717048800),
+                Self::Wright => Some(1723701600),
+                Self::Fjord => Some(1725948000),
+                // Apr-02-2025 03:00 AM +UTC
+                Self::Volta => Some(1743562800),
+                // Nov-06-2025 03:00 AM +UTC
+                Self::Fourier => Some(1762398000),
                 _ => None,
             },
         )
@@ -333,7 +363,11 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(105235063)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(105235063), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 105235063,
+                    fork_block: Some(105235063),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(105235063)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
@@ -343,6 +377,12 @@ impl OptimismHardfork {
             (Self::Ecotone.boxed(), ForkCondition::Timestamp(1710374401)),
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1720627201)),
             (Self::Granite.boxed(), ForkCondition::Timestamp(1726070401)),
+            (
+                EthereumHardfork::Prague.boxed(),
+                ForkCondition::Timestamp(OP_MAINNET_ISTHMUS_TIMESTAMP),
+            ),
+            (OpHardfork::Isthmus.boxed(), ForkCondition::Timestamp(OP_MAINNET_ISTHMUS_TIMESTAMP)),
+            (OpHardfork::Jovian.boxed(), ForkCondition::Timestamp(OP_MAINNET_JOVIAN_TIMESTAMP)),
         ])
     }
 
@@ -364,7 +404,11 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
@@ -374,6 +418,13 @@ impl OptimismHardfork {
             (Self::Ecotone.boxed(), ForkCondition::Timestamp(1708534800)),
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1716998400)),
             (Self::Granite.boxed(), ForkCondition::Timestamp(1723478400)),
+            (Self::Holocene.boxed(), ForkCondition::Timestamp(1732633200)),
+            (
+                EthereumHardfork::Prague.boxed(),
+                ForkCondition::Timestamp(OP_SEPOLIA_ISTHMUS_TIMESTAMP),
+            ),
+            (OpHardfork::Isthmus.boxed(), ForkCondition::Timestamp(OP_SEPOLIA_ISTHMUS_TIMESTAMP)),
+            (OpHardfork::Jovian.boxed(), ForkCondition::Timestamp(OP_SEPOLIA_JOVIAN_TIMESTAMP)),
         ])
     }
 
@@ -395,7 +446,11 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
@@ -426,7 +481,11 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
@@ -457,11 +516,17 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
-            (Self::Fermat.boxed(), ForkCondition::Timestamp(1701151200)),
+            // Fermat is a *block* fork in bnb-chain/op-geth (`Fermat *big.Int`), not a timestamp.
+            (Self::Fermat.boxed(), ForkCondition::Block(9_397_477)),
+            (Self::Snow.boxed(), ForkCondition::Timestamp(1713160800)),
             (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(1718870400)),
             (Self::Canyon.boxed(), ForkCondition::Timestamp(1718870400)),
             (EthereumHardfork::Cancun.boxed(), ForkCondition::Timestamp(1718871600)),
@@ -469,6 +534,8 @@ impl OptimismHardfork {
             (Self::Haber.boxed(), ForkCondition::Timestamp(1718872200)),
             (Self::Wright.boxed(), ForkCondition::Timestamp(1724738400)),
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1727157600)),
+            (Self::Volta.boxed(), ForkCondition::Timestamp(1745204400)),
+            (Self::Fourier.boxed(), ForkCondition::Timestamp(1767754800)),
         ])
     }
 
@@ -490,12 +557,18 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
             (Self::PreContractForkBlock.boxed(), ForkCondition::Block(5805494)),
-            (Self::Fermat.boxed(), ForkCondition::Timestamp(1698991506)),
+            // Match op-geth: Fermat is a block fork (`Fermat *big.Int`).
+            (Self::Fermat.boxed(), ForkCondition::Block(12_113_000)),
+            (Self::Snow.boxed(), ForkCondition::Timestamp(1715752800)),
             (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(1715753400)),
             (Self::Canyon.boxed(), ForkCondition::Timestamp(1715753400)),
             (EthereumHardfork::Cancun.boxed(), ForkCondition::Timestamp(1715754600)),
@@ -503,6 +576,8 @@ impl OptimismHardfork {
             (Self::Haber.boxed(), ForkCondition::Timestamp(1717048800)),
             (Self::Wright.boxed(), ForkCondition::Timestamp(1723701600)),
             (Self::Fjord.boxed(), ForkCondition::Timestamp(1725948000)),
+            (Self::Volta.boxed(), ForkCondition::Timestamp(1743562800)),
+            (Self::Fourier.boxed(), ForkCondition::Timestamp(1762398000)),
         ])
     }
 
@@ -524,18 +599,26 @@ impl OptimismHardfork {
             (EthereumHardfork::GrayGlacier.boxed(), ForkCondition::Block(0)),
             (
                 EthereumHardfork::Paris.boxed(),
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
+                ForkCondition::TTD {
+                    activation_block_number: 0,
+                    fork_block: Some(0),
+                    total_difficulty: U256::ZERO,
+                },
             ),
             (Self::Bedrock.boxed(), ForkCondition::Block(0)),
             (Self::Regolith.boxed(), ForkCondition::Timestamp(0)),
             (Self::Fermat.boxed(), ForkCondition::Timestamp(0)),
+            (Self::Snow.boxed(), ForkCondition::Timestamp(0)),
             (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(0)),
             (Self::Canyon.boxed(), ForkCondition::Timestamp(0)),
             (EthereumHardfork::Cancun.boxed(), ForkCondition::Timestamp(0)),
             (Self::Ecotone.boxed(), ForkCondition::Timestamp(0)),
             (Self::Haber.boxed(), ForkCondition::Timestamp(0)),
             (Self::Wright.boxed(), ForkCondition::Timestamp(0)),
-            (Self::Fjord.boxed(), ForkCondition::Timestamp(0)),
+            // Aug-23-2024 06:00 AM +UTC — bnb-chain/opbnb OPBNBQANet
+            (Self::Fjord.boxed(), ForkCondition::Timestamp(1724392800)),
+            // Apr-02-2025 03:00 AM +UTC — Fourier unset on QA
+            (Self::Volta.boxed(), ForkCondition::Timestamp(1743562800)),
         ])
     }
 }

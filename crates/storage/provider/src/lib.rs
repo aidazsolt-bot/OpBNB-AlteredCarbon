@@ -10,7 +10,10 @@
     issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+/// Utility functions for initializing the database.
+pub mod init;
 
 /// Various provider traits.
 mod traits;
@@ -21,32 +24,45 @@ pub mod providers;
 pub use providers::{
     DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW, HistoricalStateProvider,
     HistoricalStateProviderRef, LatestStateProvider, LatestStateProviderRef, ProviderFactory,
-    StaticFileAccess, StaticFileWriter,
+    PruneShardOutcome, PrunedIndices, SaveBlocksMode, StaticFileAccess, StaticFileProviderBuilder,
+    StaticFileWriteCtx, StaticFileWriter,
 };
+
+pub mod changeset_walker;
+pub mod changesets_utils;
 
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers for mocking the Provider.
 pub mod test_utils;
 
-/// Re-export provider error.
-pub use reth_storage_errors::provider::{ProviderError, ProviderResult};
+pub mod either_writer;
+pub use either_writer::*;
 
-pub use reth_execution_types::*;
-
-pub mod bundle_state;
-
-/// Re-export `OriginalValuesKnown`
-pub use revm::db::states::OriginalValuesKnown;
-
-/// Writer standalone type.
 pub mod writer;
+
+mod bal;
+pub use bal::{BalConfig, InMemoryBalStore};
 
 pub use reth_chain_state::{
     CanonStateNotification, CanonStateNotificationSender, CanonStateNotificationStream,
     CanonStateNotifications, CanonStateSubscriptions,
 };
+pub use reth_execution_types::*;
+/// Re-export `OriginalValuesKnown`
+pub use revm::database::states::OriginalValuesKnown;
+// reexport traits to avoid breaking changes
+pub use reth_static_file_types as static_file;
+pub use reth_storage_api::{
+    BalNotification, BalNotificationStream, BalProvider, BalStore, BalStoreHandle,
+    GetBlockAccessListLimit, HistoryWriter, MetadataProvider, MetadataWriter, NoopBalStore, RawBal,
+    StateWriteConfig, StatsReader, StoragePath, StorageSettings, StorageSettingsCache,
+};
+/// Re-export provider error.
+pub use reth_storage_errors::provider::{ProviderError, ProviderResult};
+pub use static_file::StaticFileSegment;
 
-pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Range<u64> {
+/// Converts a [`RangeBounds`](std::ops::RangeBounds) into a concrete [`Range`](std::ops::Range)
+pub fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Range<u64> {
     let start = match bounds.start_bound() {
         std::ops::Bound::Included(&v) => v,
         std::ops::Bound::Excluded(&v) => v + 1,
@@ -60,4 +76,20 @@ pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Ra
     };
 
     start..end
+}
+
+/// Converts a value between two [`Compact`]-encodable types via a byte roundtrip.
+///
+/// This fork's DB tables (`tables::Headers`, `tables::Receipts`) are fixed to concrete storage
+/// types (`alloy_consensus::Header`, `reth_ethereum_primitives::Receipt`), while call sites are
+/// generic over `N::BlockHeader`/`N::Receipt`. Since `NodeTypesForProvider` requires both the
+/// storage type and the generic associated type to implement `Compact`, and today only
+/// `EthPrimitives` implements `NodePrimitives` (making `N::BlockHeader`/`N::Receipt` identical in
+/// practice to the concrete storage types), a `Compact` roundtrip is a safe, dependency-free way
+/// to bridge the two without requiring new `From` impls.
+pub fn compact_convert<From: reth_codecs::Compact, To: reth_codecs::Compact>(value: From) -> To {
+    let mut buf = Vec::new();
+    let len = value.to_compact(&mut buf);
+    let (converted, _) = To::from_compact(&buf, len);
+    converted
 }

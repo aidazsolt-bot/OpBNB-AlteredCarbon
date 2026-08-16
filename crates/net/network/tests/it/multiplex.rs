@@ -14,10 +14,13 @@ use reth_eth_wire::{
 };
 use reth_network::{
     protocol::{ConnectionHandler, OnNotSupported, ProtocolHandler},
-    test_utils::Testnet,
+    test_utils::{NetworkEventStream, Testnet},
+    NetworkConfigBuilder, NetworkEventListenerProvider, NetworkManager,
 };
-use reth_network_api::{Direction, PeerId};
-use reth_provider::test_utils::MockEthProvider;
+use reth_network_api::{Direction, NetworkInfo, PeerId, Peers};
+use reth_provider::{noop::NoopProvider, test_utils::MockEthProvider};
+use reth_tasks::Runtime;
+use secp256k1::SecretKey;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -46,7 +49,7 @@ mod proto {
         PongMessage(String),
     }
 
-    /// An protocol message, containing a message ID and payload.
+    /// A protocol message, containing a message ID and payload.
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct PingPongProtoMessage {
         pub message_type: PingPongProtoMessageId,
@@ -112,7 +115,7 @@ mod proto {
         /// Decodes a `TestProtoMessage` from the given message buffer.
         pub fn decode_message(buf: &mut &[u8]) -> Option<Self> {
             if buf.is_empty() {
-                return None
+                return None;
             }
             let id = buf[0];
             buf.advance(1);
@@ -167,7 +170,7 @@ struct ProtocolState {
 #[derive(Debug)]
 enum ProtocolEvent {
     Established {
-        #[allow(dead_code)]
+        #[expect(dead_code)]
         direction: Direction,
         peer_id: PeerId,
         to_connection: mpsc::UnboundedSender<Command>,
@@ -200,7 +203,7 @@ impl ConnectionHandler for PingPongConnectionHandler {
         _direction: Direction,
         _peer_id: PeerId,
     ) -> OnNotSupported {
-        OnNotSupported::KeepAlive
+        OnNotSupported::Disconnect
     }
 
     fn into_connection(
@@ -236,7 +239,7 @@ impl Stream for PingPongProtoConnection {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         if let Some(initial_ping) = this.initial_ping.take() {
-            return Poll::Ready(Some(initial_ping.encoded()))
+            return Poll::Ready(Some(initial_ping.encoded()));
         }
 
         loop {
@@ -246,12 +249,12 @@ impl Stream for PingPongProtoConnection {
                         this.pending_pong = Some(response);
                         Poll::Ready(Some(PingPongProtoMessage::ping_message(msg).encoded()))
                     }
-                }
+                };
             }
             let Some(msg) = ready!(this.conn.poll_next_unpin(cx)) else { return Poll::Ready(None) };
 
             let Some(msg) = PingPongProtoMessage::decode_message(&mut &msg[..]) else {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             };
 
             match msg.message {
@@ -266,13 +269,54 @@ impl Stream for PingPongProtoConnection {
                     if let Some(sender) = this.pending_pong.take() {
                         sender.send(msg).ok();
                     }
-                    continue
+                    continue;
                 }
             }
 
-            return Poll::Pending
+            return Poll::Pending;
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_connect_to_non_multiplex_peer() {
+    reth_tracing::init_test_tracing();
+
+    let net = Testnet::create(1).await;
+
+    let secret_key = SecretKey::new(&mut rand_08::thread_rng());
+
+    let config = NetworkConfigBuilder::eth(secret_key, Runtime::test())
+        .listener_port(0)
+        .disable_discovery()
+        .build(NoopProvider::default());
+
+    let mut network = NetworkManager::new(config).await.unwrap();
+
+    let (tx, _) = mpsc::unbounded_channel();
+    network.add_rlpx_sub_protocol(PingPongProtoHandler { state: ProtocolState { events: tx } });
+
+    let handle = network.handle().clone();
+    tokio::task::spawn(network);
+
+    // create networkeventstream to get the next session event easily.
+    let events = handle.event_listener();
+    let mut event_stream = NetworkEventStream::new(events);
+
+    let mut handles = net.handles();
+    let handle0 = handles.next().unwrap();
+    drop(handles);
+
+    let _handle = net.spawn();
+
+    handle.add_peer(*handle0.peer_id(), handle0.local_addr());
+
+    let added_peer_id = event_stream.peer_added().await.unwrap();
+    assert_eq!(added_peer_id, *handle0.peer_id());
+
+    // peer with mismatched capability version should fail to connect and be removed.
+    let removed_peer_id = event_stream.peer_removed().await.unwrap();
+    assert_eq!(removed_peer_id, *handle0.peer_id());
 }
 
 #[tokio::test(flavor = "multi_thread")]

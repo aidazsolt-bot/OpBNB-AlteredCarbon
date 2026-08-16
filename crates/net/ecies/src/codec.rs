@@ -58,14 +58,14 @@ impl Decoder for ECIESCodec {
     type Item = IngressECIESValue;
     type Error = ECIESError;
 
-    #[instrument(level = "trace", skip_all, fields(peer=?self.ecies.remote_id, state=?self.state))]
+    #[instrument(level = "trace", target = "net::ecies", skip_all, fields(peer=?self.ecies.remote_id, state=?self.state))]
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         loop {
             match self.state {
                 ECIESState::Auth => {
                     trace!("parsing auth");
                     if buf.len() < 2 {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let payload_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
@@ -73,18 +73,18 @@ impl Decoder for ECIESCodec {
 
                     if buf.len() < total_size {
                         trace!("current len {}, need {}", buf.len(), total_size);
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_auth(&mut buf.split_to(total_size))?;
 
                     self.state = ECIESState::InitialHeader;
-                    return Ok(Some(IngressECIESValue::AuthReceive(self.ecies.remote_id())))
+                    return Ok(Some(IngressECIESValue::AuthReceive(self.ecies.remote_id())));
                 }
                 ECIESState::Ack => {
                     trace!("parsing ack with len {}", buf.len());
                     if buf.len() < 2 {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let payload_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
@@ -92,30 +92,30 @@ impl Decoder for ECIESCodec {
 
                     if buf.len() < total_size {
                         trace!("current len {}, need {}", buf.len(), total_size);
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_ack(&mut buf.split_to(total_size))?;
 
                     self.state = ECIESState::InitialHeader;
-                    return Ok(Some(IngressECIESValue::Ack))
+                    return Ok(Some(IngressECIESValue::Ack));
                 }
                 ECIESState::InitialHeader => {
                     if buf.len() < ECIES::header_len() {
                         trace!("current len {}, need {}", buf.len(), ECIES::header_len());
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let body_size =
                         self.ecies.read_header(&mut buf.split_to(ECIES::header_len()))?;
 
                     if body_size > MAX_INITIAL_HANDSHAKE_SIZE {
-                        trace!(?body_size, max=?MAX_INITIAL_HANDSHAKE_SIZE, "Header exceeds max initial handshake size");
+                        trace!(?body_size, max=?MAX_INITIAL_HANDSHAKE_SIZE, "Body exceeds max initial handshake size");
                         return Err(ECIESErrorImpl::InitialHeaderBodyTooLarge {
                             body_size,
                             max_body_size: MAX_INITIAL_HANDSHAKE_SIZE,
                         }
-                        .into())
+                        .into());
                     }
 
                     self.state = ECIESState::Body;
@@ -123,7 +123,7 @@ impl Decoder for ECIESCodec {
                 ECIESState::Header => {
                     if buf.len() < ECIES::header_len() {
                         trace!("current len {}, need {}", buf.len(), ECIES::header_len());
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     self.ecies.read_header(&mut buf.split_to(ECIES::header_len()))?;
@@ -132,15 +132,18 @@ impl Decoder for ECIESCodec {
                 }
                 ECIESState::Body => {
                     if buf.len() < self.ecies.body_len() {
-                        return Ok(None)
+                        return Ok(None);
                     }
 
                     let mut data = buf.split_to(self.ecies.body_len());
-                    let mut ret = BytesMut::new();
-                    ret.extend_from_slice(self.ecies.read_body(&mut data)?);
+                    let body_len = {
+                        let body = self.ecies.read_body(&mut data)?;
+                        body.len()
+                    };
+                    data.truncate(body_len);
 
                     self.state = ECIESState::Header;
-                    return Ok(Some(IngressECIESValue::Message(ret)))
+                    return Ok(Some(IngressECIESValue::Message(data)));
                 }
             }
         }
@@ -150,7 +153,7 @@ impl Decoder for ECIESCodec {
 impl Encoder<EgressECIESValue> for ECIESCodec {
     type Error = io::Error;
 
-    #[instrument(level = "trace", skip(self, buf), fields(peer=?self.ecies.remote_id, state=?self.state))]
+    #[instrument(level = "trace", target = "net::ecies", skip(self, buf), fields(peer=?self.ecies.remote_id, state=?self.state))]
     fn encode(&mut self, item: EgressECIESValue, buf: &mut BytesMut) -> Result<(), Self::Error> {
         match item {
             EgressECIESValue::Auth => {

@@ -1,13 +1,13 @@
 use crate::{segment::PrunePurpose, PruneSegment, PruneSegmentError};
 use alloy_primitives::BlockNumber;
-use reth_codecs::{add_arbitrary_tests, Compact};
-use serde::{Deserialize, Serialize};
 
 /// Prune mode.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, Compact)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(any(test, feature = "test-utils"), derive(arbitrary::Arbitrary))]
-#[add_arbitrary_tests(compact)]
+#[cfg_attr(any(test, feature = "reth-codec"), derive(reth_codecs::Compact))]
+#[cfg_attr(any(test, feature = "reth-codec"), reth_codecs::add_arbitrary_tests(compact))]
+#[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(any(test, feature = "serde"), serde(rename_all = "lowercase"))]
 pub enum PruneMode {
     /// Prune all blocks.
     Full,
@@ -18,6 +18,7 @@ pub enum PruneMode {
 }
 
 #[cfg(any(test, feature = "test-utils"))]
+#[allow(clippy::derivable_impls)]
 impl Default for PruneMode {
     fn default() -> Self {
         Self::Full
@@ -41,15 +42,15 @@ impl PruneMode {
         purpose: PrunePurpose,
     ) -> Result<Option<(BlockNumber, Self)>, PruneSegmentError> {
         let result = match self {
-            Self::Full if segment.min_blocks(purpose) == 0 => Some((tip, *self)),
+            Self::Full if segment.min_blocks() == 0 => Some((tip, *self)),
             Self::Distance(distance) if *distance > tip => None, // Nothing to prune yet
-            Self::Distance(distance) if *distance >= segment.min_blocks(purpose) => {
+            Self::Distance(distance) if *distance >= segment.min_blocks() => {
                 Some((tip - distance, *self))
             }
             Self::Before(n) if *n == tip + 1 && purpose.is_static_file() => Some((tip, *self)),
             Self::Before(n) if *n > tip => None, // Nothing to prune yet
-            Self::Before(n) if tip - n >= segment.min_blocks(purpose) => {
-                Some(((*n).saturating_sub(1), *self))
+            Self::Before(n) => {
+                (tip - n >= segment.min_blocks()).then(|| ((*n).saturating_sub(1), *self))
             }
             _ => return Err(PruneSegmentError::Configuration(segment)),
         };
@@ -92,7 +93,7 @@ mod tests {
     #[test]
     fn test_prune_target_block() {
         let tip = 20000;
-        let segment = PruneSegment::Receipts;
+        let segment = PruneSegment::AccountHistory;
 
         let tests = vec![
             // MINIMUM_PRUNING_DISTANCE makes this impossible
@@ -100,8 +101,8 @@ mod tests {
             // Nothing to prune
             (PruneMode::Distance(tip + 1), Ok(None)),
             (
-                PruneMode::Distance(segment.min_blocks(PrunePurpose::User) + 1),
-                Ok(Some(tip - (segment.min_blocks(PrunePurpose::User) + 1))),
+                PruneMode::Distance(segment.min_blocks() + 1),
+                Ok(Some(tip - (segment.min_blocks() + 1))),
             ),
             // Nothing to prune
             (PruneMode::Before(tip + 1), Ok(None)),
@@ -113,7 +114,8 @@ mod tests {
                 PruneMode::Before(tip - MINIMUM_PRUNING_DISTANCE - 1),
                 Ok(Some(tip - MINIMUM_PRUNING_DISTANCE - 2)),
             ),
-            (PruneMode::Before(tip - 1), Err(PruneSegmentError::Configuration(segment))),
+            // Nothing to prune
+            (PruneMode::Before(tip - 1), Ok(None)),
         ];
 
         for (index, (mode, expected_result)) in tests.into_iter().enumerate() {
@@ -127,7 +129,11 @@ mod tests {
 
         // Test for a scenario where there are no minimum blocks and Full can be used
         assert_eq!(
-            PruneMode::Full.prune_target_block(tip, PruneSegment::Transactions, PrunePurpose::User),
+            PruneMode::Full.prune_target_block(
+                tip,
+                PruneSegment::TransactionLookup,
+                PrunePurpose::User
+            ),
             Ok(Some((tip, PruneMode::Full))),
         );
     }

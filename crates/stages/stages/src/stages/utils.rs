@@ -1,17 +1,25 @@
 //! Utils for `stages`.
-use alloy_primitives::BlockNumber;
+use alloy_primitives::{Address, BlockNumber, TxNumber, B256};
 use reth_config::config::EtlConfig;
-use reth_db::BlockNumberList;
 use reth_db_api::{
     cursor::{DbCursorRO, DbCursorRW},
-    models::sharded_key::NUM_OF_INDICES_IN_SHARD,
-    table::{Decompress, Table},
+    models::{
+        sharded_key::NUM_OF_INDICES_IN_SHARD, storage_sharded_key::StorageShardedKey,
+        AccountBeforeTx, AddressStorageKey, BlockNumberAddress, ShardedKey,
+    },
+    table::{Decode, Decompress, Table},
     transaction::{DbTx, DbTxMut},
-    DatabaseError,
+    BlockNumberList, DatabaseError,
 };
 use reth_etl::Collector;
-use reth_provider::DBProvider;
+use reth_primitives_traits::NodePrimitives;
+use reth_provider::{
+    providers::StaticFileProvider, to_range, BlockReader, DBProvider, EitherWriter, ProviderError,
+    StaticFileProviderFactory,
+};
 use reth_stages_api::StageError;
+use reth_static_file_types::StaticFileSegment;
+use reth_storage_api::{ChangeSetReader, StorageChangeSetReader};
 use std::{collections::HashMap, hash::Hash, ops::RangeBounds};
 use tracing::info;
 
@@ -53,12 +61,12 @@ where
     let mut collector = Collector::new(etl_config.file_size, etl_config.dir.clone());
     let mut cache: HashMap<P, Vec<u64>> = HashMap::default();
 
-    let mut collect = |cache: &HashMap<P, Vec<u64>>| {
-        for (key, indices) in cache {
-            let last = indices.last().expect("qed");
+    let mut collect = |cache: &mut HashMap<P, Vec<u64>>| {
+        for (key, indices) in cache.drain() {
+            let last = *indices.last().expect("qed");
             collector.insert(
-                sharded_key_factory(*key, *last),
-                BlockNumberList::new_pre_sorted(indices.iter().copied()),
+                sharded_key_factory(key, last),
+                BlockNumberList::new_pre_sorted(indices.into_iter()),
             )?;
         }
         Ok::<(), StageError>(())
@@ -72,9 +80,12 @@ where
     let mut current_block_number = u64::MAX;
     for (idx, entry) in changeset_cursor.walk_range(range)?.enumerate() {
         let (block_number, key) = partial_key_factory(entry?);
-        cache.entry(key).or_default().push(block_number);
+        let list = cache.entry(key).or_default();
+        if list.last().copied() != Some(block_number) {
+            list.push(block_number);
+        }
 
-        if idx > 0 && idx % interval == 0 && total_changesets > 1000 {
+        if idx > 0 && idx.is_multiple_of(interval) && total_changesets > 1000 {
             info!(target: "sync::stages::index_history", progress = %format!("{:.4}%", (idx as f64 / total_changesets as f64) * 100.0), "Collecting indices");
         }
 
@@ -83,15 +94,438 @@ where
             current_block_number = block_number;
             flush_counter += 1;
             if flush_counter > DEFAULT_CACHE_THRESHOLD {
-                collect(&cache)?;
-                cache.clear();
+                collect(&mut cache)?;
                 flush_counter = 0;
             }
         }
     }
-    collect(&cache)?;
+    collect(&mut cache)?;
 
     Ok(collector)
+}
+
+/// Allows collecting indices from a cache with a custom insert fn
+fn collect_indices<K, F>(
+    cache: impl Iterator<Item = (K, Vec<u64>)>,
+    mut insert_fn: F,
+) -> Result<(), StageError>
+where
+    F: FnMut(K, Vec<u64>) -> Result<(), StageError>,
+{
+    for (key, indices) in cache {
+        insert_fn(key, indices)?
+    }
+    Ok(())
+}
+
+/// Collects account history indices using a provider that implements `ChangeSetReader`.
+pub(crate) fn collect_account_history_indices<Provider>(
+    provider: &Provider,
+    range: impl RangeBounds<BlockNumber>,
+    etl_config: &EtlConfig,
+) -> Result<Collector<ShardedKey<Address>, BlockNumberList>, StageError>
+where
+    Provider: DBProvider + ChangeSetReader + StaticFileProviderFactory,
+{
+    let mut collector = Collector::new(etl_config.file_size, etl_config.dir.clone());
+    let mut cache: HashMap<Address, Vec<u64>> = HashMap::default();
+
+    let mut insert_fn = |address: Address, indices: Vec<u64>| {
+        let last = indices.last().expect("qed");
+        collector.insert(
+            ShardedKey::new(address, *last),
+            BlockNumberList::new_pre_sorted(indices.into_iter()),
+        )?;
+        Ok::<(), StageError>(())
+    };
+
+    // Convert range bounds to concrete range
+    let range = to_range(range);
+
+    // Use the new walker for lazy iteration over static file changesets
+    let static_file_provider = provider.static_file_provider();
+
+    // Get total count for progress reporting
+    let total_changesets = static_file_provider.account_changeset_count()?;
+    let interval = (total_changesets / 1000).max(1);
+
+    let walker = static_file_provider.walk_account_changeset_range(range);
+
+    let mut flush_counter = 0;
+    let mut current_block_number = u64::MAX;
+
+    for (idx, changeset_result) in walker.enumerate() {
+        let (block_number, AccountBeforeTx { address, .. }) = changeset_result?;
+        let list = cache.entry(address).or_default();
+        // Same address can appear multiple times in one block's changeset; roaring lists require
+        // strictly increasing values.
+        if list.last().copied() != Some(block_number) {
+            list.push(block_number);
+        }
+
+        if idx > 0 && idx % interval == 0 && total_changesets > 1000 {
+            info!(target: "sync::stages::index_history", progress = %format!("{:.4}%", (idx as f64 / total_changesets as f64) * 100.0), "Collecting indices");
+        }
+
+        if block_number != current_block_number {
+            current_block_number = block_number;
+            flush_counter += 1;
+        }
+
+        if flush_counter > DEFAULT_CACHE_THRESHOLD {
+            collect_indices(cache.drain(), &mut insert_fn)?;
+            flush_counter = 0;
+        }
+    }
+    collect_indices(cache.into_iter(), insert_fn)?;
+
+    Ok(collector)
+}
+
+/// Collects storage history indices using a provider that implements `StorageChangeSetReader`.
+pub(crate) fn collect_storage_history_indices<Provider>(
+    provider: &Provider,
+    range: impl RangeBounds<BlockNumber>,
+    etl_config: &EtlConfig,
+) -> Result<Collector<StorageShardedKey, BlockNumberList>, StageError>
+where
+    Provider: DBProvider + StorageChangeSetReader + StaticFileProviderFactory,
+{
+    let mut collector = Collector::new(etl_config.file_size, etl_config.dir.clone());
+    let mut cache: HashMap<AddressStorageKey, Vec<u64>> = HashMap::default();
+
+    let mut insert_fn = |key: AddressStorageKey, indices: Vec<u64>| {
+        let last = indices.last().expect("qed");
+        collector.insert(
+            StorageShardedKey::new(key.0 .0, key.0 .1, *last),
+            BlockNumberList::new_pre_sorted(indices.into_iter()),
+        )?;
+        Ok::<(), StageError>(())
+    };
+
+    let range = to_range(range);
+    let start_block = range.start;
+    let static_file_provider = provider.static_file_provider();
+
+    let walker = static_file_provider.walk_storage_changeset_range(range);
+
+    let mut flush_counter = 0;
+    let mut current_block_number = u64::MAX;
+
+    for changeset_result in walker {
+        let (BlockNumberAddress((block_number, address)), storage) = changeset_result?;
+        let list = cache.entry(AddressStorageKey((address, storage.key))).or_default();
+        if list.last().copied() != Some(block_number) {
+            list.push(block_number);
+        }
+
+        if block_number != current_block_number {
+            current_block_number = block_number;
+            flush_counter += 1;
+        }
+
+        if flush_counter > DEFAULT_CACHE_THRESHOLD {
+            info!(
+                target: "sync::stages::index_history",
+                processed_blocks = current_block_number.saturating_sub(start_block) + 1,
+                current_block = current_block_number,
+                "Collecting indices"
+            );
+            collect_indices(cache.drain(), &mut insert_fn)?;
+            flush_counter = 0;
+        }
+    }
+
+    collect_indices(cache.into_iter(), insert_fn)?;
+
+    Ok(collector)
+}
+
+/// Loads account history indices into the database via `EitherWriter`.
+pub(crate) fn load_account_history<N, CURSOR>(
+    mut collector: Collector<ShardedKey<Address>, BlockNumberList>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::AccountsHistory>
+        + DbCursorRO<reth_db_api::tables::AccountsHistory>,
+{
+    let mut current_address: Option<Address> = None;
+    let mut current_list = Vec::<u64>::new();
+
+    let total_entries = collector.len();
+    let interval = (total_entries / 10).max(1);
+
+    for (index, element) in collector.iter()?.enumerate() {
+        let (k, v) = element?;
+        let sharded_key = ShardedKey::<Address>::decode_owned(k)?;
+        let new_list = BlockNumberList::decompress_owned(v)?;
+
+        if index > 0 && index.is_multiple_of(interval) && total_entries > 10 {
+            info!(target: "sync::stages::index_history", progress = %format!("{:.2}%", (index as f64 / total_entries as f64) * 100.0), "Writing indices");
+        }
+
+        let address = sharded_key.key;
+
+        if current_address != Some(address) {
+            if let Some(prev_addr) = current_address {
+                flush_account_history_shards(prev_addr, &mut current_list, append_only, writer)?;
+            }
+
+            current_address = Some(address);
+            current_list.clear();
+
+            if !append_only &&
+                let Some(last_shard) = writer.get_last_account_history_shard(address)?
+            {
+                current_list.extend(last_shard.iter());
+            }
+        }
+
+        current_list.extend(new_list.iter());
+        flush_account_history_shards_partial(address, &mut current_list, append_only, writer)?;
+    }
+
+    if let Some(addr) = current_address {
+        flush_account_history_shards(addr, &mut current_list, append_only, writer)?;
+    }
+
+    Ok(())
+}
+
+fn flush_account_history_shards_partial<N, CURSOR>(
+    address: Address,
+    list: &mut Vec<u64>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::AccountsHistory>
+        + DbCursorRO<reth_db_api::tables::AccountsHistory>,
+{
+    if list.len() <= NUM_OF_INDICES_IN_SHARD {
+        return Ok(());
+    }
+
+    let num_full_shards = list.len() / NUM_OF_INDICES_IN_SHARD;
+
+    let shards_to_flush = if list.len().is_multiple_of(NUM_OF_INDICES_IN_SHARD) {
+        num_full_shards - 1
+    } else {
+        num_full_shards
+    };
+
+    if shards_to_flush == 0 {
+        return Ok(());
+    }
+
+    let flush_len = shards_to_flush * NUM_OF_INDICES_IN_SHARD;
+    let remainder = list.split_off(flush_len);
+
+    for chunk in list.chunks(NUM_OF_INDICES_IN_SHARD) {
+        let highest = *chunk.last().expect("chunk is non-empty");
+        let key = ShardedKey::new(address, highest);
+        let value = BlockNumberList::new_pre_sorted(chunk.iter().copied());
+
+        if append_only {
+            writer.append_account_history(key, &value)?;
+        } else {
+            writer.upsert_account_history(key, &value)?;
+        }
+    }
+
+    *list = remainder;
+    Ok(())
+}
+
+fn flush_account_history_shards<N, CURSOR>(
+    address: Address,
+    list: &mut Vec<u64>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::AccountsHistory>
+        + DbCursorRO<reth_db_api::tables::AccountsHistory>,
+{
+    if list.is_empty() {
+        return Ok(());
+    }
+
+    let num_chunks = list.len().div_ceil(NUM_OF_INDICES_IN_SHARD);
+
+    for (i, chunk) in list.chunks(NUM_OF_INDICES_IN_SHARD).enumerate() {
+        let is_last = i == num_chunks - 1;
+
+        let highest = if is_last { u64::MAX } else { *chunk.last().expect("chunk is non-empty") };
+
+        let key = ShardedKey::new(address, highest);
+        let value = BlockNumberList::new_pre_sorted(chunk.iter().copied());
+
+        if append_only {
+            writer.append_account_history(key, &value)?;
+        } else {
+            writer.upsert_account_history(key, &value)?;
+        }
+    }
+
+    list.clear();
+    Ok(())
+}
+
+/// Loads storage history indices into the database via `EitherWriter`.
+pub(crate) fn load_storage_history<N, CURSOR>(
+    mut collector: Collector<StorageShardedKey, BlockNumberList>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::StoragesHistory>
+        + DbCursorRO<reth_db_api::tables::StoragesHistory>,
+{
+    let mut current_key: Option<(Address, B256)> = None;
+    let mut current_list = Vec::<u64>::new();
+
+    let total_entries = collector.len();
+    let interval = (total_entries / 10).max(1);
+
+    for (index, element) in collector.iter()?.enumerate() {
+        let (k, v) = element?;
+        let sharded_key = StorageShardedKey::decode_owned(k)?;
+        let new_list = BlockNumberList::decompress_owned(v)?;
+
+        if index > 0 && index.is_multiple_of(interval) && total_entries > 10 {
+            info!(target: "sync::stages::index_history", progress = %format!("{:.2}%", (index as f64 / total_entries as f64) * 100.0), "Writing indices");
+        }
+
+        let partial_key = (sharded_key.address, sharded_key.sharded_key.key);
+
+        if current_key != Some(partial_key) {
+            if let Some((prev_addr, prev_storage_key)) = current_key {
+                flush_storage_history_shards(
+                    prev_addr,
+                    prev_storage_key,
+                    &mut current_list,
+                    append_only,
+                    writer,
+                )?;
+            }
+
+            current_key = Some(partial_key);
+            current_list.clear();
+
+            if !append_only &&
+                let Some(last_shard) =
+                    writer.get_last_storage_history_shard(partial_key.0, partial_key.1)?
+            {
+                current_list.extend(last_shard.iter());
+            }
+        }
+
+        current_list.extend(new_list.iter());
+        flush_storage_history_shards_partial(
+            partial_key.0,
+            partial_key.1,
+            &mut current_list,
+            append_only,
+            writer,
+        )?;
+    }
+
+    if let Some((addr, storage_key)) = current_key {
+        flush_storage_history_shards(addr, storage_key, &mut current_list, append_only, writer)?;
+    }
+
+    Ok(())
+}
+
+fn flush_storage_history_shards_partial<N, CURSOR>(
+    address: Address,
+    storage_key: B256,
+    list: &mut Vec<u64>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::StoragesHistory>
+        + DbCursorRO<reth_db_api::tables::StoragesHistory>,
+{
+    if list.len() <= NUM_OF_INDICES_IN_SHARD {
+        return Ok(());
+    }
+
+    let num_full_shards = list.len() / NUM_OF_INDICES_IN_SHARD;
+
+    let shards_to_flush = if list.len().is_multiple_of(NUM_OF_INDICES_IN_SHARD) {
+        num_full_shards - 1
+    } else {
+        num_full_shards
+    };
+
+    if shards_to_flush == 0 {
+        return Ok(());
+    }
+
+    let flush_len = shards_to_flush * NUM_OF_INDICES_IN_SHARD;
+    let remainder = list.split_off(flush_len);
+
+    for chunk in list.chunks(NUM_OF_INDICES_IN_SHARD) {
+        let highest = *chunk.last().expect("chunk is non-empty");
+        let key = StorageShardedKey::new(address, storage_key, highest);
+        let value = BlockNumberList::new_pre_sorted(chunk.iter().copied());
+
+        if append_only {
+            writer.append_storage_history(key, &value)?;
+        } else {
+            writer.upsert_storage_history(key, &value)?;
+        }
+    }
+
+    *list = remainder;
+    Ok(())
+}
+
+fn flush_storage_history_shards<N, CURSOR>(
+    address: Address,
+    storage_key: B256,
+    list: &mut Vec<u64>,
+    append_only: bool,
+    writer: &mut EitherWriter<'_, CURSOR, N>,
+) -> Result<(), StageError>
+where
+    N: NodePrimitives,
+    CURSOR: DbCursorRW<reth_db_api::tables::StoragesHistory>
+        + DbCursorRO<reth_db_api::tables::StoragesHistory>,
+{
+    if list.is_empty() {
+        return Ok(());
+    }
+
+    let num_chunks = list.len().div_ceil(NUM_OF_INDICES_IN_SHARD);
+
+    for (i, chunk) in list.chunks(NUM_OF_INDICES_IN_SHARD).enumerate() {
+        let is_last = i == num_chunks - 1;
+
+        let highest = if is_last { u64::MAX } else { *chunk.last().expect("chunk is non-empty") };
+
+        let key = StorageShardedKey::new(address, storage_key, highest);
+        let value = BlockNumberList::new_pre_sorted(chunk.iter().copied());
+
+        if append_only {
+            writer.append_storage_history(key, &value)?;
+        } else {
+            writer.upsert_storage_history(key, &value)?;
+        }
+    }
+
+    list.clear();
+    Ok(())
 }
 
 /// Given a [`Collector`] created by [`collect_history_indices`] it iterates all entries, loading
@@ -121,14 +555,14 @@ where
 
     // observability
     let total_entries = collector.len();
-    let interval = (total_entries / 100).max(1);
+    let interval = (total_entries / 10).max(1);
 
     for (index, element) in collector.iter()?.enumerate() {
         let (k, v) = element?;
         let sharded_key = decode_key(k)?;
         let new_list = BlockNumberList::decompress_owned(v)?;
 
-        if index > 0 && index % interval == 0 && total_entries > 100 {
+        if index > 0 && index.is_multiple_of(interval) && total_entries > 10 {
             info!(target: "sync::stages::index_history", progress = %format!("{:.2}%", (index as f64 / total_entries as f64) * 100.0), "Writing indices");
         }
 
@@ -153,12 +587,11 @@ where
 
             // If it's not the first sync, there might an existing shard already, so we need to
             // merge it with the one coming from the collector
-            if !append_only {
-                if let Some((_, last_database_shard)) =
+            if !append_only &&
+                let Some((_, last_database_shard)) =
                     write_cursor.seek_exact(sharded_key_factory(current_partial, u64::MAX))?
-                {
-                    current_list.extend(last_database_shard.iter());
-                }
+            {
+                current_list.extend(last_database_shard.iter());
             }
         }
 
@@ -220,9 +653,9 @@ where
                 let value = BlockNumberList::new_pre_sorted(chunk);
 
                 if append_only {
-                    cursor.append(key, value)?;
+                    cursor.append(key, &value)?;
                 } else {
-                    cursor.upsert(key, value)?;
+                    cursor.upsert(key, &value)?;
                 }
             }
         }
@@ -243,4 +676,40 @@ impl LoadMode {
     const fn is_flush(&self) -> bool {
         matches!(self, Self::Flush)
     }
+}
+
+/// Called when database is ahead of static files. Attempts to find the first block we are missing
+/// transactions for.
+pub(crate) fn missing_static_data_error<Provider>(
+    last_tx_num: TxNumber,
+    static_file_provider: &StaticFileProvider<Provider::Primitives>,
+    provider: &Provider,
+    segment: StaticFileSegment,
+) -> Result<StageError, ProviderError>
+where
+    Provider: BlockReader + StaticFileProviderFactory,
+{
+    let mut last_block =
+        static_file_provider.get_highest_static_file_block(segment).unwrap_or_default();
+
+    // To be extra safe, we make sure that the last tx num matches the last block from its indices.
+    // If not, get it.
+    loop {
+        if let Some(indices) = provider.block_body_indices(last_block)? &&
+            indices.last_tx_num() <= last_tx_num
+        {
+            break
+        }
+        if last_block == 0 {
+            break
+        }
+        last_block -= 1;
+    }
+
+    let missing_block = Box::new(provider.sealed_header(last_block + 1)?.unwrap_or_default());
+
+    Ok(StageError::MissingStaticFileData {
+        block: Box::new(missing_block.block_with_parent()),
+        segment,
+    })
 }

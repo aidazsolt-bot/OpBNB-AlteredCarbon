@@ -5,10 +5,8 @@
 // The `bsc` feature must be enabled to use this crate.
 #![cfg(feature = "bsc")]
 
-pub use reth_ethereum_engine_primitives::EthEngineTypes;
-
-pub mod evm;
-pub use evm::{BscEvmConfig, BscExecutorProvider};
+pub mod engine;
+pub use engine::BscEngineValidator;
 
 pub mod node;
 pub use node::BscNode;

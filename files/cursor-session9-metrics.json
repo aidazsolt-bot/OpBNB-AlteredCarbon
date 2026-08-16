@@ -1,0 +1,86 @@
+{
+  "snapshot_utc": "2026-08-10T08:30:00+00:00",
+  "parent_chat_id": "6a6455c9-fa6c-4041-9f05-7d7048ad60d4",
+  "related_prior_chat_id": "9be255b9-5dc9-4946-a76f-8653be457045",
+  "note": "Session 9: resume interrupted PORT-STOR-006 + YOLO Phase-5 nextest/EF. Includes prior evening StorageChangeSets port chat that was NW-interrupted. Continued same chat through EF gas-mismatch rootcause (fixtures v17.0 + Bytecode Compact re-analyze). Billed token meter unavailable locally; transcript chars/4 is a content proxy only.",
+  "wall_clock": {
+    "local_tz": "Europe/Berlin (UTC+2)",
+    "resume_chat_start_local": "2026-08-10 07:57",
+    "effort_doc_snapshot_local": "2026-08-10 10:31",
+    "resume_chat_wall_hours_approx": 2.5,
+    "commit_span_local": "2026-08-10 08:06 – ~10:27",
+    "commit_span_hours_approx": 2.3,
+    "prior_scs_chat_local": "2026-08-09 ~22:13 (interrupted before final verify)"
+  },
+  "transcripts": {
+    "resume_chat": {
+      "path": "/root/.cursor/projects/usr-src-Erigon-Binance-reth-bsc-trail-git/agent-transcripts/6a6455c9-fa6c-4041-9f05-7d7048ad60d4/6a6455c9-fa6c-4041-9f05-7d7048ad60d4.jsonl",
+      "lines": 129,
+      "chars": 110339,
+      "token_estimate_div4": 27584,
+      "user_msgs": 12,
+      "assistant_msgs": 118,
+      "tool_use_observed": 250,
+      "top_tools": {
+        "Shell": 82,
+        "Read": 76,
+        "Grep": 37,
+        "AwaitShell": 22,
+        "StrReplace": 19,
+        "TodoWrite": 9,
+        "Task": 3
+      }
+    },
+    "prior_scs_chat": {
+      "path": "/root/.cursor/projects/usr-src-Erigon-Binance-reth-bsc-trail-git/agent-transcripts/9be255b9-5dc9-4946-a76f-8653be457045/9be255b9-5dc9-4946-a76f-8653be457045.jsonl",
+      "lines": 304,
+      "chars": 276389,
+      "token_estimate_div4": 69097,
+      "tool_use_observed_approx": 306
+    },
+    "combined_token_proxy_div4": 96682
+  },
+  "models": "Parent Auto/Composer router (no per-request model ledger in transcript); subagents inherit",
+  "subagents_task_tool": 3,
+  "commits_this_session": [
+    "d93bd7ea0 feat(storage): port StorageChangeSets static-file segment for v2",
+    "f6f05157e fix(provider): add RocksDBProvider::clear to stub API",
+    "b4eabb869 fix(stages): restore StorageSettings test shims and stages --tests deps",
+    "54059d887 fix(op-primitives): make lib tests compile under nextest",
+    "46ca9055e fix(op): green nextest for consensus and evm libs",
+    "c73eaa747 fix(static-file): implement header_td_by_number for Headers jars",
+    "35c2bb28a fix(op,static-file): green op-node/rpc nextest; skip empty Sidecars checks",
+    "5b8488b60 test(stages): ignore deferred preimage and storage.v2 pipeline cases"
+  ],
+  "milestones": [
+    "PORT-STOR-006 StorageChangeSets SF (.csoff) closed; storage_changesets_in_static_files → storage_v2",
+    "RocksDBProvider::clear stub so prune/stages compile without rocksdb feature",
+    "stages --tests compile + nextest 106/106 (8 skipped: preimage + pipeline_v2 deferred)",
+    "op-primitives nextest 26/26; consensus+evm 53/53; op-node+rpc 51/51 (+1 skipped)",
+    "header_td_by_number real Headers-jar reader (unblocked insert_block >0)",
+    "Sidecars consistency only when SF data exists (false Unwind(0))",
+    "EF fixtures v12.2 fetched; inventory run logged"
+  ],
+  "verification": {
+    "stages_nextest": "106 passed, 8 skipped (files/yolo-nextest-stages-final.log)",
+    "op_primitives_nextest": "26/26",
+    "op_consensus_evm_nextest": "53/53",
+    "op_node_rpc_nextest": "51 passed, 1 skipped (files/yolo-nextest-op-node-rpc-verify.log)",
+    "ef_tests_inventory": {
+      "command": "cargo nextest run -p ef-tests --features ef-tests --no-fail-fast --retries 0",
+      "log": "files/yolo-ef-tests-full.log",
+      "suite_summary": "62 suites: 32 passed, 29 failed, 1 timed out",
+      "case_proxy_from_Ran_lines": "~1303 passed / ~240 failed / ~11 skipped across suites that printed Ran counts",
+      "dominant_failure_mode": "block gas used mismatch / state-root style execution drift"
+    }
+  },
+  "open_followups": [
+    "EF gas-mismatch root cause (revm/spec / bad-opcode accounting)",
+    "test_pipeline_v2 state-root under storage.v2 (ignored; needs trie/hashed-state)",
+    "preimage Cancun auxiliary DB tests (ignored; deferred with trie)",
+    "PORT-P2P-001 live peerCount verify after rebuild",
+    "Human catch-up / full sync"
+  ],
+  "ai_code_hashes_db_total_at_snapshot": 686025,
+  "illustrative_note": "Cursor billed meter n/a on disk; use account dashboard. Transcript ÷4 undercounts tool/context repetition."
+}

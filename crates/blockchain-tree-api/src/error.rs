@@ -1,11 +1,13 @@
 //! Error handling for the blockchain tree
 
+use alloy_consensus::BlockHeader;
 use alloy_primitives::{BlockHash, BlockNumber};
 use reth_consensus::ConsensusError;
 use reth_execution_errors::{
     BlockExecutionError, BlockValidationError, InternalBlockExecutionError,
 };
-use reth_primitives::SealedBlock;
+use reth_primitives::{SealedBlock, SealedBlockFor};
+use reth_primitives_traits::{Block, BlockBody};
 pub use reth_storage_errors::provider::ProviderError;
 
 /// Various error cases that can occur when a block violates tree assumptions.
@@ -53,7 +55,7 @@ pub enum BlockchainTreeError {
 }
 
 /// Canonical Errors
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug)]
 pub enum CanonicalError {
     /// Error originating from validation operations.
     #[error(transparent)]
@@ -71,7 +73,7 @@ pub enum CanonicalError {
     #[error("transaction error on commit: {0}")]
     CanonicalCommit(String),
     /// Error indicating that a previous optimistic sync target was re-orged
-    #[error("transaction error on revert: {0}")]
+    #[error("optimistic sync target was re-orged at block: {0}")]
     OptimisticTargetRevert(BlockNumber),
 }
 
@@ -164,40 +166,15 @@ impl std::fmt::Debug for InsertBlockError {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("Failed to insert block (hash={}, number={}, parent_hash={}): {kind}",
+        .block.hash(),
+        .block.number,
+        .block.parent_hash)]
 struct InsertBlockErrorData {
     block: SealedBlock,
+    #[source]
     kind: InsertBlockErrorKind,
-}
-
-impl std::fmt::Display for InsertBlockErrorData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Failed to insert block (hash={}, number={}, parent_hash={}): {}",
-            self.block.hash(),
-            self.block.number,
-            self.block.parent_hash,
-            self.kind
-        )
-    }
-}
-
-impl std::fmt::Debug for InsertBlockErrorData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("InsertBlockError")
-            .field("error", &self.kind)
-            .field("hash", &self.block.hash())
-            .field("number", &self.block.number)
-            .field("parent_hash", &self.block.parent_hash)
-            .field("num_txs", &self.block.body.transactions.len())
-            .finish_non_exhaustive()
-    }
-}
-
-impl core::error::Error for InsertBlockErrorData {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        Some(&self.kind)
-    }
 }
 
 impl InsertBlockErrorData {
@@ -210,48 +187,36 @@ impl InsertBlockErrorData {
     }
 }
 
-struct InsertBlockErrorDataTwo {
-    block: SealedBlock,
+#[derive(thiserror::Error)]
+#[error("Failed to insert block (hash={}, number={}, parent_hash={}): {}",
+    .block.hash(),
+    .block.number(),
+    .block.parent_hash(),
+    .kind)]
+struct InsertBlockErrorDataTwo<B: Block> {
+    block: SealedBlockFor<B>,
+    #[source]
     kind: InsertBlockErrorKindTwo,
 }
 
-impl std::fmt::Display for InsertBlockErrorDataTwo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Failed to insert block (hash={}, number={}, parent_hash={}): {}",
-            self.block.hash(),
-            self.block.number,
-            self.block.parent_hash,
-            self.kind
-        )
-    }
-}
-
-impl std::fmt::Debug for InsertBlockErrorDataTwo {
+impl<B: Block> std::fmt::Debug for InsertBlockErrorDataTwo<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InsertBlockError")
             .field("error", &self.kind)
             .field("hash", &self.block.hash())
-            .field("number", &self.block.number)
-            .field("parent_hash", &self.block.parent_hash)
-            .field("num_txs", &self.block.body.transactions.len())
+            .field("number", &self.block.number())
+            .field("parent_hash", &self.block.parent_hash())
+            .field("num_txs", &self.block.body().transactions().len())
             .finish_non_exhaustive()
     }
 }
 
-impl core::error::Error for InsertBlockErrorDataTwo {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        Some(&self.kind)
-    }
-}
-
-impl InsertBlockErrorDataTwo {
-    const fn new(block: SealedBlock, kind: InsertBlockErrorKindTwo) -> Self {
+impl<B: Block> InsertBlockErrorDataTwo<B> {
+    const fn new(block: SealedBlockFor<B>, kind: InsertBlockErrorKindTwo) -> Self {
         Self { block, kind }
     }
 
-    fn boxed(block: SealedBlock, kind: InsertBlockErrorKindTwo) -> Box<Self> {
+    fn boxed(block: SealedBlockFor<B>, kind: InsertBlockErrorKindTwo) -> Box<Self> {
         Box::new(Self::new(block, kind))
     }
 }
@@ -259,36 +224,36 @@ impl InsertBlockErrorDataTwo {
 /// Error thrown when inserting a block failed because the block is considered invalid.
 #[derive(thiserror::Error)]
 #[error(transparent)]
-pub struct InsertBlockErrorTwo {
-    inner: Box<InsertBlockErrorDataTwo>,
+pub struct InsertBlockErrorTwo<B: Block> {
+    inner: Box<InsertBlockErrorDataTwo<B>>,
 }
 
 // === impl InsertBlockErrorTwo ===
 
-impl InsertBlockErrorTwo {
+impl<B: Block> InsertBlockErrorTwo<B> {
     /// Create a new `InsertInvalidBlockErrorTwo`
-    pub fn new(block: SealedBlock, kind: InsertBlockErrorKindTwo) -> Self {
+    pub fn new(block: SealedBlockFor<B>, kind: InsertBlockErrorKindTwo) -> Self {
         Self { inner: InsertBlockErrorDataTwo::boxed(block, kind) }
     }
 
     /// Create a new `InsertInvalidBlockError` from a consensus error
-    pub fn consensus_error(error: ConsensusError, block: SealedBlock) -> Self {
+    pub fn consensus_error(error: ConsensusError, block: SealedBlockFor<B>) -> Self {
         Self::new(block, InsertBlockErrorKindTwo::Consensus(error))
     }
 
     /// Create a new `InsertInvalidBlockError` from a consensus error
-    pub fn sender_recovery_error(block: SealedBlock) -> Self {
+    pub fn sender_recovery_error(block: SealedBlockFor<B>) -> Self {
         Self::new(block, InsertBlockErrorKindTwo::SenderRecovery)
     }
 
     /// Create a new `InsertInvalidBlockError` from an execution error
-    pub fn execution_error(error: BlockExecutionError, block: SealedBlock) -> Self {
+    pub fn execution_error(error: BlockExecutionError, block: SealedBlockFor<B>) -> Self {
         Self::new(block, InsertBlockErrorKindTwo::Execution(error))
     }
 
     /// Consumes the error and returns the block that resulted in the error
     #[inline]
-    pub fn into_block(self) -> SealedBlock {
+    pub fn into_block(self) -> SealedBlockFor<B> {
         self.inner.block
     }
 
@@ -300,19 +265,19 @@ impl InsertBlockErrorTwo {
 
     /// Returns the block that resulted in the error
     #[inline]
-    pub const fn block(&self) -> &SealedBlock {
+    pub const fn block(&self) -> &SealedBlockFor<B> {
         &self.inner.block
     }
 
     /// Consumes the type and returns the block and error kind.
     #[inline]
-    pub fn split(self) -> (SealedBlock, InsertBlockErrorKindTwo) {
+    pub fn split(self) -> (SealedBlockFor<B>, InsertBlockErrorKindTwo) {
         let inner = *self.inner;
         (inner.block, inner.kind)
     }
 }
 
-impl std::fmt::Debug for InsertBlockErrorTwo {
+impl<B: Block> std::fmt::Debug for InsertBlockErrorTwo<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.inner, f)
     }
@@ -358,9 +323,6 @@ impl InsertBlockErrorKindTwo {
                     BlockExecutionError::Validation(err) => {
                         Ok(InsertBlockValidationError::Validation(err))
                     }
-                    BlockExecutionError::Consensus(err) => {
-                        Ok(InsertBlockValidationError::Consensus(err))
-                    }
                     // these are internal errors, not caused by an invalid block
                     BlockExecutionError::Internal(error) => {
                         Err(InsertBlockFatalError::BlockExecutionError(error))
@@ -401,7 +363,7 @@ pub enum InsertBlockValidationError {
 impl InsertBlockValidationError {
     /// Returns true if this is a block pre merge error.
     pub const fn is_block_pre_merge(&self) -> bool {
-        matches!(self, Self::Validation(BlockValidationError::BlockPreMerge { .. }))
+        false
     }
 }
 
@@ -446,20 +408,13 @@ impl InsertBlockErrorKind {
     pub const fn is_state_root_error(&self) -> bool {
         // we need to get the state root errors inside of the different variant branches
         match self {
-            Self::Execution(err) => {
-                matches!(
-                    err,
-                    BlockExecutionError::Validation(BlockValidationError::StateRoot { .. })
-                )
-            }
             Self::Canonical(err) => {
                 matches!(
                     err,
-                    CanonicalError::Validation(BlockValidationError::StateRoot { .. }) |
-                        CanonicalError::Provider(
-                            ProviderError::StateRootMismatch(_) |
-                                ProviderError::UnwindStateRootMismatch(_)
-                        )
+                    CanonicalError::Provider(
+                        ProviderError::StateRootMismatch(_) |
+                            ProviderError::UnwindStateRootMismatch(_)
+                    )
                 )
             }
             Self::Provider(err) => {
@@ -482,7 +437,7 @@ impl InsertBlockErrorKind {
             // other execution errors that are considered internal errors
             Self::Execution(err) => {
                 match err {
-                    BlockExecutionError::Validation(_) | BlockExecutionError::Consensus(_) => {
+                    BlockExecutionError::Validation(_) => {
                         // this is caused by an invalid block
                         true
                     }
@@ -521,12 +476,7 @@ impl InsertBlockErrorKind {
 
     /// Returns true if this is a block pre merge error.
     pub const fn is_block_pre_merge(&self) -> bool {
-        matches!(
-            self,
-            Self::Execution(BlockExecutionError::Validation(
-                BlockValidationError::BlockPreMerge { .. }
-            ))
-        )
+        false
     }
 
     /// Returns true if the error is an execution error

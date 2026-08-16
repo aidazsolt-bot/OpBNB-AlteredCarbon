@@ -16,7 +16,6 @@ reth-chainspec.workspace = true
 reth-ethereum-forks.workspace = true
 reth-primitives.workspace = true
 reth-primitives-traits.workspace = true
-revm-primitives.workspace = true
 
 alloy-chains.workspace = true
 alloy-primitives.workspace = true
@@ -24,6 +23,8 @@ alloy-consensus.workspace = true
 
 reth-bsc-chainspec.workspace = true
 reth-bsc-forks.workspace = true
+
+revm.workspace = true
 
 include_dir = { version = "0.7.4" }
 lazy_static = { version = "1.4.0" }

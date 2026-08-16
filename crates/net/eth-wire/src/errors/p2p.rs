@@ -3,7 +3,7 @@
 use std::io;
 
 use reth_eth_wire_types::{DisconnectReason, UnknownDisconnectReason};
-use reth_primitives::GotExpected;
+use reth_primitives_traits::GotExpected;
 
 use crate::{capability::SharedCapabilityError, ProtocolVersion};
 
@@ -63,16 +63,12 @@ pub enum P2PStreamError {
     #[error("mismatched protocol version in Hello message: {0}")]
     MismatchedProtocolVersion(GotExpected<ProtocolVersion>),
 
-    /// Ping started before the handshake completed.
-    #[error("started ping task before the handshake completed")]
-    PingBeforeHandshake,
-
     /// Too many messages buffered before sending.
     #[error("too many messages buffered before sending")]
     SendBufferFull,
 
     /// Disconnected error.
-    #[error("disconnected")]
+    #[error("disconnected: {0}")]
     Disconnected(DisconnectReason),
 
     /// Unknown disconnect reason error.
@@ -86,8 +82,8 @@ impl P2PStreamError {
     /// Returns the [`DisconnectReason`] if it is the `Disconnected` variant.
     pub const fn as_disconnected(&self) -> Option<DisconnectReason> {
         let reason = match self {
-            Self::HandshakeError(P2PHandshakeError::Disconnected(reason)) |
-            Self::Disconnected(reason) => reason,
+            Self::HandshakeError(P2PHandshakeError::Disconnected(reason))
+            | Self::Disconnected(reason) => reason,
             _ => return None,
         };
 

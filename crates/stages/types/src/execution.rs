@@ -1,12 +1,9 @@
-use std::time::Duration;
+use core::time::Duration;
 
 /// The thresholds at which the execution stage writes state changes to the database.
 ///
-/// If either of the thresholds (`max_blocks` and `max_changes`) are hit, then the execution stage
-/// commits all pending changes to the database.
-///
-/// A third threshold, `max_changesets`, can be set to periodically write changesets to the
-/// current database transaction, which frees up memory.
+/// If any of the thresholds (`max_blocks`, `max_changes`, `max_cumulative_gas`, or `max_duration`)
+/// are hit, then the execution stage commits all pending changes to the database.
 #[derive(Debug, Clone)]
 pub struct ExecutionStageThresholds {
     /// The maximum number of blocks to execute before the execution stage commits.
@@ -42,9 +39,9 @@ impl ExecutionStageThresholds {
         cumulative_gas_used: u64,
         elapsed: Duration,
     ) -> bool {
-        blocks_processed >= self.max_blocks.unwrap_or(u64::MAX) ||
-            changes_processed >= self.max_changes.unwrap_or(u64::MAX) ||
-            cumulative_gas_used >= self.max_cumulative_gas.unwrap_or(u64::MAX) ||
-            elapsed >= self.max_duration.unwrap_or(Duration::MAX)
+        blocks_processed >= self.max_blocks.unwrap_or(u64::MAX)
+            || changes_processed >= self.max_changes.unwrap_or(u64::MAX)
+            || cumulative_gas_used >= self.max_cumulative_gas.unwrap_or(u64::MAX)
+            || elapsed >= self.max_duration.unwrap_or(Duration::MAX)
     }
 }
