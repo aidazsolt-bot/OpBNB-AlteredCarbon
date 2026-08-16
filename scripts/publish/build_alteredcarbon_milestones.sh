@@ -26,6 +26,8 @@ MILESTONES=(
   "e080ef0edc|fix(op): Hertz precompile overlay for PIPE-014 receipt-root"
   "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
+  "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
+  "284525276c|chore: decommission Docker images, compose, and related CI/docs"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
