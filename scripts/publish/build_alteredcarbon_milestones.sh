@@ -27,7 +27,7 @@ MILESTONES=(
   "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
   "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
-  "55e6a4dc437f8e1e1ef766bec49be89424a612e7|chore: decommission Docker images, compose, and related CI/docs"
+  "HEAD|chore: decommission Docker images, compose, and related CI/docs"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
@@ -37,6 +37,7 @@ export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
 cd "$REPO"
 git fetch "$REMOTE" 2>/dev/null || true
+TIP_SHA="$(git rev-parse HEAD)"
 
 rm -rf "$WT"
 git worktree add --detach "$WT" HEAD
@@ -49,6 +50,9 @@ git clean -fdx >/dev/null 2>&1 || true
 for entry in "${MILESTONES[@]}"; do
   sha="${entry%%|*}"
   msg="${entry#*|}"
+  if [[ "$sha" == "HEAD" ]]; then
+    sha="$TIP_SHA"
+  fi
   if ! git -C "$REPO" cat-file -e "${sha}^{commit}"; then
     echo "missing commit $sha" >&2
     exit 1
