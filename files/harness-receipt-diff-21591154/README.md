@@ -121,7 +121,7 @@ Dirty Cap when stages already **> H** → PORT-OPS-001 (skip → Merkle fail →
 **Journal (container-host):**
 
 ```bash
-journalctl -D <archive-journal> --since '1 hour ago'
+journalctl -D <archive-journal>/ --since '1 hour ago'
 ```
 
 ## Produce local dump

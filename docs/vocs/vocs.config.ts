@@ -28,10 +28,6 @@ export default defineConfig({
         {
           text: 'Releases',
           link: 'https://github.com/paradigmxyz/reth/releases'
-        },
-        {
-          text: 'Contributing',
-          link: 'https://github.com/paradigmxyz/reth/blob/main/CONTRIBUTING.md'
         }
       ]
     }

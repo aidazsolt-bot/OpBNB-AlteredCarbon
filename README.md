@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="reth-bsc-trail" width="720">
+</p>
+
 # ‼️ Project Notice — Read Before Use ‼️
 
 This repository is an **independent, personal experiment**. It is **not affiliated with, endorsed by, or

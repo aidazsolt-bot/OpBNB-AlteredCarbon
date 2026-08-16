@@ -5,6 +5,10 @@ alwaysApply: true
 
 # Live Sync Health Checks (opBNB Archive)
 
+**Paths (anonymized in-repo):** resolve `<archive-ct>`, `<datadir-vol>`, `<host-lan-ip>`,
+`<host-global-ipv6>` from gitignored `.cursor/local/opbnb-archive-paths.env` when present;
+never commit real hostnames/IPv4/IPv6/LAN addresses into docs or rules.
+
 While this workspace is active **and** a live opBNB archive sync is running
 (`<archive-ct>` / `op-reth-bnb`), run the checks below **automatically**
 without waiting for the user to ask — at least every **2–3 hours of wall clock**
@@ -38,7 +42,7 @@ Healthy: empty (or only historical) + ongoing `Committed …` for the active sta
 
 ## Point 3 — Occasional hash spot-check (Bodies phase; not every cycle)
 
-When RPC is reachable (or via host `<ipv4>`), compare 3–5 heights
+When RPC is reachable (or via host `<host-lan-ip>`), compare 3–5 heights
 `< Bodies checkpoint` against public opBNB **mainnet** RPC
 (`https://opbnb-mainnet-rpc.bnbchain.org`):
 
