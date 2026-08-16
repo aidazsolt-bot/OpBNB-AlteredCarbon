@@ -42,6 +42,7 @@ TIP_SHA="$(git rev-parse HEAD)"
 rm -rf "$WT"
 git worktree add --detach "$WT" HEAD
 cd "$WT"
+git branch -D "$BRANCH" >/dev/null 2>&1 || true
 git checkout --orphan "$BRANCH"
 git rm -rf . >/dev/null 2>&1 || true
 # clean untracked from orphan switch
