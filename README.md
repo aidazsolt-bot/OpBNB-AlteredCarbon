@@ -13,8 +13,10 @@ ongoing relationship, support, or endorsement.
 **Purpose of this project:** this fork exists purely to evaluate how far modern AI coding assistants ("vibe
 coding") can go in modernizing and reviving a real-world, moderately complex, previously-abandoned blockchain
 client codebase — rebasing it onto a current upstream ([paradigmxyz/reth](https://github.com/paradigmxyz/reth))
-and porting forward protocol changes from an actively maintained downstream fork. It is a technology/process
-evaluation, not a production initiative.
+and porting forward protocol changes from an actively maintained downstream fork. A practical driver is that
+**there are no usable, trustworthy public snapshots** for a current Reth-based BSC/opBNB archive (or full)
+datadir on this stack — catching up means **syncing from the network**, which is only honest if the client
+actually works. It is a technology/process evaluation, not a production initiative.
 
 ### Permitted use — private individuals only (non-commercial)
 
@@ -183,12 +185,14 @@ opt out; see `bsc-reth node --help` under Engine).
 You can run `bsc-reth --help` for command explanations.
 
 
-### Snapshots
+### Snapshots — not a shortcut here
 
-There are snapshots available from the community, you can use a snapshot to reduce the sync time for catching up.
-
-* [fuzzland snapshot](https://github.com/fuzzland/snapshots)
-* [bnb-chain snapshot](https://github.com/bnb-chain/reth-snapshots)
+**Do not expect a public snapshot to replace sync on this fork.** Community and historical snapshot links
+for older BSC/Reth trees are outdated, format-incompatible with this v2.4.1 rebase (storage layout,
+static-file segments, protocol epoch), or otherwise not usable for a correct archive/full node. That gap —
+needing a client that can **sync for real** instead of importing someone else’s datadir — is part of why
+this experiment exists. Plan hardware and wall-clock for a full staged sync from genesis (or your own
+private datadir), not for a download-and-run snapshot.
 
 ## Run Reth for opBNB
 
