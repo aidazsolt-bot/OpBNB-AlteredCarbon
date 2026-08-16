@@ -8,23 +8,16 @@ This page tries to answer how to deal with the most popular issues.
 
 -   [Troubleshooting](#troubleshooting)
     -   [Database](#database)
-        -   [Docker](#docker)
         -   [Error code 13](#error-code-13)
         -   [Slow database inserts and updates](#slow-database-inserts-and-updates)
             -   [Compact the database](#compact-the-database)
             -   [Re-sync from scratch](#re-sync-from-scratch)
         -   [Database write error](#database-write-error)
-        -   [Concurrent database access error (using containers/Docker)](#concurrent-database-access-error-using-containersdocker)
+        -   [Concurrent database access error](#concurrent-database-access-error)
     -   [Hardware Performance Testing](#hardware-performance-testing)
         -   [Disk Speed Testing with IOzone](#disk-speed-testing-with-iozone)
 
 ## Database
-
-### Docker
-
-Externally accessing a `datadir` inside a named docker volume will usually come with folder/file ownership/permissions issues.
-
-**It is not recommended** to use the path to the named volume as it will trigger an error code 13. For example, `RETH_DATADIR=/var/lib/docker/volumes/named_volume/_data/eth cargo run -p db-access` is **DISCOURAGED** and a mounted volume with the right permissions should be used instead.
 
 ### Error code 13
 
@@ -130,9 +123,10 @@ Caused by:
     ```
     If `mdbx_chk` has detected any errors, please [open an issue](https://github.com/paradigmxyz/reth/issues) and post the output from the `mdbx_chk.log` file.
 
-### Concurrent database access error (using containers/Docker)
+### Concurrent database access error
 
-If you encounter an error while accessing the database from multiple processes and you are using multiple containers or a mix of host and container(s), it is possible the error is related to `PID` namespaces. You might see one of the following error messages.
+If you encounter an error while accessing the database from multiple processes (shared datadir /
+multiple node processes), it is possible the error is related to `PID` namespaces or locking. You might see one of the following error messages.
 
 ```console
 mdbx:0: panic: Assertion `osal_rdt_unlock() failed: err 1' failed.
@@ -144,9 +138,7 @@ or
 pthread_mutex_lock.c:438: __pthread_mutex_lock_full: Assertion `e != ESRCH || !robust' failed
 ```
 
-If you are using Docker, a possible solution is to run all database-accessing containers with `--pid=host` flag.
-
-For more information, check out the `Containers` section in the [libmdbx README](https://github.com/erthink/libmdbx#containers).
+Ensure only one writer opens the database, or use separate datadirs. For more information, check out the `Containers` section in the [libmdbx README](https://github.com/erthink/libmdbx#containers).
 
 ## Hardware Performance Testing
 
