@@ -16,7 +16,12 @@ pub trait RocksDBProviderFactory {
     ///
     /// This allows deferring `RocksDB` commits to happen at the same time as MDBX and static file
     /// commits, ensuring atomicity across all storage backends.
+    /// Adds a pending `RocksDB` batch to be committed when this provider is committed.
+    #[cfg(all(unix, feature = "rocksdb"))]
     fn set_pending_rocksdb_batch(&self, batch: rocksdb::WriteBatchWithTransaction<true>);
+
+    #[cfg(not(all(unix, feature = "rocksdb")))]
+    fn set_pending_rocksdb_batch(&self, _batch: RawRocksDBBatch) {}
 
     /// Takes all pending `RocksDB` batches and commits them.
     ///
@@ -39,12 +44,20 @@ pub trait RocksDBProviderFactory {
         Self: StorageSettingsCache,
         F: FnOnce(RocksDBRefArg<'_>) -> ProviderResult<R>,
     {
-        if self.cached_storage_settings().storage_v2 {
-            let rocksdb = self.rocksdb_provider();
-            let snapshot = rocksdb.snapshot();
-            return f(Some(snapshot));
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            if self.cached_storage_settings().storage_v2 {
+                let rocksdb = self.rocksdb_provider();
+                let snapshot = rocksdb.snapshot();
+                return f(Some(snapshot));
+            }
+            f(None)
         }
-        f(None)
+        #[cfg(not(all(unix, feature = "rocksdb")))]
+        {
+            let _ = self;
+            f(())
+        }
     }
 
     /// Executes a closure with a `RocksDB` batch, automatically registering it for commit.
@@ -54,13 +67,21 @@ pub trait RocksDBProviderFactory {
     where
         F: FnOnce(RocksBatchArg<'_>) -> ProviderResult<(R, Option<RawRocksDBBatch>)>,
     {
-        let rocksdb = self.rocksdb_provider();
-        let batch = rocksdb.batch();
-        let (result, raw_batch) = f(batch)?;
-        if let Some(b) = raw_batch {
-            self.set_pending_rocksdb_batch(b);
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            let rocksdb = self.rocksdb_provider();
+            let batch = rocksdb.batch();
+            let (result, raw_batch) = f(batch)?;
+            if let Some(b) = raw_batch {
+                self.set_pending_rocksdb_batch(b);
+            }
+            Ok(result)
         }
-        Ok(result)
+        #[cfg(not(all(unix, feature = "rocksdb")))]
+        {
+            let (result, _) = f(())?;
+            Ok(result)
+        }
     }
 
     /// Executes a closure with a `RocksDB` batch that auto-commits on threshold.
@@ -72,13 +93,21 @@ pub trait RocksDBProviderFactory {
     where
         F: FnOnce(RocksBatchArg<'_>) -> ProviderResult<(R, Option<RawRocksDBBatch>)>,
     {
-        let rocksdb = self.rocksdb_provider();
-        let batch = rocksdb.batch_with_auto_commit();
-        let (result, raw_batch) = f(batch)?;
-        if let Some(b) = raw_batch {
-            self.set_pending_rocksdb_batch(b);
+        #[cfg(all(unix, feature = "rocksdb"))]
+        {
+            let rocksdb = self.rocksdb_provider();
+            let batch = rocksdb.batch_with_auto_commit();
+            let (result, raw_batch) = f(batch)?;
+            if let Some(b) = raw_batch {
+                self.set_pending_rocksdb_batch(b);
+            }
+            Ok(result)
         }
-        Ok(result)
+        #[cfg(not(all(unix, feature = "rocksdb")))]
+        {
+            let (result, _) = f(())?;
+            Ok(result)
+        }
     }
 }
 

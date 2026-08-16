@@ -1,0 +1,140 @@
+[package]
+name = "reth-primitives"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Commonly used types in reth."
+
+[lints]
+workspace = true
+
+[dependencies]
+# reth
+reth-ethereum-primitives = { workspace = true, features = ["serde"] }
+reth-primitives-traits.workspace = true
+reth-ethereum-forks.workspace = true
+reth-static-file-types.workspace = true
+revm = { workspace = true, optional = true }
+# needed for BSC-specific parlia snapshot/vote types (crate::parlia)
+reth-codecs.workspace = true
+
+# ethereum
+alloy-consensus.workspace = true
+alloy-primitives = { workspace = true, features = ["rand", "rlp"] }
+alloy-rlp = { workspace = true, features = ["arrayvec"] }
+alloy-eips = { workspace = true, features = ["serde"] }
+alloy-trie.workspace = true
+
+# crypto
+# for eip-4844
+c-kzg = { workspace = true, features = ["serde"], optional = true }
+
+# misc
+bytes.workspace = true
+derive_more.workspace = true
+modular-bitfield.workspace = true
+once_cell.workspace = true
+serde.workspace = true
+serde_with = { workspace = true, optional = true }
+
+# arbitrary utils
+arbitrary = { workspace = true, features = ["derive"], optional = true }
+
+[dev-dependencies]
+# eth
+reth-chainspec.workspace = true
+reth-primitives-traits = { workspace = true, features = ["arbitrary", "test-utils"] }
+reth-testing-utils.workspace = true
+revm = { workspace = true, features = ["arbitrary"] }
+
+alloy-eips = { workspace = true, features = ["arbitrary"] }
+alloy-genesis.workspace = true
+
+arbitrary = { workspace = true, features = ["derive"] }
+assert_matches.workspace = true
+bincode.workspace = true
+proptest-arbitrary-interop.workspace = true
+proptest.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+test-fuzz.workspace = true
+
+
+[features]
+default = ["c-kzg", "std", "reth-codec", "secp256k1"]
+std = [
+	"reth-primitives-traits/std",
+	"alloy-consensus/std",
+	"alloy-eips/std",
+	"alloy-genesis/std",
+	"alloy-primitives/std",
+	"alloy-rlp/std",
+	"once_cell/std",
+	"revm/std",
+	"serde/std",
+	"revm?/std",
+	"reth-ethereum-forks/std",
+	"reth-ethereum-primitives/std",
+	"reth-static-file-types/std",
+]
+reth-codec = ["std", "reth-primitives-traits/reth-codec", "reth-ethereum-primitives/reth-codec"]
+asm-keccak = [
+	"alloy-primitives/asm-keccak",
+	"revm/asm-keccak",
+	"revm?/asm-keccak"
+]
+arbitrary = [
+	"dep:arbitrary",
+	"alloy-eips/arbitrary",
+	"reth-codec",
+	"reth-ethereum-forks/arbitrary",
+	"reth-primitives-traits/arbitrary",
+	"revm/arbitrary",
+	"secp256k1",
+	"reth-chainspec/arbitrary",
+	"alloy-consensus/arbitrary",
+	"alloy-primitives/arbitrary",
+	"reth-codecs/arbitrary",
+	"revm?/arbitrary",
+	"reth-ethereum-primitives/arbitrary",
+]
+secp256k1 = ["reth-primitives-traits/secp256k1"]
+c-kzg = [
+	"dep:c-kzg",
+	"alloy-consensus/kzg",
+	"alloy-eips/kzg",
+	"revm/c-kzg",
+]
+optimism = [
+	"reth-chainspec/optimism",
+]
+opbnb = [
+]
+bsc = [
+    "reth-primitives-traits/bsc",
+    "reth-chainspec/bsc",
+]
+test-utils = [
+	"reth-primitives-traits/test-utils",
+	"reth-chainspec/test-utils",
+	"reth-codecs/test-utils",
+	"reth-ethereum-primitives/test-utils",
+]
+serde-bincode-compat = [
+	"alloy-consensus/serde-bincode-compat",
+	"reth-primitives-traits/serde-bincode-compat",
+	"serde_with",
+	"alloy-eips/serde-bincode-compat",
+]
+
+[[bench]]
+name = "recover_ecdsa_crit"
+harness = false
+
+[[bench]]
+name = "validate_blob_tx"
+required-features = ["arbitrary", "c-kzg"]
+harness = false

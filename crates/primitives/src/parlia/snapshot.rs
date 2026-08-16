@@ -125,8 +125,8 @@ impl Snapshot {
         snap.recent_proposers.insert(block_number, validator);
 
         let epoch_key = u64::MAX - next_header.number / snap.epoch_num;
-        if !new_validators.is_empty() &&
-            (!is_bohr || !snap.recent_proposers.contains_key(&epoch_key))
+        if !new_validators.is_empty()
+            && (!is_bohr || !snap.recent_proposers.contains_key(&epoch_key))
         {
             new_validators.sort();
             if let Some(turn_length) = turn_length {

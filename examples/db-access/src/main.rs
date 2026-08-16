@@ -25,11 +25,9 @@ fn main() -> eyre::Result<()> {
 
     // Instantiate a provider factory for Ethereum mainnet using the provided datadir path.
     let spec = ChainSpecBuilder::mainnet().build();
-    let runtime = reth_ethereum::tasks::Runtime::test();
     let factory = EthereumNode::provider_factory_builder().open_read_only(
         spec.into(),
         ReadOnlyConfig::from_datadir(datadir),
-        runtime,
     )?;
 
     // This call opens a RO transaction on the database. To write to the DB you'd need to call

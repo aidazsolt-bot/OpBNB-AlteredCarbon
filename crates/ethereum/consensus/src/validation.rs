@@ -58,7 +58,7 @@ where
         return Err(ConsensusError::BlockGasUsed {
             gas: GotExpected { got: result.gas_used, expected: block.header().gas_used() },
             gas_spent_by_tx: gas_spent_by_transactions(&result.receipts),
-        })
+        });
     }
 
     // Before Byzantium, receipts contained state root that would mean that expensive
@@ -88,37 +88,37 @@ where
                 .map(|r| Bytes::from(r.with_bloom_ref().encoded_2718()))
                 .collect::<Vec<_>>();
             tracing::debug!(%error, ?receipts, "receipts verification failed");
-            return Err(error)
+            return Err(error);
         }
     }
 
     // Validate that the header requests hash matches the calculated requests hash
     if chain_spec.is_prague_active_at_timestamp(block.header().timestamp()) {
         let Some(header_requests_hash) = block.header().requests_hash() else {
-            return Err(ConsensusError::RequestsHashMissing)
+            return Err(ConsensusError::RequestsHashMissing);
         };
         let requests_hash = result.requests.requests_hash();
         if requests_hash != header_requests_hash {
             return Err(ConsensusError::BodyRequestsHashDiff(
                 GotExpected::new(requests_hash, header_requests_hash).into(),
-            ))
+            ));
         }
     }
 
     // Validate that the header block access list hash matches the calculated block access list hash
-    let is_allowed_pre_amsterdam_bal_hash = allow_bal_hashes &&
-        !chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp()) &&
-        block.header().block_access_list_hash().is_some();
+    let is_allowed_pre_amsterdam_bal_hash = allow_bal_hashes
+        && !chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp())
+        && block.header().block_access_list_hash().is_some();
 
-    if (chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp()) ||
-        is_allowed_pre_amsterdam_bal_hash) &&
-        let Some(block_access_list_hash) = block_access_list_hash
+    if (chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp())
+        || is_allowed_pre_amsterdam_bal_hash)
+        && let Some(block_access_list_hash) = block_access_list_hash
     {
         let block_bal_hash = block.header().block_access_list_hash().unwrap_or_default();
         if block_access_list_hash != block_bal_hash {
             return Err(ConsensusError::BlockAccessListHashMismatch(
                 GotExpected::new(block_access_list_hash, block_bal_hash).into(),
-            ))
+            ));
         }
     }
 
@@ -158,13 +158,13 @@ fn compare_receipts_root_and_logs_bloom(
     if calculated_receipts_root != expected_receipts_root {
         return Err(ConsensusError::BodyReceiptRootDiff(
             GotExpected { got: calculated_receipts_root, expected: expected_receipts_root }.into(),
-        ))
+        ));
     }
 
     if calculated_logs_bloom != expected_logs_bloom {
         return Err(ConsensusError::BodyBloomLogDiff(
             GotExpected { got: calculated_logs_bloom, expected: expected_logs_bloom }.into(),
-        ))
+        ));
     }
 
     Ok(())

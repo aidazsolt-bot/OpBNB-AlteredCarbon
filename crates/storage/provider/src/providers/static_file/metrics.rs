@@ -18,20 +18,18 @@ pub struct StaticFileProviderMetrics {
 
 impl Default for StaticFileProviderMetrics {
     fn default() -> Self {
+        // Must cover every `StaticFileSegment` variant. Consistency heal / init-cursor
+        // records metrics for AccountChangeSets, StorageChangeSets, and TransactionSenders
+        // under storage.v2; a partial list panics with "segment operation metrics should exist".
         Self {
-            segments: Box::new(
-                StaticFileSegment::iter()
-                    .map(|segment| {
-                        (
-                            segment,
-                            StaticFileSegmentMetrics::new_with_labels(&[(
-                                "segment",
-                                segment.as_str(),
-                            )]),
-                        )
-                    })
-                    .collect(),
-            ),
+            segments: StaticFileSegment::iter()
+                .map(|segment| {
+                    (
+                        segment,
+                        StaticFileSegmentMetrics::new_with_labels(&[("segment", segment.as_str())]),
+                    )
+                })
+                .collect(),
             segment_operations: StaticFileSegment::iter()
                 .cartesian_product(StaticFileProviderOperation::iter())
                 .map(|(segment, operation)| {
@@ -56,10 +54,10 @@ impl StaticFileProviderMetrics {
         files: usize,
         entries: usize,
     ) {
-        self.segments.get(segment).expect("segment metrics should exist").size.set(size as f64);
-        self.segments.get(segment).expect("segment metrics should exist").files.set(files as f64);
+        self.segments.get(&segment).expect("segment metrics should exist").size.set(size as f64);
+        self.segments.get(&segment).expect("segment metrics should exist").files.set(files as f64);
         self.segments
-            .get(segment)
+            .get(&segment)
             .expect("segment metrics should exist")
             .entries
             .set(entries as f64);

@@ -1,0 +1,259 @@
+use alloc::vec::Vec;
+use alloy_consensus::{
+    transaction::TxEip4844Sidecar, EthereumReceipt, EthereumTxEnvelope, Header, TxEip1559,
+    TxEip2930, TxEip4844, TxEip4844Variant, TxEip4844WithSidecar, TxEip7702, TxLegacy, TxType,
+};
+use alloy_eips::eip4895::Withdrawals;
+use alloy_primitives::{Log, LogData, Signature, TxHash, B256};
+
+/// Trait for calculating a heuristic for the in-memory size of a struct.
+pub trait InMemorySize {
+    /// Returns a heuristic for the in-memory size of a struct.
+    fn size(&self) -> usize;
+}
+
+impl<T: InMemorySize + ?Sized> InMemorySize for &T {
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+}
+
+impl<T: InMemorySize + ?Sized> InMemorySize for alloc::sync::Arc<T> {
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+}
+
+impl<T: InMemorySize + ?Sized> InMemorySize for alloc::boxed::Box<T> {
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+}
+
+impl<T: InMemorySize> InMemorySize for alloy_consensus::Signed<T> {
+    fn size(&self) -> usize {
+        T::size(self.tx()) + self.signature().size() + core::mem::size_of::<B256>()
+    }
+}
+
+/// Implement `InMemorySize` for a type with `size_of`
+macro_rules! impl_in_mem_size_size_of {
+    ($($ty:ty),*) => {
+        $(
+            impl InMemorySize for $ty {
+                #[inline]
+                fn size(&self) -> usize {
+                    core::mem::size_of::<Self>()
+                }
+            }
+        )*
+    };
+}
+
+impl_in_mem_size_size_of!(Signature, TxHash, TxType);
+
+/// Implement `InMemorySize` for a type with a native `size` method.
+macro_rules! impl_in_mem_size {
+    ($($ty:ty),*) => {
+        $(
+            impl InMemorySize for $ty {
+                #[inline]
+                fn size(&self) -> usize {
+                   Self::size(self)
+                }
+            }
+        )*
+    };
+}
+
+impl_in_mem_size!(Header, TxLegacy, TxEip2930, TxEip1559, TxEip7702, TxEip4844);
+
+impl<T: TxEip4844Sidecar> InMemorySize for TxEip4844Variant<T> {
+    #[inline]
+    fn size(&self) -> usize {
+        Self::size(self)
+    }
+}
+
+impl<T: TxEip4844Sidecar> InMemorySize for TxEip4844WithSidecar<T> {
+    #[inline]
+    fn size(&self) -> usize {
+        Self::size(self)
+    }
+}
+
+impl InMemorySize for alloy_consensus::Receipt {
+    fn size(&self) -> usize {
+        let Self { status, cumulative_gas_used, logs } = self;
+        core::mem::size_of_val(status)
+            + core::mem::size_of_val(cumulative_gas_used)
+            + logs.iter().map(|log| log.size()).sum::<usize>()
+    }
+}
+
+impl<T> InMemorySize for EthereumReceipt<T>
+where
+    T: InMemorySize,
+{
+    fn size(&self) -> usize {
+        self.tx_type.size()
+            + core::mem::size_of_val(&self.success)
+            + core::mem::size_of_val(&self.cumulative_gas_used)
+            + self.logs.iter().map(|log| log.size()).sum::<usize>()
+    }
+}
+
+impl InMemorySize for LogData {
+    fn size(&self) -> usize {
+        self.data.len() + core::mem::size_of_val(self.topics())
+    }
+}
+
+impl<T: InMemorySize> InMemorySize for Log<T> {
+    fn size(&self) -> usize {
+        core::mem::size_of_val(&self.address) + self.data.size()
+    }
+}
+
+impl<T: InMemorySize> InMemorySize for EthereumTxEnvelope<T> {
+    fn size(&self) -> usize {
+        match self {
+            Self::Legacy(tx) => tx.size(),
+            Self::Eip2930(tx) => tx.size(),
+            Self::Eip1559(tx) => tx.size(),
+            Self::Eip4844(tx) => tx.size(),
+            Self::Eip7702(tx) => tx.size(),
+        }
+    }
+}
+
+impl<T: InMemorySize, H: InMemorySize> InMemorySize for alloy_consensus::BlockBody<T, H> {
+    /// Calculates a heuristic for the in-memory size of the block body
+    #[inline]
+    fn size(&self) -> usize {
+        self.transactions.iter().map(T::size).sum::<usize>()
+            + self.ommers.iter().map(H::size).sum::<usize>()
+            + self
+                .withdrawals
+                .as_ref()
+                .map_or(core::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size)
+    }
+}
+
+impl<T: InMemorySize, H: InMemorySize> InMemorySize for alloy_consensus::Block<T, H> {
+    #[inline]
+    fn size(&self) -> usize {
+        self.header.size() + self.body.size()
+    }
+}
+
+impl<T: InMemorySize> InMemorySize for Vec<T> {
+    fn size(&self) -> usize {
+        // Note: This does not track additional capacity
+        self.iter().map(T::size).sum::<usize>()
+    }
+}
+
+impl InMemorySize for u64 {
+    fn size(&self) -> usize {
+        core::mem::size_of::<Self>()
+    }
+}
+
+/// Optimism consensus type sizes (enabled via `op` feature).
+#[cfg(feature = "op")]
+mod op {
+    use super::*;
+
+    impl_in_mem_size_size_of!(op_alloy_consensus::OpTxType);
+
+    impl InMemorySize for op_alloy_consensus::TxDeposit {
+        fn size(&self) -> usize {
+            core::mem::size_of::<Self>() + self.input.len()
+        }
+    }
+
+    impl InMemorySize for op_alloy_consensus::OpDepositReceipt {
+        fn size(&self) -> usize {
+            let Self { inner, deposit_nonce, deposit_receipt_version } = self;
+            inner.size()
+                + core::mem::size_of_val(deposit_nonce)
+                + core::mem::size_of_val(deposit_receipt_version)
+        }
+    }
+
+    impl InMemorySize for op_alloy_consensus::OpReceipt {
+        fn size(&self) -> usize {
+            match self {
+                Self::Legacy(receipt)
+                | Self::Eip2930(receipt)
+                | Self::Eip1559(receipt)
+                | Self::Eip7702(receipt)
+                | Self::PostExec(receipt) => receipt.size(),
+                Self::Deposit(receipt) => receipt.size(),
+            }
+        }
+    }
+
+    impl InMemorySize for op_alloy_consensus::OpTypedTransaction {
+        fn size(&self) -> usize {
+            match self {
+                Self::Legacy(tx) => tx.size(),
+                Self::Eip2930(tx) => tx.size(),
+                Self::Eip1559(tx) => tx.size(),
+                Self::Eip7702(tx) => tx.size(),
+                Self::Deposit(tx) => tx.size(),
+                Self::PostExec(tx) => core::mem::size_of_val(tx) + tx.input.len(),
+            }
+        }
+    }
+
+    impl InMemorySize for op_alloy_consensus::OpPooledTransaction {
+        fn size(&self) -> usize {
+            match self {
+                Self::Legacy(tx) => tx.size(),
+                Self::Eip2930(tx) => tx.size(),
+                Self::Eip1559(tx) => tx.size(),
+                Self::Eip7702(tx) => tx.size(),
+            }
+        }
+    }
+
+    impl InMemorySize for op_alloy_consensus::OpTxEnvelope {
+        fn size(&self) -> usize {
+            match self {
+                Self::Legacy(tx) => tx.size(),
+                Self::Eip2930(tx) => tx.size(),
+                Self::Eip1559(tx) => tx.size(),
+                Self::Eip7702(tx) => tx.size(),
+                Self::Deposit(tx) => {
+                    core::mem::size_of::<alloy_primitives::B256>() + tx.inner().size()
+                }
+                Self::PostExec(tx) => {
+                    core::mem::size_of::<alloy_primitives::B256>()
+                        + core::mem::size_of_val(tx.inner())
+                        + tx.inner().input.len()
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ensures we don't have any recursion in the `InMemorySize` impls
+    #[test]
+    fn no_in_memory_no_recursion() {
+        fn assert_no_recursion<T: InMemorySize + Default>() {
+            let _ = T::default().size();
+        }
+        assert_no_recursion::<Header>();
+        assert_no_recursion::<TxLegacy>();
+        assert_no_recursion::<TxEip2930>();
+        assert_no_recursion::<TxEip1559>();
+        assert_no_recursion::<TxEip7702>();
+        assert_no_recursion::<TxEip4844>();
+    }
+}

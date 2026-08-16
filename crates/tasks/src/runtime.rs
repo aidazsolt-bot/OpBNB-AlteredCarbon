@@ -585,7 +585,7 @@ impl Runtime {
             })
             .is_some()
         {
-            return true
+            return true;
         }
 
         if let Some(func) = func.lock().take() {
@@ -663,6 +663,30 @@ impl Runtime {
         F: Future<Output = ()> + Send + 'static,
     {
         self.spawn_critical_as(name, fut, TaskKind::Blocking)
+    }
+
+    /// Spawns a regular task onto the runtime.
+    pub fn spawn<F>(&self, fut: F) -> JoinHandle<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.spawn_task(fut)
+    }
+
+    /// Spawns a critical task onto the runtime.
+    pub fn spawn_critical<F>(&self, name: &'static str, fut: F) -> JoinHandle<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.spawn_critical_task(name, fut)
+    }
+
+    /// Spawns a critical blocking task onto the runtime.
+    pub fn spawn_critical_blocking<F>(&self, name: &'static str, fut: F) -> JoinHandle<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.spawn_critical_blocking_task(name, fut)
     }
 
     /// This spawns a critical task onto a dedicated named OS thread.

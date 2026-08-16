@@ -33,7 +33,7 @@ use reth_provider::{BlockReaderIdExt, StateProviderFactory, StateRootProvider};
 use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::TransactionPool;
 use reth_trie::HashedPostState;
-use revm_primitives::calc_excess_blob_gas;
+use revm::primitives::calc_excess_blob_gas;
 use std::{
     collections::HashMap,
     fmt::Debug,

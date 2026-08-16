@@ -37,7 +37,7 @@ impl MustIncludeKey {
         if enr.get_raw_rlp(self.key).is_none() {
             return FilterOutcome::Ignore {
                 reason: format!("{} fork required", String::from_utf8_lossy(self.key)),
-            }
+            };
         }
         FilterOutcome::Ok
     }
@@ -72,7 +72,7 @@ impl MustNotIncludeKeys {
                         "{} forks not allowed",
                         self.keys.iter().map(|key| String::from_utf8_lossy(key.key)).format(",")
                     ),
-                }
+                };
             }
         }
 
@@ -118,5 +118,24 @@ mod tests {
 
         assert!(matches!(filter.filter(&enr_1), FilterOutcome::Ignore { .. }));
         assert!(matches!(filter.filter(&enr_2), FilterOutcome::Ignore { .. }));
+    }
+
+    #[test]
+    fn must_not_include_opstack_allows_opel() {
+        let filter = MustNotIncludeKeys::new(&[NetworkStackId::ETH2, NetworkStackId::OPSTACK]);
+
+        let sk = CombinedKey::generate_secp256k1();
+        let cl = Enr::builder()
+            .add_value_rlp(NetworkStackId::OPSTACK, Bytes::from("opbnb-cl"))
+            .build(&sk)
+            .unwrap();
+        assert!(matches!(filter.filter(&cl), FilterOutcome::Ignore { .. }));
+
+        let sk = CombinedKey::generate_secp256k1();
+        let el = Enr::builder()
+            .add_value_rlp(NetworkStackId::OPEL, Bytes::from("opbnb-el"))
+            .build(&sk)
+            .unwrap();
+        assert!(filter.filter(&el).is_ok());
     }
 }

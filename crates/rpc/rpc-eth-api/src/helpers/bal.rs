@@ -1,6 +1,6 @@
 //! Helpers for `eth_blockAccessList` RPC method.
 use alloy_consensus::BlockHeader;
-use alloy_eip7928::{bal::DecodedBal, BlockAccessList};
+use alloy_eip7928::BlockAccessList;
 use alloy_primitives::Bytes;
 use alloy_rpc_types_eth::BlockId;
 use reth_errors::RethError;
@@ -24,20 +24,9 @@ pub trait GetBlockAccessList: Trace + Call + LoadBlock + RpcNodeCoreExt {
         block_id: BlockId,
     ) -> impl Future<Output = Result<Option<BlockAccessList>, Self::Error>> + Send {
         async move {
-            let block = self
-                .recovered_block(block_id)
-                .await?
-                .ok_or_else(|| EthApiError::HeaderNotFound(block_id))?;
-
-            if let Some(cached_bal) =
-                self.cache().get_bal(block.hash()).await.map_err(Self::Error::from_eth_err)?
-            {
-                let (bal, _) = DecodedBal::from_rlp_bytes(cached_bal.as_raw().clone())
-                    .map_err(RethError::other)
-                    .map_err(Self::Error::from_eth_err)?
-                    .split();
-                return Ok(Some(Vec::from(bal)))
-            }
+            let Some(block) = self.recovered_block(block_id).await? else {
+                return Ok(None);
+            };
 
             self.spawn_blocking_io(move |eth_api| {
                 let state = eth_api
@@ -87,13 +76,9 @@ pub trait GetBlockAccessList: Trace + Call + LoadBlock + RpcNodeCoreExt {
                 .await?
                 .ok_or_else(|| EthApiError::HeaderNotFound(block_id))?;
 
-            if let Some(cached_bal) =
-                self.cache().get_bal(block.hash()).await.map_err(Self::Error::from_eth_err)?
-            {
-                return Ok(Some(cached_bal.as_raw().clone()))
-            }
-
             Ok(self.get_block_access_list(block_id).await?.map(|bal| alloy_rlp::encode(bal).into()))
         }
     }
 }
+
+impl<T> GetBlockAccessList for T where T: Trace + Call + LoadBlock + RpcNodeCoreExt {}

@@ -30,6 +30,13 @@ pub const SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE: usize = 2 * 1024 * 
 /// Constants used by [`TransactionsManager`](super::TransactionsManager).
 pub mod tx_manager {
     use super::SOFT_LIMIT_COUNT_HASHES_IN_NEW_POOLED_TRANSACTIONS_BROADCAST_MESSAGE;
+    use std::time::Duration;
+
+    /// Default interval for reannouncing local pending transactions.
+    pub const DEFAULT_REANNOUNCE_TIME: Duration = Duration::from_secs(1200);
+
+    /// Minimum supported reannounce interval.
+    pub const MIN_REANNOUNCE_TIME: Duration = Duration::from_secs(5);
 
     /// Default limit for number of transactions to keep track of for a single peer.
     ///

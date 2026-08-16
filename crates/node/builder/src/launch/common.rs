@@ -1,40 +1,62 @@
 //! Helper types that can be used by launchers.
-
-use std::{sync::Arc, thread::available_parallelism};
+//!
+//! ## Launch Context Type System
+//!
+//! The node launch process uses a type-state pattern to ensure correct initialization
+//! order at compile time. Methods are only available when their prerequisites are met.
+//!
+//! ### Core Types
+//!
+//! - [`LaunchContext`]: Base context with executor and data directory
+//! - [`LaunchContextWith<T>`]: Context with an attached value of type `T`
+//! - [`Attached<L, R>`]: Pairs values, preserving both previous (L) and new (R) state
+//!
+//! ### Helper Attachments
+//!
+//! - [`WithConfigs`]: Node config + TOML config
+//! - [`WithMeteredProvider`]: Provider factory with metrics
+//! - [`WithMeteredProviders`]: Provider factory + blockchain provider
+//! - [`WithComponents`]: Final form with all components
+//!
+//! ### Method Availability
+//!
+//! Methods are implemented on specific type combinations:
+//! - `impl<T> LaunchContextWith<T>`: Generic methods available for any attachment
+//! - `impl LaunchContextWith<WithConfigs>`: Config-specific methods
+//! - `impl LaunchContextWith<Attached<WithConfigs, DB>>`: Database operations
+//! - `impl LaunchContextWith<Attached<WithConfigs, ProviderFactory>>`: Provider operations
+//! - etc.
+//!
+//! This ensures correct initialization order without runtime checks.
 
 use crate::{
     components::{NodeComponents, NodeComponentsBuilder},
     hooks::OnComponentInitializedHook,
-    BuilderContext, NodeAdapter,
+    BuilderContext, ExExLauncher, NodeAdapter, PrimitivesTy,
 };
+use alloy_consensus::BlockHeader as _;
+use alloy_eips::eip2124::Head;
 use alloy_primitives::{BlockNumber, B256};
-use eyre::{Context, OptionExt};
+use eyre::Context;
 use rayon::ThreadPoolBuilder;
-use reth_auto_seal_consensus::MiningMode;
-use reth_beacon_consensus::EthBeaconConsensus;
-use reth_blockchain_tree::{
-    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
-};
-use reth_chainspec::{Chain, EthChainSpec, EthereumHardforks};
-use reth_config::{config::EtlConfig, PruneConfig};
-use reth_consensus::Consensus;
-use reth_db_api::database::Database;
-use reth_db_common::init::{init_genesis, InitDatabaseError};
+use reth_chainspec::{Chain, EthChainSpec, EthereumHardfork, EthereumHardforks};
+use reth_config::{config::EtlConfig, PruneConfig, StateDbConfig};
+use reth_consensus::noop::NoopConsensus;
+use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
+use reth_db_common::init::{init_genesis_with_settings, InitStorageError};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
-use reth_engine_tree::tree::{InvalidBlockHook, InvalidBlockHooks, NoopInvalidBlockHook};
-use reth_evm::noop::NoopBlockExecutorProvider;
+use reth_engine_local::MiningMode;
+use reth_evm::{noop::NoopEvmConfig, ConfigureEvm};
+use reth_exex::ExExManagerHandle;
 use reth_fs_util as fs;
-use reth_invalid_block_hooks::InvalidBlockWitnessHook;
 use reth_network_p2p::headers::client::HeadersClient;
-use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithDB};
+use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_node_core::{
-    args::InvalidBlockHookType,
+    args::DefaultEraHost,
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
-    version::{
-        BUILD_PROFILE_NAME, CARGO_PKG_VERSION, VERGEN_BUILD_TIMESTAMP, VERGEN_CARGO_FEATURES,
-        VERGEN_CARGO_TARGET_TRIPLE, VERGEN_GIT_SHA,
-    },
+    primitives::BlockHeader,
+    version::version_metadata,
 };
 use reth_node_metrics::{
     chain::ChainSpecInfo,
@@ -43,50 +65,58 @@ use reth_node_metrics::{
     server::{MetricServer, MetricServerConfig},
     version::VersionInfo,
 };
-use reth_primitives::Head;
 use reth_provider::{
-    providers::{BlockchainProvider, BlockchainProvider2, ProviderNodeTypes, StaticFileProvider},
-    BlockHashReader, CanonStateNotificationSender, ChainSpecProvider, ProviderFactory,
-    ProviderResult, StageCheckpointReader, StateProviderFactory, StaticFileProviderFactory,
-    TreeViewer,
+    providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
+    BlockHashReader, BlockNumReader, BlockReaderIdExt, DatabaseProviderFactory, HeaderProvider,
+    ProviderError, ProviderFactory, ProviderResult, RocksDBProviderFactory, StageCheckpointReader,
+    StaticFileProviderBuilder, StaticFileProviderFactory,
 };
 use reth_prune::{PruneModes, PrunerBuilder};
-use reth_rpc_api::clients::EthApiClient;
 use reth_rpc_builder::config::RethRpcServerConfig;
 use reth_rpc_layer::JwtSecret;
-use reth_stages::{sets::DefaultStages, MetricEvent, PipelineBuilder, PipelineTarget, StageId};
-use reth_static_file::StaticFileProducer;
+use reth_stages::{
+    sets::DefaultStages, stages::EraImportSource, MetricEvent, PipelineBuilder, PipelineTarget,
+    StageId,
+};
+use reth_static_file::{StaticFileProducer, StaticFileSegment};
 use reth_tasks::TaskExecutor;
-use reth_tracing::tracing::{debug, error, info, warn};
+use reth_tracing::{
+    throttle,
+    tracing::{debug, error, info, warn},
+};
+use reth_transaction_pool::TransactionPool;
+use reth_trie_db::ChangesetCache;
+use std::{path::PathBuf, sync::Arc, thread::available_parallelism, time::Duration};
 use tokio::sync::{
-    mpsc::{unbounded_channel, Receiver, UnboundedSender},
+    mpsc::{unbounded_channel, UnboundedSender},
     oneshot, watch,
 };
 
-/// Allows to set a tree viewer for a configured blockchain provider.
-// TODO: remove this helper trait once the engine revamp is done, the new
-// blockchain provider won't require a TreeViewer.
-// https://github.com/paradigmxyz/reth/issues/8742
-pub trait WithTree {
-    /// Setter for tree viewer.
-    fn set_tree(self, tree: Arc<dyn TreeViewer>) -> Self;
-}
-
-impl<N: NodeTypesWithDB> WithTree for BlockchainProvider<N> {
-    fn set_tree(self, tree: Arc<dyn TreeViewer>) -> Self {
-        self.with_tree(tree)
-    }
-}
-
-impl<N: NodeTypesWithDB> WithTree for BlockchainProvider2<N> {
-    fn set_tree(self, _tree: Arc<dyn TreeViewer>) -> Self {
-        self
-    }
-}
+use futures::{future::Either, stream, Stream, StreamExt};
+use reth_node_ethstats::EthStatsService;
+use reth_node_events::{cl::ConsensusLayerHealthEvents, node::NodeEvent};
+use rust_eth_triedb::triedb_manager::{
+    disable_triedb, init_global_triedb_manager, is_triedb_active,
+};
 
 /// Reusable setup for launching a node.
 ///
-/// This provides commonly used boilerplate for launching a node.
+/// This is the entry point for the node launch process. It implements a builder
+/// pattern using type-state programming to enforce correct initialization order.
+///
+/// ## Type Evolution
+///
+/// Starting from `LaunchContext`, each method transforms the type to reflect
+/// accumulated state:
+///
+/// ```text
+/// LaunchContext
+///   └─> LaunchContextWith<WithConfigs>
+///       └─> LaunchContextWith<Attached<WithConfigs, DB>>
+///           └─> LaunchContextWith<Attached<WithConfigs, ProviderFactory>>
+///               └─> LaunchContextWith<Attached<WithConfigs, WithMeteredProviders>>
+///                   └─> LaunchContextWith<Attached<WithConfigs, WithComponents>>
+/// ```
 #[derive(Debug, Clone)]
 pub struct LaunchContext {
     /// The task executor for the node.
@@ -101,19 +131,22 @@ impl LaunchContext {
         Self { task_executor, data_dir }
     }
 
-    /// Attaches a database to the launch context.
-    pub const fn with<DB>(self, database: DB) -> LaunchContextWith<DB> {
-        LaunchContextWith { inner: self, attachment: database }
+    /// Create launch context with attachment.
+    pub const fn with<T>(self, attachment: T) -> LaunchContextWith<T> {
+        LaunchContextWith { inner: self, attachment }
     }
 
     /// Loads the reth config with the configured `data_dir` and overrides settings according to the
     /// `config`.
     ///
     /// Attaches both the `NodeConfig` and the loaded `reth.toml` config to the launch context.
-    pub fn with_loaded_toml_config<ChainSpec: EthChainSpec>(
+    pub fn with_loaded_toml_config<ChainSpec>(
         self,
         config: NodeConfig<ChainSpec>,
-    ) -> eyre::Result<LaunchContextWith<WithConfigs<ChainSpec>>> {
+    ) -> eyre::Result<LaunchContextWith<WithConfigs<ChainSpec>>>
+    where
+        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+    {
         let toml_config = self.load_toml_config(&config)?;
         Ok(self.with(WithConfigs { config, toml_config }))
     }
@@ -122,54 +155,183 @@ impl LaunchContext {
     /// `config`.
     ///
     /// This is async because the trusted peers may have to be resolved.
-    pub fn load_toml_config<ChainSpec: EthChainSpec>(
+    pub fn load_toml_config<ChainSpec>(
         &self,
         config: &NodeConfig<ChainSpec>,
-    ) -> eyre::Result<reth_config::Config> {
+    ) -> eyre::Result<reth_config::Config>
+    where
+        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+    {
         let config_path = config.config.clone().unwrap_or_else(|| self.data_dir.config());
 
         let mut toml_config = reth_config::Config::from_path(&config_path)
             .wrap_err_with(|| format!("Could not load config file {config_path:?}"))?;
 
-        Self::save_pruning_config_if_full_node(&mut toml_config, config, &config_path)?;
+        Self::save_pruning_config(&mut toml_config, config, &config_path)?;
+        Self::save_statedb_config_if_triedb(
+            &mut toml_config,
+            config,
+            &config_path,
+            &self.data_dir,
+        )?;
 
         info!(target: "reth::cli", path = ?config_path, "Configuration loaded");
 
         // Update the config with the command line arguments
         toml_config.peers.trusted_nodes_only = config.network.trusted_only;
 
+        // Merge static file CLI arguments with config file, giving priority to CLI
+        toml_config.static_files =
+            config.static_files.merge_with_config(toml_config.static_files, config.pruning.minimal);
+
+        // Apply fastnode settings when skip_state_root_validation is enabled
+        if config.engine.skip_state_root_validation {
+            info!(target: "reth::cli", "Fastnode mode enabled via --engine.skip-state-root-validation - disabling hashing stages and state root validation");
+            toml_config.stages.disable_hashing_stages = true;
+            reth_engine_primitives::activate_fastnode();
+        }
+
         Ok(toml_config)
     }
 
-    /// Save prune config to the toml file if node is a full node.
-    fn save_pruning_config_if_full_node<ChainSpec: EthChainSpec>(
+    /// Save prune config to the toml file if node is a full node or has custom pruning CLI
+    /// arguments. Also migrates deprecated prune config values to new defaults.
+    fn save_pruning_config<ChainSpec>(
         reth_config: &mut reth_config::Config,
         config: &NodeConfig<ChainSpec>,
         config_path: impl AsRef<std::path::Path>,
-    ) -> eyre::Result<()> {
-        if reth_config.prune.is_none() {
-            if let Some(prune_config) = config.prune_config() {
-                reth_config.update_prune_config(prune_config);
-                info!(target: "reth::cli", "Saving prune config to toml file");
-                reth_config.save(config_path.as_ref())?;
+    ) -> eyre::Result<()>
+    where
+        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+    {
+        let mut should_save = reth_config.prune.segments.migrate();
+
+        if let Some(prune_config) = config.prune_config() {
+            if reth_config.prune != prune_config {
+                reth_config.set_prune_config(prune_config);
+                should_save = true;
             }
-        } else if config.prune_config().is_none() {
-            warn!(target: "reth::cli", "Prune configs present in config file but --full not provided. Running as a Full node");
+        } else if !reth_config.prune.is_default() {
+            warn!(target: "reth::cli", "Pruning configuration is present in the config file, but no CLI arguments are provided. Using config from file.");
         }
+
+        if should_save {
+            info!(target: "reth::cli", "Saving prune config to toml file");
+            reth_config.save(config_path.as_ref())?;
+        }
+
+        Ok(())
+    }
+
+    /// Save state database config to the toml file.
+    fn save_statedb_config_if_triedb<ChainSpec>(
+        reth_config: &mut reth_config::Config,
+        config: &NodeConfig<ChainSpec>,
+        config_path: impl AsRef<std::path::Path>,
+        data_dir: &ChainPath<DataDirPath>,
+    ) -> eyre::Result<()>
+    where
+        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
+    {
+        // Collect information first to avoid borrow conflicts
+        let update_action: Option<(PathBuf, StateDbConfig)> = match &reth_config.statedb {
+            Some(existing_config) => {
+                // Config already exists in file, log current config
+                info!(
+                    target: "reth::cli",
+                    db_type = %existing_config.r#type,
+                    db_path = ?existing_config.path,
+                    "State database config found in toml file"
+                );
+
+                // Check for conflicts
+                if config.statedb.triedb && existing_config.r#type != "triedb" {
+                    warn!(
+                        target: "reth::cli",
+                        "Conflict: --statedb.triedb is set but config file specifies {} database. Using config file setting.",
+                        existing_config.r#type
+                    );
+                }
+
+                // Update path if it may have changed (e.g., datadir changed)
+                let expected_path = if existing_config.r#type == "triedb" {
+                    data_dir.data_dir().join("rust_eth_triedb")
+                } else {
+                    data_dir.data_dir().join("db")
+                };
+
+                // Initialize or disable TrieDB based on config type
+                if existing_config.r#type == "triedb" {
+                    // Initialize TrieDB with the configured path
+                    let path_str = expected_path.to_string_lossy().to_string();
+                    init_global_triedb_manager(&path_str);
+                } else {
+                    // Disable TrieDB if using MDBX
+                    disable_triedb();
+                }
+
+                // Check if path needs to be updated
+                (existing_config.path != expected_path).then(|| {
+                    let mut updated_config = existing_config.clone();
+                    updated_config.path = expected_path.clone();
+                    (expected_path, updated_config)
+                })
+            }
+            None => {
+                // No config in file, create and save based on command line argument
+                if config.statedb.triedb {
+                    // Use TrieDB
+                    let triedb_path = data_dir.data_dir().join("rust_eth_triedb");
+                    let path_str = triedb_path.to_string_lossy().to_string();
+                    let statedb_config =
+                        StateDbConfig { r#type: "triedb".to_string(), path: triedb_path };
+                    reth_config.update_statedb_config(statedb_config);
+                    info!(target: "reth::cli", "Saving state database config (triedb) to toml file");
+                    reth_config.save(config_path.as_ref())?;
+                    // Initialize TrieDB
+                    init_global_triedb_manager(&path_str);
+                } else {
+                    // Use default MDBX and save to file
+                    let db_path = data_dir.data_dir().join("db");
+                    let statedb_config =
+                        StateDbConfig { r#type: "mdbx".to_string(), path: db_path };
+                    reth_config.update_statedb_config(statedb_config);
+                    info!(target: "reth::cli", "Saving state database config (mdbx) to toml file");
+                    reth_config.save(config_path.as_ref())?;
+                    // Disable TrieDB
+                    disable_triedb();
+                }
+                None
+            }
+        };
+
+        // Perform update action outside the match block to avoid borrow conflicts
+        if let Some((new_path, updated_config)) = update_action {
+            reth_config.update_statedb_config(updated_config);
+            info!(
+                target: "reth::cli",
+                new_path = ?new_path,
+                "Updating state database path in config file"
+            );
+            reth_config.save(config_path.as_ref())?;
+        }
+
         Ok(())
     }
 
     /// Convenience function to [`Self::configure_globals`]
-    pub fn with_configured_globals(self) -> Self {
-        self.configure_globals();
+    pub fn with_configured_globals(self, reserved_cpu_cores: usize) -> Self {
+        self.configure_globals(reserved_cpu_cores);
         self
     }
 
     /// Configure global settings this includes:
     ///
     /// - Raising the file descriptor limit
-    /// - Configuring the global rayon thread pool
-    pub fn configure_globals(&self) {
+    /// - Configuring the global rayon thread pool with available parallelism. Honoring
+    ///   engine.reserved-cpu-cores to reserve given number of cores for O while using at least 1
+    ///   core for the rayon thread pool
+    pub fn configure_globals(&self, reserved_cpu_cores: usize) {
         // Raise the fd limit of the process.
         // Does not do anything on windows.
         match fdlimit::raise_fd_limit() {
@@ -180,25 +342,31 @@ impl LaunchContext {
             Err(err) => warn!(%err, "Failed to raise file descriptor limit"),
         }
 
-        // Limit the global rayon thread pool, reserving 1 core for the rest of the system.
-        // If the system only has 1 core the pool will use it.
-        let num_threads =
-            available_parallelism().map_or(0, |num| num.get().saturating_sub(1).max(1));
+        // Reserving the given number of CPU cores for the rest of OS.
+        // Users can reserve more cores by setting engine.reserved-cpu-cores
+        // Note: The global rayon thread pool will use at least one core.
+        let num_threads = available_parallelism()
+            .map_or(0, |num| num.get().saturating_sub(reserved_cpu_cores).max(1));
         if let Err(err) = ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .thread_name(|i| format!("reth-rayon-{i}"))
             .build_global()
         {
-            error!(%err, "Failed to build global thread pool")
+            warn!(%err, "Failed to build global thread pool")
         }
     }
 }
 
 /// A [`LaunchContext`] along with an additional value.
 ///
-/// This can be used to sequentially attach additional values to the type during the launch process.
+/// The type parameter `T` represents the current state of the launch process.
+/// Methods are conditionally implemented based on `T`, ensuring operations
+/// are only available when their prerequisites are met.
 ///
-/// The type provides common boilerplate for launching a node depending on the additional value.
+/// For example:
+/// - Config methods when `T = WithConfigs<ChainSpec>`
+/// - Database operations when `T = Attached<WithConfigs<ChainSpec>, DB>`
+/// - Provider operations when `T = Attached<WithConfigs<ChainSpec>, ProviderFactory<N>>`
 #[derive(Debug, Clone)]
 pub struct LaunchContextWith<T> {
     /// The wrapped launch context.
@@ -212,8 +380,8 @@ impl<T> LaunchContextWith<T> {
     ///
     /// - Raising the file descriptor limit
     /// - Configuring the global rayon thread pool
-    pub fn configure_globals(&self) {
-        self.inner.configure_globals();
+    pub fn configure_globals(&self, reserved_cpu_cores: u64) {
+        self.inner.configure_globals(reserved_cpu_cores.try_into().unwrap());
     }
 
     /// Returns the data directory.
@@ -247,7 +415,7 @@ impl<T> LaunchContextWith<T> {
 
 impl<ChainSpec> LaunchContextWith<WithConfigs<ChainSpec>> {
     /// Resolves the trusted peers and adds them to the toml config.
-    pub async fn with_resolved_peers(mut self) -> eyre::Result<Self> {
+    pub fn with_resolved_peers(mut self) -> eyre::Result<Self> {
         if !self.attachment.config.network.trusted_peers.is_empty() {
             info!(target: "reth::cli", "Adding trusted nodes");
 
@@ -272,13 +440,13 @@ impl<L, R> LaunchContextWith<Attached<L, R>> {
         &self.attachment.right
     }
 
-    /// Get a mutable reference to the right value.
-    pub fn left_mut(&mut self) -> &mut L {
+    /// Get a mutable reference to the left value.
+    pub const fn left_mut(&mut self) -> &mut L {
         &mut self.attachment.left
     }
 
     /// Get a mutable reference to the right value.
-    pub fn right_mut(&mut self) -> &mut R {
+    pub const fn right_mut(&mut self) -> &mut R {
         &mut self.attachment.right
     }
 }
@@ -295,8 +463,14 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     /// Make sure ETL doesn't default to /tmp/, but to whatever datadir is set to
     pub fn ensure_etl_datadir(mut self) -> Self {
         if self.toml_config_mut().stages.etl.dir.is_none() {
-            self.toml_config_mut().stages.etl.dir =
-                Some(EtlConfig::from_datadir(self.data_dir().data_dir()))
+            let etl_path = EtlConfig::from_datadir(self.data_dir().data_dir());
+            if etl_path.exists() {
+                // Remove etl-path files on launch
+                if let Err(err) = fs::remove_dir_all(&etl_path) {
+                    warn!(target: "reth::cli", ?etl_path, %err, "Failed to remove ETL path on launch");
+                }
+            }
+            self.toml_config_mut().stages.etl.dir = Some(etl_path);
         }
 
         self
@@ -319,7 +493,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     }
 
     /// Returns the attached [`NodeConfig`].
-    pub fn node_config_mut(&mut self) -> &mut NodeConfig<ChainSpec> {
+    pub const fn node_config_mut(&mut self) -> &mut NodeConfig<ChainSpec> {
         &mut self.left_mut().config
     }
 
@@ -329,7 +503,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     }
 
     /// Returns the attached toml config [`reth_config::Config`].
-    pub fn toml_config_mut(&mut self) -> &mut reth_config::Config {
+    pub const fn toml_config_mut(&mut self) -> &mut reth_config::Config {
         &mut self.left_mut().toml_config
     }
 
@@ -354,8 +528,12 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     }
 
     /// Returns the configured [`PruneConfig`]
+    ///
     /// Any configuration set in CLI will take precedence over those set in toml
-    pub fn prune_config(&self) -> Option<PruneConfig> {
+    pub fn prune_config(&self) -> PruneConfig
+    where
+        ChainSpec: reth_chainspec::EthereumHardforks,
+    {
         let Some(mut node_prune_config) = self.node_config().prune_config() else {
             // No CLI config is set, use the toml config.
             return self.toml_config().prune.clone();
@@ -363,17 +541,23 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
 
         // Otherwise, use the CLI configuration and merge with toml config.
         node_prune_config.merge(self.toml_config().prune.clone());
-        Some(node_prune_config)
+        node_prune_config
     }
 
     /// Returns the configured [`PruneModes`], returning the default if no config was available.
-    pub fn prune_modes(&self) -> PruneModes {
-        self.prune_config().map(|config| config.segments).unwrap_or_default()
+    pub fn prune_modes(&self) -> PruneModes
+    where
+        ChainSpec: reth_chainspec::EthereumHardforks,
+    {
+        self.prune_config().segments
     }
 
     /// Returns an initialized [`PrunerBuilder`] based on the configured [`PruneConfig`]
-    pub fn pruner_builder(&self) -> PrunerBuilder {
-        PrunerBuilder::new(self.prune_config().unwrap_or_default())
+    pub fn pruner_builder(&self) -> PrunerBuilder
+    where
+        ChainSpec: reth_chainspec::EthereumHardforks,
+    {
+        PrunerBuilder::new(self.prune_config())
             .delete_limit(self.chain_spec().prune_delete_limit())
             .timeout(PrunerBuilder::DEFAULT_TIMEOUT)
     }
@@ -386,13 +570,15 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     }
 
     /// Returns the [`MiningMode`] intended for --dev mode.
-    pub fn dev_mining_mode(&self, pending_transactions_listener: Receiver<B256>) -> MiningMode {
-        if let Some(interval) = self.node_config().dev.block_time {
+    pub fn dev_mining_mode<Pool>(&self, pool: Pool) -> MiningMode<Pool>
+    where
+        Pool: TransactionPool + Unpin,
+    {
+        let config = self.node_config();
+        if let Some(interval) = config.dev.block_time {
             MiningMode::interval(interval)
-        } else if let Some(max_transactions) = self.node_config().dev.block_max_transactions {
-            MiningMode::instant(max_transactions, pending_transactions_listener)
         } else {
-            MiningMode::instant(1, pending_transactions_listener)
+            MiningMode::instant(pool, config.dev.block_max_transactions)
         }
     }
 }
@@ -405,31 +591,90 @@ where
     /// Returns the [`ProviderFactory`] for the attached storage after executing a consistent check
     /// between the database and static files. **It may execute a pipeline unwind if it fails this
     /// check.**
-    pub async fn create_provider_factory<N: NodeTypesWithDB<DB = DB, ChainSpec = ChainSpec>>(
+    pub async fn create_provider_factory<N, Evm>(
         &self,
-    ) -> eyre::Result<ProviderFactory<N>> {
+        changeset_cache: ChangesetCache,
+    ) -> eyre::Result<ProviderFactory<N>>
+    where
+        N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
+        Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    {
+        // Validate static files configuration
+        let static_files_config = &self.toml_config().static_files;
+        static_files_config.validate()?;
+
+        // Apply per-segment blocks_per_file configuration
+        let static_file_provider =
+            StaticFileProviderBuilder::read_write(self.data_dir().static_files())
+                .with_metrics()
+                .with_blocks_per_file_for_segments(&static_files_config.as_blocks_per_file_map())
+                .with_genesis_block_number(self.chain_spec().genesis().number.unwrap_or_default())
+                .build()?;
+
+        // Initialize RocksDB provider with metrics, statistics, and default tables
+        let rocksdb_provider = RocksDBProvider::builder(self.data_dir().rocksdb())
+            .with_default_tables()
+            .with_metrics()
+            .with_statistics()
+            .build()?;
+
         let factory = ProviderFactory::new(
             self.right().clone(),
             self.chain_spec(),
-            StaticFileProvider::read_write(self.data_dir().static_files())?,
-        )
+            static_file_provider,
+            rocksdb_provider,
+        )?
         .with_prune_modes(self.prune_modes())
-        .with_static_files_metrics();
+        .with_changeset_cache(changeset_cache);
 
-        let has_receipt_pruning =
-            self.toml_config().prune.as_ref().map_or(false, |a| a.has_receipts_pruning());
+        // Keep MDBX, static files, and RocksDB aligned. If any check fails, unwind to the
+        // earliest consistent block.
+        //
+        // Order matters:
+        // 1) heal static files (no pruning)
+        // 2) check RocksDB (needs static-file tx data)
+        // 3) check static-file checkpoints vs MDBX (may prune)
+        //
+        // Compute one unwind target and run a single unwind.
 
-        // Check for consistency between database and static files. If it fails, it unwinds to
-        // the first block that's consistent between database and static files.
-        if let Some(unwind_target) = factory
+        let provider_ro = factory.database_provider_ro()?;
+
+        // Step 1: heal file-level inconsistencies (no pruning)
+        factory.static_file_provider().check_file_consistency(&provider_ro)?;
+
+        // Step 2: RocksDB consistency check (needs static files tx data)
+        let rocksdb_unwind = factory.rocksdb_provider().check_consistency(&provider_ro)?;
+
+        // Step 3: Static file checkpoint consistency (may prune)
+        let static_file_unwind = factory
             .static_file_provider()
-            .check_consistency(&factory.provider()?, has_receipt_pruning)?
-        {
-            // Highly unlikely to happen, and given its destructive nature, it's better to panic
-            // instead.
-            assert_ne!(unwind_target, PipelineTarget::Unwind(0), "A static file <> database inconsistency was found that would trigger an unwind to block 0");
+            .check_consistency(&provider_ro)?
+            .map(|target| match target {
+                PipelineTarget::Unwind(block) => block,
+                PipelineTarget::Sync(_) => unreachable!("check_consistency returns Unwind"),
+            });
 
-            info!(target: "reth::cli", unwind_target = %unwind_target, "Executing an unwind after a failed storage consistency check.");
+        // Take the minimum block number to ensure all storage layers are consistent.
+        let unwind_target = [rocksdb_unwind, static_file_unwind].into_iter().flatten().min();
+
+        if let Some(unwind_block) = unwind_target {
+            // Highly unlikely to happen, and given its destructive nature, it's better to panic
+            // instead. Unwinding to 0 would leave MDBX with a huge free list size.
+            let inconsistency_source = match (rocksdb_unwind, static_file_unwind) {
+                (Some(_), Some(_)) => "RocksDB and static file",
+                (Some(_), None) => "RocksDB",
+                (None, Some(_)) => "static file",
+                (None, None) => unreachable!(),
+            };
+            assert_ne!(
+                unwind_block, 0,
+                "A {} inconsistency was found that would trigger an unwind to block 0",
+                inconsistency_source
+            );
+
+            let unwind_target = PipelineTarget::Unwind(unwind_block);
+
+            info!(target: "reth::cli", %unwind_target, %inconsistency_source, "Executing unwind after consistency check.");
 
             let (_tip_tx, tip_rx) = watch::channel(B256::ZERO);
 
@@ -438,13 +683,13 @@ where
                 .add_stages(DefaultStages::new(
                     factory.clone(),
                     tip_rx,
-                    Arc::new(EthBeaconConsensus::new(self.chain_spec())),
+                    Arc::new(NoopConsensus::default()),
                     NoopHeaderDownloader::default(),
                     NoopBodiesDownloader::default(),
-                    NoopBlockExecutorProvider::default(),
+                    NoopEvmConfig::<Evm>::default(),
                     self.toml_config().stages.clone(),
                     self.prune_modes(),
-                    self.node_config().skip_state_root_validation,
+                    None,
                 ))
                 .build(
                     factory.clone(),
@@ -462,17 +707,24 @@ where
                     let _ = tx.send(result);
                 }),
             );
-            rx.await??;
+            rx.await?.inspect_err(|err| {
+                error!(target: "reth::cli", %unwind_target, %inconsistency_source, %err, "failed to run unwind")
+            })?;
         }
 
         Ok(factory)
     }
 
     /// Creates a new [`ProviderFactory`] and attaches it to the launch context.
-    pub async fn with_provider_factory<N: NodeTypesWithDB<DB = DB, ChainSpec = ChainSpec>>(
+    pub async fn with_provider_factory<N, Evm>(
         self,
-    ) -> eyre::Result<LaunchContextWith<Attached<WithConfigs<ChainSpec>, ProviderFactory<N>>>> {
-        let factory = self.create_provider_factory().await?;
+        changeset_cache: ChangesetCache,
+    ) -> eyre::Result<LaunchContextWith<Attached<WithConfigs<ChainSpec>, ProviderFactory<N>>>>
+    where
+        N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
+        Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    {
+        let factory = self.create_provider_factory::<N, Evm>(changeset_cache).await?;
         let ctx = LaunchContextWith {
             inner: self.inner,
             attachment: self.attachment.map_right(|_| factory),
@@ -484,7 +736,7 @@ where
 
 impl<T> LaunchContextWith<Attached<WithConfigs<T::ChainSpec>, ProviderFactory<T>>>
 where
-    T: NodeTypesWithDB<ChainSpec: EthChainSpec + EthereumHardforks>,
+    T: ProviderNodeTypes,
 {
     /// Returns access to the underlying database.
     pub const fn database(&self) -> &T::DB {
@@ -497,7 +749,7 @@ where
     }
 
     /// Returns the static file provider to interact with the static files.
-    pub fn static_file_provider(&self) -> StaticFileProvider {
+    pub fn static_file_provider(&self) -> StaticFileProvider<T::Primitives> {
         self.right().static_file_provider()
     }
 
@@ -514,22 +766,26 @@ where
         // ensure recorder runs upkeep periodically
         install_prometheus_recorder().spawn_upkeep();
 
-        let listen_addr = self.node_config().metrics;
+        let listen_addr = self.node_config().metrics.prometheus;
         if let Some(addr) = listen_addr {
-            info!(target: "reth::cli", "Starting metrics endpoint at {}", addr);
             let config = MetricServerConfig::new(
                 addr,
                 VersionInfo {
-                    version: CARGO_PKG_VERSION,
-                    build_timestamp: VERGEN_BUILD_TIMESTAMP,
-                    cargo_features: VERGEN_CARGO_FEATURES,
-                    git_sha: VERGEN_GIT_SHA,
-                    target_triple: VERGEN_CARGO_TARGET_TRIPLE,
-                    build_profile: BUILD_PROFILE_NAME,
+                    version: version_metadata().cargo_pkg_version.as_ref(),
+                    build_timestamp: version_metadata().vergen_build_timestamp.as_ref(),
+                    cargo_features: version_metadata().vergen_cargo_features.as_ref(),
+                    git_sha: version_metadata().vergen_git_sha.as_ref(),
+                    target_triple: version_metadata().vergen_cargo_target_triple.as_ref(),
+                    build_profile: version_metadata().build_profile_name.as_ref(),
                 },
-                ChainSpecInfo { name: self.left().config.chain.chain().to_string() },
+                ChainSpecInfo { name: self.chain_id().to_string() },
                 self.task_executor().clone(),
-                Hooks::new(self.database().clone(), self.static_file_provider()),
+                metrics_hooks(self.provider_factory()),
+                self.data_dir().pprof_dumps(),
+            )
+            .with_push_gateway(
+                self.node_config().metrics.push_gateway_url.clone(),
+                self.node_config().metrics.push_gateway_interval,
             );
 
             MetricServer::new(config).serve().await?;
@@ -539,14 +795,17 @@ where
     }
 
     /// Convenience function to [`Self::init_genesis`]
-    pub fn with_genesis(self) -> Result<Self, InitDatabaseError> {
-        init_genesis(self.provider_factory())?;
+    pub fn with_genesis(self) -> Result<Self, InitStorageError> {
+        init_genesis_with_settings(
+            self.provider_factory(),
+            self.node_config().storage_settings(),
+        )?;
         Ok(self)
     }
 
     /// Write the genesis block and state if it has not already been written
-    pub fn init_genesis(&self) -> Result<B256, InitDatabaseError> {
-        init_genesis(self.provider_factory())
+    pub fn init_genesis(&self) -> Result<B256, InitStorageError> {
+        init_genesis_with_settings(self.provider_factory(), self.node_config().storage_settings())
     }
 
     /// Creates a new `WithMeteredProvider` container and attaches it to the
@@ -573,12 +832,16 @@ where
     }
 }
 
-impl<N> LaunchContextWith<Attached<WithConfigs<N::ChainSpec>, WithMeteredProvider<N>>>
+impl<N, DB>
+    LaunchContextWith<
+        Attached<WithConfigs<N::ChainSpec>, WithMeteredProvider<NodeTypesWithDBAdapter<N, DB>>>,
+    >
 where
-    N: NodeTypesWithDB,
+    N: NodeTypes,
+    DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
 {
     /// Returns the configured `ProviderFactory`.
-    const fn provider_factory(&self) -> &ProviderFactory<N> {
+    const fn provider_factory(&self) -> &ProviderFactory<NodeTypesWithDBAdapter<N, DB>> {
         &self.right().provider_factory
     }
 
@@ -588,16 +851,14 @@ where
     }
 
     /// Creates a `BlockchainProvider` and attaches it to the launch context.
-    #[allow(clippy::complexity)]
+    #[expect(clippy::complexity)]
     pub fn with_blockchain_db<T, F>(
         self,
         create_blockchain_provider: F,
-        tree_config: BlockchainTreeConfig,
-        canon_state_notification_sender: CanonStateNotificationSender,
     ) -> eyre::Result<LaunchContextWith<Attached<WithConfigs<N::ChainSpec>, WithMeteredProviders<T>>>>
     where
-        T: FullNodeTypes<Types = N>,
-        F: FnOnce(ProviderFactory<N>) -> eyre::Result<T::Provider>,
+        T: FullNodeTypes<Types = N, DB = DB>,
+        F: FnOnce(ProviderFactory<NodeTypesWithDBAdapter<N, DB>>) -> eyre::Result<T::Provider>,
     {
         let blockchain_db = create_blockchain_provider(self.provider_factory().clone())?;
 
@@ -607,8 +868,6 @@ where
                 metrics_sender: self.sync_metrics_tx(),
             },
             blockchain_db,
-            tree_config,
-            canon_state_notification_sender,
         };
 
         let ctx = LaunchContextWith {
@@ -625,15 +884,17 @@ impl<T>
         Attached<WithConfigs<<T::Types as NodeTypes>::ChainSpec>, WithMeteredProviders<T>>,
     >
 where
-    T: FullNodeTypes<Types: ProviderNodeTypes, Provider: WithTree>,
+    T: FullNodeTypes<Types: NodeTypesForProvider>,
 {
     /// Returns access to the underlying database.
-    pub const fn database(&self) -> &<T::Types as NodeTypesWithDB>::DB {
+    pub const fn database(&self) -> &T::DB {
         self.provider_factory().db_ref()
     }
 
     /// Returns the configured `ProviderFactory`.
-    pub const fn provider_factory(&self) -> &ProviderFactory<T::Types> {
+    pub const fn provider_factory(
+        &self,
+    ) -> &ProviderFactory<NodeTypesWithDBAdapter<T::Types, T::DB>> {
         &self.right().db_provider_container.provider_factory
     }
 
@@ -654,16 +915,6 @@ where
     /// Returns a reference to the blockchain provider.
     pub const fn blockchain_db(&self) -> &T::Provider {
         &self.right().blockchain_db
-    }
-
-    /// Returns a reference to the `BlockchainTreeConfig`.
-    pub const fn tree_config(&self) -> &BlockchainTreeConfig {
-        &self.right().tree_config
-    }
-
-    /// Returns the `CanonStateNotificationSender`.
-    pub fn canon_state_notification_sender(&self) -> CanonStateNotificationSender {
-        self.right().canon_state_notification_sender.clone()
     }
 
     /// Creates a `NodeAdapter` and attaches it to the launch context.
@@ -694,40 +945,12 @@ where
         debug!(target: "reth::cli", "creating components");
         let components = components_builder.build_components(&builder_ctx).await?;
 
-        let consensus: Arc<dyn Consensus> = Arc::new(components.consensus().clone());
-
-        let tree_externals = TreeExternals::new(
-            self.provider_factory().clone().with_prune_modes(self.prune_modes()),
-            consensus.clone(),
-            components.block_executor().clone(),
-        );
-
-        let mut tree = BlockchainTree::new(tree_externals, *self.tree_config())?
-            .with_sync_metrics_tx(self.sync_metrics_tx())
-            // Note: This is required because we need to ensure that both the components and the
-            // tree are using the same channel for canon state notifications. This will be removed
-            // once the Blockchain provider no longer depends on an instance of the tree
-            .with_canon_state_notification_sender(self.canon_state_notification_sender());
-
-        if self.node_config().enable_prefetch {
-            tree = tree.enable_prefetch();
-        }
-
-        if self.node_config().skip_state_root_validation {
-            tree = tree.skip_state_root_validation();
-        }
-
-        let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
-
-        // Replace the tree component with the actual tree
-        let blockchain_db = self.blockchain_db().clone().set_tree(blockchain_tree);
-
-        debug!(target: "reth::cli", "configured blockchain tree");
+        let blockchain_db = self.blockchain_db().clone();
 
         let node_adapter = NodeAdapter {
             components,
             task_executor: self.task_executor().clone(),
-            provider: blockchain_db.clone(),
+            provider: blockchain_db,
         };
 
         debug!(target: "reth::cli", "calling on_component_initialized hook");
@@ -738,11 +961,8 @@ where
                 provider_factory: self.provider_factory().clone(),
                 metrics_sender: self.sync_metrics_tx(),
             },
-            blockchain_db,
-            tree_config: self.right().tree_config,
             node_adapter,
             head,
-            consensus,
         };
 
         let ctx = LaunchContextWith {
@@ -759,14 +979,13 @@ impl<T, CB>
         Attached<WithConfigs<<T::Types as NodeTypes>::ChainSpec>, WithComponents<T, CB>>,
     >
 where
-    T: FullNodeTypes<
-        Provider: WithTree,
-        Types: NodeTypes<ChainSpec: EthChainSpec + EthereumHardforks>,
-    >,
+    T: FullNodeTypes<Types: NodeTypesForProvider>,
     CB: NodeComponentsBuilder<T>,
 {
     /// Returns the configured `ProviderFactory`.
-    pub const fn provider_factory(&self) -> &ProviderFactory<T::Types> {
+    pub const fn provider_factory(
+        &self,
+    ) -> &ProviderFactory<NodeTypesWithDBAdapter<T::Types, T::DB>> {
         &self.right().db_provider_container.provider_factory
     }
 
@@ -774,18 +993,20 @@ where
     /// necessary
     pub async fn max_block<C>(&self, client: C) -> eyre::Result<Option<BlockNumber>>
     where
-        C: HeadersClient,
+        C: HeadersClient<Header: BlockHeader>,
     {
         self.node_config().max_block(client, self.provider_factory().clone()).await
     }
 
     /// Returns the static file provider to interact with the static files.
-    pub fn static_file_provider(&self) -> StaticFileProvider {
+    pub fn static_file_provider(&self) -> StaticFileProvider<<T::Types as NodeTypes>::Primitives> {
         self.provider_factory().static_file_provider()
     }
 
     /// Creates a new [`StaticFileProducer`] with the attached database.
-    pub fn static_file_producer(&self) -> StaticFileProducer<ProviderFactory<T::Types>> {
+    pub fn static_file_producer(
+        &self,
+    ) -> StaticFileProducer<ProviderFactory<NodeTypesWithDBAdapter<T::Types, T::DB>>> {
         StaticFileProducer::new(self.provider_factory().clone(), self.prune_modes())
     }
 
@@ -799,9 +1020,14 @@ where
         &self.right().node_adapter
     }
 
+    /// Returns mutable reference to the configured `NodeAdapter`.
+    pub const fn node_adapter_mut(&mut self) -> &mut NodeAdapter<T, CB::Components> {
+        &mut self.right_mut().node_adapter
+    }
+
     /// Returns a reference to the blockchain provider.
     pub const fn blockchain_db(&self) -> &T::Provider {
-        &self.right().blockchain_db
+        &self.node_adapter().provider
     }
 
     /// Returns the initial backfill to sync to at launch.
@@ -828,6 +1054,28 @@ where
         self.node_config().debug.terminate || self.node_config().debug.max_block.is_some()
     }
 
+    /// Ensures that the database matches chain-specific requirements.
+    ///
+    /// This checks for OP-Mainnet and ensures we have all the necessary data to progress (past
+    /// bedrock height)
+    fn ensure_chain_specific_db_checks(&self) -> ProviderResult<()> {
+        if self.chain_spec().is_optimism() &&
+            !self.is_dev() &&
+            self.chain_id() == Chain::optimism_mainnet()
+        {
+            let latest = self.blockchain_db().last_block_number()?;
+            // bedrock height
+            if latest < 105235063 {
+                error!(
+                    "Op-mainnet has been launched without importing the pre-Bedrock state. The chain can't progress without this. See also https://reth.rs/run/sync-op-mainnet.html?minimal-bootstrap-recommended"
+                );
+                return Err(ProviderError::BestBlockNotFound);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Check if the pipeline is consistent (all stages have the checkpoint block numbers no less
     /// than the checkpoint of the first stage).
     ///
@@ -840,17 +1088,79 @@ where
     ///
     /// A target block hash if the pipeline is inconsistent, otherwise `None`.
     pub fn check_pipeline_consistency(&self) -> ProviderResult<Option<B256>> {
+        if is_triedb_active() {
+            return self.check_pipeline_consistency_under_triedb();
+        }
+
+        // We skip the era stage if it's not enabled
+        let era_enabled = self.era_import_source().is_some();
+        let mut all_stages =
+            StageId::ALL.into_iter().filter(|id| era_enabled || id != &StageId::Era);
+
+        // Get the expected first stage based on config.
+        let first_stage = all_stages.next().expect("there must be at least one stage");
+
         // If no target was provided, check if the stages are congruent - check if the
         // checkpoint of the last stage matches the checkpoint of the first.
         let first_stage_checkpoint = self
+            .blockchain_db()
+            .get_stage_checkpoint(first_stage)?
+            .unwrap_or_default()
+            .block_number;
+
+        // Compare all other stages against the first
+        for stage_id in all_stages {
+            let stage_checkpoint = self
+                .blockchain_db()
+                .get_stage_checkpoint(stage_id)?
+                .unwrap_or_default()
+                .block_number;
+
+            // If the checkpoint of any stage is less than the checkpoint of the first stage,
+            // retrieve and return the block hash of the latest header and use it as the target.
+            debug!(
+                target: "consensus::engine",
+                first_stage_id = %first_stage,
+                first_stage_checkpoint,
+                stage_id = %stage_id,
+                stage_checkpoint = stage_checkpoint,
+                "Checking stage against first stage",
+            );
+            if stage_checkpoint < first_stage_checkpoint {
+                debug!(
+                    target: "consensus::engine",
+                    first_stage_id = %first_stage,
+                    first_stage_checkpoint,
+                    inconsistent_stage_id = %stage_id,
+                    inconsistent_stage_checkpoint = stage_checkpoint,
+                    "Pipeline sync progress is inconsistent"
+                );
+                return self.blockchain_db().block_hash(first_stage_checkpoint);
+            }
+        }
+
+        self.ensure_chain_specific_db_checks()?;
+
+        Ok(None)
+    }
+
+    /// Check if the pipeline is consistent under `TrieDB`.
+    pub fn check_pipeline_consistency_under_triedb(&self) -> ProviderResult<Option<B256>> {
+        // If no target was provided, check if the stages are congruent - check if the
+        // checkpoint of the last stage matches the checkpoint of the first.
+        let mut first_stage_checkpoint = self
             .blockchain_db()
             .get_stage_checkpoint(*StageId::ALL.first().unwrap())?
             .unwrap_or_default()
             .block_number;
 
+        let triedb = rust_eth_triedb::get_global_triedb();
+        let (triedb_checkpoint_block_number, triedb_checkpoint_state_root) =
+            triedb.latest_persist_state().unwrap();
+
         // Skip the first stage as we've already retrieved it and comparing all other checkpoints
         // against it.
-        for stage_id in StageId::ALL.iter().skip(1) {
+        for stage_id in &StageId::ALL {
             let stage_checkpoint = self
                 .blockchain_db()
                 .get_stage_checkpoint(*stage_id)?
@@ -860,7 +1170,16 @@ where
             // If the checkpoint of any stage is less than the checkpoint of the first stage,
             // retrieve and return the block hash of the latest header and use it as the target.
             if stage_checkpoint < first_stage_checkpoint {
-                debug!(
+                if triedb_checkpoint_block_number > first_stage_checkpoint {
+                    info!(
+                        target: "consensus::engine",
+                        triedb_checkpoint_block_number,
+                        first_stage_checkpoint,
+                        "TrieDB checkpoint is ahead of the first stage checkpoint, using TrieDB checkpoint as the target"
+                    );
+                    first_stage_checkpoint = triedb_checkpoint_block_number;
+                }
+                info!(
                     target: "consensus::engine",
                     first_stage_checkpoint,
                     inconsistent_stage_id = %stage_id,
@@ -871,103 +1190,228 @@ where
             }
         }
 
+        info!(target: "consensus::engine", "Pipeline sync progress is consistent, will check live sync progress");
+
+        let last_persisted_block_number = self.blockchain_db().last_block_number()?;
+        let last_persisted_header = self
+            .blockchain_db()
+            .header_by_number(last_persisted_block_number)?
+            .ok_or_else(|| {
+                reth_provider::ProviderError::HeaderNotFound(alloy_eips::BlockHashOrNumber::Number(
+                    last_persisted_block_number,
+                ))
+            })?;
+        let last_persisted_state_root = last_persisted_header.state_root();
+
+        if last_persisted_block_number > triedb_checkpoint_block_number {
+            info!(target: "consensus::engine",
+            last_persisted_block_number,
+            last_persisted_state_root = ?last_persisted_state_root,
+            triedb_checkpoint_block_number,
+            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
+            "Last persisted state is ahead of the TrieDB state, start pipeline sync to align");
+            return self.blockchain_db().block_hash(last_persisted_block_number);
+        } else if last_persisted_block_number < triedb_checkpoint_block_number {
+            info!(target: "consensus::engine",
+            last_persisted_block_number,
+            last_persisted_state_root = ?last_persisted_state_root,
+            triedb_checkpoint_block_number,
+            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
+            "Last persisted state is behind of the TrieDB state, start pipeline sync to align");
+            return self.blockchain_db().block_hash(last_persisted_block_number);
+        }
+
+        info!(target: "consensus::engine",
+            last_persisted_block_number,
+            last_persisted_state_root = ?last_persisted_state_root,
+            triedb_checkpoint_block_number,
+            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
+            "Last persisted state equal TrieDB state, start live sync");
+
         Ok(None)
     }
+    /// Expire the pre-merge transactions if the node is configured to do so and the chain has a
+    /// merge block.
+    ///
+    /// If the node is configured to prune pre-merge transactions and it has synced past the merge
+    /// block, it will delete the pre-merge transaction static files if they still exist.
+    pub fn expire_pre_merge_transactions(&self) -> eyre::Result<()>
+    where
+        T: FullNodeTypes<Provider: StaticFileProviderFactory>,
+    {
+        if self.node_config().pruning.bodies_pre_merge &&
+            let Some(merge_block) = self
+                .chain_spec()
+                .ethereum_fork_activation(EthereumHardfork::Paris)
+                .block_number()
+        {
+            let merge_block = BlockNumber::from(merge_block);
+            // Ensure we only expire transactions after we synced past the merge block.
+            let Some(latest) = self.blockchain_db().latest_header()? else { return Ok(()) };
+            if latest.number() > merge_block {
+                let provider = self.blockchain_db().static_file_provider();
+                if provider
+                    .get_lowest_range_end(StaticFileSegment::Transactions)
+                    .is_some_and(|lowest| lowest < merge_block)
+                {
+                    info!(target: "reth::cli", merge_block, "Expiring pre-merge transactions");
+                    provider
+                        .delete_segment_below_block(StaticFileSegment::Transactions, merge_block)?;
+                } else {
+                    debug!(target: "reth::cli", merge_block, "No pre-merge transactions to expire");
+                }
+            }
+        }
 
-    /// Returns the configured `Consensus`.
-    pub fn consensus(&self) -> Arc<dyn Consensus> {
-        self.right().consensus.clone()
+        Ok(())
     }
-
     /// Returns the metrics sender.
     pub fn sync_metrics_tx(&self) -> UnboundedSender<MetricEvent> {
         self.right().db_provider_container.metrics_sender.clone()
-    }
-
-    /// Returns a reference to the `BlockchainTreeConfig`.
-    pub const fn tree_config(&self) -> &BlockchainTreeConfig {
-        &self.right().tree_config
     }
 
     /// Returns the node adapter components.
     pub const fn components(&self) -> &CB::Components {
         &self.node_adapter().components
     }
-}
 
-impl<T, CB>
-    LaunchContextWith<
-        Attached<WithConfigs<<T::Types as NodeTypes>::ChainSpec>, WithComponents<T, CB>>,
-    >
-where
-    T: FullNodeTypes<
-        Provider: WithTree + StateProviderFactory + ChainSpecProvider,
-        Types: NodeTypes<ChainSpec: EthereumHardforks>,
-    >,
-    CB: NodeComponentsBuilder<T>,
-{
-    /// Returns the [`InvalidBlockHook`] to use for the node.
-    pub fn invalid_block_hook(&self) -> eyre::Result<Box<dyn InvalidBlockHook>> {
-        let Some(ref hook) = self.node_config().debug.invalid_block_hook else {
-            return Ok(Box::new(NoopInvalidBlockHook::default()))
-        };
-        let healthy_node_rpc_client = self.get_healthy_node_client()?;
+    /// Launches ExEx (Execution Extensions) and returns the ExEx manager handle.
+    #[allow(clippy::type_complexity)]
+    pub async fn launch_exex(
+        &self,
+        installed_exex: Vec<(
+            String,
+            Box<dyn crate::exex::BoxedLaunchExEx<NodeAdapter<T, CB::Components>>>,
+        )>,
+    ) -> eyre::Result<Option<ExExManagerHandle<PrimitivesTy<T::Types>>>> {
+        self.exex_launcher(installed_exex).launch().await
+    }
 
-        let output_directory = self.data_dir().invalid_block_hooks();
-        let hooks = hook
-            .iter()
-            .copied()
-            .map(|hook| {
-                let output_directory = output_directory.join(hook.to_string());
-                fs::create_dir_all(&output_directory)?;
+    /// Creates an [`ExExLauncher`] for the installed ExExes.
+    ///
+    /// This returns the launcher before calling `.launch()`, allowing custom configuration
+    /// such as setting the WAL blocks warning threshold for L2 chains with faster block times:
+    ///
+    /// ```ignore
+    /// ctx.exex_launcher(exexes)
+    ///     .with_wal_blocks_warning(768)  // For 2-second block times
+    ///     .launch()
+    ///     .await
+    /// ```
+    #[allow(clippy::type_complexity)]
+    pub fn exex_launcher(
+        &self,
+        installed_exex: Vec<(
+            String,
+            Box<dyn crate::exex::BoxedLaunchExEx<NodeAdapter<T, CB::Components>>>,
+        )>,
+    ) -> ExExLauncher<NodeAdapter<T, CB::Components>> {
+        ExExLauncher::new(
+            self.head(),
+            self.node_adapter().clone(),
+            installed_exex,
+            self.configs().clone(),
+        )
+    }
 
-                Ok(match hook {
-                    InvalidBlockHookType::Witness => Box::new(InvalidBlockWitnessHook::new(
-                        self.blockchain_db().clone(),
-                        self.components().evm_config().clone(),
-                        output_directory,
-                        healthy_node_rpc_client.clone(),
-                    )),
-                    InvalidBlockHookType::PreState | InvalidBlockHookType::Opcode => {
-                        eyre::bail!("invalid block hook {hook:?} is not implemented yet")
+    /// Creates the ERA import source based on node configuration.
+    ///
+    /// Returns `Some(EraImportSource)` if ERA is enabled in the node config, otherwise `None`.
+    pub fn era_import_source(&self) -> Option<EraImportSource> {
+        let node_config = self.node_config();
+        if !node_config.era.enabled {
+            return None;
+        }
+
+        EraImportSource::maybe_new(
+            node_config.era.source.path.clone(),
+            node_config.era.source.url.clone(),
+            || node_config.chain.chain().kind().default_era_host(),
+            || node_config.datadir().data_dir().join("era").into(),
+        )
+    }
+
+    /// Creates consensus layer health events stream based on node configuration.
+    ///
+    /// Returns a stream that monitors consensus layer health if:
+    /// - No debug tip is configured
+    /// - Not running in dev mode
+    ///
+    /// Otherwise returns an empty stream.
+    pub fn consensus_layer_events(
+        &self,
+    ) -> impl Stream<Item = NodeEvent<PrimitivesTy<T::Types>>> + 'static
+    where
+        T::Provider: reth_provider::CanonChainTracker,
+    {
+        if self.node_config().debug.tip.is_none() && !self.is_dev() {
+            Either::Left(
+                ConsensusLayerHealthEvents::new(Box::new(self.blockchain_db().clone()))
+                    .map(Into::into),
+            )
+        } else {
+            Either::Right(stream::empty())
+        }
+    }
+
+    /// Spawns the [`EthStatsService`] service if configured.
+    pub async fn spawn_ethstats<St>(&self, mut engine_events: St) -> eyre::Result<()>
+    where
+        St: Stream<Item = reth_engine_primitives::ConsensusEngineEvent<PrimitivesTy<T::Types>>>
+            + Send
+            + Unpin
+            + 'static,
+    {
+        let Some(url) = self.node_config().debug.ethstats.as_ref() else { return Ok(()) };
+
+        let network = self.components().network().clone();
+        let pool = self.components().pool().clone();
+        let provider = self.node_adapter().provider.clone();
+
+        info!(target: "reth::cli", "Starting EthStats service at {}", url);
+
+        let ethstats = EthStatsService::new(url, network, provider, pool).await?;
+
+        // If engine events are provided, spawn listener for new payload reporting
+        let ethstats_for_events = ethstats.clone();
+        let task_executor = self.task_executor().clone();
+        task_executor.spawn(Box::pin(async move {
+            while let Some(event) = engine_events.next().await {
+                use reth_engine_primitives::ConsensusEngineEvent;
+                match event {
+                    ConsensusEngineEvent::ForkBlockAdded(executed, duration) |
+                    ConsensusEngineEvent::CanonicalBlockAdded(executed, duration) => {
+                        let block_hash = executed.recovered_block.num_hash().hash;
+                        let block_number = executed.recovered_block.num_hash().number;
+                        if let Err(e) = ethstats_for_events
+                            .report_new_payload(block_hash, block_number, duration)
+                            .await
+                        {
+                            debug!(
+                                target: "ethstats",
+                                "Failed to report new payload: {}", e
+                            );
+                        }
                     }
-                } as Box<dyn InvalidBlockHook>)
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(Box::new(InvalidBlockHooks(hooks)))
-    }
-
-    /// Returns an RPC client for the healthy node, if configured in the node config.
-    fn get_healthy_node_client(&self) -> eyre::Result<Option<jsonrpsee::http_client::HttpClient>> {
-        self.node_config()
-            .debug
-            .healthy_node_rpc_url
-            .as_ref()
-            .map(|url| {
-                let client = jsonrpsee::http_client::HttpClientBuilder::default().build(url)?;
-
-                // Verify that the healthy node is running the same chain as the current node.
-                let chain_id = futures::executor::block_on(async {
-                    EthApiClient::<
-                        alloy_rpc_types::Transaction,
-                        alloy_rpc_types::Block,
-                        alloy_rpc_types::Receipt,
-                    >::chain_id(&client)
-                    .await
-                })?
-                .ok_or_eyre("healthy node rpc client didn't return a chain id")?;
-                if chain_id.to::<u64>() != self.chain_id().id() {
-                    eyre::bail!("invalid chain id for healthy node: {chain_id}")
+                    _ => {
+                        // Ignore other event types for ethstats reporting
+                    }
                 }
+            }
+        }));
 
-                Ok(client)
-            })
-            .transpose()
+        // Spawn main ethstats service
+        task_executor.spawn(Box::pin(async move { ethstats.run().await }));
+
+        Ok(())
     }
 }
 
-/// Joins two attachments together.
+/// Joins two attachments together, preserving access to both values.
+///
+/// This type enables the launch process to accumulate state while maintaining
+/// access to all previously attached components. The `left` field holds the
+/// previous state, while `right` holds the newly attached component.
 #[derive(Clone, Copy, Debug)]
 pub struct Attached<L, R> {
     left: L,
@@ -1006,25 +1450,31 @@ impl<L, R> Attached<L, R> {
         &self.right
     }
 
-    /// Get a mutable reference to the right value.
-    pub fn left_mut(&mut self) -> &mut R {
-        &mut self.right
+    /// Get a mutable reference to the left value.
+    pub const fn left_mut(&mut self) -> &mut L {
+        &mut self.left
     }
 
     /// Get a mutable reference to the right value.
-    pub fn right_mut(&mut self) -> &mut R {
+    pub const fn right_mut(&mut self) -> &mut R {
         &mut self.right
     }
 }
 
 /// Helper container type to bundle the initial [`NodeConfig`] and the loaded settings from the
 /// reth.toml config
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WithConfigs<ChainSpec> {
     /// The configured, usually derived from the CLI.
     pub config: NodeConfig<ChainSpec>,
     /// The loaded reth.toml config.
     pub toml_config: reth_config::Config,
+}
+
+impl<ChainSpec> Clone for WithConfigs<ChainSpec> {
+    fn clone(&self) -> Self {
+        Self { config: self.config.clone(), toml_config: self.toml_config.clone() }
+    }
 }
 
 /// Helper container type to bundle the [`ProviderFactory`] and the metrics
@@ -1035,32 +1485,47 @@ pub struct WithMeteredProvider<N: NodeTypesWithDB> {
     metrics_sender: UnboundedSender<MetricEvent>,
 }
 
-/// Helper container to bundle the [`ProviderFactory`], [`BlockchainProvider`]
+/// Helper container to bundle the [`ProviderFactory`], [`FullNodeTypes::Provider`]
 /// and a metrics sender.
-#[allow(missing_debug_implementations)]
+#[expect(missing_debug_implementations)]
 pub struct WithMeteredProviders<T>
 where
     T: FullNodeTypes,
 {
-    db_provider_container: WithMeteredProvider<T::Types>,
+    db_provider_container: WithMeteredProvider<NodeTypesWithDBAdapter<T::Types, T::DB>>,
     blockchain_db: T::Provider,
-    canon_state_notification_sender: CanonStateNotificationSender,
-    tree_config: BlockchainTreeConfig,
 }
 
 /// Helper container to bundle the metered providers container and [`NodeAdapter`].
-#[allow(missing_debug_implementations)]
+#[expect(missing_debug_implementations)]
 pub struct WithComponents<T, CB>
 where
     T: FullNodeTypes,
     CB: NodeComponentsBuilder<T>,
 {
-    db_provider_container: WithMeteredProvider<T::Types>,
-    tree_config: BlockchainTreeConfig,
-    blockchain_db: T::Provider,
+    db_provider_container: WithMeteredProvider<NodeTypesWithDBAdapter<T::Types, T::DB>>,
     node_adapter: NodeAdapter<T, CB::Components>,
     head: Head,
-    consensus: Arc<dyn Consensus>,
+}
+
+/// Returns the metrics hooks for the node.
+pub fn metrics_hooks<N: NodeTypesWithDB>(provider_factory: &ProviderFactory<N>) -> Hooks {
+    Hooks::builder()
+        .with_hook({
+            let db = provider_factory.db_ref().clone();
+            move || throttle!(Duration::from_secs(5 * 60), || db.report_metrics())
+        })
+        .with_hook({
+            let sfp = provider_factory.static_file_provider();
+            move || {
+                throttle!(Duration::from_secs(5 * 60), || {
+                    if let Err(error) = sfp.report_metrics() {
+                        error!(%error, "Failed to report metrics from static file provider");
+                    }
+                })
+            }
+        })
+        .build()
 }
 
 #[cfg(test)]
@@ -1085,6 +1550,7 @@ mod tests {
             let node_config = NodeConfig {
                 pruning: PruningArgs {
                     full: true,
+                    minimal: false,
                     block_interval: None,
                     sender_recovery_full: false,
                     sender_recovery_distance: None,
@@ -1093,6 +1559,7 @@ mod tests {
                     transaction_lookup_distance: None,
                     transaction_lookup_before: None,
                     receipts_full: false,
+                    receipts_pre_merge: false,
                     receipts_distance: None,
                     receipts_before: None,
                     account_history_full: false,
@@ -1101,16 +1568,15 @@ mod tests {
                     storage_history_full: false,
                     storage_history_distance: None,
                     storage_history_before: None,
-                    receipts_log_filter: vec![],
+                    bodies_pre_merge: false,
+                    bodies_distance: None,
+                    receipts_log_filter: None,
+                    bodies_before: None,
                 },
                 ..NodeConfig::test()
             };
-            LaunchContext::save_pruning_config_if_full_node(
-                &mut reth_config,
-                &node_config,
-                config_path,
-            )
-            .unwrap();
+            LaunchContext::save_pruning_config(&mut reth_config, &node_config, config_path)
+                .unwrap();
 
             let loaded_config = Config::from_path(config_path).unwrap();
 

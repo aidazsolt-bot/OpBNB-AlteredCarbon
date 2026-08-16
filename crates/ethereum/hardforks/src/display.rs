@@ -24,6 +24,8 @@ struct DisplayFork {
     activated_at: ForkCondition,
     /// An optional EIP (e.g. `EIP-1559`).
     eip: Option<String>,
+    /// Optional extra metadata to display after the activation condition (e.g. blob params).
+    metadata: Option<String>,
 }
 
 impl core::fmt::Display for DisplayFork {
@@ -38,7 +40,7 @@ impl core::fmt::Display for DisplayFork {
             ForkCondition::Block(at) | ForkCondition::Timestamp(at) => {
                 write!(f, "{name_with_eip:32} @{at}")?;
             }
-            ForkCondition::TTD { fork_block, total_difficulty } => {
+            ForkCondition::TTD { fork_block, total_difficulty, .. } => {
                 write!(
                     f,
                     "{:32} @{} ({})",
@@ -52,6 +54,10 @@ impl core::fmt::Display for DisplayFork {
                 )?;
             }
             ForkCondition::Never => unreachable!(),
+        }
+
+        if let Some(metadata) = &self.metadata {
+            write!(f, " {metadata}")?;
         }
 
         Ok(())
@@ -147,16 +153,59 @@ impl DisplayHardforks {
         let mut post_merge = Vec::new();
 
         for (fork, condition) in hardforks.forks_iter() {
-            let mut display_fork =
-                DisplayFork { name: fork.name().to_string(), activated_at: condition, eip: None };
+            let mut display_fork = DisplayFork {
+                name: fork.name().to_string(),
+                activated_at: condition,
+                eip: None,
+                metadata: None,
+            };
 
             match condition {
                 ForkCondition::Block(_) => {
                     pre_merge.push(display_fork);
                 }
                 ForkCondition::TTD { total_difficulty, .. } => {
-                    display_fork.activated_at =
-                        ForkCondition::TTD { fork_block: known_paris_block, total_difficulty };
+                    display_fork.activated_at = ForkCondition::TTD {
+                        fork_block: known_paris_block,
+                        total_difficulty,
+                        activation_block_number: 0,
+                    };
+                    with_merge.push(display_fork);
+                }
+                ForkCondition::Timestamp(_) => {
+                    post_merge.push(display_fork);
+                }
+                ForkCondition::Never => continue,
+            }
+        }
+
+        Self { pre_merge, with_merge, post_merge }
+    }
+
+    /// Creates a new [`DisplayHardforks`] from an iterator of `(fork, condition, metadata)`
+    /// tuples, where `metadata` is an optional extra string (e.g. blob params) to display
+    /// alongside the fork's activation condition.
+    pub fn with_meta<'a, I>(hardforks_with_meta: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a dyn crate::Hardfork, ForkCondition, Option<String>)>,
+    {
+        let mut pre_merge = Vec::new();
+        let mut with_merge = Vec::new();
+        let mut post_merge = Vec::new();
+
+        for (fork, condition, metadata) in hardforks_with_meta {
+            let display_fork = DisplayFork {
+                name: fork.name().to_string(),
+                activated_at: condition,
+                eip: None,
+                metadata,
+            };
+
+            match condition {
+                ForkCondition::Block(_) => {
+                    pre_merge.push(display_fork);
+                }
+                ForkCondition::TTD { .. } => {
                     with_merge.push(display_fork);
                 }
                 ForkCondition::Timestamp(_) => {

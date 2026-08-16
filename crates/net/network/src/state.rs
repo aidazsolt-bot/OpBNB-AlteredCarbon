@@ -16,8 +16,9 @@ use alloy_primitives::{
 };
 use rand::seq::SliceRandom;
 use reth_eth_wire::{
-    BlockHashNumber, Capabilities, DisconnectReason, EthNetworkPrimitives, GetReceipts70,
-    NetworkPrimitives, NewBlockHashes, NewBlockPayload, UnifiedStatus,
+    BlockHashNumber, Capabilities, DisconnectReason, EthNetworkPrimitives, GetBlockHeaders,
+    GetReceipts70, HeadersDirection, NetworkPrimitives, NewBlockHashes, NewBlockPayload,
+    UnifiedStatus,
 };
 use reth_ethereum_forks::ForkId;
 use reth_network_api::{DiscoveredEvent, DiscoveryEvent, PeerRequest, PeerRequestSender};
@@ -138,6 +139,37 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         self.state_fetcher.client()
     }
 
+    /// Applies a peer's eth/69+ [`BlockRangeUpdate`](reth_eth_wire::BlockRangeUpdate).
+    ///
+    /// Updates the advertised full-block/receipts window and the tip used for header routing.
+    pub(crate) fn on_peer_block_range_update(
+        &mut self,
+        peer_id: PeerId,
+        update: reth_eth_wire::BlockRangeUpdate,
+    ) {
+        if update.earliest > update.latest {
+            // Session already treats this as a bad message; ignore here as defense in depth.
+            return;
+        }
+        self.state_fetcher.on_block_range_update(
+            &peer_id,
+            update.earliest,
+            update.latest,
+            update.latest_hash,
+        );
+        if let Some(peer) = self.active_peers.get_mut(&peer_id) {
+            peer.best_hash = update.latest_hash;
+        }
+        trace!(
+            target: "net",
+            ?peer_id,
+            earliest = update.earliest,
+            latest = update.latest,
+            %update.latest_hash,
+            "Applied peer BlockRangeUpdate"
+        );
+    }
+
     /// How many peers we're currently connected to.
     pub fn num_active_peers(&self) -> usize {
         self.active_peers.len()
@@ -160,15 +192,19 @@ impl<N: NetworkPrimitives> NetworkState<N> {
 
         debug_assert!(!self.active_peers.contains_key(&peer), "Already connected; not possible");
 
-        // Use the block number from the peer's status (eth/69+) if available,
-        // otherwise fall back to a local lookup by hash.
-        let block_number = status.latest_block.unwrap_or_else(|| {
-            self.client.block_number(status.blockhash).ok().flatten().unwrap_or_default()
-        });
+        // eth/69+ advertises the tip number in Status. eth/66–68 only send the tip hash — resolve
+        // the number with one GetBlockHeaders(hash, limit=1) when it is not already in the local
+        // DB.
+        let known_number = status
+            .latest_block
+            .or_else(|| self.client.block_number(status.blockhash).ok().flatten());
+        let tip_hash = status.blockhash;
+        let needs_tip_resolve = known_number.is_none() && !tip_hash.is_zero();
+
         self.state_fetcher.new_active_peer(NewPeerInfo {
             peer_id: peer,
-            best_hash: status.blockhash,
-            best_number: block_number,
+            best_hash: tip_hash,
+            best_number: known_number.unwrap_or(0),
             capabilities: Arc::clone(&capabilities),
             timeout,
             range_info,
@@ -178,13 +214,94 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         self.active_peers.insert(
             peer,
             ActivePeer {
-                best_hash: status.blockhash,
+                best_hash: tip_hash,
                 capabilities,
                 request_tx,
                 pending_response: None,
+                pending_kind: PendingResponseKind::Fetcher,
                 blocks: LruCache::new(PEER_BLOCK_CACHE_LIMIT),
             },
         );
+
+        if needs_tip_resolve {
+            // Hold the peer busy so the fetcher does not overwrite this pending response.
+            self.state_fetcher.mark_peer_headers_inflight(&peer);
+            self.request_status_tip_number(peer, tip_hash);
+        }
+    }
+
+    /// Asks the peer for the header of its Status tip hash so we learn `best_number` (eth/66–68).
+    fn request_status_tip_number(&mut self, peer_id: PeerId, tip_hash: B256) {
+        let Some(peer) = self.active_peers.get_mut(&peer_id) else {
+            return;
+        };
+        let (response, rx) = oneshot::channel();
+        let request = PeerRequest::GetBlockHeaders {
+            request: GetBlockHeaders {
+                start_block: tip_hash.into(),
+                limit: 1,
+                skip: 0,
+                direction: HeadersDirection::Rising,
+            },
+            response,
+        };
+        if peer.request_tx.to_session_tx.try_send(request).is_err() {
+            debug!(target: "net", ?peer_id, "Failed to send Status tip header resolve request");
+            self.state_fetcher.mark_peer_idle(&peer_id);
+            return;
+        }
+        peer.pending_response = Some(PeerResponse::BlockHeaders { response: rx });
+        peer.pending_kind = PendingResponseKind::StatusTipResolve { tip_hash };
+        trace!(
+            target: "net",
+            ?peer_id,
+            %tip_hash,
+            "Resolving peer Status tip number via GetBlockHeaders(limit=1)"
+        );
+    }
+
+    /// Applies the Status tip header reply and updates [`StateFetcher`] peer head metadata.
+    fn on_status_tip_resolved(
+        &mut self,
+        peer_id: PeerId,
+        tip_hash: B256,
+        res: reth_network_p2p::error::RequestResult<Vec<N::BlockHeader>>,
+    ) {
+        match res {
+            Ok(headers) => {
+                if let Some(header) = headers.first() {
+                    let number = header.number();
+                    debug!(
+                        target: "net",
+                        ?peer_id,
+                        %tip_hash,
+                        number,
+                        "Resolved peer Status tip number"
+                    );
+                    self.state_fetcher.update_peer_block(&peer_id, tip_hash, number);
+                    if let Some(peer) = self.active_peers.get_mut(&peer_id) {
+                        peer.best_hash = tip_hash;
+                    }
+                } else {
+                    debug!(
+                        target: "net",
+                        ?peer_id,
+                        %tip_hash,
+                        "Peer returned empty Status tip header — leaving best_number=0"
+                    );
+                }
+            }
+            Err(err) => {
+                debug!(
+                    target: "net",
+                    ?peer_id,
+                    %tip_hash,
+                    %err,
+                    "Failed to resolve peer Status tip number"
+                );
+            }
+        }
+        self.state_fetcher.mark_peer_idle(&peer_id);
     }
 
     /// Event hook for a disconnected session for the given peer.
@@ -218,7 +335,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         for (peer_id, peer) in peers {
             if peer.blocks.contains(&msg.hash) {
                 // skip peers which already reported the block
-                continue
+                continue;
             }
 
             // Queue a `NewBlock` message for the peer
@@ -238,7 +355,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
             }
 
             if count >= num_propagate {
-                break
+                break;
             }
         }
     }
@@ -251,7 +368,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         for (peer_id, peer) in &mut self.active_peers {
             if peer.blocks.contains(&msg.hash) {
                 // skip peers which already reported the block
-                continue
+                continue;
             }
 
             if self.state_fetcher.update_peer_block(peer_id, msg.hash, number) {
@@ -355,7 +472,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
                 let peer_id = record.id;
                 let tcp_addr = record.tcp_addr();
                 if tcp_addr.port() == 0 {
-                    return
+                    return;
                 }
                 let udp_addr = record.udp_addr();
                 let addr = PeerAddr::new(tcp_addr, Some(udp_addr));
@@ -455,6 +572,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
             };
             let _ = peer.request_tx.to_session_tx.try_send(request);
             peer.pending_response = Some(response);
+            peer.pending_kind = PendingResponseKind::Fetcher;
         }
     }
 
@@ -478,7 +596,20 @@ impl<N: NetworkPrimitives> NetworkState<N> {
     fn on_eth_response(&mut self, peer: PeerId, resp: PeerResponseResult<N>) {
         let outcome = match resp {
             PeerResponseResult::BlockHeaders(res) => {
-                self.state_fetcher.on_block_headers_response(peer, res)
+                let kind = self
+                    .active_peers
+                    .get_mut(&peer)
+                    .map(|p| std::mem::replace(&mut p.pending_kind, PendingResponseKind::Fetcher))
+                    .unwrap_or(PendingResponseKind::Fetcher);
+                match kind {
+                    PendingResponseKind::StatusTipResolve { tip_hash } => {
+                        self.on_status_tip_resolved(peer, tip_hash, res);
+                        None
+                    }
+                    PendingResponseKind::Fetcher => {
+                        self.state_fetcher.on_block_headers_response(peer, res)
+                    }
+                }
             }
             PeerResponseResult::BlockBodies(res) => {
                 self.state_fetcher.on_block_bodies_response(peer, res)
@@ -521,7 +652,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         loop {
             // drain buffered messages
             if let Some(message) = self.queued_messages.pop_front() {
-                return Poll::Ready(message)
+                return Poll::Ready(message);
             }
 
             while let Poll::Ready(discovery) = self.discovery.poll(cx) {
@@ -591,7 +722,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
             // We need to poll again in case we have received any responses because they may have
             // triggered follow-up requests.
             if self.queued_messages.is_empty() {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -610,8 +741,19 @@ pub(crate) struct ActivePeer<N: NetworkPrimitives> {
     pub(crate) request_tx: PeerRequestSender<PeerRequest<N>>,
     /// The response receiver for a currently active request to that peer.
     pub(crate) pending_response: Option<PeerResponse<N>>,
+    /// How to interpret [`Self::pending_response`] when it completes.
+    pub(crate) pending_kind: PendingResponseKind,
     /// Blocks we know the peer has.
     pub(crate) blocks: LruCache<B256>,
+}
+
+/// Distinguishes fetcher downloads from the one-shot Status tip-number resolve (eth/66–68).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum PendingResponseKind {
+    /// Response belongs to [`StateFetcher`].
+    Fetcher,
+    /// `GetBlockHeaders(Status.blockhash, limit=1)` used only to learn `best_number`.
+    StatusTipResolve { tip_hash: B256 },
 }
 
 /// Everything [`NetworkState::on_session_activated`] needs to register a newly established

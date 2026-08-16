@@ -26,7 +26,7 @@ pub use error::{
 mod traits;
 pub use traits::{
     payload_id, BuildNextEnv, BuiltPayload, BuiltPayloadExecutedBlock, PayloadAttributes,
-    PayloadAttributesBuilder,
+    PayloadAttributesBuilder, PayloadBuilderAttributes,
 };
 
 mod payload;
@@ -47,6 +47,10 @@ pub trait PayloadTypes: Send + Sync + Unpin + core::fmt::Debug + Clone + 'static
     /// These attributes typically come from external sources (e.g., consensus layer over RPC such
     /// as the Engine API) and contain parameters like timestamp, fee recipient, and randomness.
     type PayloadAttributes: PayloadAttributes + Unpin;
+    /// Internal attributes used by payload builders.
+    type PayloadBuilderAttributes: PayloadBuilderAttributes<RpcPayloadAttributes = Self::PayloadAttributes>
+        + Clone
+        + Unpin;
 
     /// Converts a sealed block into the execution payload format.
     fn block_to_payload(
@@ -94,7 +98,7 @@ pub fn validate_payload_timestamp(
         //
         // 1. Client software **MUST** return `-38005: Unsupported fork` error if the `timestamp` of
         //    payload or payloadAttributes is greater or equal to the Cancun activation timestamp.
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     if version.is_v3() && !is_cancun {
@@ -116,7 +120,7 @@ pub fn validate_payload_timestamp(
         //
         // 2. Client software **MUST** return `-38005: Unsupported fork` error if the `timestamp` of
         //    the payload does not fall within the time frame of the Cancun fork.
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     let is_prague = chain_spec.is_prague_active_at_timestamp(timestamp);
@@ -139,7 +143,7 @@ pub fn validate_payload_timestamp(
         //
         // 2. Client software **MUST** return `-38005: Unsupported fork` error if the `timestamp` of
         //    the payload does not fall within the time frame of the Prague fork.
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     let is_osaka = chain_spec.is_osaka_active_at_timestamp(timestamp);
@@ -151,27 +155,27 @@ pub fn validate_payload_timestamp(
         //
         // 1. Client software MUST return -38005: Unsupported fork error if the timestamp of the
         //    built payload does not fall within the time frame of the Osaka fork.
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     let is_amsterdam = chain_spec.is_amsterdam_active_at_timestamp(timestamp);
 
     // Staggered endpoint upgrades must reject Amsterdam payloads until the Amsterdam-specific
     // method version is used.
-    if is_amsterdam &&
-        matches!(
+    if is_amsterdam
+        && matches!(
             (version, kind),
-            (EngineApiMessageVersion::V3, MessageValidationKind::PayloadAttributes) |
-                (EngineApiMessageVersion::V4, MessageValidationKind::Payload) |
-                (EngineApiMessageVersion::V5, MessageValidationKind::GetPayload)
+            (EngineApiMessageVersion::V3, MessageValidationKind::PayloadAttributes)
+                | (EngineApiMessageVersion::V4, MessageValidationKind::Payload)
+                | (EngineApiMessageVersion::V5, MessageValidationKind::GetPayload)
         )
     {
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     // `engine_getPayloadV4` MUST reject payloads with a timestamp >= Osaka.
     if version.is_v4() && kind == MessageValidationKind::GetPayload && is_osaka {
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     if version.is_v6() && !is_amsterdam {
@@ -183,7 +187,7 @@ pub fn validate_payload_timestamp(
         // 1. Client software MUST return -38005: Unsupported fork error if the timestamp of the
         //    built payload does not fall within the time frame of the Amsterdam fork.
 
-        return Err(EngineObjectValidationError::UnsupportedFork)
+        return Err(EngineObjectValidationError::UnsupportedFork);
     }
 
     Ok(())
@@ -201,13 +205,13 @@ pub fn validate_block_access_list_presence<T: EthereumHardforks>(
 ) -> Result<(), EngineObjectValidationError> {
     let is_amsterdam_active = chain_spec.is_amsterdam_active_at_timestamp(timestamp);
     match version {
-        EngineApiMessageVersion::V1 |
-        EngineApiMessageVersion::V2 |
-        EngineApiMessageVersion::V3 |
-        EngineApiMessageVersion::V4 => {
+        EngineApiMessageVersion::V1
+        | EngineApiMessageVersion::V2
+        | EngineApiMessageVersion::V3
+        | EngineApiMessageVersion::V4 => {
             if has_block_access_list {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::BlockAccessListNotSupported))
+                    .to_error(VersionSpecificValidationError::BlockAccessListNotSupported));
             }
         }
 
@@ -215,26 +219,26 @@ pub fn validate_block_access_list_presence<T: EthereumHardforks>(
             if message_validation_kind == MessageValidationKind::Payload {
                 if is_amsterdam_active && !has_block_access_list {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::NoBlockAccessListPostAmsterdam))
+                        .to_error(VersionSpecificValidationError::NoBlockAccessListPostAmsterdam));
                 }
                 if !is_amsterdam_active && has_block_access_list {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::HasBlockAccessListPreAmsterdam))
+                        .to_error(VersionSpecificValidationError::HasBlockAccessListPreAmsterdam));
                 }
             } else if has_block_access_list {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::BlockAccessListNotSupported))
+                    .to_error(VersionSpecificValidationError::BlockAccessListNotSupported));
             }
         }
 
         EngineApiMessageVersion::V6 => {
             if is_amsterdam_active && !has_block_access_list {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::NoBlockAccessListPostAmsterdam))
+                    .to_error(VersionSpecificValidationError::NoBlockAccessListPostAmsterdam));
             }
             if !is_amsterdam_active && has_block_access_list {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::HasBlockAccessListPreAmsterdam))
+                    .to_error(VersionSpecificValidationError::HasBlockAccessListPreAmsterdam));
             }
         }
     };
@@ -258,7 +262,7 @@ pub fn validate_slot_number_presence<T: EthereumHardforks>(
         EngineApiMessageVersion::V1 | EngineApiMessageVersion::V2 | EngineApiMessageVersion::V3 => {
             if has_slot_number {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported))
+                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported));
             }
         }
 
@@ -266,15 +270,15 @@ pub fn validate_slot_number_presence<T: EthereumHardforks>(
             if message_validation_kind == MessageValidationKind::PayloadAttributes {
                 if is_amsterdam_active && !has_slot_number {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam))
+                        .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam));
                 }
                 if !is_amsterdam_active && has_slot_number {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam))
+                        .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam));
                 }
             } else if has_slot_number {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported))
+                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported));
             }
         }
 
@@ -282,26 +286,26 @@ pub fn validate_slot_number_presence<T: EthereumHardforks>(
             if message_validation_kind == MessageValidationKind::Payload {
                 if is_amsterdam_active && !has_slot_number {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam))
+                        .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam));
                 }
                 if !is_amsterdam_active && has_slot_number {
                     return Err(message_validation_kind
-                        .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam))
+                        .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam));
                 }
             } else if has_slot_number {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported))
+                    .to_error(VersionSpecificValidationError::SlotNumberNotSupported));
             }
         }
 
         EngineApiMessageVersion::V6 => {
             if is_amsterdam_active && !has_slot_number {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam))
+                    .to_error(VersionSpecificValidationError::NoSlotNumberPostAmsterdam));
             }
             if !is_amsterdam_active && has_slot_number {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam))
+                    .to_error(VersionSpecificValidationError::HasSlotNumberPreAmsterdam));
             }
         }
     };
@@ -325,21 +329,21 @@ pub fn validate_withdrawals_presence<T: EthereumHardforks>(
         EngineApiMessageVersion::V1 => {
             if has_withdrawals {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::WithdrawalsNotSupportedInV1))
+                    .to_error(VersionSpecificValidationError::WithdrawalsNotSupportedInV1));
             }
         }
-        EngineApiMessageVersion::V2 |
-        EngineApiMessageVersion::V3 |
-        EngineApiMessageVersion::V4 |
-        EngineApiMessageVersion::V5 |
-        EngineApiMessageVersion::V6 => {
+        EngineApiMessageVersion::V2
+        | EngineApiMessageVersion::V3
+        | EngineApiMessageVersion::V4
+        | EngineApiMessageVersion::V5
+        | EngineApiMessageVersion::V6 => {
             if is_shanghai_active && !has_withdrawals {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::NoWithdrawalsPostShanghai))
+                    .to_error(VersionSpecificValidationError::NoWithdrawalsPostShanghai));
             }
             if !is_shanghai_active && has_withdrawals {
                 return Err(message_validation_kind
-                    .to_error(VersionSpecificValidationError::HasWithdrawalsPreShanghai))
+                    .to_error(VersionSpecificValidationError::HasWithdrawalsPreShanghai));
             }
         }
     };
@@ -430,16 +434,16 @@ pub fn validate_parent_beacon_block_root_presence<T: EthereumHardforks>(
             if has_parent_beacon_block_root {
                 return Err(validation_kind.to_error(
                     VersionSpecificValidationError::ParentBeaconBlockRootNotSupportedBeforeV3,
-                ))
+                ));
             }
         }
-        EngineApiMessageVersion::V3 |
-        EngineApiMessageVersion::V4 |
-        EngineApiMessageVersion::V5 |
-        EngineApiMessageVersion::V6 => {
+        EngineApiMessageVersion::V3
+        | EngineApiMessageVersion::V4
+        | EngineApiMessageVersion::V5
+        | EngineApiMessageVersion::V6 => {
             if !has_parent_beacon_block_root {
                 return Err(validation_kind
-                    .to_error(VersionSpecificValidationError::NoParentBeaconBlockRootPostCancun))
+                    .to_error(VersionSpecificValidationError::NoParentBeaconBlockRootPostCancun));
             }
         }
     };
@@ -650,20 +654,20 @@ pub fn validate_execution_requests(requests: &[Bytes]) -> Result<(), EngineObjec
     let mut last_request_type = None;
     for request in requests {
         if request.len() <= 1 {
-            return Err(EngineObjectValidationError::InvalidParams("EmptyExecutionRequest".into()))
+            return Err(EngineObjectValidationError::InvalidParams("EmptyExecutionRequest".into()));
         }
 
         let request_type = request[0];
         if Some(request_type) < last_request_type {
             return Err(EngineObjectValidationError::InvalidParams(
                 "OutOfOrderExecutionRequest".into(),
-            ))
+            ));
         }
 
         if Some(request_type) == last_request_type {
             return Err(EngineObjectValidationError::InvalidParams(
                 "DuplicatedExecutionRequestType".into(),
-            ))
+            ));
         }
 
         last_request_type = Some(request_type);

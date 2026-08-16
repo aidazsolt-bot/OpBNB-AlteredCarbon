@@ -3,19 +3,22 @@
 use alloc::{sync::Arc, vec::Vec};
 use alloy_eips::{
     eip4844::BlobTransactionSidecar,
+    eip4895::Withdrawals,
     eip7594::{BlobTransactionSidecarEip7594, BlobTransactionSidecarVariant},
     eip7685::Requests,
 };
-use alloy_primitives::{Bytes, U256};
+use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_rpc_types_engine::{
     BlobsBundleV1, BlobsBundleV2, CancunPayloadFields, ExecutionData, ExecutionPayload,
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
     ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadFieldV2,
     ExecutionPayloadSidecar, ExecutionPayloadV1, ExecutionPayloadV3, ExecutionPayloadV4,
+    PayloadAttributes, PayloadId,
     PraguePayloadFields,
 };
+use core::convert::Infallible;
 use reth_ethereum_primitives::EthPrimitives;
-use reth_payload_primitives::BuiltPayload;
+use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes};
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock, SealedBlock};
 
 use crate::BuiltPayloadConversionError;
@@ -416,6 +419,92 @@ impl From<alloc::vec::IntoIter<BlobTransactionSidecarEip7594>> for BlobSidecars 
     fn from(value: alloc::vec::IntoIter<BlobTransactionSidecarEip7594>) -> Self {
         value.collect::<Vec<_>>().into()
     }
+}
+
+/// Container type for all components required to build a payload.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EthPayloadBuilderAttributes {
+    /// Id of the payload.
+    pub id: PayloadId,
+    /// Parent block to build the payload on top.
+    pub parent: B256,
+    /// Unix timestamp for the generated payload.
+    pub timestamp: u64,
+    /// Address of the recipient for collecting transaction fee.
+    pub suggested_fee_recipient: Address,
+    /// Randomness value for the generated payload.
+    pub prev_randao: B256,
+    /// Withdrawals for the generated payload.
+    pub withdrawals: Withdrawals,
+    /// Root of the parent beacon block.
+    pub parent_beacon_block_root: Option<B256>,
+}
+
+impl EthPayloadBuilderAttributes {
+    /// Returns the identifier of the payload.
+    pub const fn payload_id(&self) -> PayloadId {
+        self.id
+    }
+
+    /// Creates a new payload builder attributes struct from parent and RPC attributes.
+    pub fn new(parent: B256, attributes: PayloadAttributes) -> Self {
+        let id = payload_id(&parent, &attributes);
+        Self {
+            id,
+            parent,
+            timestamp: attributes.timestamp,
+            suggested_fee_recipient: attributes.suggested_fee_recipient,
+            prev_randao: attributes.prev_randao,
+            withdrawals: attributes.withdrawals.unwrap_or_default().into(),
+            parent_beacon_block_root: attributes.parent_beacon_block_root,
+        }
+    }
+}
+
+impl PayloadBuilderAttributes for EthPayloadBuilderAttributes {
+    type RpcPayloadAttributes = PayloadAttributes;
+    type Error = Infallible;
+
+    fn try_new(
+        parent: B256,
+        attributes: PayloadAttributes,
+        _version: u8,
+    ) -> Result<Self, Infallible> {
+        Ok(Self::new(parent, attributes))
+    }
+
+    fn payload_id(&self) -> PayloadId {
+        self.id
+    }
+
+    fn parent(&self) -> B256 {
+        self.parent
+    }
+
+    fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    fn parent_beacon_block_root(&self) -> Option<B256> {
+        self.parent_beacon_block_root
+    }
+
+    fn suggested_fee_recipient(&self) -> Address {
+        self.suggested_fee_recipient
+    }
+
+    fn prev_randao(&self) -> B256 {
+        self.prev_randao
+    }
+
+    fn withdrawals(&self) -> &Withdrawals {
+        &self.withdrawals
+    }
+}
+
+/// Generates the payload id for configured payload attributes.
+pub fn payload_id(parent: &B256, attributes: &PayloadAttributes) -> PayloadId {
+    reth_payload_primitives::payload_id(parent, attributes)
 }
 
 #[cfg(test)]

@@ -1,8 +1,9 @@
 use reth_db_api::{table::Value, transaction::DbTxMut};
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
-    BlockReader, ChainStateBlockReader, DBProvider, PruneCheckpointReader, PruneCheckpointWriter,
-    RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
+    BlockReader, ChainStateBlockReader, ChangeSetReader, DBProvider, PruneCheckpointReader,
+    PruneCheckpointWriter, RocksDBProviderFactory, StageCheckpointReader,
+    StaticFileProviderFactory, StorageChangeSetReader, StorageSettingsCache,
 };
 use reth_prune::{
     PruneMode, PruneModes, PruneSegment, PrunerBuilder, SegmentOutput, SegmentOutputCheckpoint,
@@ -10,7 +11,6 @@ use reth_prune::{
 use reth_stages_api::{
     ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId, UnwindInput, UnwindOutput,
 };
-use reth_storage_api::{ChangeSetReader, StorageChangeSetReader, StorageSettingsCache};
 use tracing::info;
 
 /// The prune stage that runs the pruner with the provided prune modes.
@@ -44,13 +44,14 @@ where
         + PruneCheckpointWriter
         + BlockReader
         + ChainStateBlockReader
+        + ChangeSetReader
+        + StorageChangeSetReader
         + StageCheckpointReader
         + StaticFileProviderFactory<
             Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
         > + StorageSettingsCache
-        + ChangeSetReader
-        + StorageChangeSetReader
-        + RocksDBProviderFactory,
+        + RocksDBProviderFactory
+        + Sync,
 {
     fn id(&self) -> StageId {
         StageId::Prune
@@ -152,13 +153,14 @@ where
         + PruneCheckpointWriter
         + BlockReader
         + ChainStateBlockReader
+        + ChangeSetReader
+        + StorageChangeSetReader
         + StageCheckpointReader
         + StaticFileProviderFactory<
             Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
         > + StorageSettingsCache
-        + ChangeSetReader
-        + StorageChangeSetReader
-        + RocksDBProviderFactory,
+        + RocksDBProviderFactory
+        + Sync,
 {
     fn id(&self) -> StageId {
         StageId::PruneSenderRecovery

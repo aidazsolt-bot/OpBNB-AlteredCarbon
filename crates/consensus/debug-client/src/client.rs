@@ -1,34 +1,35 @@
+use alloy_consensus::Sealable;
 use alloy_primitives::B256;
-use reth_node_api::{ConsensusEngineHandle, ExecutionPayload, PayloadTypes};
+use reth_node_api::{
+    BuiltPayload, ConsensusEngineHandle, ExecutionPayload, NodePrimitives, PayloadTypes,
+};
+use reth_primitives_traits::{Block, SealedBlock};
 use reth_tracing::tracing::warn;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::future::Future;
 use tokio::sync::mpsc;
 
-/// Supplies consensus client with new execution payloads sent in `tx` and a callback to find
-/// specific payloads by number to fetch past finalized and safe block hashes.
+/// Supplies consensus client with new blocks sent in `tx` and a callback to find specific blocks
+/// by number to fetch past finalized and safe blocks.
 #[auto_impl::auto_impl(&, Arc, Box)]
-pub trait PayloadProvider: Send + Sync + 'static {
-    /// The execution payload data type.
-    type ExecutionData: ExecutionPayload;
+pub trait BlockProvider: Send + Sync + 'static {
+    /// The block type.
+    type Block: Block;
 
-    /// Runs a provider to send new execution payloads to the given sender.
+    /// Runs a block provider to send new blocks to the given sender.
     ///
     /// Note: This is expected to be spawned in a separate task, and as such it should ignore
     /// errors.
-    fn subscribe_payloads(
-        &self,
-        tx: mpsc::Sender<Self::ExecutionData>,
-    ) -> impl Future<Output = ()> + Send;
+    fn subscribe_blocks(&self, tx: mpsc::Sender<Self::Block>) -> impl Future<Output = ()> + Send;
 
-    /// Get a past execution payload by block number.
-    fn get_payload(
+    /// Get a past block by number.
+    fn get_block(
         &self,
         block_number: u64,
-    ) -> impl Future<Output = eyre::Result<Self::ExecutionData>> + Send;
+    ) -> impl Future<Output = eyre::Result<Self::Block>> + Send;
 
     /// Get previous block hash using previous block hash buffer. If it isn't available (buffer
-    /// started more recently than `offset`), fetch it using `get_payload`.
+    /// started more recently than `offset`), fetch it using `get_block`.
     fn get_or_fetch_previous_block(
         &self,
         previous_block_hashes: &AllocRingBuffer<B256>,
@@ -36,8 +37,12 @@ pub trait PayloadProvider: Send + Sync + 'static {
         offset: usize,
     ) -> impl Future<Output = eyre::Result<B256>> + Send {
         async move {
-            if let Some(hash) = get_hash_at_offset(previous_block_hashes, offset) {
-                return Ok(hash);
+            let stored_hash = previous_block_hashes
+                .len()
+                .checked_sub(offset)
+                .and_then(|index| previous_block_hashes.get(index));
+            if let Some(hash) = stored_hash {
+                return Ok(*hash);
             }
 
             // Return zero hash if the chain isn't long enough to have the block at the offset.
@@ -45,23 +50,23 @@ pub trait PayloadProvider: Send + Sync + 'static {
                 Some(number) => number,
                 None => return Ok(B256::default()),
             };
-            let payload = self.get_payload(previous_block_number).await?;
-            Ok(payload.block_hash())
+            let block = self.get_block(previous_block_number).await?;
+            Ok(block.header().hash_slow())
         }
     }
 }
 
-/// Debug consensus client that sends FCUs and new payloads using recent payloads from an external
+/// Debug consensus client that sends FCUs and new payloads using recent blocks from an external
 /// provider like Etherscan or an RPC endpoint.
 #[derive(Debug)]
-pub struct DebugConsensusClient<P: PayloadProvider, T: PayloadTypes> {
+pub struct DebugConsensusClient<P: BlockProvider, T: PayloadTypes> {
     /// Handle to execution client.
     engine_handle: ConsensusEngineHandle<T>,
-    /// Provider to get consensus payloads from.
+    /// Provider to get consensus blocks from.
     block_provider: P,
 }
 
-impl<P: PayloadProvider, T: PayloadTypes> DebugConsensusClient<P, T> {
+impl<P: BlockProvider, T: PayloadTypes> DebugConsensusClient<P, T> {
     /// Create a new debug consensus client with the given handle to execution
     /// client and block provider.
     pub const fn new(engine_handle: ConsensusEngineHandle<T>, block_provider: P) -> Self {
@@ -71,27 +76,32 @@ impl<P: PayloadProvider, T: PayloadTypes> DebugConsensusClient<P, T> {
 
 impl<P, T> DebugConsensusClient<P, T>
 where
-    P: PayloadProvider<ExecutionData = T::ExecutionData> + Clone,
-    T: PayloadTypes,
+    P: BlockProvider + Clone,
+    T: PayloadTypes<
+        ExecutionData: ExecutionPayload,
+        BuiltPayload: BuiltPayload<Primitives: NodePrimitives<Block = P::Block>>,
+    >,
 {
     /// Spawn the client to start sending FCUs and new payloads by periodically fetching recent
-    /// payloads.
+    /// blocks.
     pub async fn run(self) {
-        let mut previous_block_hashes = AllocRingBuffer::new(65);
-        let mut payload_stream = {
-            let (tx, rx) = mpsc::channel::<P::ExecutionData>(64);
+        let mut previous_block_hashes = AllocRingBuffer::new(64);
+        let mut block_stream = {
+            let (tx, rx) = mpsc::channel::<P::Block>(64);
             let block_provider = self.block_provider.clone();
             tokio::spawn(async move {
-                block_provider.subscribe_payloads(tx).await;
+                block_provider.subscribe_blocks(tx).await;
             });
             rx
         };
 
-        while let Some(payload) = payload_stream.recv().await {
+        while let Some(block) = block_stream.recv().await {
+            let payload = T::block_to_payload(SealedBlock::new_unhashed(block), None);
+
             let block_hash = payload.block_hash();
             let block_number = payload.block_number();
 
-            previous_block_hashes.enqueue(block_hash);
+            previous_block_hashes.push(block_hash);
 
             // Send new events to execution client
             let _ = self.engine_handle.new_payload(payload).await;
@@ -127,64 +137,10 @@ where
                 safe_block_hash,
                 finalized_block_hash,
             };
-            let _ = self.engine_handle.fork_choice_updated(state, None).await;
+            let _ = self
+                .engine_handle
+                .fork_choice_updated(state, None)
+                .await;
         }
-    }
-}
-
-/// Looks up a block hash from the ring buffer at the given offset from the most recent entry.
-///
-/// Returns `None` if the buffer doesn't have enough entries to satisfy the offset.
-fn get_hash_at_offset(buffer: &AllocRingBuffer<B256>, offset: usize) -> Option<B256> {
-    buffer.len().checked_sub(offset + 1).and_then(|index| buffer.get(index).copied())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_hash_at_offset() {
-        let mut buffer: AllocRingBuffer<B256> = AllocRingBuffer::new(65);
-
-        // Empty buffer returns None for any offset
-        assert_eq!(get_hash_at_offset(&buffer, 0), None);
-        assert_eq!(get_hash_at_offset(&buffer, 1), None);
-
-        // Push hashes 0..65
-        for i in 0..65u8 {
-            buffer.enqueue(B256::with_last_byte(i));
-        }
-
-        // offset=0 should return the most recent (64)
-        assert_eq!(get_hash_at_offset(&buffer, 0), Some(B256::with_last_byte(64)));
-
-        // offset=32 (safe block) should return hash 32
-        assert_eq!(get_hash_at_offset(&buffer, 32), Some(B256::with_last_byte(32)));
-
-        // offset=64 (finalized block) should return hash 0 (the oldest)
-        assert_eq!(get_hash_at_offset(&buffer, 64), Some(B256::with_last_byte(0)));
-
-        // offset=65 exceeds buffer, should return None
-        assert_eq!(get_hash_at_offset(&buffer, 65), None);
-    }
-
-    #[test]
-    fn test_get_hash_at_offset_insufficient_entries() {
-        let mut buffer: AllocRingBuffer<B256> = AllocRingBuffer::new(65);
-
-        // With only 1 entry, only offset=0 works
-        buffer.enqueue(B256::with_last_byte(1));
-        assert_eq!(get_hash_at_offset(&buffer, 0), Some(B256::with_last_byte(1)));
-        assert_eq!(get_hash_at_offset(&buffer, 1), None);
-        assert_eq!(get_hash_at_offset(&buffer, 32), None);
-        assert_eq!(get_hash_at_offset(&buffer, 64), None);
-
-        // With 33 entries, offset=32 works but offset=64 doesn't
-        for i in 2..=33u8 {
-            buffer.enqueue(B256::with_last_byte(i));
-        }
-        assert_eq!(get_hash_at_offset(&buffer, 32), Some(B256::with_last_byte(1)));
-        assert_eq!(get_hash_at_offset(&buffer, 64), None);
     }
 }

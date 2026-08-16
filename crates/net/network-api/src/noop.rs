@@ -5,11 +5,12 @@
 
 use core::{fmt, marker::PhantomData};
 use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, LazyLock};
 
 use crate::{
-    events::{NetworkPeersEvents, PeerEventStream},
+    events::{EngineMessage, NetworkPeersEvents, PeerEventStream},
     test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, CellCustody, DiscoveryEvent, NetworkError, NetworkEvent,
+    BlockDownloaderProvider, CellCustody, DiscoveryEvent, EngineRxProvider, NetworkError, NetworkEvent,
     NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerId, PeerInfo, PeerRequest, Peers,
     PeersInfo,
 };
@@ -22,7 +23,8 @@ use reth_network_p2p::{sync::NetworkSyncUpdater, NoopFullBlockClient};
 use reth_network_peers::NodeRecord;
 use reth_network_types::{PeerKind, Reputation, ReputationChangeKind};
 use reth_tokio_util::{EventSender, EventStream};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 /// A type that implements all network trait that does nothing.
@@ -234,5 +236,19 @@ where
 {
     fn peers_handle(&self) -> &PeersHandle {
         &self.peers_handle
+    }
+}
+
+impl<Net> EngineRxProvider for NoopNetwork<Net>
+where
+    Net: Send + Sync,
+{
+    fn get_to_engine_rx(&self) -> Arc<Mutex<UnboundedReceiver<EngineMessage>>> {
+        static RX: LazyLock<Arc<Mutex<UnboundedReceiver<EngineMessage>>>> =
+            LazyLock::new(|| {
+                let (_tx, rx) = mpsc::unbounded_channel();
+                Arc::new(Mutex::new(rx))
+            });
+        RX.clone()
     }
 }

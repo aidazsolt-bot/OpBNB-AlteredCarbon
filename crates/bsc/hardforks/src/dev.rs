@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition};
+use reth_ethereum_forks::{ChainHardforks, EthereumHardfork, ForkCondition, Hardfork};
 
 /// Dev hardforks
 pub static DEV_HARDFORKS: Lazy<ChainHardforks> = Lazy::new(|| {

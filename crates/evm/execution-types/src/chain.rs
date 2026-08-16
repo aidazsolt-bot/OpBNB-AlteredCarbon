@@ -2,10 +2,7 @@
 
 use crate::ExecutionOutcome;
 use alloc::{borrow::Cow, collections::BTreeMap, sync::Arc, vec::Vec};
-use alloy_consensus::{
-    transaction::{Recovered, TxHashRef},
-    BlockHeader, TxReceipt,
-};
+use alloy_consensus::{transaction::{Recovered, TxHashRef}, BlockHeader, TxReceipt};
 use alloy_eips::{eip1898::ForkBlock, BlockNumHash};
 use alloy_primitives::{map::HashSet, Address, BlockHash, BlockNumber, Log, TxHash};
 use core::{fmt, ops::RangeInclusive};
@@ -157,13 +154,13 @@ impl<N: NodePrimitives> Chain<N> {
         block_number: BlockNumber,
     ) -> Option<ExecutionOutcome<N::Receipt>> {
         if self.tip().number() == block_number {
-            return Some(self.execution_outcome.clone())
+            return Some(self.execution_outcome.clone());
         }
 
         if self.blocks.contains_key(&block_number) {
             let mut execution_outcome = self.execution_outcome.clone();
             execution_outcome.revert_to(block_number);
-            return Some(execution_outcome)
+            return Some(execution_outcome);
         }
         None
     }
@@ -356,7 +353,7 @@ impl<N: NodePrimitives> Chain<N> {
         let chain_tip = self.tip();
         let other_fork_block = other.fork_block();
         if chain_tip.hash() != other_fork_block.hash {
-            return Err(other)
+            return Err(other);
         }
 
         // Insert blocks from other chain

@@ -35,7 +35,7 @@ use reth_network::{
             },
             tx_manager::{
                 DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS,
-                DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
+                DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER, DEFAULT_REANNOUNCE_TIME,
                 DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES,
             },
         },
@@ -289,7 +289,11 @@ pub struct NetworkArgs {
     #[arg(long, verbatim_doc_comment)]
     pub no_persist_peers: bool,
 
-    /// NAT resolution method (any|none|upnp|publicip|extip:\<IP\>)
+    /// NAT resolution method (`any`|`none`|`upnp`|`publicip`|`extip:<IP>`).
+    ///
+    /// Default `any`: try UPnP/IGD port mapping first (geth-style; no hijack of foreign mappings;
+    /// alternative external port on conflict; ENR/enode use the mapped endpoint). If UPnP is
+    /// unavailable, fall back to HTTP public-IP lookup without port mapping.
     #[arg(long, default_value_t = DefaultNetworkArgs::get_global().nat.clone())]
     pub nat: NatResolver,
 
@@ -534,6 +538,7 @@ impl NetworkArgs {
             propagation_mode: self.propagation_mode,
             ingress_policy: self.tx_ingress_policy,
             tx_channel_memory_limit_bytes: self.tx_channel_memory_limit_bytes,
+            reannounce_time: DEFAULT_REANNOUNCE_TIME,
         }
     }
 

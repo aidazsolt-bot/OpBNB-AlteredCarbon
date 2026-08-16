@@ -1,8 +1,8 @@
-use crate::PayloadProvider;
+use crate::BlockProvider;
+use alloy_consensus::BlockHeader;
 use alloy_eips::BlockNumberOrTag;
 use alloy_json_rpc::{Response, ResponsePayload};
 use reqwest::Client;
-use reth_node_api::ExecutionPayload;
 use reth_tracing::tracing::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{sync::Arc, time::Duration};
@@ -10,17 +10,17 @@ use tokio::{sync::mpsc, time::interval};
 
 /// Block provider that fetches new blocks from Etherscan API.
 #[derive(derive_more::Debug, Clone)]
-pub struct EtherscanBlockProvider<RpcBlock, ExecutionData> {
+pub struct EtherscanBlockProvider<RpcBlock, PrimitiveBlock> {
     http_client: Client,
     base_url: String,
     api_key: String,
     chain_id: u64,
     interval: Duration,
     #[debug(skip)]
-    convert: Arc<dyn Fn(RpcBlock) -> ExecutionData + Send + Sync>,
+    convert: Arc<dyn Fn(RpcBlock) -> PrimitiveBlock + Send + Sync>,
 }
 
-impl<RpcBlock, ExecutionData> EtherscanBlockProvider<RpcBlock, ExecutionData>
+impl<RpcBlock, PrimitiveBlock> EtherscanBlockProvider<RpcBlock, PrimitiveBlock>
 where
     RpcBlock: Serialize + DeserializeOwned,
 {
@@ -29,7 +29,7 @@ where
         base_url: String,
         api_key: String,
         chain_id: u64,
-        convert: impl Fn(RpcBlock) -> ExecutionData + Send + Sync + 'static,
+        convert: impl Fn(RpcBlock) -> PrimitiveBlock + Send + Sync + 'static,
     ) -> Self {
         Self {
             http_client: Client::new(),
@@ -50,12 +50,12 @@ where
     /// Load block using Etherscan API. Note: only `BlockNumberOrTag::Latest`,
     /// `BlockNumberOrTag::Earliest`, `BlockNumberOrTag::Pending`, `BlockNumberOrTag::Number(u64)`
     /// are supported.
-    pub async fn load_payload(
+    pub async fn load_block(
         &self,
         block_number_or_tag: BlockNumberOrTag,
-    ) -> eyre::Result<ExecutionData> {
+    ) -> eyre::Result<PrimitiveBlock> {
         let tag = match block_number_or_tag {
-            BlockNumberOrTag::Number(num) => format!("{num:#x}"),
+            BlockNumberOrTag::Number(num) => format!("{num:#02x}"),
             tag => tag.to_string(),
         };
 
@@ -88,20 +88,20 @@ where
     }
 }
 
-impl<RpcBlock, ExecutionData> PayloadProvider for EtherscanBlockProvider<RpcBlock, ExecutionData>
+impl<RpcBlock, PrimitiveBlock> BlockProvider for EtherscanBlockProvider<RpcBlock, PrimitiveBlock>
 where
     RpcBlock: Serialize + DeserializeOwned + 'static,
-    ExecutionData: ExecutionPayload,
+    PrimitiveBlock: reth_primitives_traits::Block + 'static,
 {
-    type ExecutionData = ExecutionData;
+    type Block = PrimitiveBlock;
 
-    async fn subscribe_payloads(&self, tx: mpsc::Sender<Self::ExecutionData>) {
+    async fn subscribe_blocks(&self, tx: mpsc::Sender<Self::Block>) {
         let mut last_block_number: Option<u64> = None;
         let mut interval = interval(self.interval);
         loop {
             interval.tick().await;
-            let payload = match self.load_payload(BlockNumberOrTag::Latest).await {
-                Ok(payload) => payload,
+            let block = match self.load_block(BlockNumberOrTag::Latest).await {
+                Ok(block) => block,
                 Err(err) => {
                     warn!(
                         target: "consensus::debug-client",
@@ -111,12 +111,12 @@ where
                     continue
                 }
             };
-            let block_number = payload.block_number();
+            let block_number = block.header().number();
             if Some(block_number) == last_block_number {
                 continue;
             }
 
-            if tx.send(payload).await.is_err() {
+            if tx.send(block).await.is_err() {
                 // Channel closed.
                 break;
             }
@@ -125,7 +125,7 @@ where
         }
     }
 
-    async fn get_payload(&self, block_number: u64) -> eyre::Result<Self::ExecutionData> {
-        self.load_payload(BlockNumberOrTag::Number(block_number)).await
+    async fn get_block(&self, block_number: u64) -> eyre::Result<Self::Block> {
+        self.load_block(BlockNumberOrTag::Number(block_number)).await
     }
 }

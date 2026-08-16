@@ -227,9 +227,8 @@ where
 
         // Handle errors
         if let Err(err) = res {
-            error!("{err}");
+            error!("{:?}", err)
         }
-
         Ok(())
     }
 }
@@ -242,13 +241,14 @@ fn event_loop<B: Backend, F, T: Table>(
 ) -> io::Result<()>
 where
     F: FnMut(usize, usize) -> Vec<TableRow<T>>,
-    io::Error: From<B::Error>,
 {
     let mut last_tick = Instant::now();
     let mut running = true;
     while running {
         // Render
-        terminal.draw(|f| ui(f, app))?;
+        terminal
+            .draw(|f| ui(f, app))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         // Calculate timeout
         let timeout =
@@ -297,18 +297,21 @@ where
     }
 
     match event {
-        Event::Key(key) if key.kind == event::KeyEventKind::Press => match key.code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(true),
-            KeyCode::Down => app.next(),
-            KeyCode::Up => app.previous(),
-            KeyCode::Right => app.next_page(),
-            KeyCode::Left => app.previous_page(),
-            KeyCode::Char('G') => {
-                app.mode = ViewMode::GoToPage;
+        Event::Key(key) => {
+            if key.kind == event::KeyEventKind::Press {
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(true),
+                    KeyCode::Down => app.next(),
+                    KeyCode::Up => app.previous(),
+                    KeyCode::Right => app.next_page(),
+                    KeyCode::Left => app.previous_page(),
+                    KeyCode::Char('G') => {
+                        app.mode = ViewMode::GoToPage;
+                    }
+                    _ => {}
+                }
             }
-            _ => {}
-        },
-        Event::Key(_) => {}
+        }
         Event::Mouse(e) => match e.kind {
             MouseEventKind::ScrollDown => app.next(),
             MouseEventKind::ScrollUp => app.previous(),

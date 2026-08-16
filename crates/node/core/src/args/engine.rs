@@ -263,7 +263,7 @@ impl Default for DefaultEngineValues {
             state_cache_disabled: false,
             prewarming_disabled: false,
             state_provider_metrics: false,
-            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB,
+            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB as usize,
             state_root_task_compare_updates: false,
             accept_execution_requests_hash: false,
             multiproof_chunk_size: DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE,
@@ -426,6 +426,12 @@ pub struct EngineArgs {
     /// If not specified, defaults to the same count as storage workers.
     #[arg(long = "engine.account-worker-count", default_value = Resettable::from(DefaultEngineValues::get_global().account_worker_count.map(|v| v.to_string().into())))]
     pub account_worker_count: Option<usize>,
+
+    /// Skip state root validation for fastnode mode.
+    /// This disables validation of state root hashes during live sync and also automatically
+    /// disables hashing stages for maximum sync speed at the cost of reduced validation.
+    #[arg(long = "engine.skip-state-root-validation", default_value = "false")]
+    pub skip_state_root_validation: bool,
 
     /// Configure the number of prewarming threads.
     /// If not specified, defaults to available parallelism.
@@ -604,6 +610,7 @@ impl Default for EngineArgs {
             allow_unwind_canonical_header,
             storage_worker_count,
             account_worker_count,
+            skip_state_root_validation: false,
             prewarming_threads,
             cache_metrics_disabled,
             sparse_trie_max_hot_slots,
@@ -673,6 +680,7 @@ impl EngineArgs {
                 self.always_process_payload_attributes_on_canonical_head,
             )
             .with_unwind_canonical_header(self.allow_unwind_canonical_header)
+            .with_skip_state_root(self.skip_state_root_validation)
             .without_cache_metrics(self.cache_metrics_disabled)
             .with_sparse_trie_max_hot_slots(self.sparse_trie_max_hot_slots)
             .with_sparse_trie_max_hot_accounts(self.sparse_trie_max_hot_accounts)

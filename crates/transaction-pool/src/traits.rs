@@ -60,7 +60,7 @@ use crate::{
     validate::{TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction},
     AddedTransactionOutcome, AllTransactionsEvents,
 };
-use alloy_consensus::{error::ValueError, transaction::TxHashRef, BlockHeader, Signed, Typed2718};
+use alloy_consensus::{error::ValueError, transaction::TxHashRef, BlockHeader, Signed, Transaction as _, Typed2718};
 use alloy_eips::{
     eip2718::{Decodable2718, Encodable2718, WithEncoded},
     eip2930::AccessList,
@@ -1381,7 +1381,7 @@ pub trait PoolTransaction:
     /// intermediate value when the raw representation can be converted directly into `Self`.
     fn recover_raw_transaction(data: &[u8]) -> Result<Self, RawPoolTransactionError> {
         if data.is_empty() {
-            return Err(RawPoolTransactionError::EmptyRawTransactionData)
+            return Err(RawPoolTransactionError::EmptyRawTransactionData);
         }
 
         let transaction = Self::Pooled::decode_2718_exact(data)
@@ -1892,7 +1892,7 @@ impl<Tx: PoolTransaction> NewSubpoolTransactionStream<Tx> {
         loop {
             let event = self.st.try_recv()?;
             if event.subpool == self.subpool {
-                return Ok(event)
+                return Ok(event);
             }
         }
     }
@@ -1906,7 +1906,7 @@ impl<Tx: PoolTransaction> Stream for NewSubpoolTransactionStream<Tx> {
             match ready!(self.st.poll_recv(cx)) {
                 Some(event) => {
                     if event.subpool == self.subpool {
-                        return Poll::Ready(Some(event))
+                        return Poll::Ready(Some(event));
                     }
                 }
                 None => return Poll::Ready(None),

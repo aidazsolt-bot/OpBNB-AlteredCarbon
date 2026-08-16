@@ -30,10 +30,6 @@ where
         let mut static_file_writer =
             provider.get_static_file_writer(*block_range.start(), StaticFileSegment::Receipts)?;
 
-        let mut receipts_cursor = provider
-            .tx_ref()
-            .cursor_read::<tables::Receipts<<Provider::Primitives as NodePrimitives>::Receipt>>()?;
-
         for block in block_range {
             static_file_writer.increment_block(block)?;
 
@@ -41,11 +37,19 @@ where
                 .block_body_indices(block)?
                 .ok_or(ProviderError::BlockBodyIndicesNotFound(block))?;
 
+            let mut receipts_cursor = provider.tx_ref().cursor_read::<tables::Receipts>()?;
             let receipts_walker = receipts_cursor.walk_range(block_body_indices.tx_num_range())?;
 
-            static_file_writer.append_receipts(
-                receipts_walker.map(|result| result.map_err(ProviderError::from)),
-            )?;
+            for receipt_entry in receipts_walker {
+                let (tx_num, stored_receipt) = receipt_entry.map_err(ProviderError::from)?;
+                // SAFETY: `tables::Receipts` stores `reth_ethereum_primitives::Receipt` and all
+                // node implementations in this repository use the same type for
+                // `NodePrimitives::Receipt`.
+                let receipt: <Provider::Primitives as NodePrimitives>::Receipt = unsafe {
+                    std::mem::transmute_copy(&stored_receipt)
+                };
+                static_file_writer.append_receipt(tx_num, &receipt)?;
+            }
         }
 
         Ok(())

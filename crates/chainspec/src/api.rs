@@ -1,13 +1,14 @@
 use crate::{ChainSpec, DepositContract};
 use alloc::{boxed::Box, vec::Vec};
 use alloy_chains::Chain;
+use alloy_consensus::BlockHeader as _;
 use alloy_eips::{calc_next_block_base_fee, eip1559::BaseFeeParams, eip7840::BlobParams};
 use alloy_genesis::Genesis;
 use alloy_primitives::{B256, U256};
 use core::fmt::{Debug, Display};
 use reth_ethereum_forks::EthereumHardforks;
 use reth_network_peers::NodeRecord;
-use reth_primitives_traits::{AlloyBlockHeader, BlockHeader};
+use reth_primitives_traits::BlockHeader;
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -77,7 +78,9 @@ pub trait EthChainSpec: Send + Sync + Unpin + Debug {
     }
 }
 
-impl<H: BlockHeader> EthChainSpec for ChainSpec<H> {
+impl<H: BlockHeader + Debug + Send + Sync + Unpin + alloy_primitives::Sealable> EthChainSpec
+    for ChainSpec<H>
+{
     type Header = H;
 
     fn chain(&self) -> Chain {

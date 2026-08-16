@@ -78,3 +78,7 @@ __pycache__/
 # direnv
 .envrc
 .direnv/
+.copilot-reth-provider-errors.*
+
+# Local infra paths / hostnames / LAN IPs (never commit)
+.cursor/local/

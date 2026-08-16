@@ -25,7 +25,7 @@ use reth_network_types::ReputationChangeKind;
 use std::{
     ops::RangeInclusive,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -46,6 +46,8 @@ pub struct FetchClient<N: NetworkPrimitives = EthNetworkPrimitives> {
     pub(crate) peers_handle: PeersHandle,
     /// Number of active peer sessions the node's currently handling.
     pub(crate) num_active_peers: Arc<AtomicUsize>,
+    /// Highest advertised best-block among connected peers.
+    pub(crate) max_peer_best_number: Arc<AtomicU64>,
 }
 
 impl<N: NetworkPrimitives> DownloadClient for FetchClient<N> {
@@ -55,6 +57,15 @@ impl<N: NetworkPrimitives> DownloadClient for FetchClient<N> {
 
     fn num_connected_peers(&self) -> usize {
         self.num_active_peers.load(Ordering::Relaxed)
+    }
+
+    fn max_peer_best_number(&self) -> Option<u64> {
+        if self.num_connected_peers() == 0 {
+            return None;
+        }
+        let n = self.max_peer_best_number.load(Ordering::Relaxed);
+        // Genesis-only peers advertise 0; treat as no reachable sync head for capping.
+        (n > 0).then_some(n)
     }
 }
 

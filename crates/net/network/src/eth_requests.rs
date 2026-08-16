@@ -118,7 +118,7 @@ where
             BlockHashOrNumber::Hash(start) => start.into(),
             BlockHashOrNumber::Number(num) => {
                 let Some(hash) = self.client.block_hash(num).unwrap_or_default() else {
-                    return headers
+                    return headers;
                 };
                 hash.into()
             }
@@ -136,7 +136,7 @@ where
                 headers.push(header);
 
                 if headers.len() >= MAX_HEADERS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
 
                 match direction {
@@ -145,7 +145,7 @@ where
                         {
                             block = next.into()
                         } else {
-                            break
+                            break;
                         }
                     }
                     HeadersDirection::Falling => {
@@ -157,7 +157,7 @@ where
                             {
                                 block = next.into()
                             } else {
-                                break
+                                break;
                             }
                         } else {
                             block = parent_hash.into()
@@ -165,7 +165,7 @@ where
                     }
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -201,10 +201,10 @@ where
                 bodies.push(body);
 
                 if bodies.len() >= MAX_BODIES_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -261,13 +261,13 @@ where
 
         for (idx, hash) in block_hashes.into_iter().enumerate() {
             if idx >= MAX_RECEIPTS_SERVE {
-                break
+                break;
             }
 
             let Some(mut block_receipts) =
                 self.client.receipts_by_block(BlockHashOrNumber::Hash(hash)).unwrap_or_default()
             else {
-                break
+                break;
             };
 
             if idx == 0 && first_block_receipt_index > 0 {
@@ -323,10 +323,10 @@ where
                 receipts.push(transformed_receipts);
 
                 if receipts.len() >= MAX_RECEIPTS_SERVE || total_bytes > SOFT_RESPONSE_LIMIT {
-                    break
+                    break;
                 }
             } else {
-                break
+                break;
             }
         }
 
@@ -352,7 +352,7 @@ where
             cells_response.cells.push(cells);
 
             if cells_response.length() > SOFT_RESPONSE_LIMIT {
-                break
+                break;
             }
         }
 
@@ -672,7 +672,7 @@ mod tests {
             txs: Vec<B256>,
         ) -> Result<Vec<Arc<BlobTransactionSidecarVariant>>, BlobStoreError> {
             if txs.is_empty() {
-                return Ok(vec![])
+                return Ok(vec![]);
             }
 
             Err(BlobStoreError::MissingSidecar(txs[0]))

@@ -1,0 +1,81 @@
+{
+  "snapshot_local": "2026-08-15T10:54:00+02:00",
+  "parent_chat_id": "ea987bef-9554-4951-95b5-c526fbb31dd7",
+  "session_label": "Cursor Session 12 (Receipt-Root / Unwind / Cap / Offline FLOW-X04)",
+  "note": "Billed Cursor token meter unavailable on disk. Figures are transcript activity + content-size proxies (chars÷4). Context resend / cache make real billed usage typically much higher. Not an invoice.",
+  "wall_clock": {
+    "local_tz": "Europe/Berlin (UTC+2)",
+    "first_user_query_local": "2026-08-12 16:27",
+    "snapshot_last_user_query_local": "2026-08-15 10:54",
+    "calendar_span_hours": 66.45,
+    "interactive_clusters": [
+      {"start": "2026-08-12 16:27", "end": "2026-08-12 17:12", "span_hours": 0.75},
+      {"start": "2026-08-13 13:57", "end": "2026-08-13 16:00", "span_hours": 2.05},
+      {"start": "2026-08-14 13:25", "end": "2026-08-14 13:34", "span_hours": 0.15},
+      {"start": "2026-08-14 17:38", "end": "2026-08-14 18:01", "span_hours": 0.38},
+      {"start": "2026-08-14 21:23", "end": "2026-08-14 21:26", "span_hours": 0.05},
+      {"start": "2026-08-15 09:47", "end": "2026-08-15 10:54", "span_hours": 1.12}
+    ],
+    "sum_cluster_spans_hours": 4.5,
+    "sum_cluster_spans_plus_15min_pad_per_cluster_hours": 6.0,
+    "method": "New cluster when inter-user-query gap > 90 min; pad ≈ trailing assistant work"
+  },
+  "transcript": {
+    "path": "<agent-transcripts>/ea987bef-9554-4951-95b5-c526fbb31dd7/ea987bef-9554-4951-95b5-c526fbb31dd7.jsonl",
+    "lines": 448,
+    "size_bytes": 862121,
+    "user_msgs": 84,
+    "assistant_msgs": 367,
+    "tool_use": 567,
+    "top_tools": {
+      "Shell": 219,
+      "Read": 113,
+      "StrReplace": 108,
+      "Grep": 93,
+      "AwaitShell": 11,
+      "Glob": 8,
+      "Write": 6,
+      "WebSearch": 4,
+      "TodoWrite": 3,
+      "WebFetch": 1,
+      "Task": 1
+    },
+    "message_text_chars": 288354,
+    "token_proxy_message_text_div4": 72088,
+    "token_proxy_filesize_div4": 215530,
+    "turns_per_day_local": {
+      "2026-08-12": 23,
+      "2026-08-13": 18,
+      "2026-08-14": 18,
+      "2026-08-15": 25
+    }
+  },
+  "models": "Parent Auto/Composer router (no per-request model ledger in transcript); occasional Task subagent",
+  "commits_in_window_2026_08_12_to_15": [
+    "d2f2730504 docs(plan): Execution ~3.7%, Sender tip, Point4 IPC MATCH",
+    "8f2fe9222e docs(plan): Execution ~5.8%, Fermat Point4 MATCH, ETA refresh",
+    "d8bdbbea7a docs(skill): record experiment verdict in reth-opbnb-port",
+    "8ae380ceba docs: personal non-commercial use only for experiment results",
+    "e81e6c824a fix(cli)+docs: receipt-root fail @21591154 harness and PIPE-014",
+    "0461d05091 docs+fix(op): session 12 receipt-fail ops and op-alloy API align",
+    "04f5d8a5d3 docs(harness): drop orphaned receipt-diff README fragments",
+    "faff566927 docs(plan): second 21591154 fail and max-block ops gate",
+    "46e6b0c098 docs: Cap Exec progress, IPC Point4, OPS-001/ENGINE-004"
+  ],
+  "milestones": [
+    "PORT-EXEC-001 / PIPE-014 live receipt-root mismatch @ 21591154 (got≠expected=public)",
+    "FLOW-X05 unwind storms ×3; Headers tip rescued at ~174.0M after Kill during Tip→0",
+    "Harness files/harness-receipt-diff-21591154 + re-execute --dump-receipts-on-fail",
+    "PORT-OPS-001 dirty max-block skip trap; Process-Stop ≫ Cap as park",
+    "PORT-ENGINE-004 SelectNextSome shutdown panic parked",
+    "Clean Cap Bodies+Sender @ 21579110; offline X04 Bodies/Sender→21591154",
+    "ChangeSets SF tip 20365614 ≠ Bodies Cap (three-way heal); Exec stage run →21591153",
+    "CLI range semantics documented: stage run inclusive vs re-execute half-open 54..55"
+  ],
+  "open_followups": [
+    "Finish Exec to 21591153 then re-execute dump + diff_receipts.py (FLOW-X04 DoD)",
+    "PIPE-014 receipt content fix; then Exec past 21591154 without FLOW-X05",
+    "Cursor billed usage: account dashboard only"
+  ],
+  "illustrative_cost_note": "No local Cursor invoice. Content proxy ~72K–216K tokens undercounts billed context heavily. Copilot a95758da alone remains the large metered slice (~USD 1.5–2k API-equivalent illustrative). Session 12 Cursor cost = subscription/dashboard."
+}

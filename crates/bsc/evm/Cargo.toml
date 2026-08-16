@@ -16,14 +16,18 @@ reth-chainspec.workspace = true
 reth-ethereum-forks.workspace = true
 reth-errors.workspace = true
 reth-evm.workspace = true
+reth-evm-ethereum.workspace = true
+reth-execution-errors.workspace = true
 reth-primitives.workspace = true
+reth-ethereum-primitives.workspace = true
+reth-primitives-traits.workspace = true
 reth-prune-types.workspace = true
 reth-provider.workspace = true
 reth-revm = { workspace = true, features = ["std"] }
 reth-trie-db.workspace = true
 
 # revm with required ethereum, bsc features
-revm = { workspace = true, features = ["secp256k1", "blst", "c-kzg"] }
+revm = { workspace = true, features = ["secp256k1", "blst", "c-kzg", "optional_block_gas_limit"] }
 
 # bsc
 reth-bsc-consensus.workspace = true
@@ -33,9 +37,13 @@ reth-bsc-primitives.workspace = true
 
 # ethereum
 alloy-consensus.workspace = true
+alloy-eips.workspace = true
+alloy-evm.workspace = true
 alloy-genesis.workspace = true
 alloy-primitives.workspace = true
-revm-primitives.workspace = true
+alloy-rpc-types-engine.workspace = true
+alloy-rpc-types-eth.workspace = true
+reth-storage-errors.workspace = true
 
 # misc
 thiserror.workspace = true
@@ -45,6 +53,8 @@ parking_lot = "0.12.3"
 bitset = "0.1.2"
 lru = "0.12.3"
 blst = "0.3.12"
+cfg-if = "1.0.0"
+once_cell = "1.19.0"
 
 # async
 tokio = { workspace = true, features = ["sync", "time"] }
@@ -57,5 +67,4 @@ reth-provider = { workspace = true, features = ["test-utils"] }
 bsc = [
     "reth-bsc-consensus/bsc",
     "reth-primitives/bsc",
-    "revm-primitives/bsc",
 ]

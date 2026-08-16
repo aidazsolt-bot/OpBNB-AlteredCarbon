@@ -1,13 +1,10 @@
 //! Trait abstractions used by the payload crate.
 
-use alloy_rpc_types::engine::PayloadId;
 use reth_chain_state::CanonStateNotification;
 use reth_payload_builder_primitives::PayloadBuilderError;
-use reth_payload_primitives::{BuiltPayload, PayloadAttributes, PayloadKind};
+use reth_payload_primitives::{BuiltPayload, PayloadBuilderAttributes, PayloadKind};
 use reth_primitives_traits::NodePrimitives;
 use std::future::Future;
-
-use crate::service::BuildNewPayload;
 
 /// A type that can build a payload.
 ///
@@ -22,7 +19,7 @@ use crate::service::BuildNewPayload;
 /// Note: A `PayloadJob` need to be cancel safe because it might be dropped after the CL has requested the payload via `engine_getPayloadV1` (see also [engine API docs](https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/paris.md#engine_getpayloadv1))
 pub trait PayloadJob: Future<Output = Result<(), PayloadBuilderError>> {
     /// Represents the payload attributes type that is used to spawn this payload job.
-    type PayloadAttributes: PayloadAttributes + std::fmt::Debug;
+    type PayloadAttributes: PayloadBuilderAttributes + std::fmt::Debug;
     /// Represents the future that resolves the block that's returned to the CL.
     type ResolvePayloadFuture: Future<Output = Result<Self::BuiltPayload, PayloadBuilderError>>
         + Send
@@ -65,13 +62,6 @@ pub trait PayloadJob: Future<Output = Result<(), PayloadBuilderError>> {
     /// If this returns [`KeepPayloadJobAlive::Yes`], then the [`PayloadJob`] will be polled
     /// once more. If this returns [`KeepPayloadJobAlive::No`] then the [`PayloadJob`] will be
     /// dropped after this call.
-    ///
-    /// # Cancellation safety
-    ///
-    /// The returned [`ResolvePayloadFuture`](Self::ResolvePayloadFuture) is not
-    /// cancellation-safe. Dropping it cancels resolving the payload and, when the corresponding
-    /// handle resolve call has removed the payload job, cancels the job identified by that
-    /// `payload_id`.
     ///
     /// The [`PayloadKind`] determines how the payload should be resolved in the
     /// `ResolvePayloadFuture`. [`PayloadKind::Earliest`] should return the earliest available
@@ -118,8 +108,7 @@ pub trait PayloadJobGenerator {
     /// returned directly.
     fn new_payload_job(
         &self,
-        input: BuildNewPayload<<Self::Job as PayloadJob>::PayloadAttributes>,
-        id: PayloadId,
+        attr: <Self::Job as PayloadJob>::PayloadAttributes,
     ) -> Result<Self::Job, PayloadBuilderError>;
 
     /// Handles new chain state events

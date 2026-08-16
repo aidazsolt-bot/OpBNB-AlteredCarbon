@@ -2,9 +2,9 @@ use crate::{
     ChainSpecProvider, DBProvider, EitherWriter, HistoryWriter, NodePrimitivesProvider,
     ProviderResult, RocksDBProviderFactory, StorageSettingsCache,
 };
-use alloy_consensus::BlockHeader;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::Address;
+use alloy_consensus::BlockHeader as _;
 use reth_chainspec::EthChainSpec;
 use reth_db::{
     models::{storage_sharded_key::StorageShardedKey, ShardedKey},
@@ -105,7 +105,7 @@ where
         let mut writer = EitherWriter::new_accounts_history(provider, batch)?;
         let list = BlockNumberList::new([block]).expect("single block always fits");
         for (addr, _) in alloc {
-            writer.upsert_account_history(ShardedKey::last(*addr), &list)?;
+            writer.put_account_history(ShardedKey::last(*addr), &list)?;
         }
         trace!(target: "reth::provider", "Inserted account history");
         Ok(((), writer.into_raw_rocksdb_batch()))
@@ -133,7 +133,7 @@ where
         for (addr, account) in alloc {
             if let Some(storage) = &account.storage {
                 for key in storage.keys() {
-                    writer.upsert_storage_history(StorageShardedKey::last(*addr, *key), &list)?;
+                    writer.put_storage_history(StorageShardedKey::last(*addr, *key), &list)?;
                 }
             }
         }

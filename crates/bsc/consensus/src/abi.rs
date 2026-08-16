@@ -5893,7 +5893,7 @@ impl Parlia {
     pub fn unpack_data_into_validator_set_before_luban(&self, data: &[u8]) -> Vec<Address> {
         let function =
             self.validator_abi_before_luban.function("getValidators").unwrap().first().unwrap();
-        let output = function.abi_decode_output(data, true).unwrap();
+        let output = function.abi_decode_output(data).unwrap();
 
         output
             .first()
@@ -5913,7 +5913,7 @@ impl Parlia {
 
     pub fn unpack_data_into_validator_set(&self, data: &[u8]) -> (Vec<Address>, Vec<VoteAddress>) {
         let function = self.validator_abi.function("getMiningValidators").unwrap().first().unwrap();
-        let output = function.abi_decode_output(data, true).unwrap();
+        let output = function.abi_decode_output(data).unwrap();
 
         let consensus_addresses =
             output[0].as_array().unwrap().iter().map(|val| val.as_address().unwrap()).collect();
@@ -5956,7 +5956,7 @@ impl Parlia {
     ) -> (Vec<Address>, Vec<U256>, Vec<Vec<u8>>, U256) {
         let function =
             self.stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
-        let output = function.abi_decode_output(data, true).unwrap();
+        let output = function.abi_decode_output(data).unwrap();
 
         let consensus_address =
             output[0].as_array().unwrap().iter().map(|val| val.as_address().unwrap()).collect();
@@ -5983,7 +5983,7 @@ impl Parlia {
     pub fn unpack_data_into_max_elected_validators(&self, data: &[u8]) -> U256 {
         let function =
             self.stake_hub_abi.function("maxElectedValidators").unwrap().first().unwrap();
-        let output = function.abi_decode_output(data, true).unwrap();
+        let output = function.abi_decode_output(data).unwrap();
 
         output[0].as_uint().unwrap().0
     }
@@ -5996,7 +5996,7 @@ impl Parlia {
 
     pub fn unpack_data_into_turn_length(&self, data: &[u8]) -> U256 {
         let function = self.validator_abi.function("getTurnLength").unwrap().first().unwrap();
-        let output = function.abi_decode_output(data, true).unwrap();
+        let output = function.abi_decode_output(data).unwrap();
 
         output[0].as_uint().unwrap().0
     }

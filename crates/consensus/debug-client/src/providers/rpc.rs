@@ -1,14 +1,8 @@
-use crate::PayloadProvider;
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockId;
-use alloy_provider::{
-    network::{primitives::HeaderResponse, BlockResponse, Network},
-    ConnectionConfig, Provider, ProviderBuilder, WebSocketConfig,
-};
-use alloy_rpc_types_engine::PayloadExtras;
+use crate::BlockProvider;
+use alloy_provider::{ConnectionConfig, Network, Provider, ProviderBuilder, WebSocketConfig};
 use alloy_transport::TransportResult;
 use futures::{Stream, StreamExt};
-use reth_node_api::ExecutionPayload;
+use reth_node_api::Block;
 use reth_tracing::tracing::{debug, warn};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -16,20 +10,19 @@ use tokio::sync::mpsc::Sender;
 /// Block provider that fetches new blocks from an RPC endpoint using a connection that supports
 /// RPC subscriptions.
 #[derive(derive_more::Debug, Clone)]
-pub struct RpcBlockProvider<N: Network, ExecutionData> {
+pub struct RpcBlockProvider<N: Network, PrimitiveBlock> {
     #[debug(skip)]
     provider: Arc<dyn Provider<N>>,
     url: String,
-    fetch_block_access_list: bool,
     #[debug(skip)]
-    convert: Arc<dyn Fn(N::BlockResponse, PayloadExtras) -> ExecutionData + Send + Sync>,
+    convert: Arc<dyn Fn(N::BlockResponse) -> PrimitiveBlock + Send + Sync>,
 }
 
-impl<N: Network, ExecutionData> RpcBlockProvider<N, ExecutionData> {
+impl<N: Network, PrimitiveBlock> RpcBlockProvider<N, PrimitiveBlock> {
     /// Create a new RPC block provider with the given RPC URL.
     pub async fn new(
         rpc_url: &str,
-        convert: impl Fn(N::BlockResponse, PayloadExtras) -> ExecutionData + Send + Sync + 'static,
+        convert: impl Fn(N::BlockResponse) -> PrimitiveBlock + Send + Sync + 'static,
     ) -> eyre::Result<Self> {
         Ok(Self {
             provider: Arc::new(
@@ -46,15 +39,8 @@ impl<N: Network, ExecutionData> RpcBlockProvider<N, ExecutionData> {
                     .await?,
             ),
             url: rpc_url.to_string(),
-            fetch_block_access_list: true,
             convert: Arc::new(convert),
         })
-    }
-
-    /// Disables fetching raw block access list bytes.
-    pub const fn without_block_access_lists(mut self) -> Self {
-        self.fetch_block_access_list = false;
-        self
     }
 
     /// Obtains a full block stream.
@@ -78,72 +64,31 @@ impl<N: Network, ExecutionData> RpcBlockProvider<N, ExecutionData> {
             }
         }
     }
-
-    /// Fetches optional payload side data for blocks that advertise a block access list hash.
-    ///
-    /// Block access lists are best effort here: RPC providers may not support
-    /// `eth_getBlockAccessListByHash`, so failed or missing responses fall back to empty extras.
-    async fn payload_extras(&self, header: &N::HeaderResponse) -> PayloadExtras {
-        if !self.fetch_block_access_list {
-            return PayloadExtras::default()
-        }
-
-        let block_hash = header.hash();
-        if header.block_access_list_hash().is_none() {
-            return PayloadExtras::default()
-        };
-
-        let block_access_list = self
-            .provider
-            .get_block_access_list_raw(BlockId::from(block_hash))
-            .await
-            .inspect_err(|err| {
-                warn!(
-                    target: "consensus::debug-client",
-                    %err,
-                    url=%self.url,
-                    %block_hash,
-                    "Failed to fetch block access list",
-                );
-            })
-            .ok()
-            .flatten();
-
-        PayloadExtras::from(block_access_list)
-    }
 }
 
-impl<N: Network, ExecutionData> PayloadProvider for RpcBlockProvider<N, ExecutionData>
+impl<N: Network, PrimitiveBlock> BlockProvider for RpcBlockProvider<N, PrimitiveBlock>
 where
-    ExecutionData: ExecutionPayload,
+    PrimitiveBlock: Block + 'static,
 {
-    type ExecutionData = ExecutionData;
+    type Block = PrimitiveBlock;
 
-    async fn subscribe_payloads(&self, tx: Sender<Self::ExecutionData>) {
+    async fn subscribe_blocks(&self, tx: Sender<Self::Block>) {
         loop {
             let Ok(mut stream) = self.full_block_stream().await.inspect_err(|err| {
                 warn!(
                     target: "consensus::debug-client",
                     %err,
                     url=%self.url,
-                    "Failed to subscribe to blocks, retrying in 5s",
+                    "Failed to subscribe to blocks",
                 );
             }) else {
-                // Exit if the receiver has been dropped (e.g. during shutdown) so we
-                // don't keep retrying after the consumer is gone.
-                if tx.is_closed() {
-                    return;
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                continue
+                return
             };
 
             while let Some(res) = stream.next().await {
                 match res {
                     Ok(block) => {
-                        let extras = self.payload_extras(block.header()).await;
-                        let payload = (self.convert)(block, extras);
-                        if tx.send(payload).await.is_err() {
+                        if tx.send((self.convert)(block)).await.is_err() {
                             // Channel closed - receiver dropped, exit completely.
                             return;
                         }
@@ -167,14 +112,13 @@ where
         }
     }
 
-    async fn get_payload(&self, block_number: u64) -> eyre::Result<Self::ExecutionData> {
+    async fn get_block(&self, block_number: u64) -> eyre::Result<Self::Block> {
         let block = self
             .provider
             .get_block_by_number(block_number.into())
             .full()
             .await?
             .ok_or_else(|| eyre::eyre!("block not found by number {}", block_number))?;
-        let extras = self.payload_extras(block.header()).await;
-        Ok((self.convert)(block, extras))
+        Ok((self.convert)(block))
     }
 }

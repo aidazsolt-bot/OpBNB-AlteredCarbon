@@ -17,7 +17,8 @@ pub use reth_execution_errors::{
 use reth_execution_types::BlockExecutionResult;
 pub use reth_execution_types::{BlockExecutionOutput, ExecutionOutcome};
 use reth_primitives_traits::{
-    Block, HeaderTy, NodePrimitives, ReceiptTy, Recovered, RecoveredBlock, SealedHeader, TxTy,
+    transaction::Recovered, Block, HeaderTy, NodePrimitives, ReceiptTy, RecoveredBlock,
+    SealedHeader, TxTy,
 };
 use reth_storage_api::StateProvider;
 pub use reth_storage_errors::provider::ProviderError;
@@ -65,7 +66,11 @@ pub trait Executor<DB: Database>: Sized {
     {
         let result = self.execute_one(block)?;
         let mut state = self.into_state();
-        Ok(BlockExecutionOutput { state: state.take_bundle(), result })
+        Ok(BlockExecutionOutput {
+            result,
+            state: state.take_bundle(),
+            snapshot: None,
+        })
     }
 
     /// Executes multiple inputs in the batch, and returns an aggregated [`ExecutionOutcome`].
@@ -78,19 +83,23 @@ pub trait Executor<DB: Database>: Sized {
     {
         let blocks_iter = blocks.into_iter();
         let capacity = blocks_iter.size_hint().0;
-        let mut results = Vec::with_capacity(capacity);
+        let mut receipts = Vec::with_capacity(capacity);
+        let mut requests = Vec::with_capacity(capacity);
         let mut first_block = None;
         for block in blocks_iter {
             if first_block.is_none() {
                 first_block = Some(block.header().number());
             }
-            results.push(self.execute_one(block)?);
+            let result = self.execute_one(block)?;
+            receipts.push(result.receipts);
+            requests.push(result.requests);
         }
 
-        Ok(ExecutionOutcome::from_blocks(
-            first_block.unwrap_or_default(),
+        Ok(ExecutionOutcome::new(
             self.into_state().take_bundle(),
-            results,
+            receipts,
+            first_block.unwrap_or_default(),
+            requests,
         ))
     }
 
@@ -107,7 +116,11 @@ pub trait Executor<DB: Database>: Sized {
         let result = self.execute_one(block)?;
         let mut state = self.into_state();
         f(&state);
-        Ok(BlockExecutionOutput { state: state.take_bundle(), result })
+        Ok(BlockExecutionOutput {
+            result,
+            state: state.take_bundle(),
+            snapshot: None,
+        })
     }
 
     /// Executes the EVM with the given input and accepts a state closure that is always invoked
@@ -123,8 +136,12 @@ pub trait Executor<DB: Database>: Sized {
         let result = self.execute_one(block);
         let mut state = self.into_state();
         f(&state);
-
-        Ok(BlockExecutionOutput { state: state.take_bundle(), result: result? })
+        let result = result?;
+        Ok(BlockExecutionOutput {
+            result,
+            state: state.take_bundle(),
+            snapshot: None,
+        })
     }
 
     /// Executes the EVM with the given input and accepts a state hook closure that is invoked with
@@ -139,7 +156,11 @@ pub trait Executor<DB: Database>: Sized {
     {
         let result = self.execute_one_with_state_hook(block, state_hook)?;
         let mut state = self.into_state();
-        Ok(BlockExecutionOutput { state: state.take_bundle(), result })
+        Ok(BlockExecutionOutput {
+            result,
+            state: state.take_bundle(),
+            snapshot: None,
+        })
     }
 
     /// Consumes the executor and returns the [`State`] containing all state changes.
@@ -436,16 +457,16 @@ impl<Executor: BlockExecutor> ExecutorTx<Executor> for Recovered<Executor::Trans
     }
 }
 
-impl<Executor: BlockExecutor> ExecutorTx<Executor>
-    for (<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>)
+impl<Executor> ExecutorTx<Executor> for (<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>)
+where
+    Executor: BlockExecutor,
 {
     fn into_parts(self) -> (<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>) {
         self
     }
 }
 
-impl<Executor> ExecutorTx<Executor>
-    for WithTxEnv<<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>>
+impl<Executor> ExecutorTx<Executor> for WithTxEnv<<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>>
 where
     Executor: BlockExecutor<Transaction: Clone>,
 {

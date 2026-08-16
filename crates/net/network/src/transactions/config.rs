@@ -1,10 +1,10 @@
 use core::fmt;
-use std::{fmt::Debug, str::FromStr};
+use std::{fmt::Debug, str::FromStr, time::Duration};
 
 use super::{
     PeerMetadata, DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
     DEFAULT_SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESP_ON_PACK_GET_POOLED_TRANSACTIONS_REQ,
-    SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
+    MIN_REANNOUNCE_TIME, SOFT_LIMIT_BYTE_SIZE_POOLED_TRANSACTIONS_RESPONSE,
 };
 use crate::transactions::constants::{
     tx_fetcher::{
@@ -12,7 +12,8 @@ use crate::transactions::constants::{
         DEFAULT_MAX_COUNT_CONCURRENT_REQUESTS_PER_PEER,
     },
     tx_manager::{
-        DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS, DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES,
+        DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS, DEFAULT_REANNOUNCE_TIME,
+        DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES,
     },
 };
 use alloy_eips::eip2718::IsTyped2718;
@@ -20,6 +21,11 @@ use alloy_primitives::B256;
 use derive_more::{Constructor, Display};
 use reth_eth_wire::NetworkPrimitives;
 use reth_network_types::peers::kind::PeerKind;
+use tracing::warn;
+
+const fn default_reannounce_time() -> Duration {
+    DEFAULT_REANNOUNCE_TIME
+}
 
 /// Configuration for managing transactions within the network.
 #[derive(Debug, Clone)]
@@ -44,6 +50,9 @@ pub struct TransactionsManagerConfig {
     /// When the budget is exhausted, new events are dropped.
     #[cfg_attr(feature = "serde", serde(default = "default_tx_channel_memory_limit_bytes"))]
     pub tx_channel_memory_limit_bytes: usize,
+    /// Age threshold for periodically reannouncing local pending transactions as hashes.
+    #[cfg_attr(feature = "serde", serde(default = "default_reannounce_time"))]
+    pub reannounce_time: Duration,
 }
 
 #[cfg(feature = "serde")]
@@ -65,7 +74,25 @@ impl Default for TransactionsManagerConfig {
             propagation_mode: TransactionPropagationMode::default(),
             ingress_policy: TransactionIngressPolicy::default(),
             tx_channel_memory_limit_bytes: DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES,
+            reannounce_time: default_reannounce_time(),
         }
+    }
+}
+
+impl TransactionsManagerConfig {
+    /// Returns a config with any invalid reannounce interval clamped to the supported minimum.
+    pub fn sanitized(mut self) -> Self {
+        if self.reannounce_time < MIN_REANNOUNCE_TIME {
+            warn!(
+                target: "net::tx",
+                provided = ?self.reannounce_time,
+                updated = ?MIN_REANNOUNCE_TIME,
+                "Sanitizing invalid transaction reannounce time"
+            );
+            self.reannounce_time = MIN_REANNOUNCE_TIME;
+        }
+
+        self
     }
 }
 
