@@ -12,10 +12,6 @@ export const sidebar: SidebarItem[] = [
             {
                 text: "Why Reth?",
                 link: "/introduction/why-reth"
-            },
-            {
-                text: "Contributing",
-                link: "/introduction/contributing"
             }
         ]
     },
