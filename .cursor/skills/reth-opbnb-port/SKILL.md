@@ -42,7 +42,7 @@ Unternehmens-Einsatz — siehe `NOTICE-PERSONAL-USE.md` (nicht GPL/Public Domain
 
 1. Erfolg messen an **Matrix-DoD + Live-Beleg**, nicht an Diff-Größe oder Compile-Grün.
 2. Keine Claims „production ready“ / „besser als offizielle Clients“ / „EVM perfect“ nur wegen Header-`stateRoot`-Stichprobe (Point 4 = notwendig, nicht hinreichend; MerkleExecute + keine Unwind-Stürme sind stärkere Gates).
-3. Offene Gates (Haber, FLOW-X02 Wright L1-Fee Diff, Merkle/History, Tip-Catch-up) **nicht** als erledigt verkaufen.
+3. Offene Gates (Haber/Wright **Live**-Stichprobe, Merkle/History, Tip-Catch-up) **nicht** als erledigt verkaufen. FLOW-X02/PIPE-009 Code≡op-geth (Unit 08-16) ≠ Live Point-4.
 4. Bei Meta-Fragen zum Projekt: Urteil oben wiedergeben; Details in `plan.md` / README Effort-Log.
 
 ## Erster Schritt (nicht verhandelbar)
