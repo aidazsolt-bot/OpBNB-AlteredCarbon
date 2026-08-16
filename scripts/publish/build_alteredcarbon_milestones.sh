@@ -17,16 +17,27 @@ PUSH=0
 
 # Milestone: local SHA → public subject (no infra / hosts / paths).
 # Author kept as configured identity (SerLevArrisZT ok per operator).
+# Early roots (trail/port) may be orphan objects retained from prior alteredcarbon cuts;
+# remaining SHAs are ancestors of rebase/reth-v2.4.1.
 MILESTONES=(
+  "916fd0ea21|initial trail import from https://github.com/bnb-chain/reth-bsc-trail"
+  "9260a53e3d|chore: merge tag v2.4.1 into rebase/reth-v2.4.1"
+  "e637df195b|initial port import, remove obsolete upstream docu"
+  "fa51958da7|docs: add plan.md tracking phases, blockers, effort/token log"
+  "bba88dd910|feat(bsc,optimism): Phase-3 bsc-node green + Phase-4 hardforks/workspace"
+  "cff41d1a2f|feat(optimism): get reth-optimism-cli and op-reth bin compiling"
+  "3236c86952|docs: Session 8 effort/cost + maxperf-op Makefile (no binary)"
   "96405ff4a4|docs: Session 9 — storage v2 + Phase-5 nextest/EF milestone"
   "d93bd7ea02|feat(storage): StorageChangeSets static-file segment (STOR-006)"
   "d1d3646e88|feat(opbnb): Fermat/Haber/Wright execution-layer hardfork wiring"
   "e8eb6ccb74|fix(net): reachable headers tip seed (PORT-P2P-003)"
+  "ae662153f4|chore: checkpoint — started syncing, ok for testing"
   "8f2fe9222e|docs: live archive sync past Fermat Point-4 gate"
   "e080ef0edc|fix(op): Hertz precompile overlay for PIPE-014 receipt-root"
   "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
   "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
+  "284525276c|chore: decommission Docker images, compose, and related CI/docs"
   "HEAD|chore: disable GitHub Actions CI for public mirror"
 )
 
