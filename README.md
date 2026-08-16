@@ -194,6 +194,47 @@ needing a client that can **sync for real** instead of importing someone else’
 this experiment exists. Plan hardware and wall-clock for a full staged sync from genesis (or your own
 private datadir), not for a download-and-run snapshot.
 
+#### Measured wall clock — live opBNB mainnet archive (chain 204)
+
+Observed on one continuous archive run (with unwind/rebuild interruptions). Times are **stage wall
+clock**, not “machine was idle.” Heights and fork gates below were cross-checked against public
+`eth_blockNumber` / `eth_getBlockByNumber` on `https://opbnb-mainnet-rpc.bnbchain.org` (Alloy-compatible
+JSON-RPC). Snapshot local time: **2026-08-16 ~22:25 CEST**.
+
+| Stage / phase | When (CEST) | Wall clock | Result |
+| --- | --- | ---: | --- |
+| Headers (tip-resolve → ETL write) | 08-11 ~16:40 → ~18:47 | **~2.1 h** productive | Checkpoint → ~173.4 M; later tip **174 027 661** |
+| Bodies (1st full tip) | 08-11 ~18:58 → 08-12 ~03:02 | **~8.25 h** | Tip @ ~5.8 k blk/s |
+| SenderRecovery (1st tip) | 08-12 → ~15:54 | **~12.9 h** | Tip |
+| Bodies catch-up (post receipt-root fix) | 08-15 ~19:00 → ~22:42 | **~3.7 h** | Tip **174 027 661** |
+| SenderRecovery (3rd / tip) | 08-15 ~22:42 → 08-16 ~03:38 | **~5.0 h** | Tip **174 027 661** |
+| Execution (current, past fail `21591154`) | 08-16 ~03:38 → ongoing | **~18.8 h** so far | **~26.44 M** / Headers tip (**~15.2 %**) |
+
+Interruptions that **add** calendar time (not pure stage progress): receipt-root fail @ `21591154`, unwind
+storms, capped rebuilds, offline single-block verify — see `plan.md` *Live Sync Progress*.
+
+**Done at Headers tip `174 027 661`:** Headers · Bodies · SenderRecovery (validation errors **0**).  
+**In progress:** Execution. **Not started:** Merkle\* · TxLookup · History indexes · Finish.
+
+#### Live progress + ETA (same snapshot)
+
+| Gate | Height (RPC) | Remaining vs Exec | ETA @ ~153 blk/s (1 h) | ETA @ ~87 blk/s (6 h, more conservative) |
+| --- | ---: | ---: | --- | --- |
+| Haber | **27 118 477** | ~0.68 M | **~1.2 h** (~23:40 CEST) | **~2.2 h** |
+| Wright | **32 984 677** | ~6.55 M | **~12 h** (~10:25 CEST 08-17) | **~21 h** |
+| Local Headers tip | **174 027 661** | ~147.6 M | **~11 d** (~08-28) | **~20 d** (~09-05) |
+| Public tip (now) | **~175 179 500** | ~148.7 M | **~11 d** | **~20 d** |
+
+- Execution rate window: **~15 m ≈ 172 blk/s**, **1 h ≈ 153 blk/s**, **6 h ≈ 87 blk/s**, **24 h ≈ 56 blk/s**
+  (rate varies; hot hours are not the whole story).
+- **Overall to usable archive tip:** Execution to Headers tip is the long pole (**~2–3 weeks** at blended
+  rates, longer if the 24 h average sticks). **Post-Execution** (hashing / Merkle / history) is **not yet
+  timed** on this run — budget **additional multi-day** wall after Execution reaches tip.
+- Headers tip is currently **parked** (~1.15 M behind public tip ≈ ~6.7 d of 0.5 s blocks); catching that
+  gap is a later Headers/Bodies pass, small vs remaining Execution.
+
+Fork hashes (public RPC, for spot-checks): Fermat `9397477` · Haber `27118477` · Wright `32984677`.
+
 ## Run Reth for opBNB
 
 The op-reth can function as both a full node and an archive node. Due to its unique storage advantages, it is primarily
