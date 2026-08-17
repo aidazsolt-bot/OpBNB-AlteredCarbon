@@ -1,0 +1,78 @@
+{
+  "when": "2026-08-16T21:20:03+02:00",
+  "fork": "fermat",
+  "fork_height": 9397477,
+  "fork_ts": 1701151200,
+  "pipe": "PIPE-007",
+  "flow": "FLOW-X01",
+  "exec_ckpt": 25844391,
+  "ipc": "/tmp/archive-ct.ipc",
+  "public": "https://opbnb-mainnet-rpc.bnbchain.org",
+  "overall": "MATCH",
+  "heights": [
+    {
+      "n": 9397476,
+      "ts": 1701151199,
+      "ok": true,
+      "hash": "0xebb09258e7a995552cbb38d6007b78335d490b4f6e8f4e6e24acb09ab35afef5",
+      "transactionsRoot": "0xf6ec6d6b69f04ccd0485a3beed2dd3df1a1c99a2903a107c9806d19349a81e7b",
+      "stateRoot": "0xa952ce3f2c29f39ba4bd607acbfc953c336b098a07213fd80c2934269f39dfba",
+      "receiptsRoot": "0xaf89c5da70d3d3a3db76619a68da67caaea0bba2e7441fa09f39310aedd0c594"
+    },
+    {
+      "n": 9397477,
+      "ts": 1701151200,
+      "ok": true,
+      "hash": "0x74a80dff35fc27abe3e72c6e18768928bfff4a15c07e504a3b140b71f88d4c6f",
+      "transactionsRoot": "0xf0fbeff7b318f7270a60079905fc47fe0e7589e5fba4e7dff114dfa2f7a536df",
+      "stateRoot": "0x23b5b38c7331591914991914ed9502635ad2496f48cfaa44f8496e5a0347b37f",
+      "receiptsRoot": "0xadc46f355d4cb947991e2987ead1acd56a612d2b1a7879745695052678079b6a"
+    },
+    {
+      "n": 9397478,
+      "ts": 1701151201,
+      "ok": true,
+      "hash": "0x37767becfa7da212a62acbc6810cda640daee92663fa16edd862040bc73767d9",
+      "transactionsRoot": "0x6b638a4e4268b65ff37d96030f86972b1d70df43b15c34b4d850f4c10346540f",
+      "stateRoot": "0x86aa707eac0085a6ad30d928e7bbbe0e00f5754a14bfabaafd247966c4405c58",
+      "receiptsRoot": "0x1728b7c30a850d4437de3f9d0ad1ae7590f1540d04e24d509bc1a037e6f25ecd"
+    },
+    {
+      "n": 9397577,
+      "ts": 1701151300,
+      "ok": true,
+      "hash": "0xda649a6afb623bc5adff0b131fc66b5777724ea1b888dc29babbda7914597f75",
+      "transactionsRoot": "0x044a660fdca9483df05c9bc37e2d9444424c59186b46bb26abb502544d5fe4f6",
+      "stateRoot": "0x0023985806393192da9183b0ad86032c12d1a3dd7fb8c0f393a40027c7cf154e",
+      "receiptsRoot": "0xe3a6ff674f99098a68e8f33a732d963a2eacdf89d17c9c9c87b310c8c2b240d5"
+    },
+    {
+      "n": 9398477,
+      "ts": 1701152200,
+      "ok": true,
+      "hash": "0x22367371a3fd80ebbc89b8e0c9bd457e81eced47442792924e756f334ff57f2d",
+      "transactionsRoot": "0x090bf077f6463a0879e31785ed3b942838b8480d7c43e70596cc109bf6fe34ab",
+      "stateRoot": "0xac14310df47de78ccdc138e474f5fec7a6395f9121d9fb9cf5245128d4f5296f",
+      "receiptsRoot": "0x3a221f7f4dcbe87d9581ceefe0ceed0a0a2c338ca4092cf6b0d2a1e36f79f841"
+    },
+    {
+      "n": 9407477,
+      "ts": 1701161200,
+      "ok": true,
+      "hash": "0x4e472cbae66246762066027e1f5c4d433bbe8ee7915f918bdba1e44445bd18b8",
+      "transactionsRoot": "0x5cf1356796e0953db3467eeb3abb16b8fa6ab62b171bede90f1d388a5f3ac84a",
+      "stateRoot": "0x2871cec46d53643487b15e0f4ca213ea39d0183a2852772121448a742cb70005",
+      "receiptsRoot": "0xadc6fd7f8bd4774aa4a411f4948e124782b3813d490608aecdcb9dfd8c901857"
+    },
+    {
+      "n": 25843391,
+      "ts": 1717597114,
+      "ok": true,
+      "hash": "0xc14a108771aa44bd7acbc23b760d2618d682c2856ad21fb3b51807a09d49a252",
+      "transactionsRoot": "0x2fa456e6f724e501cd0874a95e470f185bae7fce4611ee267aead5c388f9aeaf",
+      "stateRoot": "0x90800c334796cf8ffbbd055889a874311645865af5ccbacef591ee04433edc28",
+      "receiptsRoot": "0xdec6d5f05c8acd9c9bbfd89e5e8ee65869b49d6a430e69cb6531cad5097e61a0"
+    }
+  ],
+  "semantics": "Matching header stateRoot via eth_getBlockByNumber is necessary but not sufficient for full EVM correctness; MerkleExecute + no unwind storms are stronger."
+}
