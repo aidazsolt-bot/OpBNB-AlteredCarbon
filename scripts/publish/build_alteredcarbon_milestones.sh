@@ -52,7 +52,8 @@ MILESTONES=(
   "84b01b6207|chore: drop upstream Reth brand images; keep project logo"
   "0db36e17c4|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
   "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
-  "HEAD|chore: Point-4 gate tooling + ignore files/*.log noise"
+  "4e2ec3f822|chore: Point-4 gate tooling + ignore files/*.log noise"
+  "HEAD|docs: drop stale upstream CI badges; mirror has no Actions"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"

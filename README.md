@@ -59,17 +59,13 @@ Zusatzbeschränkung **nicht** verwendet.
 
 # reth-bsc-trail
 
-[![CI status](https://github.com/paradigmxyz/reth/workflows/unit/badge.svg)][gh-ci]
-[![cargo-deny status](https://github.com/paradigmxyz/reth/workflows/deny/badge.svg)][gh-deny]
-
-[gh-ci]: https://github.com/bnb-chain/reth/actions/workflows/unit.yml
-
-[gh-deny]: https://github.com/bnb-chain/reth/actions/workflows/deny.yml
-
 This is an experimental, community/hobbyist fork of a blockchain client based on
 [Reth](https://github.com/paradigmxyz/reth/), historically providing support for
 [BNB Smart Chain (BSC)](https://github.com/bnb-chain/bsc) and [opBNB](https://github.com/bnb-chain/op-geth)
 network protocols. See the project notice above for the current status and intent of this repository.
+
+**CI:** This public mirror ships **without** GitHub Actions workflows (personal experiment; no Actions
+burn). Use local `cargo` / `cargo nextest` checks — see `docs/repo/ci.md`.
 
 ## Build from Source
 
