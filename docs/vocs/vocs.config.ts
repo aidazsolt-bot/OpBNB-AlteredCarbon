@@ -9,7 +9,7 @@ export default defineConfig({
   srcDir: 'docs',
   logoUrl: '/logo.png',
   iconUrl: '/logo.png',
-  ogImageUrl: '/reth-prod.png',
+  ogImageUrl: '/logo.png',
   outDir: 'docs/dist',
   renderStrategy: 'full-static',
   sidebar,
