@@ -48,7 +48,8 @@ MILESTONES=(
   "dfec68cb1a|chore: disable GitHub Actions CI for public mirror"
   "27b3faff57|docs: no usable public snapshots; sync from network"
   "2080c5d0c6|docs: archive sync wall-clock + stage ETAs in README"
-  "HEAD|docs: AI milestones + operator/senior-admin effort ledger"
+  "9431930830|docs: AI milestones + operator/senior-admin effort ledger"
+  "HEAD|chore: drop upstream Reth brand images; keep project logo"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
