@@ -49,7 +49,8 @@ MILESTONES=(
   "27b3faff57|docs: no usable public snapshots; sync from network"
   "2080c5d0c6|docs: archive sync wall-clock + stage ETAs in README"
   "9431930830|docs: AI milestones + operator/senior-admin effort ledger"
-  "HEAD|chore: drop upstream Reth brand images; keep project logo"
+  "84b01b6207|chore: drop upstream Reth brand images; keep project logo"
+  "HEAD|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
