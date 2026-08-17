@@ -51,7 +51,8 @@ MILESTONES=(
   "9431930830|docs: AI milestones + operator/senior-admin effort ledger"
   "84b01b6207|chore: drop upstream Reth brand images; keep project logo"
   "0db36e17c4|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
-  "HEAD|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
+  "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
+  "HEAD|chore: Point-4 gate tooling + ignore files/*.log noise"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"

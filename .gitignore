@@ -82,3 +82,14 @@ __pycache__/
 
 # Local infra paths / hostnames / LAN IPs (never commit)
 .cursor/local/
+
+# Local agent/compile/sync scratch under files/ (keep curated artefacts tracked)
+files/*.log
+files/*.log.wrap
+files/*-check.log
+files/yolo-*.log
+files/maxperf-*.log
+files/alteredcarbon-*.log
+first-build.log
+llvm-build.log
+llvm*-build.log
