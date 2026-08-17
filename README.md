@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/aidazsolt-bot/OpBNB-AlteredCarbon/main/assets/logo.png" alt="reth-bsc-trail live sync overview" width="720">
+  <img src="assets/logo.jpg" alt="reth-bsc-trail live sync overview" width="720">
 </p>
 
 # ‼️ Project Notice — Read Before Use ‼️
