@@ -50,7 +50,8 @@ MILESTONES=(
   "2080c5d0c6|docs: archive sync wall-clock + stage ETAs in README"
   "9431930830|docs: AI milestones + operator/senior-admin effort ledger"
   "84b01b6207|chore: drop upstream Reth brand images; keep project logo"
-  "HEAD|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
+  "0db36e17c4|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
+  "HEAD|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
