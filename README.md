@@ -208,7 +208,7 @@ JSON-RPC). Snapshot local time: **2026-08-16 ~22:25 CEST**.
 | SenderRecovery (1st tip) | 08-12 → ~15:54 | **~12.9 h** | Tip |
 | Bodies catch-up (post receipt-root fix) | 08-15 ~19:00 → ~22:42 | **~3.7 h** | Tip **174 027 661** |
 | SenderRecovery (3rd / tip) | 08-15 ~22:42 → 08-16 ~03:38 | **~5.0 h** | Tip **174 027 661** |
-| Execution (current, past fail `21591154`) | 08-16 ~03:38 → ongoing | **~18.8 h** so far | **~26.44 M** / Headers tip (**~15.2 %**) |
+| Execution (current, past fail `21591154`) | 08-16 ~03:38 CEST → ongoing | **~18.8 h** so far (at 08-16 snapshot) | then **~26.44 M**; by **08-17 ~16:05** → **~31.5 M** + **Haber Point-4 MATCH** |
 
 Interruptions that **add** calendar time (not pure stage progress): receipt-root fail @ `21591154`, unwind
 storms, capped rebuilds, offline single-block verify — see `plan.md` *Live Sync Progress*.
@@ -424,15 +424,31 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003/004/005** (reachable tip + Cap idempotent + Falling-Prime — Downloader-Dataflow, not live follow-ups): Falling from peer head ~173.37M @ ~22k hdr/s. Checkpoint 0 until ETL write (Upstream TempDir). |
 | Live sync progress (2026-08-12 ~17:03 CEST) | Headers+Bodies+**Sender** = Tip **173 369 140**. **Execution ~10 M (~5.8 %)**, Fermat **`9397477` Point4 MATCH** (IPC). Block-ETA ~**24–25 h** (entities-lag → 2–4 d). CL Tip ~173.7 M (op-node Tip-Feed; L1-re-org warns = Dataseed noise). Next: Haber / FLOW-X02. Details: `plan.md` § Live Sync Progress. |
 | Live sync + Session 12 (2026-08-13 ~16:00 CEST, chat `ea987bef…`) | **PORT-EXEC-001** receipt-root @ **`21591154`** → Unwind FLOW-X05 → Headers Tip **~174.0 M** again; Bodies rebuild. Harness + `re-execute --dump-receipts-on-fail`; maxperf rebuild-only `target/maxperf/op-reth` (~22 min). **Ops:** Exec ≤`21591153` then offline FLOW-X04. Upstream: stay on **2.4.1** (bnb/op not on 2.5). |
-| Live sync Session 12 cont. (2026-08-14 ~13:35 CEST) | **2. Fail** same `21591154` (~5 min Exec). Cap: **`--debug.max-block`** (+`terminate`); `skip-fcu`≠block stop. Journal via machine journal path. MerkleExecute @ `21579110`. |
+| Live sync Session 12 cont. (2026-08-14 ~13:35 CEST) | **2. Fail** same `21591154` (~5 min Exec). Cap: **`--debug.max-block`** (+`terminate`); `skip-fcu`≠block stop. Journal via container-host journal. MerkleExecute @ `21579110`. |
 | Live sync Session 12 cont. (2026-08-14 ~18:01 CEST) | Dirty Cap → Merkle fail @`21579110` → unwind_to=0; Kill rettet Headers Tip **174 M**. Reload/Stop Panic `SelectNextSome` (ENGINE-004 parked). Bodies clean **0→21579110**. **Ops:** Process-Stop ≫ max-block; Cap only if checkpoints ≤ H (OPS-001). |
 | Live sync Session 12 cont. (2026-08-14 ~21:26 CEST) | Bodies+Sender Cap ✅; Exec ~**6.5 M**→`21579110`. Point4 via IPC `/tmp/<archive-ct>.ipc` MATCH (no HTTP without `--http`). PORT-OPS-001/ENGINE-004 in `plan.md`. |
 | Live sync Session 12 cont. (2026-08-15 ~10:54 CEST) | Offline X04 + SF-Gap + **Effort-Metriken**: Bodies/Sender→`21591154`; SF tip `20365614`≠Cap; Exec→`21591153`; CLI half-open `54..55`. Agent: **~4.5–6 h** interactive / proxy **~72K–216K** tok; `files/cursor-session12-metrics.json`. |
 | Live sync Session 12 cont. (2026-08-15 ~11:47 CEST) | Docs: op-geth `ValidateState` (receipt+state eager) vs Reth Execution+MerkleExecute staged; `21591154` = receipt content (PIPE-014), not state-root formula. |
 | Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics: `files/cursor-session12-metrics-20260816.json`. |
+| Live sync (2026-08-17 ~16:05 CEST) | Exec **~31.5 M↑** (~18 % Headers tip); **Haber Point-4 MATCH** (`27118477` + Fermat/Fail/mid); validation_errors **0**; Wright ETA ~7–11 h @ then-current rate. |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
 | Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9), **`files/cursor-session12-metrics.json`** + **`files/cursor-session12-metrics-20260816.json`** |
-| Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install **`dist/bin/op-reth-bnb`** (avoids overwriting a generic `op-reth` on PATH); default CLI chain `opbnb` |
+| Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install under `dist/bin/` with a dedicated binary name (avoids clobbering a generic `op-reth` on PATH); default CLI chain `opbnb` |
+
+#### Operator / senior admin–dev effort (human-owned)
+
+AI agents did not “run the archive alone.” A **senior operator / admin-dev** owned the experiment boundary:
+
+| Role | What was human-owned (transparent, not a timesheet) |
+| --- | --- |
+| Methodology | Supplied reference-first + **PIPE+FLOW** gates when unaided vibecoding stalled (Session 10); required dual skills every session |
+| Live archive | Started/kept the opBNB archive sync; process stop vs `--debug.max-block` (OPS-001); tip-rescue kill before Headers unwind-to-0; no mid-Exec restarts for casual debug |
+| Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
+| Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
+| Calendar (order of magnitude) | **~2026-08-06 → 08-17+**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time) |
+| Cost beyond LLM | Host CPU/NVMe/network for archive sync + rebuilds — **not** monetized here; LLM illustrative cost above is Copilot-API-equivalent only |
+
+Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference
 required for this kind of large structural migration; earlier pre-`a95758da` sessions add further

@@ -19,28 +19,36 @@ PUSH=0
 # Author kept as configured identity (SerLevArrisZT ok per operator).
 # Early roots (trail/port) may be orphan objects retained from prior alteredcarbon cuts;
 # remaining SHAs are ancestors of rebase/reth-v2.4.1.
+# AI / effort milestones keep token+cost transparency; scrub strips host/IP/path leaks from trees.
 MILESTONES=(
   "916fd0ea21|initial trail import from https://github.com/bnb-chain/reth-bsc-trail"
   "9260a53e3d|chore: merge tag v2.4.1 into rebase/reth-v2.4.1"
   "e637df195b|initial port import, remove obsolete upstream docu"
   "fa51958da7|docs: add plan.md tracking phases, blockers, effort/token log"
+  "76635fb207|docs: Copilot CLI LLM token/cost snapshot (illustrative ~USD 1.5–2k)"
   "bba88dd910|feat(bsc,optimism): Phase-3 bsc-node green + Phase-4 hardforks/workspace"
   "cff41d1a2f|feat(optimism): get reth-optimism-cli and op-reth bin compiling"
-  "3236c86952|docs: Session 8 effort/cost + maxperf-op Makefile (no binary)"
-  "96405ff4a4|docs: Session 9 — storage v2 + Phase-5 nextest/EF milestone"
+  "3236c86952|docs: Session 8 AI effort/cost + maxperf-op Makefile"
+  "96405ff4a4|docs: Session 9 AI milestone — storage v2 + Phase-5 nextest/EF"
   "d93bd7ea02|feat(storage): StorageChangeSets static-file segment (STOR-006)"
   "d1d3646e88|feat(opbnb): Fermat/Haber/Wright execution-layer hardfork wiring"
+  "4a791f5d36|fix(opbnb): milli-timestamp consensus + engine backfill (live sync)"
+  "6eeb07a7a4|docs: AI needs operator-led porting skill (PIPE+FLOW methodology)"
   "e8eb6ccb74|fix(net): reachable headers tip seed (PORT-P2P-003)"
   "ae662153f4|chore: checkpoint — started syncing, ok for testing"
+  "d8bdbbea7a|docs: experiment verdict — AI as mechanic under PIPE+FLOW"
   "8f2fe9222e|docs: live archive sync past Fermat Point-4 gate"
+  "9353bcdb52|docs: Session 12 effort metrics — receipt-root / SF gap / FLOW-X04"
   "e080ef0edc|fix(op): Hertz precompile overlay for PIPE-014 receipt-root"
   "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
+  "14745efe56|docs: Session 12 roadmap + cumulative AI effort refresh"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
   "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
   "284525276c|chore: decommission Docker images, compose, and related CI/docs"
   "dfec68cb1a|chore: disable GitHub Actions CI for public mirror"
   "27b3faff57|docs: no usable public snapshots; sync from network"
-  "HEAD|docs: archive sync wall-clock + stage ETAs in README"
+  "2080c5d0c6|docs: archive sync wall-clock + stage ETAs in README"
+  "HEAD|docs: AI milestones + operator/senior-admin effort ledger"
 )
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
