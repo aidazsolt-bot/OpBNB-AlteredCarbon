@@ -54,7 +54,9 @@ MILESTONES=(
   "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
   "4e2ec3f822|chore: Point-4 gate tooling + ignore files/*.log noise"
   "HEAD|docs: drop stale upstream CI badges; mirror has no Actions"
+  "HEAD|docs: fix clone/docs URLs to OpBNB-AlteredCarbon; GitHub About"
 )
+
 
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-SerLevArrisZT}"
 export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-SerLevArrisZT@dev.null}"
