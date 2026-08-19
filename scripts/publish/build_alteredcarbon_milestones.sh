@@ -68,6 +68,7 @@ git fetch "$REMOTE" 2>/dev/null || true
 TIP_SHA="$(git rev-parse HEAD)"
 
 rm -rf "$WT"
+git worktree prune
 git worktree add --detach "$WT" HEAD
 cd "$WT"
 git branch -D "$BRANCH" >/dev/null 2>&1 || true
