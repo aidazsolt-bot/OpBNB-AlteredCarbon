@@ -53,7 +53,8 @@ MILESTONES=(
   "0db36e17c4|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
   "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
   "4e2ec3f822|chore: Point-4 gate tooling + ignore files/*.log noise"
-  "HEAD|docs: fix clone/docs URLs + drop stale CI badges; GitHub About"
+  "f0e886f276|docs: fix clone/docs URLs + drop stale CI badges; GitHub About"
+  "HEAD|docs: drop cookbook sysctl numbers; TuneD + irqbalance per host/stage"
 )
 
 
@@ -67,6 +68,7 @@ git fetch "$REMOTE" 2>/dev/null || true
 TIP_SHA="$(git rev-parse HEAD)"
 
 rm -rf "$WT"
+git worktree prune
 git worktree add --detach "$WT" HEAD
 cd "$WT"
 git branch -D "$BRANCH" >/dev/null 2>&1 || true
