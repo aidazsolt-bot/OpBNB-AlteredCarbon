@@ -75,8 +75,8 @@ the [Installation Instructions](https://paradigmxyz.github.io/reth/installation/
 With Rust and the dependencies installed, you're ready to build this fork. First, clone the repository:
 
 ```shell
-git clone https://github.com/bnb-chain/reth.git
-cd reth
+git clone https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon.git
+cd OpBNB-AlteredCarbon
 ```
 
 In the realm of BSC, you have the option to execute the following commands to compile bsc-reth:
@@ -338,7 +338,7 @@ This is a personal experimental fork, not an actively maintained community proje
 support channel or roadmap. Thank you for considering helping out with the source code! Contributions
 (forks, fixes, PRs) are welcome, but please understand this is best-effort with no guaranteed review turnaround.
 
-Please see the [Developers' Guide](https://github.com/bnb-chain/reth/tree/develop/docs)
+Please see the [Developers' Guide](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/tree/main/docs)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
 
