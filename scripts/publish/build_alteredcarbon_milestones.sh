@@ -53,8 +53,7 @@ MILESTONES=(
   "0db36e17c4|docs: fix README logo embed for GitHub (absolute URL, mode 644)"
   "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
   "4e2ec3f822|chore: Point-4 gate tooling + ignore files/*.log noise"
-  "HEAD|docs: drop stale upstream CI badges; mirror has no Actions"
-  "HEAD|docs: fix clone/docs URLs to OpBNB-AlteredCarbon; GitHub About"
+  "HEAD|docs: fix clone/docs URLs + drop stale CI badges; GitHub About"
 )
 
 
@@ -93,9 +92,10 @@ for entry in "${MILESTONES[@]}"; do
   git -C "$REPO" archive "$sha" | tar -x -C "$WT"
   python3 "$SCRUB" "$WT"
   git add -A
-  # Detect deletions vs previous commit
-  if git diff --cached --quiet && git rev-parse --verify HEAD >/dev/null 2>&1; then
-    echo "WARNING: no content change vs previous milestone at $sha" >&2
+  # Skip empty milestones (same tree as previous) so set -e does not abort before --push.
+  if git rev-parse --verify HEAD >/dev/null 2>&1 && git diff --cached --quiet; then
+    echo "WARNING: no content change vs previous milestone at $sha — skip" >&2
+    continue
   fi
   GIT_AUTHOR_DATE="$(git -C "$REPO" log -1 --format=%aI "$sha")"
   GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
