@@ -59,17 +59,13 @@ Zusatzbeschränkung **nicht** verwendet.
 
 # reth-bsc-trail
 
-[![CI status](https://github.com/paradigmxyz/reth/workflows/unit/badge.svg)][gh-ci]
-[![cargo-deny status](https://github.com/paradigmxyz/reth/workflows/deny/badge.svg)][gh-deny]
-
-[gh-ci]: https://github.com/bnb-chain/reth/actions/workflows/unit.yml
-
-[gh-deny]: https://github.com/bnb-chain/reth/actions/workflows/deny.yml
-
 This is an experimental, community/hobbyist fork of a blockchain client based on
 [Reth](https://github.com/paradigmxyz/reth/), historically providing support for
 [BNB Smart Chain (BSC)](https://github.com/bnb-chain/bsc) and [opBNB](https://github.com/bnb-chain/op-geth)
 network protocols. See the project notice above for the current status and intent of this repository.
+
+**CI:** This public mirror ships **without** GitHub Actions workflows (personal experiment; no Actions
+burn). Use local `cargo` / `cargo nextest` checks — see `docs/repo/ci.md`.
 
 ## Build from Source
 
@@ -79,8 +75,8 @@ the [Installation Instructions](https://paradigmxyz.github.io/reth/installation/
 With Rust and the dependencies installed, you're ready to build this fork. First, clone the repository:
 
 ```shell
-git clone https://github.com/bnb-chain/reth.git
-cd reth
+git clone https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon.git
+cd OpBNB-AlteredCarbon
 ```
 
 In the realm of BSC, you have the option to execute the following commands to compile bsc-reth:
@@ -342,7 +338,7 @@ This is a personal experimental fork, not an actively maintained community proje
 support channel or roadmap. Thank you for considering helping out with the source code! Contributions
 (forks, fixes, PRs) are welcome, but please understand this is best-effort with no guaranteed review turnaround.
 
-Please see the [Developers' Guide](https://github.com/bnb-chain/reth/tree/develop/docs)
+Please see the [Developers' Guide](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/tree/main/docs)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
 
