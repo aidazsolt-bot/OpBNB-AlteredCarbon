@@ -105,45 +105,24 @@ make install-op
 
 ## Before setting up the node
 
-### Optimizing `vm.min_free_kbytes` for MDBX Storage in Reth
+### Host OS tuning (MDBX, IRQs, CPU) — no cookbook sysctls
 
-#### Why Adjust `vm.min_free_kbytes`?
+Reth’s MDBX store is **mmap-heavy**. Kernel VM watermarks (`vm.min_free_kbytes` and friends), dirty-page writeback, THP, NUMA, CPU governor, and IRQ affinity all affect a long staged sync — and they do **not** have a single “correct” value.
 
-Reth uses **MDBX** as its underlying storage engine, which relies on **memory-mapped I/O (mmap)** for high-performance operations. However, MDBX can consume a significant amount of memory, and in scenarios where applications allocate memory aggressively, the system may run into **memory pressure**.
+**Do not copy generic `sysctl` numbers.** A value that is fine on one box in Headers can OOM, stall writeback, or burn a single NVMe/NIC CPU in Execution or hashing. The right settings depend on:
 
-By increasing `vm.min_free_kbytes`, you can **prevent the Linux OOM (Out-Of-Memory) killer** from terminating essential processes when free memory runs low. This ensures smoother performance and better stability.
+- this machine (RAM, NUMA, NVMe vs mixed disks, NIC, other processes on the node);
+- the **current pipeline stage** and whether you are catch-up vs tip;
+- other workloads sharing the host (CL, RPC, indexers, side jobs).
 
-#### Recommended Setting
+Tune **per host and per stage mix**, then re-check when the mix changes. Measure (pressure stall, `iostat`, `/proc/interrupts`, NUMA, process RSS vs file cache) instead of assuming a recipe “took.”
 
-We recommend setting `vm.min_free_kbytes` to at least **4GB (4194304 kbytes)** to ensure system stability when using MDBX.
+Use a real tuning stack; distro **defaults are not a blockchain-node profile**:
 
-#### **Linux**
+- **[TuneD](https://tuned-project.org/)** (`tuned`): start from a throughput/latency profile if you want, then **write your own** for this node. Built-in profiles do not know about MDBX mmap + staged sync. Persist VM/CPU/disk knobs in that profile (or equivalent) so they survive reboot — not a one-shot `sysctl -w`.
+- **[irqbalance](https://github.com/Irqbalance/irqbalance)**: useful so NVMe and NIC IRQs are not stuck on CPU0, but **stock irqbalance policy is often wrong** for a hot node datapath. Ban/affinity (or stop irqbalance and pin IRQs yourself) after looking at `/proc/interrupts` under the stage that actually hurts. Same rule as sysctl: configure it; do not trust defaults.
 
-To apply the setting temporarily (until reboot):
-
-```sh
-sudo sysctl -w vm.min_free_kbytes=4194304
-```
-
-To make it persist across reboots, add the following line to /etc/sysctl.conf:
-
-```sh
-echo "vm.min_free_kbytes=4194304" | sudo tee -a /etc/sysctl.conf
-```
-
-Then apply the changes:
-
-```sh
-sudo sysctl -p
-```
-
-### Verifying the Configuration
-
-To verify that the setting has been applied correctly, run:
-
-```sh
-cat /proc/sys/vm/min_free_kbytes
-```
+This experiment does not ship a TuneD profile or irqbalance config — those belong to **your** hardware and workload, not a README.
 
 ## Run Reth for BSC
 
