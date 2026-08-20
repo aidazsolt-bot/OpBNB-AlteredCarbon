@@ -20,6 +20,7 @@ PUSH=0
 # Early roots (trail/port) may be orphan objects retained from prior alteredcarbon cuts;
 # remaining SHAs are ancestors of rebase/reth-v2.4.1.
 # AI / effort milestones keep token+cost transparency; scrub strips host/IP/path leaks from trees.
+# Protocol/sync fix milestones call out upstream/trail gaps that this fork repaired (eth/69, UPnP, …).
 MILESTONES=(
   "916fd0ea21|initial trail import from https://github.com/bnb-chain/reth-bsc-trail"
   "9260a53e3d|chore: merge tag v2.4.1 into rebase/reth-v2.4.1"
@@ -30,17 +31,22 @@ MILESTONES=(
   "cff41d1a2f|feat(optimism): get reth-optimism-cli and op-reth bin compiling"
   "3236c86952|docs: Session 8 AI effort/cost + maxperf-op Makefile"
   "96405ff4a4|docs: Session 9 AI milestone — storage v2 + Phase-5 nextest/EF"
+  "7bcb08d589|fix(storage): AccountChangeSets stub no longer corrupts Headers (STOR-001)"
+  "ea4c047dab|feat(storage): TransactionSenders static-file segment (STOR-004)"
+  "90d30fd24d|feat(storage): AccountChangeSets static-file segment (STOR-005)"
   "d93bd7ea02|feat(storage): StorageChangeSets static-file segment (STOR-006)"
   "d1d3646e88|feat(opbnb): Fermat/Haber/Wright execution-layer hardfork wiring"
-  "4a791f5d36|fix(opbnb): milli-timestamp consensus + engine backfill (live sync)"
+  "4a791f5d36|fix(engine,opbnb): milli-timestamp consensus + pipeline backfill (CONS-001, ENGINE-001)"
   "6eeb07a7a4|docs: AI needs operator-led porting skill (PIPE+FLOW methodology)"
-  "e8eb6ccb74|fix(net): reachable headers tip seed (PORT-P2P-003)"
+  "e8eb6ccb74|fix(net): eth/69(+) tip-resolve, HeadersAtLeast, reachable tip seed (P2P-003)"
+  "2fafa02081|fix(net): Cap idempotent + Falling-tracker prime after Cap (P2P-004/005)"
   "ae662153f4|chore: checkpoint — started syncing, ok for testing"
-  "d8bdbbea7a|docs: experiment verdict — AI as mechanic under PIPE+FLOW"
   "8f2fe9222e|docs: live archive sync past Fermat Point-4 gate"
+  "d8bdbbea7a|docs: experiment verdict — AI as mechanic under PIPE+FLOW"
   "9353bcdb52|docs: Session 12 effort metrics — receipt-root / SF gap / FLOW-X04"
-  "e080ef0edc|fix(op): Hertz precompile overlay for PIPE-014 receipt-root"
-  "b9792ab58a|feat(net): UPnP NAT mapping for --nat any (PORT-P2P-002)"
+  "e080ef0edc|fix(op): Hertz CometBFT overlay — receipt-root parity (PIPE-014)"
+  "b9792ab58a|feat(net): UPnP for --nat any + eth/69 handshake/status fixes (P2P-002)"
+  "977e7419af|fix(opbnb): Wright L1-fee skip ≡ op-geth gasPrice==0 (PIPE-009)"
   "14745efe56|docs: Session 12 roadmap + cumulative AI effort refresh"
   "c01f13fb16|docs: personal-use SECURITY notice; drop upstream contributing guides"
   "6ee161cfdf|chore: anonymized alteredcarbon milestone publish scripts"
@@ -57,7 +63,8 @@ MILESTONES=(
   "db54e73e9c|docs: drop cookbook sysctl numbers; TuneD + irqbalance per host/stage"
   "85d50231c3|docs: hardware ballpark only — no fixed core/RAM/NVMe shopping list"
   "35f938985c|docs: clarify one-node vs multi-node fleet hardware (consumer NVMe OK)"
-  "HEAD|docs: opBNB archive sync status + ETA refresh (2026-08-20)"
+  "881b546249|docs: opBNB archive sync status + ETA refresh (2026-08-20)"
+  "HEAD|docs: surface protocol/sync fixes in public commit history + README"
 )
 
 
