@@ -1,0 +1,30 @@
+{
+  "snapshot_cest": "2026-08-20T10:27:56.054211+02:00",
+  "instance": "opbnb-archive (anon)",
+  "checkpoints": {
+    "Headers": 174027661,
+    "Bodies": 174027661,
+    "SenderRecovery": 174027661,
+    "Execution": 37131645,
+    "AccountHashing": 0,
+    "StorageHashing": 0,
+    "MerkleExecute": 0,
+    "TransactionLookup": 0,
+    "Finish": 0
+  },
+  "rates_blk_s": {
+    "15m": 18.851,
+    "1h": 33.083,
+    "6h": 24.474,
+    "24h": 21.747,
+    "48h": 22.502,
+    "since_exec_start_approx_4d": 40.381
+  },
+  "remaining_to_headers": 136896016,
+  "pct_headers_tip": 21.34,
+  "public_tip": 176390171,
+  "peers": 16,
+  "validation_errors": 0,
+  "rss_gib": 11.93,
+  "cpu_cores_5m": 0.47
+}
