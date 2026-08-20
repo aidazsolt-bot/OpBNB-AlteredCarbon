@@ -365,6 +365,26 @@ or officially supported client.
 `NOTICE-PERSONAL-USE.md`. Upstream Reth remains Apache-2.0 OR MIT; this project does **not** relicense
 the tree as GPL or public domain (those allow commercial use and would not express the NC intent).
 
+### Notable protocol / sync fixes (visible in commit history)
+
+These are places where stock upstream / the archived trail were insufficient for a real opBNB archive
+catch-up. Each item is a **named commit** on the public `main` history (milestone publish), not only a
+note in `plan.md`:
+
+| Area | What was wrong | Public-facing fix commit subject |
+| --- | --- | --- |
+| Storage v2 | ChangeSets/Senders stubs could corrupt Headers; missing SF segments | `fix(storage): AccountChangeSets stub…` → `feat(storage): … STOR-004/005/006` |
+| Consensus | Eth second-granularity timestamp rejected valid opBNB equal-second blocks | `fix(engine,opbnb): milli-timestamp… (CONS-001)` |
+| Engine | Tip chase / no pipeline backfill after FCU | same commit `(ENGINE-001)` + tip seed in P2P-003 |
+| eth/69 (+) | Tip hash without number; peers without range; Empty→Ban; BlockRange unused | `fix(net): eth/69(+) tip-resolve, HeadersAtLeast… (P2P-003)` |
+| Headers downloader | Cap re-loop / Falling stuck at `total=1` | `fix(net): Cap idempotent + Falling-tracker prime (P2P-004/005)` |
+| NAT | `--nat any` without real UPnP; undialable announce | `feat(net): UPnP for --nat any + eth/69 handshake… (P2P-002)` |
+| Execution | Receipt-root fail @ Hertz/`0x67` (`21591154`) | `fix(op): Hertz CometBFT overlay… (PIPE-014)` |
+| Wright L1 fee | Skip semantics must match op-geth (`gasPrice==0`) | `fix(opbnb): Wright L1-fee skip ≡ op-geth… (PIPE-009)` |
+
+Hardfork wiring (Fermat/Haber/Wright) and live Point-4 / ETA docs are separate commits further up the
+same history. Full gate matrix: `plan.md` (`PORT-*` / `PORT-PIPE-*` / `PORT-FLOW-*`).
+
 ### Method
 
 Work was performed interactively with AI coding agents across multiple sessions — primarily
