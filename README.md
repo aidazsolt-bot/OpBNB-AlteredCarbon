@@ -129,27 +129,27 @@ This experiment does not ship a TuneD profile or irqbalance config — those bel
 ### Hardware (ballpark — not a shopping list)
 
 There is **no** fixed “minimum SKU.” Need depends on chain, node mode (`archive` / `full` / pruned /
-minimal-style), whether you are catch-up vs tip, and what else shares the box. Cookbook lines like
-“16+ cores / 128 GB / enterprise NVMe” describe a **multi-node lab** (many chains × many configs), not
-what it takes to run **one** client.
+minimal-style), catch-up vs tip, and what else shares the box.
 
-Roughly, for a **single** BSC node:
+**One** client is usually a modest slice of a normal workstation/server — not a dedicated dual-socket
+box and not “enterprise NVMe or bust”:
 
-* **CPU:** a handful of cores is enough for most pipeline stages; hotter phases (execution bursts,
-  hashing / Merkle later) use more parallelism if you have it, but one node does not need a dual-socket
-  server to itself.
-* **RAM:** think “enough headroom for MDBX mmap + OS page cache,” typically on the order of **low tens
-  of GiB** for a busy archive catch-up; pruned / lighter modes less. The large memory figures people
-  quote are for **many** nodes (or CL + EL stacks) co-located, not one process’s RSS floor.
-* **Disk:** ordinary SSD/NVMe is fine — you do **not** need top-bin enterprise drives for correctness.
-  Capacity grows with history and mode (minimal ≪ full ≪ archive) into the **multi-terabyte** range for
-  long-lived archives; leave headroom and watch growth instead of trusting a fixed TB number.
-* **Network:** stable broadband with decent upload; peer count and stage (headers/bodies vs execution)
-  matter more than a marketed MB/s rating.
+* **CPU:** often only a few busy cores outside hotter stages; execution bursts and later hashing/Merkle
+  use more threads *if* you have them. A single node does not need a whole mid-range Xeon to itself.
+* **RAM:** headroom for MDBX mmap + OS page cache — typically **tens of GiB** class for a busy archive
+  catch-up, less for pruned/minimal. Hundreds-of-GiB quotes are for **fleets** (many ELs, and often CLs /
+  rollup-nodes co-located), not one process’s floor.
+* **Disk:** **consumer** SSD/NVMe is fine for correctness and everyday sync. Capacity grows with history
+  and mode (minimal ≪ full ≪ archive) into the **multi-terabyte** range for long-lived archives — watch
+  growth; don’t treat a fixed TB number or drive brand as a requirement.
+* **Network:** stable broadband; stage mix and peers matter more than a marketed MB/s figure.
 
-A workstation that comfortably runs **one** archive sync will not automatically host ten archive/full/
-minimal/fast nodes across several chains — that shared-host case is where big CPU/RAM pools and a fast
-shared disk array start to matter. Tune per host (see Host OS tuning above).
+**Many** nodes on one host (several chains × archive/full/minimal/fast, maybe plus consensus /
+rollup-node sidecars) is a different problem: shared **RAM pool** and a **multi-volume SSD/NVMe** setup
+matter far more than cores-per-node. One mid-range multicore server can run that kind of lab if you
+accept shared load; the old “16+ cores / 128 GB / high-end NVMe” README shopping list was describing
+that *shared* lab class poorly, and overstated what **one** node needs. Tune per host (see Host OS
+tuning above).
 
 ### Steps to Run bsc-reth
 
@@ -235,15 +235,13 @@ utilized for running archive nodes.
 
 ### Hardware (ballpark — not a shopping list)
 
-Same idea as BSC: **one** opBNB archive/full node is a modest multicore + SSD/NVMe + “tens of GiB–class”
-RAM problem under catch-up; **not** a 16-core / 128 GB / high-end-NVMe shopping list. Those specs are
-what you reach for when packing **many** nodes (several L2s × archive/full/minimal/fast, plus maybe
-BSC/ETH) onto one host.
+Same split as BSC. **One** opBNB archive/full node is a modest multicore + **consumer** SSD/NVMe +
+tens-of-GiB-class RAM problem under catch-up. Disk still grows into the **multi-terabyte** class over a
+long archive sync (capacity ≫ brand). Execution is usually CPU/disk-bound long before the NIC is.
 
-Disk for opBNB archive sync also lands in the **multi-terabyte** class over time (this experiment’s
-live archive already sits well into that band while still mid-Execution). Consumer NVMe is sufficient;
-size for growth and prune mode, not for a fixed “buy N TB of brand X” recipe. Network: stable broadband
-is enough; Execution is usually CPU/disk-bound long before the NIC is.
+The heavy box (many cores of *shared* CPU, large RAM pool, several NVMe volumes) is for packing **many**
+EL(+CL/rollup) instances across chains and modes onto one host — still typically consumer NVMe, not a
+per-node 16-core / 128 GB / “high-end NVMe” shopping list.
 
 ### Steps to Run op-reth
 
