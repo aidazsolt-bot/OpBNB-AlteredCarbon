@@ -54,7 +54,8 @@ MILESTONES=(
   "1638796774|docs: README logo via relative JPEG (avoid raw.githubusercontent 429)"
   "4e2ec3f822|chore: Point-4 gate tooling + ignore files/*.log noise"
   "f0e886f276|docs: fix clone/docs URLs + drop stale CI badges; GitHub About"
-  "HEAD|docs: drop cookbook sysctl numbers; TuneD + irqbalance per host/stage"
+  "db54e73e9c|docs: drop cookbook sysctl numbers; TuneD + irqbalance per host/stage"
+  "HEAD|docs: hardware ballpark only — no fixed core/RAM/NVMe shopping list"
 )
 
 
