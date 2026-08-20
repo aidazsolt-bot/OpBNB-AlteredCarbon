@@ -126,12 +126,30 @@ This experiment does not ship a TuneD profile or irqbalance config — those bel
 
 ## Run Reth for BSC
 
-### Hardware Requirements
+### Hardware (ballpark — not a shopping list)
 
-* CPU with 16+ cores
-* 128GB RAM
-* High-performance NVMe SSD with at least 4TB of free space for full node and 8TB of free space for archive node
-* A broadband internet connection with upload/download speeds of 25 MB/s
+There is **no** fixed “minimum SKU.” Need depends on chain, node mode (`archive` / `full` / pruned /
+minimal-style), whether you are catch-up vs tip, and what else shares the box. Cookbook lines like
+“16+ cores / 128 GB / enterprise NVMe” describe a **multi-node lab** (many chains × many configs), not
+what it takes to run **one** client.
+
+Roughly, for a **single** BSC node:
+
+* **CPU:** a handful of cores is enough for most pipeline stages; hotter phases (execution bursts,
+  hashing / Merkle later) use more parallelism if you have it, but one node does not need a dual-socket
+  server to itself.
+* **RAM:** think “enough headroom for MDBX mmap + OS page cache,” typically on the order of **low tens
+  of GiB** for a busy archive catch-up; pruned / lighter modes less. The large memory figures people
+  quote are for **many** nodes (or CL + EL stacks) co-located, not one process’s RSS floor.
+* **Disk:** ordinary SSD/NVMe is fine — you do **not** need top-bin enterprise drives for correctness.
+  Capacity grows with history and mode (minimal ≪ full ≪ archive) into the **multi-terabyte** range for
+  long-lived archives; leave headroom and watch growth instead of trusting a fixed TB number.
+* **Network:** stable broadband with decent upload; peer count and stage (headers/bodies vs execution)
+  matter more than a marketed MB/s rating.
+
+A workstation that comfortably runs **one** archive sync will not automatically host ten archive/full/
+minimal/fast nodes across several chains — that shared-host case is where big CPU/RAM pools and a fast
+shared disk array start to matter. Tune per host (see Host OS tuning above).
 
 ### Steps to Run bsc-reth
 
@@ -215,12 +233,17 @@ Fork hashes (public RPC, for spot-checks): Fermat `9397477` · Haber `27118477` 
 The op-reth can function as both a full node and an archive node. Due to its unique storage advantages, it is primarily
 utilized for running archive nodes.
 
-### Hardware Requirements
+### Hardware (ballpark — not a shopping list)
 
-* CPU with 16+ cores
-* 128GB RAM
-* High-performance NVMe SSD with at least 3TB of free space
-* A broadband internet connection with upload/download speeds of 25 MB/s
+Same idea as BSC: **one** opBNB archive/full node is a modest multicore + SSD/NVMe + “tens of GiB–class”
+RAM problem under catch-up; **not** a 16-core / 128 GB / high-end-NVMe shopping list. Those specs are
+what you reach for when packing **many** nodes (several L2s × archive/full/minimal/fast, plus maybe
+BSC/ETH) onto one host.
+
+Disk for opBNB archive sync also lands in the **multi-terabyte** class over time (this experiment’s
+live archive already sits well into that band while still mid-Execution). Consumer NVMe is sufficient;
+size for growth and prune mode, not for a fixed “buy N TB of brand X” recipe. Network: stable broadband
+is enough; Execution is usually CPU/disk-bound long before the NIC is.
 
 ### Steps to Run op-reth
 
