@@ -192,7 +192,7 @@ private datadir), not for a download-and-run snapshot.
 Observed on one continuous archive run (with unwind/rebuild interruptions). Times are **stage wall
 clock**, not “machine was idle.” Heights and fork gates below were cross-checked against public
 `eth_blockNumber` / `eth_getBlockByNumber` on `https://opbnb-mainnet-rpc.bnbchain.org` (Alloy-compatible
-JSON-RPC). Snapshot local time: **2026-08-16 ~22:25 CEST**.
+JSON-RPC). Snapshot local time: **2026-08-20 ~10:28 CEST**.
 
 | Stage / phase | When (CEST) | Wall clock | Result |
 | --- | --- | ---: | --- |
@@ -201,30 +201,33 @@ JSON-RPC). Snapshot local time: **2026-08-16 ~22:25 CEST**.
 | SenderRecovery (1st tip) | 08-12 → ~15:54 | **~12.9 h** | Tip |
 | Bodies catch-up (post receipt-root fix) | 08-15 ~19:00 → ~22:42 | **~3.7 h** | Tip **174 027 661** |
 | SenderRecovery (3rd / tip) | 08-15 ~22:42 → 08-16 ~03:38 | **~5.0 h** | Tip **174 027 661** |
-| Execution (current, past fail `21591154`) | 08-16 ~03:38 CEST → ongoing | **~18.8 h** so far (at 08-16 snapshot) | then **~26.44 M**; by **08-17 ~16:05** → **~31.5 M** + **Haber Point-4 MATCH** |
+| Execution (current, past fail `21591154`) | 08-16 ~03:38 CEST → ongoing | **~4.3 d** so far (at 08-20 snapshot) | **~37.13 M** (~21 % Headers tip); Haber **Point-4 MATCH** (08-17); **past Wright** height |
 
 Interruptions that **add** calendar time (not pure stage progress): receipt-root fail @ `21591154`, unwind
 storms, capped rebuilds, offline single-block verify — see `plan.md` *Live Sync Progress*.
 
 **Done at Headers tip `174 027 661`:** Headers · Bodies · SenderRecovery (validation errors **0**).  
-**In progress:** Execution. **Not started:** Merkle\* · TxLookup · History indexes · Finish.
+**In progress:** Execution (past Fermat / Haber / Wright heights). **Not started:** Merkle\* · TxLookup · History indexes · Finish.
 
-#### Live progress + ETA (same snapshot)
+#### Live progress + ETA (snapshot **2026-08-20 ~10:28 CEST**)
 
-| Gate | Height (RPC) | Remaining vs Exec | ETA @ ~153 blk/s (1 h) | ETA @ ~87 blk/s (6 h, more conservative) |
+| Gate | Height (RPC) | Remaining vs Exec | ETA @ ~33 blk/s (1 h) | ETA @ ~22 blk/s (24 h, more conservative) |
 | --- | ---: | ---: | --- | --- |
-| Haber | **27 118 477** | ~0.68 M | **~1.2 h** (~23:40 CEST) | **~2.2 h** |
-| Wright | **32 984 677** | ~6.55 M | **~12 h** (~10:25 CEST 08-17) | **~21 h** |
-| Local Headers tip | **174 027 661** | ~147.6 M | **~11 d** (~08-28) | **~20 d** (~09-05) |
-| Public tip (now) | **~175 179 500** | ~148.7 M | **~11 d** | **~20 d** |
+| Haber | **27 118 477** | — | **passed** (Point-4 MATCH 08-17) | — |
+| Wright | **32 984 677** | — | **passed** (Exec ≫ height; optional Point-4 sample still nice-to-have) | — |
+| Local Headers tip | **174 027 661** | ~136.9 M | **~48 d** (~2026-10-07) | **~73 d** (~2026-11-01) |
+| Public tip (now) | **~176 390 000** | ~139.3 M | **~49 d** (~2026-10-08) | **~74 d** (~2026-11-02) |
 
-- Execution rate window: **~15 m ≈ 172 blk/s**, **1 h ≈ 153 blk/s**, **6 h ≈ 87 blk/s**, **24 h ≈ 56 blk/s**
-  (rate varies; hot hours are not the whole story).
-- **Overall to usable archive tip:** Execution to Headers tip is the long pole (**~2–3 weeks** at blended
-  rates, longer if the 24 h average sticks). **Post-Execution** (hashing / Merkle / history) is **not yet
-  timed** on this run — budget **additional multi-day** wall after Execution reaches tip.
-- Headers tip is currently **parked** (~1.15 M behind public tip ≈ ~6.7 d of 0.5 s blocks); catching that
-  gap is a later Headers/Bodies pass, small vs remaining Execution.
+- Execution rate window (cooled vs early Exec): **~15 m ≈ 19 blk/s**, **1 h ≈ 33 blk/s**, **6 h ≈ 24 blk/s**,
+  **24 h ≈ 22 blk/s**, **~4 d blended ≈ 40 blk/s** (early hotter hours still in the long average).
+- **Overall to Headers tip:** long pole is still Execution — at the **current cooled** 1 h/24 h bands roughly
+  **~1½–2½ months** (Oct–early Nov). If the longer blended ~40 blk/s returns, closer to **~5–6 weeks**.
+  **Post-Execution** (hashing / Merkle / history) is **not yet timed** — budget **additional multi-day** wall
+  after Execution reaches tip.
+- Headers tip remains **parked** (~2.4 M behind public tip ≈ ~14 d of 0.5 s blocks); catching that gap is a
+  later Headers/Bodies pass, small vs remaining Execution.
+- Health at snapshot: peers **16**, bodies validation/timeout/unexpected **0**, invalid messages **0**.
+  Metrics snapshot: `files/opbnb-archive-sync-snapshot-20260820.json`.
 
 Fork hashes (public RPC, for spot-checks): Fermat `9397477` · Haber `27118477` · Wright `32984677`.
 
@@ -427,6 +430,7 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Live sync Session 12 cont. (2026-08-15 ~11:47 CEST) | Docs: op-geth `ValidateState` (receipt+state eager) vs Reth Execution+MerkleExecute staged; `21591154` = receipt content (PIPE-014), not state-root formula. |
 | Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics: `files/cursor-session12-metrics-20260816.json`. |
 | Live sync (2026-08-17 ~16:05 CEST) | Exec **~31.5 M↑** (~18 % Headers tip); **Haber Point-4 MATCH** (`27118477` + Fermat/Fail/mid); validation_errors **0**; Wright ETA ~7–11 h @ then-current rate. |
+| Live sync (2026-08-20 ~10:28 CEST) | Exec **~37.13 M↑** (~21 % Headers tip); **past Wright**; rate cooled ~**19–33 blk/s** (24 h ~22); ETA Headers tip **~1½–2½ Mo** (Oct–early Nov @ current bands). Peers 16; validation **0**. Snapshot: `files/opbnb-archive-sync-snapshot-20260820.json`. |
 | Commits | See `git log` on `rebase/reth-v2.4.1` |
 | Metrics snapshots | `files/cursor-session-metrics.json` (Session 6), `files/cursor-session8-metrics.json` (Session 8), `files/cursor-session9-metrics.json` (Session 9), **`files/cursor-session12-metrics.json`** + **`files/cursor-session12-metrics-20260816.json`** |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install under `dist/bin/` with a dedicated binary name (avoids clobbering a generic `op-reth` on PATH); default CLI chain `opbnb` |
