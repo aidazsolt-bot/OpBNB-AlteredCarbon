@@ -102,8 +102,8 @@ fn parse_era_entry(
 ) -> eyre::Result<Option<(usize, Box<Path>)>> {
     let path = entry?.path();
 
-    if let Some(name) = path.file_name().and_then(|name| name.to_str())
-        && EraFileType::from_filename(name).is_some_and(accept)
+    if let Some(name) = path.file_name().and_then(|name| name.to_str()) &&
+        EraFileType::from_filename(name).is_some_and(accept)
     {
         let parts = name.split('-').collect::<Vec<_>>();
 

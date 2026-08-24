@@ -43,9 +43,9 @@ impl ForkchoiceStateTracker {
         self.last_syncing = None;
         self.last_valid = Some(state);
 
-        if let Some(received) = self.latest.as_mut()
-            && received.state == state
-            && received.status.is_syncing()
+        if let Some(received) = self.latest.as_mut() &&
+            received.state == state &&
+            received.status.is_syncing()
         {
             received.status = ForkchoiceStatus::Valid;
         }

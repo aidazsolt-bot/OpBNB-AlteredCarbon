@@ -684,8 +684,8 @@ where
                     let (result, meta) = self.add_transaction(&mut pool, origin, tx);
 
                     // Only collect metadata for successful insertions
-                    if result.is_ok()
-                        && let Some(meta) = meta
+                    if result.is_ok() &&
+                        let Some(meta) = meta
                     {
                         added_metas.push(meta);
                     }
@@ -727,8 +727,8 @@ where
             // A newly added transaction may be immediately discarded, so we need to
             // adjust the result here
             for res in &mut results {
-                if let Ok(AddedTransactionOutcome { hash, .. }) = res
-                    && is_discarded(hash)
+                if let Ok(AddedTransactionOutcome { hash, .. }) = res &&
+                    is_discarded(hash)
                 {
                     *res = Err(PoolError::new(*hash, PoolErrorKind::DiscardedOnInsert))
                 }

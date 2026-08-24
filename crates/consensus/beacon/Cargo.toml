@@ -35,4 +35,3 @@ schnellru.workspace = true
 
 [features]
 optimism = []
-bsc = []

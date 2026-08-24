@@ -7,10 +7,10 @@ use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment};
 use reth_db_common::init::init_from_state_dump;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_primitives::{
-    OpPrimitives,
     bedrock::{BEDROCK_HEADER, BEDROCK_HEADER_HASH},
+    OpPrimitives,
 };
-use reth_primitives_traits::{SealedHeader, header::HeaderMut};
+use reth_primitives_traits::{header::HeaderMut, SealedHeader};
 use reth_provider::{
     BlockNumReader, DBProvider, DatabaseProviderFactory, StaticFileProviderFactory,
     StaticFileWriter,

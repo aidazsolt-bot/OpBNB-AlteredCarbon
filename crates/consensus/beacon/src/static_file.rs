@@ -1,11 +1,11 @@
 //! Static file hook stub.
 
-use reth_static_file::StaticFileProducer;
-use reth_tasks::TaskSpawner;
 use reth_provider::{
     BlockReader, ChainStateBlockReader, DatabaseProviderFactory, StageCheckpointReader,
     StaticFileProviderFactory,
 };
+use reth_static_file::StaticFileProducer;
+use reth_tasks::TaskSpawner;
 
 /// Manages producing static files under the control of the engine.
 #[derive(Debug)]
@@ -22,10 +22,7 @@ where
         > + 'static,
 {
     /// Create a new instance.
-    pub fn new(
-        producer: StaticFileProducer<Provider>,
-        task_spawner: Box<dyn TaskSpawner>,
-    ) -> Self {
+    pub fn new(producer: StaticFileProducer<Provider>, task_spawner: Box<dyn TaskSpawner>) -> Self {
         Self { producer, task_spawner }
     }
 }

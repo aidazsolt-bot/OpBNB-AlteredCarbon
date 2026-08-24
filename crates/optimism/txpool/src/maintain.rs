@@ -9,17 +9,17 @@ pub(crate) const FAILSAFE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60)
 
 use crate::{
     conditional::MaybeConditionalTransaction,
-    interop::{MaybeInteropTransaction, is_interop_tx, is_stale_interop, is_valid_interop},
+    interop::{is_interop_tx, is_stale_interop, is_valid_interop, MaybeInteropTransaction},
     interop_filter::{InteropFilterClient, InteropTxValidatorError, InteropValidationResult},
     validator::CHECK_ACCESS_LIST_TIMEOUT_SECS,
 };
-use alloy_consensus::{BlockHeader, Transaction, conditional::BlockConditionalAttributes};
+use alloy_consensus::{conditional::BlockConditionalAttributes, BlockHeader, Transaction};
 use alloy_primitives::TxHash;
 use async_trait::async_trait;
-use futures_util::{FutureExt, Stream, StreamExt, future::BoxFuture};
+use futures_util::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use metrics::{Gauge, Histogram};
 use reth_chain_state::CanonStateNotification;
-use reth_metrics::{Metrics, metrics::Counter};
+use reth_metrics::{metrics::Counter, Metrics};
 use reth_primitives_traits::NodePrimitives;
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use std::time::{Duration, Instant};

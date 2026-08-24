@@ -60,14 +60,8 @@ install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 		--profile "$(PROFILE)" \
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 
-.PHONY: install-bsc
-install-bsc: ## Build and install the bsc-reth binary under `~/.cargo/bin`.
-	cargo install --path crates/bsc/bin --bin bsc-reth --force --locked \
-		--features "bsc $(FEATURES)" \
-		--profile "$(PROFILE)" \
-		$(CARGO_INSTALL_EXTRA_FLAGS)
 
-.PHONY: build
+.PHONY: build-op
 build: ## Build the reth binary into `target` directory.
 	cargo build --bin reth --features "$(FEATURES)" --profile "$(PROFILE)"
 
@@ -89,9 +83,6 @@ build-debug: ## Build the reth binary into `target/debug` directory.
 build-op: ## Build the op-reth binary into `target` directory.
 	cargo build --bin op-reth --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
 
-.PHONY: build-bsc
-build-bsc: ## Build the bsc-reth binary into `target` directory.
-	cargo build --bin bsc-reth --features "bsc $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/bsc/bin/Cargo.toml
 
 # Builds the reth binary natively.
 build-native-%:
@@ -99,9 +90,6 @@ build-native-%:
 
 op-build-native-%:
 	cargo build --bin op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
-
-bsc-build-native-%:
-	cargo build --bin bsc-reth --target $* --features "bsc $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/bsc/bin/Cargo.toml
 
 # The following commands use `cross` to build a cross-compile.
 #
@@ -121,13 +109,9 @@ bsc-build-native-%:
 build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
 op-build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
 
-bsc-build-aarch64-unknown-linux-gnu: FEATURES := $(filter-out asm-keccak,$(FEATURES))
-bsc-build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
-
 # No jemalloc on Windows
 build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
 op-build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
-bsc-build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
 
 # Note: The additional rustc compiler flags are for intrinsics needed by MDBX.
 # See: https://github.com/cross-rs/cross/wiki/FAQ#undefined-reference-with-build-std
@@ -138,10 +122,6 @@ build-%:
 op-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
 		cross build --bin op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/optimism/bin/Cargo.toml
-
-bsc-build-%:
-	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
-		cross build --bin bsc-reth --target $* --features "bsc $(FEATURES)" --profile "$(PROFILE)" --manifest-path crates/bsc/bin/Cargo.toml
 
 # Unfortunately we can't easily use cross to build for Darwin because of licensing issues.
 # Prefer native Darwin targets below.
@@ -157,10 +137,6 @@ op-build-x86_64-apple-darwin:
 	$(MAKE) op-build-native-x86_64-apple-darwin
 op-build-aarch64-apple-darwin:
 	$(MAKE) op-build-native-aarch64-apple-darwin
-bsc-build-x86_64-apple-darwin:
-	$(MAKE) bsc-build-native-x86_64-apple-darwin
-bsc-build-aarch64-apple-darwin:
-	$(MAKE) bsc-build-native-aarch64-apple-darwin
 
 # Create a `.tar.gz` containing a binary for a specific target.
 define tarball_release_binary
@@ -280,9 +256,6 @@ maxperf-op: ## Builds `op-reth` with the most aggressive optimisations (opBNB/OP
 	install -m 755 "$(CARGO_TARGET_DIR)/maxperf/op-reth" "$(BIN_DIR)/op-reth-bnb"
 	@echo "Installed $(BIN_DIR)/op-reth-bnb (maxperf, default chain opbnb)"
 
-.PHONY: maxperf-bsc
-maxperf-bsc: ## Builds `bsc-reth` with the most aggressive optimisations.
-	RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc,asm-keccak,bsc --bin bsc-reth --manifest-path crates/bsc/bin/Cargo.toml
 
 .PHONY: maxperf-no-asm
 maxperf-no-asm: ## Builds `reth` with the most aggressive optimisations, minus the "asm-keccak" feature.
@@ -314,23 +287,12 @@ lint-op-reth:
 	--features "$(BIN_OTHER_FEATURES)" \
 	-- -D warnings
 
-lint-bsc-reth:
-	cargo +nightly clippy \
-	--workspace \
-	--bin "bsc-reth" \
-	--lib \
-	--examples \
-	--tests \
-	--benches \
-	--features "bsc $(BIN_OTHER_FEATURES)" \
-	-- -D warnings
-
 lint-codespell: ensure-codespell
 	codespell --skip "*.json"
 
 ensure-codespell:
 	@if ! command -v codespell &> /dev/null; then \
-		echo "codespell not found. Please install it by running the command `pip install codespell` or refer to the following link for more information: https://github.com/codespell-project/codespell" \
+		echo "codespell not found. Please install it by running the command \`pip install codespell\` or refer to the following link for more information: https://github.com/codespell-project/codespell" \
 		exit 1; \
     fi
 
@@ -338,7 +300,6 @@ lint:
 	make fmt && \
 	make lint-reth && \
 	make lint-op-reth && \
-	make lint-bsc-reth && \
 	make lint-codespell
 
 fix-lint-reth:
@@ -369,24 +330,9 @@ fix-lint-op-reth:
 	--allow-dirty \
 	-- -D warnings
 
-fix-lint-bsc-reth:
-	cargo +nightly clippy \
-	--workspace \
-	--bin "bsc-reth" \
-	--lib \
-	--examples \
-	--tests \
-	--benches \
-	--features "bsc $(BIN_OTHER_FEATURES)" \
-	--fix \
-	--allow-staged \
-	--allow-dirty \
-	-- -D warnings
-
 fix-lint:
 	make fix-lint-reth && \
 	make fix-lint-op-reth && \
-	make fix-lint-bsc-reth && \
 	make fmt
 
 .PHONY: rustdocs

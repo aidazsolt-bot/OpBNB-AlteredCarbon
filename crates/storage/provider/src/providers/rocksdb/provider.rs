@@ -26,9 +26,10 @@ use reth_storage_errors::{
     provider::{ProviderError, ProviderResult},
 };
 use rocksdb::{
-    BlockBasedOptions, BoundColumnFamily, Cache, ColumnFamilyDescriptor, CompactionPri, DBCompressionType, DBRawIteratorWithThreadMode, IteratorMode,
-    OptimisticTransactionDB, OptimisticTransactionOptions, Options, SnapshotWithThreadMode,
-    Transaction, WriteBatchWithTransaction, WriteBufferManager, WriteOptions, DB,
+    BlockBasedOptions, BoundColumnFamily, Cache, ColumnFamilyDescriptor, CompactionPri,
+    DBCompressionType, DBRawIteratorWithThreadMode, IteratorMode, OptimisticTransactionDB,
+    OptimisticTransactionOptions, Options, SnapshotWithThreadMode, Transaction,
+    WriteBatchWithTransaction, WriteBufferManager, WriteOptions, DB,
 };
 use std::{
     collections::BTreeMap,
@@ -2567,9 +2568,10 @@ impl<'db> RocksTx<'db> {
     pub fn iter_from<T: Table>(&self, key: T::Key) -> ProviderResult<RocksTxIter<'_, T>> {
         let cf = self.provider.get_cf_handle::<T>()?;
         let encoded_key = key.encode();
-        let iter = self
-            .inner
-            .iterator_cf(&cf, IteratorMode::From(encoded_key.as_ref(), rocksdb::Direction::Forward));
+        let iter = self.inner.iterator_cf(
+            &cf,
+            IteratorMode::From(encoded_key.as_ref(), rocksdb::Direction::Forward),
+        );
         Ok(RocksTxIter { inner: iter, _marker: std::marker::PhantomData })
     }
 

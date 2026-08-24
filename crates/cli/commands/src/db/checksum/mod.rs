@@ -7,7 +7,6 @@ use clap::Parser;
 use itertools::Itertools;
 use reth_chainspec::EthereumHardforks;
 use reth_db::{static_file::iter_static_files, DatabaseEnv};
-use std::sync::Arc;
 use reth_db_api::{
     cursor::DbCursorRO, table::Table, transaction::DbTx, RawKey, RawTable, RawValue, TableViewer,
     Tables,
@@ -18,6 +17,7 @@ use reth_provider::{providers::ProviderNodeTypes, DBProvider, StaticFileProvider
 use reth_static_file_types::{ChangesetOffset, StaticFileSegment};
 use std::{
     hash::{BuildHasher, Hasher},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::{info, warn};

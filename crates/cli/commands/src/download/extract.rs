@@ -420,8 +420,8 @@ fn blocking_download_and_extract(
 ) -> Result<()> {
     let format = CompressionFormat::from_url(url)?;
 
-    if let Ok(parsed_url) = Url::parse(url)
-        && parsed_url.scheme() == "file"
+    if let Ok(parsed_url) = Url::parse(url) &&
+        parsed_url.scheme() == "file"
     {
         let session = DownloadSession::new(shared, request_limiter, cancel_token);
         let file_path = parsed_url

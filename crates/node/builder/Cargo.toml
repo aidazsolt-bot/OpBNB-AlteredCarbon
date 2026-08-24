@@ -89,10 +89,6 @@ rust-eth-triedb.workspace = true
 # tracing
 tracing.workspace = true
 
-## bsc
-reth-bsc-consensus = { workspace = true, optional = true }
-reth-bsc-engine = { workspace = true, optional = true }
-
 [dev-dependencies]
 tempfile.workspace = true
 reth-ethereum-engine-primitives.workspace = true
@@ -135,8 +131,4 @@ trie-debug = [
     "reth-engine-tree/trie-debug",
     "reth-engine-primitives/trie-debug",
     "reth-node-core/trie-debug",
-]
-bsc = [
-    "dep:reth-bsc-consensus",
-    "dep:reth-bsc-engine",
 ]

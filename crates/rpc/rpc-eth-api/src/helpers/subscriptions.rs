@@ -18,10 +18,7 @@ pub trait EthSubscriptions:
     RpcNodeCore + EthApiTypes<RpcConvert: RpcConvert<Primitives = Self::Primitives>>
 {
     /// Returns a stream that yields matching logs from canonical chain updates.
-    fn log_stream(
-        &self,
-        filter: Filter,
-    ) -> impl futures::Stream<Item = Log> + Send + Unpin {
+    fn log_stream(&self, filter: Filter) -> impl futures::Stream<Item = Log> + Send + Unpin {
         self.provider().canonical_state_stream().flat_map(move |canon_state| {
             let reverted_chains = canon_state.reverted();
             let committed_chain = canon_state.committed();

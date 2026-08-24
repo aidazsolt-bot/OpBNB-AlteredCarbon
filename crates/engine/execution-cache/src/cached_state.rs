@@ -255,12 +255,12 @@ struct CacheMetricSnapshot {
 
 impl CacheMetricSnapshot {
     const fn is_empty(&self) -> bool {
-        self.account_hits == 0
-            && self.account_misses == 0
-            && self.storage_hits == 0
-            && self.storage_misses == 0
-            && self.code_hits == 0
-            && self.code_misses == 0
+        self.account_hits == 0 &&
+            self.account_misses == 0 &&
+            self.storage_hits == 0 &&
+            self.storage_misses == 0 &&
+            self.code_hits == 0 &&
+            self.code_misses == 0
     }
 }
 

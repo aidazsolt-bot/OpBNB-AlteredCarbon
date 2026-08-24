@@ -214,9 +214,10 @@ impl Command {
                                     unreachable!("storage changeset static files are special cased before this match")
                                 }
                                 StaticFileSegment::Sidecars => {
-                                    let sidecars = <<tables::Sidecars as Table>::Value>::decompress(
-                                        content[0].as_slice(),
-                                    )?;
+                                    let sidecars =
+                                        <<tables::Sidecars as Table>::Value>::decompress(
+                                            content[0].as_slice(),
+                                        )?;
                                     println!("{}", serde_json::to_string_pretty(&sidecars)?);
                                 }
                             }

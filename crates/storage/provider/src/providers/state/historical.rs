@@ -336,7 +336,10 @@ where
     /// Retained for compatibility with older provider call sites. Current historical readers
     /// already derive safe fallback behavior from the stage checkpoints used to build the
     /// provider, so this is a no-op adapter.
-    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
+    pub const fn with_pipeline_consistency(
+        self,
+        _pipeline_consistency: PipelineConsistency,
+    ) -> Self {
         self
     }
 }
@@ -740,7 +743,10 @@ impl<Provider: DBProvider + ChangeSetReader + StorageChangeSetReader + BlockNumR
     /// Retained for compatibility with older provider call sites. Current historical readers
     /// already derive safe fallback behavior from the stage checkpoints used to build the
     /// provider, so this is a no-op adapter.
-    pub const fn with_pipeline_consistency(self, _pipeline_consistency: PipelineConsistency) -> Self {
+    pub const fn with_pipeline_consistency(
+        self,
+        _pipeline_consistency: PipelineConsistency,
+    ) -> Self {
         self
     }
 }

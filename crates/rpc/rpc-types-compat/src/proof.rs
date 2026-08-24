@@ -3,7 +3,11 @@ use alloy_rpc_types_eth::{EIP1186AccountProofResponse, EIP1186StorageProof};
 use reth_trie_common::{AccountProof, StorageProof};
 
 pub fn from_primitive_storage_proof(proof: StorageProof) -> EIP1186StorageProof {
-    EIP1186StorageProof { key: JsonStorageKey::from(proof.key), value: proof.value, proof: proof.proof }
+    EIP1186StorageProof {
+        key: JsonStorageKey::from(proof.key),
+        value: proof.value,
+        proof: proof.proof,
+    }
 }
 
 pub fn from_primitive_account_proof(proof: AccountProof) -> EIP1186AccountProofResponse {

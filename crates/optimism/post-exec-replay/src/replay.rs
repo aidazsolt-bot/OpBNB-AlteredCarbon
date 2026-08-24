@@ -7,10 +7,10 @@ use alloy_consensus::{
     Block as AlloyBlock, BlockBody, BlockHeader as AlloyBlockHeader, TxReceipt, Typed2718,
 };
 use op_alloy_consensus::{
-    OpTransaction, POST_EXEC_PAYLOAD_VERSION, POST_EXEC_TX_TYPE_ID, PostExecPayload,
-    PostExecPayloadValidationError, build_post_exec_tx, parse_post_exec_payload_from_transactions,
+    build_post_exec_tx, parse_post_exec_payload_from_transactions, OpTransaction, PostExecPayload,
+    PostExecPayloadValidationError, POST_EXEC_PAYLOAD_VERSION, POST_EXEC_TX_TYPE_ID,
 };
-use reth_evm::{Database, execute::BlockExecutor};
+use reth_evm::{execute::BlockExecutor, Database};
 use reth_execution_errors::BlockExecutionError;
 use reth_node_api::NodePrimitives;
 use reth_optimism_evm::{
@@ -303,11 +303,11 @@ where
     DB: Database,
     EvmConfig: ConfigurePostExecEvm,
     EvmConfig::Primitives: NodePrimitives<
-            Block = AlloyBlock<Tx, Header>,
-            BlockBody = BlockBody<Tx, Header>,
-            BlockHeader = Header,
-            SignedTx = Tx,
-        >,
+        Block = AlloyBlock<Tx, Header>,
+        BlockBody = BlockBody<Tx, Header>,
+        BlockHeader = Header,
+        SignedTx = Tx,
+    >,
     Tx: SignedTransaction + OpTransaction + Clone,
     Header: BlockHeader + AlloyBlockHeader + Clone,
     AlloyBlock<Tx, Header>: Block<Header = Header, Body = BlockBody<Tx, Header>>,
@@ -443,14 +443,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        CompareRefundsInput, PostExecReplayError, build_payload_map, compare_refunds,
-        normalize_block, strip_post_exec_tx_for_replay,
+        build_payload_map, compare_refunds, normalize_block, strip_post_exec_tx_for_replay,
+        CompareRefundsInput, PostExecReplayError,
     };
     use crate::{PostExecReplayConfig, PostExecReplayMismatchKind};
     use alloy_consensus::{BlockBody, Header, Sealable, SignableTransaction, TxLegacy};
     use alloy_primitives::{Address, Signature, U256};
     use op_alloy_consensus::{
-        OpTxEnvelope, POST_EXEC_PAYLOAD_VERSION, TxDeposit, build_post_exec_tx,
+        build_post_exec_tx, OpTxEnvelope, TxDeposit, POST_EXEC_PAYLOAD_VERSION,
     };
     use reth_optimism_primitives::OpTransactionSigned;
     use reth_primitives_traits::RecoveredBlock;

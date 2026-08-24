@@ -1,41 +1,41 @@
 //! Optimism payload builder implementation.
 use crate::{
-    OpAttributes, OpPayloadBuilderAttributes, OpPayloadPrimitives, config::OpBuilderConfig,
-    error::OpPayloadBuilderError, payload::OpBuiltPayload,
+    config::OpBuilderConfig, error::OpPayloadBuilderError, payload::OpBuiltPayload, OpAttributes,
+    OpPayloadBuilderAttributes, OpPayloadPrimitives,
 };
-use alloy_consensus::{BlockHeader, Sealable, Transaction, Typed2718, transaction::Recovered};
+use alloy_consensus::{transaction::Recovered, BlockHeader, Sealable, Transaction, Typed2718};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_evm::Evm as AlloyEvm;
-use alloy_primitives::{Address, B256, Sealed, U256};
+use alloy_primitives::{Address, Sealed, B256, U256};
 use alloy_rpc_types_debug::ExecutionWitness;
 use alloy_rpc_types_engine::PayloadId;
 use op_alloy_consensus::{
-    ParsedPostExecPayload, SDMGasEntry, TxPostExec, build_post_exec_tx,
-    parse_post_exec_payload_from_transactions,
+    build_post_exec_tx, parse_post_exec_payload_from_transactions, ParsedPostExecPayload,
+    SDMGasEntry, TxPostExec,
 };
-use op_revm::{L1BlockInfo, constants::L1_BLOCK_CONTRACT};
+use op_revm::{constants::L1_BLOCK_CONTRACT, L1BlockInfo};
 use reth_basic_payload_builder::*;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
 use reth_evm::{
-    ConfigureEvm, Database,
     execute::{
         BlockBuilder, BlockBuilderOutcome, BlockExecutionError, BlockExecutor, BlockValidationError,
     },
+    ConfigureEvm, Database,
 };
 use reth_execution_types::BlockExecutionOutput;
 use reth_metrics::{
-    Metrics,
     metrics::{self, Counter, Gauge},
+    Metrics,
 };
 use reth_optimism_evm::{
     ConfigurePostExecEvm, PostExecExecutorExt, PostExecMode, PreRefundGasUsed,
 };
 use reth_optimism_forks::OpHardforks;
-use reth_optimism_primitives::{L2_TO_L1_MESSAGE_PASSER_ADDRESS, OpTransaction};
+use reth_optimism_primitives::{OpTransaction, L2_TO_L1_MESSAGE_PASSER_ADDRESS};
 use reth_optimism_txpool::{
-    OpPooledTx,
     estimated_da_size::DataAvailabilitySized,
-    interop::{MaybeInteropTransaction, is_interop_tx, is_valid_interop},
+    interop::{is_interop_tx, is_valid_interop, MaybeInteropTransaction},
+    OpPooledTx,
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::{BuildNextEnv, BuiltPayloadExecutedBlock};
@@ -47,7 +47,7 @@ use reth_revm::{
     cancelled::CancelOnDrop, database::StateProviderDatabase, db::State,
     witness::ExecutionWitnessRecord,
 };
-use reth_storage_api::{StateProvider, StateProviderFactory, errors::ProviderError};
+use reth_storage_api::{errors::ProviderError, StateProvider, StateProviderFactory};
 use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction, TransactionPool};
 use revm::context::{Block, BlockEnv};
 use std::{marker::PhantomData, sync::Arc};
@@ -232,9 +232,9 @@ where
     N: OpPayloadPrimitives,
     N::SignedTx: From<Sealed<TxPostExec>>,
     Evm: ConfigurePostExecEvm<
-            Primitives = N,
-            NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, Client::ChainSpec>,
-        >,
+        Primitives = N,
+        NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, Client::ChainSpec>,
+    >,
     Attrs: OpAttributes<Transaction = TxTy<Evm::Primitives>>,
 {
     /// Constructs an Optimism payload from the transactions sent via the
@@ -313,13 +313,13 @@ where
     Client: StateProviderFactory + ChainSpecProvider<ChainSpec: OpHardforks> + Clone,
     Pool: TransactionPool<Transaction: OpPooledTx<Consensus = N::SignedTx>>,
     Evm: ConfigurePostExecEvm<
-            Primitives = N,
-            NextBlockEnvCtx: BuildNextEnv<
-                OpPayloadBuilderAttributes<N::SignedTx>,
-                N::BlockHeader,
-                Client::ChainSpec,
-            >,
+        Primitives = N,
+        NextBlockEnvCtx: BuildNextEnv<
+            OpPayloadBuilderAttributes<N::SignedTx>,
+            N::BlockHeader,
+            Client::ChainSpec,
         >,
+    >,
     Txs: OpPayloadTransactions<Pool::Transaction>,
 {
     type Attributes = OpPayloadBuilderAttributes<N::SignedTx>;
@@ -399,9 +399,9 @@ impl<Txs> OpBuilder<'_, Txs> {
     ) -> Result<BuildOutcomeKind<OpBuiltPayload<N>>, PayloadBuilderError>
     where
         Evm: ConfigurePostExecEvm<
-                Primitives = N,
-                NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, ChainSpec>,
-            >,
+            Primitives = N,
+            NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, ChainSpec>,
+        >,
         ChainSpec: EthChainSpec + OpHardforks,
         N: OpPayloadPrimitives,
         N::SignedTx: From<Sealed<TxPostExec>>,
@@ -521,9 +521,9 @@ impl<Txs> OpBuilder<'_, Txs> {
     ) -> Result<ExecutionWitness, PayloadBuilderError>
     where
         Evm: ConfigurePostExecEvm<
-                Primitives = N,
-                NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, ChainSpec>,
-            >,
+            Primitives = N,
+            NextBlockEnvCtx: BuildNextEnv<Attrs, N::BlockHeader, ChainSpec>,
+        >,
         ChainSpec: EthChainSpec + OpHardforks,
         N: OpPayloadPrimitives,
         N::SignedTx: From<Sealed<TxPostExec>>,
@@ -759,9 +759,9 @@ pub struct OpPayloadBuilderCtx<
 impl<Evm, ChainSpec, Attrs> OpPayloadBuilderCtx<Evm, ChainSpec, Attrs>
 where
     Evm: ConfigurePostExecEvm<
-            Primitives: OpPayloadPrimitives,
-            NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<Evm::Primitives>, ChainSpec>,
-        >,
+        Primitives: OpPayloadPrimitives,
+        NextBlockEnvCtx: BuildNextEnv<Attrs, HeaderTy<Evm::Primitives>, ChainSpec>,
+    >,
     ChainSpec: EthChainSpec + OpHardforks,
     Attrs: OpAttributes<Transaction = TxTy<Evm::Primitives>>,
 {
@@ -862,9 +862,9 @@ where
         db: &'a mut State<DB>,
     ) -> Result<
         impl BlockBuilder<
-            Primitives = Evm::Primitives,
-            Executor: PostExecExecutorExt + BlockExecutor<Result: PreRefundGasUsed>,
-        > + 'a,
+                Primitives = Evm::Primitives,
+                Executor: PostExecExecutorExt + BlockExecutor<Result: PreRefundGasUsed>,
+            > + 'a,
         PayloadBuilderError,
     > {
         self.block_builder_with_mode(db, self.post_exec_mode()?)
@@ -877,9 +877,9 @@ where
         post_exec_mode: PostExecMode,
     ) -> Result<
         impl BlockBuilder<
-            Primitives = Evm::Primitives,
-            Executor: PostExecExecutorExt + BlockExecutor<Result: PreRefundGasUsed>,
-        > + 'a,
+                Primitives = Evm::Primitives,
+                Executor: PostExecExecutorExt + BlockExecutor<Result: PreRefundGasUsed>,
+            > + 'a,
         PayloadBuilderError,
     > {
         self.evm_config

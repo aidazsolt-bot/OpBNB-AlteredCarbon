@@ -28,6 +28,8 @@ alloy-primitives.workspace = true
 
 # misc
 paste.workspace = true
+bincode.workspace = true
+serde = { workspace = true, features = ["derive"] }
 
 # mdbx
 reth-libmdbx = { workspace = true, optional = true, features = ["return-borrowed", "read-tx-timeouts"] }

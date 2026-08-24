@@ -3,11 +3,11 @@
 use crate::interop_filter::InteropTxValidatorError;
 use op_alloy_rpc_types::SuperchainDAError;
 use reth_metrics::{
-    Metrics,
     metrics::{
-        Counter, Gauge, Histogram, Unit, counter, describe_counter, describe_gauge,
-        describe_histogram, gauge, histogram,
+        counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram, Counter,
+        Gauge, Histogram, Unit,
     },
+    Metrics,
 };
 use std::time::Duration;
 

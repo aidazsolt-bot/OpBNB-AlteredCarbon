@@ -719,7 +719,10 @@ where
         }
     }
 
-    fn ommers_by_id(&self, _id: BlockId) -> ProviderResult<Option<Vec<<T::Block as Block>::Header>>> {
+    fn ommers_by_id(
+        &self,
+        _id: BlockId,
+    ) -> ProviderResult<Option<Vec<<T::Block as Block>::Header>>> {
         Ok(None)
     }
 }

@@ -10,6 +10,7 @@ use crate::{
 };
 use alloy_consensus::BlockHeader;
 use futures::{stream_select, FutureExt, StreamExt};
+use reth_chain_state::StateTrieOverlayManager;
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_engine_service::service::{ChainEvent, EngineService};
 use reth_engine_tree::{
@@ -18,7 +19,6 @@ use reth_engine_tree::{
     tree::TreeConfig,
 };
 use reth_engine_util::EngineMessageStreamExt;
-use reth_chain_state::StateTrieOverlayManager;
 use reth_exex::ExExManagerHandle;
 use reth_network::{types::BlockRangeUpdate, NetworkSyncUpdater, SyncState};
 use reth_network_api::BlockDownloaderProvider;
@@ -210,7 +210,6 @@ impl EngineNodeLauncher {
             beacon_engine_handle: beacon_engine_handle.clone(),
             jwt_secret,
             engine_events: event_sender.clone(),
-            bsc_trace_helper: None,
         };
         let validator_builder = add_ons.engine_validator_builder();
 

@@ -174,7 +174,11 @@ where
 
     canonical_state.merge_transitions(BundleRetention::Reverts);
     Ok((
-        BlockExecutionOutput { state: canonical_state.take_bundle(), result: block_result, snapshot: None },
+        BlockExecutionOutput {
+            state: canonical_state.take_bundle(),
+            result: block_result,
+            snapshot: None,
+        },
         senders,
         built_bal,
     ))

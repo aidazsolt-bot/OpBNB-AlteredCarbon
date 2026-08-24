@@ -958,7 +958,9 @@ impl From<logs_utils::FilterBlockRangeError> for EthFilterError {
     fn from(err: logs_utils::FilterBlockRangeError) -> Self {
         match err {
             logs_utils::FilterBlockRangeError::InvalidBlockRange => Self::InvalidBlockRangeParams,
-            logs_utils::FilterBlockRangeError::BlockRangeExceedsHead { .. } => Self::BlockRangeExceedsHead,
+            logs_utils::FilterBlockRangeError::BlockRangeExceedsHead { .. } => {
+                Self::BlockRangeExceedsHead
+            }
         }
     }
 }

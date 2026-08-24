@@ -493,8 +493,8 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        if this.block_result.is_none()
-            && let Poll::Ready(block) = this.block.poll_unpin(cx)
+        if this.block_result.is_none() &&
+            let Poll::Ready(block) = this.block.poll_unpin(cx)
         {
             this.block_result = Some(block);
         }
@@ -589,8 +589,8 @@ where
 
         let poll = match &mut self.access_lists {
             OptionalBlockAccessListsState::Pending(fut) => fut.poll_unpin(cx),
-            OptionalBlockAccessListsState::WaitingForBlocks { .. }
-            | OptionalBlockAccessListsState::Ready(_) => return,
+            OptionalBlockAccessListsState::WaitingForBlocks { .. } |
+            OptionalBlockAccessListsState::Ready(_) => return,
         };
 
         match poll {
@@ -637,8 +637,8 @@ where
         let this = self.get_mut();
 
         // Complete the normal block range first, then issue a separate BAL hash-list request.
-        if this.block_result.is_none()
-            && let Poll::Ready(blocks) = this.blocks.poll_unpin(cx)
+        if this.block_result.is_none() &&
+            let Poll::Ready(blocks) = this.blocks.poll_unpin(cx)
         {
             this.block_result = Some(blocks);
         }
@@ -692,15 +692,15 @@ where
     Client: BlockClient,
 {
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ResponseResult<Client::Header, Client::Body>> {
-        if let Some(fut) = Pin::new(&mut self.header).as_pin_mut()
-            && let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.header).as_pin_mut() &&
+            let Poll::Ready(res) = fut.poll(cx)
         {
             self.header = None;
             return Poll::Ready(ResponseResult::Header(res));
         }
 
-        if let Some(fut) = Pin::new(&mut self.body).as_pin_mut()
-            && let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.body).as_pin_mut() &&
+            let Poll::Ready(res) = fut.poll(cx)
         {
             self.body = None;
             return Poll::Ready(ResponseResult::Body(res));
@@ -1028,15 +1028,15 @@ where
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<RangeResponseResult<Client::Header, Client::Body>> {
-        if let Some(fut) = Pin::new(&mut self.headers).as_pin_mut()
-            && let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.headers).as_pin_mut() &&
+            let Poll::Ready(res) = fut.poll(cx)
         {
             self.headers = None;
             return Poll::Ready(RangeResponseResult::Header(res));
         }
 
-        if let Some(fut) = Pin::new(&mut self.bodies).as_pin_mut()
-            && let Poll::Ready(res) = fut.poll(cx)
+        if let Some(fut) = Pin::new(&mut self.bodies).as_pin_mut() &&
+            let Poll::Ready(res) = fut.poll(cx)
         {
             self.bodies = None;
             return Poll::Ready(RangeResponseResult::Body(res));

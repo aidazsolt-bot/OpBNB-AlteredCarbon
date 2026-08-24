@@ -2,8 +2,8 @@
 
 use reth_optimism_txpool::interop::InteropFailsafe;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
 };
 
 /// Settings for the OP builder.
@@ -44,7 +44,11 @@ impl OpBuilderConfig {
     /// Returns the Data Availability configuration for the OP builder, if it has configured
     /// constraints.
     pub fn constrained_da_config(&self) -> Option<&OpDAConfig> {
-        if self.da_config.is_empty() { None } else { Some(&self.da_config) }
+        if self.da_config.is_empty() {
+            None
+        } else {
+            Some(&self.da_config)
+        }
     }
 }
 
@@ -94,13 +98,21 @@ impl OpDAConfig {
     /// Returns the max allowed data availability size per transactions, if any.
     pub fn max_da_tx_size(&self) -> Option<u64> {
         let val = self.inner.max_da_tx_size.load(std::sync::atomic::Ordering::Relaxed);
-        if val == 0 { None } else { Some(val) }
+        if val == 0 {
+            None
+        } else {
+            Some(val)
+        }
     }
 
     /// Returns the max allowed data availability size per block, if any.
     pub fn max_da_block_size(&self) -> Option<u64> {
         let val = self.inner.max_da_block_size.load(std::sync::atomic::Ordering::Relaxed);
-        if val == 0 { None } else { Some(val) }
+        if val == 0 {
+            None
+        } else {
+            Some(val)
+        }
     }
 
     /// Sets the maximum data availability size currently allowed for inclusion. 0 means no maximum.
@@ -157,7 +169,11 @@ impl OpGasLimitConfig {
     /// Returns the gas limit for a transaction, if any.
     pub fn gas_limit(&self) -> Option<u64> {
         let val = self.gas_limit.load(std::sync::atomic::Ordering::Relaxed);
-        if val == 0 { None } else { Some(val) }
+        if val == 0 {
+            None
+        } else {
+            Some(val)
+        }
     }
     /// Sets the gas limit for a transaction. 0 means use the default gas limit.
     pub fn set_gas_limit(&self, gas_limit: u64) {

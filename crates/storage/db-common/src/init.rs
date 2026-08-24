@@ -9,7 +9,6 @@ use reth_config::config::EtlConfig;
 use reth_db_api::{tables, transaction::DbTxMut, DatabaseError};
 use reth_etl::Collector;
 use reth_primitives_traits::{Account, Bytecode, GotExpected, StorageEntry};
-use reth_static_file_types::StaticFileSegment;
 use reth_provider::{
     errors::provider::ProviderResult,
     providers::{StaticFileProvider, StaticFileWriter},
@@ -20,6 +19,7 @@ use reth_provider::{
     StorageSettingsCache, TrieWriter,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
+use reth_static_file_types::StaticFileSegment;
 use reth_trie::{IntermediateStateRootState, StateRoot as StateRootComputer, StateRootProgress};
 use reth_trie_db::{DatabaseStateRoot, LegacyKeyAdapter};
 use serde::{Deserialize, Serialize};
@@ -96,7 +96,9 @@ where
         + MetadataWriter
         + StorageSettingsCache
         + AsRef<PF::ProviderRW>,
-    PF::ChainSpec: EthChainSpec<Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader>,
+    PF::ChainSpec: EthChainSpec<
+        Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader,
+    >,
     <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader: reth_codecs::Compact,
 {
     let chain = factory.chain_spec();
@@ -161,7 +163,9 @@ where
         + HashingWriter
         + StateWriter
         + AsRef<PF::ProviderRW>,
-    PF::ChainSpec: EthChainSpec<Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader>,
+    PF::ChainSpec: EthChainSpec<
+        Header = <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader,
+    >,
     <PF::Primitives as reth_primitives_traits::NodePrimitives>::BlockHeader: reth_codecs::Compact,
 {
     let chain = factory.chain_spec();
@@ -259,9 +263,11 @@ where
     Provider: DBProvider<Tx: DbTxMut> + StateWriter + HeaderProvider + AsRef<Provider>,
 {
     let capacity = alloc.size_hint().1.unwrap_or(0);
-    let mut state_init: BundleStateInit = HashMap::with_capacity_and_hasher(capacity, Default::default());
+    let mut state_init: BundleStateInit =
+        HashMap::with_capacity_and_hasher(capacity, Default::default());
     let mut reverts_init = HashMap::with_capacity_and_hasher(capacity, Default::default());
-    let mut contracts: HashMap<B256, Bytecode> = HashMap::with_capacity_and_hasher(capacity, Default::default());
+    let mut contracts: HashMap<B256, Bytecode> =
+        HashMap::with_capacity_and_hasher(capacity, Default::default());
 
     for (address, account) in alloc {
         let bytecode_hash = if let Some(code) = &account.code {
@@ -580,8 +586,8 @@ where
 
         accounts.push((address, account));
 
-        if (index > 0 && index % AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP == 0)
-            || index == accounts_len - 1
+        if (index > 0 && index % AVERAGE_COUNT_ACCOUNTS_PER_GB_STATE_DUMP == 0) ||
+            index == accounts_len - 1
         {
             total_inserted_accounts += accounts.len();
 
@@ -632,8 +638,8 @@ where
             reth_trie_db::DatabaseTrieCursorFactory<&'_ _, LegacyKeyAdapter>,
             reth_trie_db::DatabaseHashedCursorFactory<&'_ _>,
         > as DatabaseStateRoot<'_, _>>::from_tx(tx)
-            .with_intermediate_state(intermediate_state)
-            .root_with_progress()?
+        .with_intermediate_state(intermediate_state)
+        .root_with_progress()?
         {
             StateRootProgress::Progress(state, _, updates) => {
                 let updated_len = provider.write_trie_updates(updates)?;

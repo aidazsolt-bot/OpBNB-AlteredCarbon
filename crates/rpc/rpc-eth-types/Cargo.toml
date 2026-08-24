@@ -29,9 +29,6 @@ reth-tasks.workspace = true
 reth-transaction-pool.workspace = true
 reth-trie.workspace = true
 
-# bsc
-reth-bsc-consensus.workspace = true
-
 # ethereum
 alloy-chains.workspace = true
 alloy-eip7928.workspace = true
@@ -78,6 +75,3 @@ serde_json.workspace = true
 
 [features]
 js-tracer = ["revm-inspectors/js-tracer"]
-bsc = [
-    "reth-primitives/bsc",
-]

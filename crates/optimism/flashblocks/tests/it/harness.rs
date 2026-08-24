@@ -3,15 +3,15 @@
 //! Provides utilities for testing the service's coordination logic
 //! without requiring full EVM execution.
 
-use alloy_primitives::{Address, B256, Bloom, Bytes, U256};
+use alloy_primitives::{Address, Bloom, Bytes, B256, U256};
 use alloy_rpc_types_engine::PayloadId;
 use op_alloy_rpc_types_engine::{
     OpFlashblockPayloadBase, OpFlashblockPayloadDelta, OpFlashblockPayloadMetadata,
 };
 use reth_optimism_flashblocks::{
+    validation::{CanonicalBlockFingerprint, ReconciliationStrategy},
     CanonicalBlockNotification, FlashBlock, FlashBlockCompleteSequence, InProgressFlashBlockRx,
     PendingBlockState,
-    validation::{CanonicalBlockFingerprint, ReconciliationStrategy},
 };
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch};

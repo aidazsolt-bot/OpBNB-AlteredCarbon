@@ -110,8 +110,8 @@ impl DiskFileBlobStore {
             {
                 // this is safe because the result vec has the same len
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -181,8 +181,8 @@ impl DiskFileBlobStore {
                 result.iter().enumerate().filter(|(_, cells_and_proofs)| cells_and_proofs.is_none())
             {
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -332,8 +332,8 @@ impl BlobStore for DiskFileBlobStore {
             {
                 // this is safe because the result vec has the same len
                 let versioned_hash = versioned_hashes[idx];
-                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied()
-                    && seen_missing_tx_hashes.insert(tx_hash)
+                if let Some(tx_hash) = versioned_to_txhashes.get(&versioned_hash).copied() &&
+                    seen_missing_tx_hashes.insert(tx_hash)
                 {
                     missing_tx_hashes.push(tx_hash);
                 }
@@ -408,8 +408,8 @@ impl BlobStore for DiskFileBlobStore {
         {
             let mut versioned_to_txhashes = self.inner.versioned_hashes_to_txhash.lock();
             for (idx, requested_hash) in versioned_hashes.iter().enumerate() {
-                if !result[idx]
-                    && let Some(tx_hash) = versioned_to_txhashes.get(requested_hash).copied()
+                if !result[idx] &&
+                    let Some(tx_hash) = versioned_to_txhashes.get(requested_hash).copied()
                 {
                     missing_tx_hashes.push((idx, tx_hash));
                 }

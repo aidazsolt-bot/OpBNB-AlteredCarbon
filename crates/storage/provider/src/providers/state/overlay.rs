@@ -1,11 +1,11 @@
 use alloy_eips::BlockNumHash;
 use alloy_primitives::{BlockHash, BlockNumber, B256};
+use dashmap::{self, DashMap};
 use metrics::{Counter, Histogram};
 use reth_chain_state::{EthPrimitives, StateTrieOverlayManager};
 use reth_db_api::{tables, transaction::DbTx, DatabaseError};
 use reth_errors::{ProviderError, ProviderResult};
 use reth_metrics::Metrics;
-use dashmap::{self, DashMap};
 use reth_primitives_traits::NodePrimitives;
 use reth_prune_types::PruneSegment;
 use reth_stages_types::StageId;

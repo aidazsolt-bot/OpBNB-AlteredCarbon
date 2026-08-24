@@ -312,13 +312,9 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
 
         let advertised_nat: Arc<Mutex<Option<NatEndpoint>>> = Arc::new(Mutex::new(None));
         if let Some(resolver) = nat.clone() {
-            if let Some(endpoint) = resolve_nat_endpoint(
-                resolver,
-                listen_tcp_port,
-                listen_udp_port,
-                listener_addr.ip(),
-            )
-            .await
+            if let Some(endpoint) =
+                resolve_nat_endpoint(resolver, listen_tcp_port, listen_udp_port, listener_addr.ip())
+                    .await
             {
                 if let Some(discv4) = discv4.as_ref() {
                     discv4.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, endpoint.udp_port);
@@ -701,7 +697,6 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
     /// Depending on the mode of the network:
     ///    - disconnect peer if in POS
     ///    - execute the closure if in POW
-    #[cfg(not(feature = "bsc"))]
     fn within_pow_or_disconnect<F>(&mut self, peer_id: PeerId, only_pow: F)
     where
         F: FnOnce(&mut Self),
@@ -720,7 +715,6 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
     /// Handles a received Message from the peer's session.
     fn on_peer_message(&mut self, peer_id: PeerId, msg: PeerMessage<N>) {
         match msg {
-            #[cfg(not(feature = "bsc"))]
             PeerMessage::NewBlockHashes(hashes) => {
                 self.within_pow_or_disconnect(peer_id, |this| {
                     // update peer's state, to track what blocks this peer has seen
@@ -729,25 +723,12 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                     this.block_import.on_new_block(peer_id, NewBlockEvent::Hashes(hashes));
                 })
             }
-            #[cfg(not(feature = "bsc"))]
             PeerMessage::NewBlock(block) => {
                 self.within_pow_or_disconnect(peer_id, move |this| {
                     this.swarm.state_mut().on_new_block(peer_id, block.hash);
                     // start block import process
                     this.block_import.on_new_block(peer_id, NewBlockEvent::Block(block));
                 });
-            }
-            #[cfg(feature = "bsc")]
-            PeerMessage::NewBlockHashes(hashes) => {
-                // update peer's state, to track what blocks this peer has seen
-                self.swarm.state_mut().on_new_block_hashes(peer_id, hashes.clone().0);
-                self.block_import.on_new_block(peer_id, NewBlockEvent::Hashes(hashes));
-            }
-            #[cfg(feature = "bsc")]
-            PeerMessage::NewBlock(block) => {
-                self.swarm.state_mut().on_new_block(peer_id, block.hash);
-                // start block import process
-                self.block_import.on_new_block(peer_id, NewBlockEvent::Block(block));
             }
             PeerMessage::PooledTransactions(msg) => {
                 self.notify_tx_manager(NetworkTransactionEvent::IncomingPooledTransactionHashes {

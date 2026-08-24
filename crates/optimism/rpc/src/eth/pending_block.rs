@@ -6,12 +6,12 @@ use alloy_primitives::B256;
 use reth_chain_state::BlockState;
 use reth_optimism_flashblocks::PendingFlashBlock;
 use reth_rpc_eth_api::{
+    helpers::{pending_block::PendingEnvBuilder, LoadPendingBlock, SpawnBlocking},
     FromEvmError, RpcConvert, RpcNodeCore, RpcNodeCoreExt,
-    helpers::{LoadPendingBlock, SpawnBlocking, pending_block::PendingEnvBuilder},
 };
 use reth_rpc_eth_types::{
-    EthApiError, PendingBlock, block::BlockAndReceipts, builder::config::PendingBlockKind,
-    error::FromEthApiError,
+    block::BlockAndReceipts, builder::config::PendingBlockKind, error::FromEthApiError,
+    EthApiError, PendingBlock,
 };
 use reth_storage_api::{BlockReaderIdExt, StateProviderBox, StateProviderFactory};
 

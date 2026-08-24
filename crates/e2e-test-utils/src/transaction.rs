@@ -119,7 +119,9 @@ impl TransactionTestContext {
     /// Signs an arbitrary [`TransactionRequest`] using the provided wallet
     pub async fn sign_tx(wallet: PrivateKeySigner, tx: TransactionRequest) -> TxEnvelope {
         let signer = EthereumWallet::from(wallet);
-        <TransactionRequest as NetworkTransactionBuilder<Ethereum>>::build(tx, &signer).await.unwrap()
+        <TransactionRequest as NetworkTransactionBuilder<Ethereum>>::build(tx, &signer)
+            .await
+            .unwrap()
     }
 
     /// Creates a tx with blob sidecar and sign it, returning bytes

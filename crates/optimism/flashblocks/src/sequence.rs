@@ -1,8 +1,8 @@
 use crate::{FlashBlock, FlashBlockCompleteSequenceRx};
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{Bytes, B256};
 use alloy_rpc_types_engine::PayloadId;
 use core::mem;
-use eyre::{OptionExt, bail};
+use eyre::{bail, OptionExt};
 use op_alloy_rpc_types_engine::OpFlashblockPayloadBase;
 use reth_revm::cached::CachedReads;
 use std::{collections::BTreeMap, ops::Deref};

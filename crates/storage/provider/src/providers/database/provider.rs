@@ -14,11 +14,12 @@ use crate::{
     BlockReader, BlockWriter, BundleStateInit, ChainStateBlockReader, ChainStateBlockWriter,
     DBProvider, EitherReader, EitherWriter, EitherWriterDestination, HashingWriter, HeaderProvider,
     HeaderSyncGapProvider, HistoricalStateProvider, HistoricalStateProviderRef, HistoryWriter,
-    LatestStateProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError,
-    PruneCheckpointReader, PruneCheckpointWriter, RawRocksDBBatch, RevertsInit, RocksBatchArg,
-    RocksDBProviderFactory, StageCheckpointReader, StateProviderBox, StateWriter,
-    StaticFileProviderFactory, StatsReader, StorageReader, StorageTrieWriter, TransactionVariant,
-    TransactionsProvider, TransactionsProviderExt, TrieWriter,
+    LatestStateProvider, LatestStateProviderRef, OriginalValuesKnown, ParliaSnapshotReader,
+    ParliaSnapshotWriter, ProviderError, PruneCheckpointReader, PruneCheckpointWriter,
+    RawRocksDBBatch, RevertsInit, RocksBatchArg, RocksDBProviderFactory, StageCheckpointReader,
+    StateProviderBox, StateWriter, StaticFileProviderFactory, StatsReader, StorageReader,
+    StorageTrieWriter, TransactionVariant, TransactionsProvider, TransactionsProviderExt,
+    TrieWriter,
 };
 use alloy_consensus::{
     transaction::{SignerRecoverable, TransactionMeta, TxHashRef},
@@ -52,6 +53,7 @@ use reth_db_api::{
 use reth_ethereum_primitives::Receipt as EthereumReceipt;
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult, Chain, ExecutionOutcome};
 use reth_node_types::{BlockTy, BodyTy, HeaderTy, NodePrimitives, NodeTypes, ReceiptTy, TxTy};
+use reth_primitives::parlia::Snapshot;
 use reth_primitives_traits::{
     Account, Block as _, BlockBody as _, Bytecode, RecoveredBlock, SealedHeader, SignedTransaction,
     StorageEntry,
@@ -2205,6 +2207,27 @@ impl<TX: DbTx, N: NodeTypes> StageCheckpointReader for DatabaseProvider<TX, N> {
     }
 }
 
+impl<TX: DbTx + Send + Sync + 'static, N: NodeTypesForProvider> ParliaSnapshotReader
+    for DatabaseProvider<TX, N>
+{
+    fn get_parlia_snapshot(&self, block_hash: BlockHash) -> ProviderResult<Option<Snapshot>> {
+        Ok(self.tx_ref().get::<tables::ParliaSnapshot>(block_hash)?)
+    }
+}
+
+impl<TX: DbTxMut + DbTx + Send + Sync + 'static, N: NodeTypesForProvider> ParliaSnapshotWriter
+    for DatabaseProvider<TX, N>
+{
+    fn put_parlia_snapshot(&self, block_hash: BlockHash, snapshot: Snapshot) -> ProviderResult<()> {
+        Ok(self.tx.put::<tables::ParliaSnapshot>(block_hash, snapshot)?)
+    }
+
+    fn delete_parlia_snapshot(&self, block_hash: BlockHash) -> ProviderResult<()> {
+        self.tx.delete::<tables::ParliaSnapshot>(block_hash, None)?;
+        Ok(())
+    }
+}
+
 impl<TX: DbTxMut, N: NodeTypes> StageCheckpointWriter for DatabaseProvider<TX, N> {
     /// Save stage checkpoint.
     fn save_stage_checkpoint(
@@ -2355,6 +2378,50 @@ impl<TX: DbTx + 'static, N: NodeTypes> StorageReader for DatabaseProvider<TX, N>
     }
 }
 
+impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> DatabaseProvider<TX, N> {
+    fn write_parlia_snapshots<'a>(
+        &self,
+        execution_outcome: &WriteStateInput<'a, ReceiptTy<N>>,
+    ) -> ProviderResult<()> {
+        match execution_outcome {
+            WriteStateInput::Single { outcome, .. } => {
+                if let Some(snapshot) = &outcome.snapshot {
+                    if !snapshot.block_hash.is_zero() {
+                        self.tx
+                            .put::<tables::ParliaSnapshot>(snapshot.block_hash, snapshot.clone())?;
+                    }
+                }
+            }
+            WriteStateInput::Multiple(outcome) => {
+                for snapshot in &outcome.snapshots {
+                    if snapshot.block_hash.is_zero() {
+                        continue;
+                    }
+                    self.tx.put::<tables::ParliaSnapshot>(snapshot.block_hash, snapshot.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Drop Parlia checkpoint snapshots for blocks strictly above `block` (execution unwind).
+    fn remove_parlia_snapshots_above(&self, block: BlockNumber) -> ProviderResult<()> {
+        let to_delete: Vec<BlockHash> = {
+            let mut cursor = self.tx_ref().cursor_read::<tables::ParliaSnapshot>()?;
+            cursor
+                .walk(None)?
+                .filter_map(|entry| {
+                    entry.ok().and_then(|(hash, snap)| (snap.block_number > block).then_some(hash))
+                })
+                .collect()
+        };
+        for hash in to_delete {
+            self.tx.delete::<tables::ParliaSnapshot>(hash, None)?;
+        }
+        Ok(())
+    }
+}
+
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
     for DatabaseProvider<TX, N>
 {
@@ -2375,6 +2442,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
 
         self.write_state_reverts(reverts, first_block, config)?;
         self.write_state_changes(plain_state)?;
+        self.write_parlia_snapshots(&execution_outcome)?;
 
         if !config.write_receipts {
             return Ok(());
@@ -2687,26 +2755,28 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
             block_bodies.first().expect("already checked if there are blocks").first_tx_num();
 
         let storage_range = BlockNumberAddress::range(range.clone());
-        let storage_changeset = if self.cached_storage_settings().storage_changesets_in_static_files()
-        {
-            let changesets = self.storage_changesets_range(range.clone())?;
-            let mut changeset_writer =
-                self.static_file_provider.latest_writer(StaticFileSegment::StorageChangeSets)?;
-            changeset_writer.prune_storage_changesets(block)?;
-            changesets
-        } else {
-            self.take::<tables::StorageChangeSets>(storage_range)?.into_iter().collect()
-        };
-        let account_changeset = if self.cached_storage_settings().account_changesets_in_static_files()
-        {
-            let changesets = self.account_changesets_range(range)?;
-            let mut changeset_writer =
-                self.static_file_provider.latest_writer(StaticFileSegment::AccountChangeSets)?;
-            changeset_writer.prune_account_changesets(block)?;
-            changesets
-        } else {
-            self.take::<tables::AccountChangeSets>(range)?
-        };
+        let storage_changeset =
+            if self.cached_storage_settings().storage_changesets_in_static_files() {
+                let changesets = self.storage_changesets_range(range.clone())?;
+                let mut changeset_writer = self
+                    .static_file_provider
+                    .latest_writer(StaticFileSegment::StorageChangeSets)?;
+                changeset_writer.prune_storage_changesets(block)?;
+                changesets
+            } else {
+                self.take::<tables::StorageChangeSets>(storage_range)?.into_iter().collect()
+            };
+        let account_changeset =
+            if self.cached_storage_settings().account_changesets_in_static_files() {
+                let changesets = self.account_changesets_range(range)?;
+                let mut changeset_writer = self
+                    .static_file_provider
+                    .latest_writer(StaticFileSegment::AccountChangeSets)?;
+                changeset_writer.prune_account_changesets(block)?;
+                changesets
+            } else {
+                self.take::<tables::AccountChangeSets>(range)?
+            };
 
         if self.cached_storage_settings().use_hashed_state() {
             let mut hashed_accounts_cursor = self.tx.cursor_write::<tables::HashedAccounts>()?;
@@ -2787,6 +2857,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         }
 
         self.remove_receipts_from(from_transaction_num, block)?;
+        self.remove_parlia_snapshots_above(block)?;
 
         Ok(())
     }
@@ -2989,6 +3060,7 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
         }
 
         self.remove_receipts_from(from_transaction_num, block)?;
+        self.remove_parlia_snapshots_above(block)?;
 
         Ok(ExecutionOutcome::new_init(
             state,
@@ -3271,7 +3343,8 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> HistoryWriter for DatabaseProvi
         if self.cached_storage_settings().account_history_in_rocksdb() {
             #[cfg(all(unix, feature = "rocksdb"))]
             {
-                let batch = self.rocksdb_provider().unwind_account_history_indices(&last_indices)?;
+                let batch =
+                    self.rocksdb_provider().unwind_account_history_indices(&last_indices)?;
                 self.set_pending_rocksdb_batch(batch);
             }
             // Without rocksdb, EitherWriter wrote history to MDBX — unwind there.

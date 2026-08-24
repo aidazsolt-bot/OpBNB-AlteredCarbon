@@ -11,8 +11,7 @@ use alloy_chains::{Chain, NamedChain};
 use alloy_primitives::{b256, U256};
 use once_cell::sync::Lazy;
 use reth_chainspec::{make_genesis_header, BaseFeeParams, BaseFeeParamsKind, ChainSpec};
-use reth_ethereum_forks::EthereumHardfork;
-use reth_ethereum_forks::Hardfork;
+use reth_ethereum_forks::{EthereumHardfork, Hardfork};
 use reth_optimism_forks::OptimismHardfork;
 use reth_primitives_traits::SealedHeader;
 

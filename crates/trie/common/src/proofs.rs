@@ -190,9 +190,9 @@ pub struct MultiProof {
 impl MultiProof {
     /// Returns true if the multiproof is empty.
     pub fn is_empty(&self) -> bool {
-        self.account_subtree.is_empty()
-            && self.branch_node_masks.is_empty()
-            && self.storages.is_empty()
+        self.account_subtree.is_empty() &&
+            self.branch_node_masks.is_empty() &&
+            self.storages.is_empty()
     }
 
     /// Return the account proof nodes for the given account path.
@@ -239,9 +239,9 @@ impl MultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded trie account.
         let info = 'info: {
-            if let Some(last) = proof.last()
-                && let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])?
-                && nibbles.ends_with(&leaf.key)
+            if let Some(last) = proof.last() &&
+                let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])? &&
+                nibbles.ends_with(&leaf.key)
             {
                 let account = TrieAccount::decode(&mut &leaf.value[..])?;
                 break 'info Some(Account {
@@ -320,9 +320,9 @@ pub struct DecodedMultiProof {
 impl DecodedMultiProof {
     /// Returns true if the multiproof is empty.
     pub fn is_empty(&self) -> bool {
-        self.account_subtree.is_empty()
-            && self.branch_node_masks.is_empty()
-            && self.storages.is_empty()
+        self.account_subtree.is_empty() &&
+            self.branch_node_masks.is_empty() &&
+            self.storages.is_empty()
     }
 
     /// Return the account proof nodes for the given account path.
@@ -369,8 +369,8 @@ impl DecodedMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded trie account.
         let info = 'info: {
-            if let Some(TrieNode::Leaf(leaf)) = proof.last()
-                && nibbles.ends_with(&leaf.key)
+            if let Some(TrieNode::Leaf(leaf)) = proof.last() &&
+                nibbles.ends_with(&leaf.key)
             {
                 let account = TrieAccount::decode(&mut &leaf.value[..])?;
                 break 'info Some(Account {
@@ -629,9 +629,9 @@ impl StorageMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded slot value.
         let value = 'value: {
-            if let Some(last) = proof.last()
-                && let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])?
-                && nibbles.ends_with(&leaf.key)
+            if let Some(last) = proof.last() &&
+                let TrieNode::Leaf(leaf) = TrieNode::decode(&mut &last[..])? &&
+                nibbles.ends_with(&leaf.key)
             {
                 break 'value U256::decode(&mut &leaf.value[..])?;
             }
@@ -679,8 +679,8 @@ impl DecodedStorageMultiProof {
         // Inspect the last node in the proof. If it's a leaf node with matching suffix,
         // then the node contains the encoded slot value.
         let value = 'value: {
-            if let Some(TrieNode::Leaf(leaf)) = proof.last()
-                && nibbles.ends_with(&leaf.key)
+            if let Some(TrieNode::Leaf(leaf)) = proof.last() &&
+                nibbles.ends_with(&leaf.key)
             {
                 break 'value U256::decode(&mut &leaf.value[..])?;
             }
@@ -812,10 +812,10 @@ impl AccountProof {
         } = proof;
         let storage_proofs = storage_proof.into_iter().map(Into::into).collect();
 
-        let (storage_root, info) = if nonce == 0
-            && balance.is_zero()
-            && (storage_hash.is_zero() || storage_hash == EMPTY_ROOT_HASH)
-            && (code_hash == KECCAK_EMPTY || code_hash.is_zero())
+        let (storage_root, info) = if nonce == 0 &&
+            balance.is_zero() &&
+            (storage_hash.is_zero() || storage_hash == EMPTY_ROOT_HASH) &&
+            (code_hash == KECCAK_EMPTY || code_hash.is_zero())
         {
             // Account does not exist in state. Return `None` here to prevent proof
             // verification.

@@ -104,8 +104,7 @@ use crate::tree::{
     CacheWaitDurations, CachedStateProvider, EngineApiMetrics, EngineApiTreeState, ExecutionEnv,
     PayloadHandle, StateProviderBuilder, StateProviderDatabase, TreeConfig, WaitForCaches,
 };
-use alloy_consensus::crypto::RecoveryError;
-use alloy_consensus::transaction::Either;
+use alloy_consensus::{crypto::RecoveryError, transaction::Either};
 use alloy_eip7928::{bal::DecodedBal, compute_block_access_list_hash, BlockAccessList};
 use alloy_eips::{eip1898::BlockWithParent, eip4895::Withdrawal, NumHash};
 use alloy_evm::Evm;
@@ -420,9 +419,8 @@ where
             BlockOrPayload::Block(block) => {
                 let txs = block.body().clone_transactions();
                 let convert = |tx: N::SignedTx| {
-                    tx.try_into_recovered().map_err(|_| {
-                        NewPayloadError::other(RecoveryError::default())
-                    })
+                    tx.try_into_recovered()
+                        .map_err(|_| NewPayloadError::other(RecoveryError::default()))
                 };
                 Either::Right((txs, convert))
             }

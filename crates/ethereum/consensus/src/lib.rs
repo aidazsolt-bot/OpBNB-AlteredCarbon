@@ -129,8 +129,8 @@ where
             self.allow_bal_hashes,
         );
 
-        if self.skip_requests_hash_check
-            && let Err(ConsensusError::BodyRequestsHashDiff(_)) = &res
+        if self.skip_requests_hash_check &&
+            let Err(ConsensusError::BodyRequestsHashDiff(_)) = &res
         {
             return Ok(());
         }
@@ -194,8 +194,8 @@ where
                     .unwrap()
                     .as_secs();
 
-                if header.timestamp()
-                    > present_timestamp + alloy_eips::merge::ALLOWED_FUTURE_BLOCK_TIME_SECONDS
+                if header.timestamp() >
+                    present_timestamp + alloy_eips::merge::ALLOWED_FUTURE_BLOCK_TIME_SECONDS
                 {
                     return Err(ConsensusError::TimestampIsInFuture {
                         timestamp: header.timestamp(),
@@ -209,12 +209,12 @@ where
         validate_header_base_fee(header, &self.chain_spec)?;
 
         // EIP-4895: Beacon chain push withdrawals as operations
-        if self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp())
-            && header.withdrawals_root().is_none()
+        if self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp()) &&
+            header.withdrawals_root().is_none()
         {
             return Err(ConsensusError::WithdrawalsRootMissing);
-        } else if !self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp())
-            && header.withdrawals_root().is_some()
+        } else if !self.chain_spec.is_shanghai_active_at_timestamp(header.timestamp()) &&
+            header.withdrawals_root().is_some()
         {
             return Err(ConsensusError::WithdrawalsRootUnexpected);
         }

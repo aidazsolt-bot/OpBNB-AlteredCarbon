@@ -1958,3 +1958,12 @@ mod tests {
         Ok(())
     }
 }
+
+impl<N: ProviderNodeTypes> crate::ParliaSnapshotReader for ConsistentProvider<N> {
+    fn get_parlia_snapshot(
+        &self,
+        block_hash: alloy_primitives::B256,
+    ) -> crate::ProviderResult<Option<reth_primitives::parlia::Snapshot>> {
+        self.storage_provider.get_parlia_snapshot(block_hash)
+    }
+}

@@ -113,10 +113,6 @@ optimism = [
 ]
 opbnb = [
 ]
-bsc = [
-    "reth-primitives-traits/bsc",
-    "reth-chainspec/bsc",
-]
 test-utils = [
 	"reth-primitives-traits/test-utils",
 	"reth-chainspec/test-utils",

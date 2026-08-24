@@ -43,7 +43,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     pub async fn execute<N, Comp>(
         self,
         ctx: CliContext,
-        components: impl FnOnce(Arc<C::ChainSpec>) -> Comp,
+        components: impl FnOnce(Arc<C::ChainSpec>, crate::common::BlockchainProviderFor<N>) -> Comp,
     ) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,

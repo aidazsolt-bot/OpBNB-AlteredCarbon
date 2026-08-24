@@ -17,9 +17,6 @@ reth-network-peers.workspace = true
 alloy-trie = { workspace = true, features = ["ethereum"] }
 reth-primitives-traits.workspace = true
 
-# bsc
-reth-bsc-forks = { workspace = true, optional = true }
-
 # op-reth
 reth-optimism-forks = { workspace = true, optional = true }
 
@@ -44,9 +41,6 @@ alloy-rlp = { workspace = true, features = ["arrayvec"] }
 
 [features]
 default = ["std"]
-bsc = [
-    "reth-bsc-forks"
-]
 optimism = ["reth-optimism-forks"]
 std = [
     "alloy-chains/std",

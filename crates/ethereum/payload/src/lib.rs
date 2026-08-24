@@ -19,15 +19,13 @@ use reth_basic_payload_builder::{
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_consensus_common::validation::MAX_RLP_BLOCK_SIZE;
 use reth_errors::{BlockExecutionError, BlockValidationError, ConsensusError};
+use reth_ethereum_engine_primitives::{BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes};
 use reth_ethereum_primitives::{EthPrimitives, TransactionSigned};
 use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, Evm, NextBlockEnvAttributes,
 };
 use reth_evm_ethereum::EthEvmConfig;
-use reth_ethereum_engine_primitives::{
-    BlobSidecars, EthBuiltPayload, EthPayloadBuilderAttributes,
-};
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives_traits::transaction::error::InvalidTransactionError;
@@ -384,13 +382,9 @@ where
         }));
     }
 
-    let payload = EthBuiltPayload::new(
-        Arc::new(block),
-        total_fees,
-        requests,
-        block_access_list_bytes,
-    )
-    .with_sidecars(blob_sidecars);
+    let payload =
+        EthBuiltPayload::new(Arc::new(block), total_fees, requests, block_access_list_bytes)
+            .with_sidecars(blob_sidecars);
 
     Ok(BuildOutcome::Better { payload, cached_reads })
 }

@@ -3,7 +3,6 @@
 use crate::common::CliNodeTypes;
 use alloy_primitives::Address;
 use clap::Parser;
-use std::sync::Arc;
 use reth_db::{
     mdbx::{self, ffi},
     DatabaseEnv,
@@ -27,6 +26,7 @@ use reth_prune_types::PruneSegment;
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::StageCheckpointReader;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 /// `reth db migrate-v2` command
@@ -67,7 +67,8 @@ impl Command {
 
         let sf_provider = provider_factory.static_file_provider();
 
-        for segment in [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets] {
+        for segment in [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets]
+        {
             if sf_provider.get_highest_static_file_block(segment).is_some() {
                 eyre::bail!(
                     "Static file segment {segment:?} already contains data. \
@@ -83,7 +84,10 @@ impl Command {
         Self::migrate_storage_changesets(&provider_factory, tip)?;
 
         // === Phase 2: Migrate receipts → static files ===
-        Self::migrate_receipts::<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>(&provider_factory, tip)?;
+        Self::migrate_receipts::<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>(
+            &provider_factory,
+            tip,
+        )?;
 
         // === Phase 3: Migrate indices → RocksDB ===
         #[cfg(all(unix, feature = "rocksdb"))]

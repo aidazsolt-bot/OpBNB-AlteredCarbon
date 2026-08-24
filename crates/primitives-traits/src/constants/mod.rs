@@ -10,20 +10,10 @@ pub use gas_units::{GIGAGAS, KILOGAS, MEGAGAS};
 pub const RETH_CLIENT_VERSION: &str = concat!("reth/v", env!("CARGO_PKG_VERSION"));
 
 /// Maximum extra data size in a block after genesis
-#[cfg(not(feature = "bsc"))]
 pub const MAXIMUM_EXTRA_DATA_SIZE: usize = 32;
 
-/// Maximum extra data size in a block after genesis
-#[cfg(feature = "bsc")]
-pub const MAXIMUM_EXTRA_DATA_SIZE: usize = 1024 * 1024;
-
 /// Initial base fee as defined in [EIP-1559](https://eips.ethereum.org/EIPS/eip-1559)
-#[cfg(not(feature = "bsc"))]
 pub const EIP1559_INITIAL_BASE_FEE: u64 = 1_000_000_000;
-
-/// Initial base fee of bsc
-#[cfg(feature = "bsc")]
-pub const EIP1559_INITIAL_BASE_FEE: u64 = 0;
 
 /// Minimum gas limit allowed for transactions.
 pub const MINIMUM_GAS_LIMIT: u64 = 5000;

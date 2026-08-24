@@ -15,8 +15,8 @@
 
 // Core engine message/fork-choice types (moved to reth-engine-primitives in v2.4.1)
 pub use reth_engine_primitives::{
-    BeaconConsensusEngineEvent, BeaconEngineMessage, BeaconOnNewPayloadError,
-    ForkchoiceStateHash, ForkchoiceStateTracker, ForkchoiceStatus, OnForkChoiceUpdated,
+    BeaconConsensusEngineEvent, BeaconEngineMessage, BeaconOnNewPayloadError, ForkchoiceStateHash,
+    ForkchoiceStateTracker, ForkchoiceStatus, OnForkChoiceUpdated,
 };
 
 /// Compatibility alias — `BeaconConsensusEngineHandle` is now `ConsensusEngineHandle`.
@@ -31,10 +31,10 @@ pub const MIN_BLOCKS_FOR_PIPELINE_RUN: u64 = 32;
 mod invalid_headers;
 pub use invalid_headers::InvalidHeaderCache;
 
+use reth_node_types::NodeTypes;
 /// Convenience trait combining the bounds previously expressed by `EngineNodeTypes`.
 /// Downstream BSC crates use this as a bound on their generic `N` parameters.
 pub use reth_provider::providers::ProviderNodeTypes;
-use reth_node_types::NodeTypes;
 
 /// Marker trait: any type that satisfies `ProviderNodeTypes + NodeTypes` also
 /// satisfies `EngineNodeTypes`.

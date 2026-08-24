@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 use alloy_consensus::{
-    Eip658Value, Eip2718EncodableReceipt, Receipt, ReceiptWithBloom, RlpDecodableReceipt,
+    Eip2718EncodableReceipt, Eip658Value, Receipt, ReceiptWithBloom, RlpDecodableReceipt,
     RlpEncodableReceipt, TxReceipt, Typed2718,
 };
 use alloy_eips::{
-    Decodable2718, Encodable2718,
     eip2718::{Eip2718Result, IsTyped2718},
+    Decodable2718, Encodable2718,
 };
 use alloy_primitives::{Bloom, Log};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header};
@@ -46,7 +46,7 @@ pub(super) mod serde_bincode_compat {
     ///
     /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
     /// ```rust
-    /// use reth_optimism_primitives::{OpReceipt, serde_bincode_compat};
+    /// use reth_optimism_primitives::{serde_bincode_compat, OpReceipt};
     /// use serde::{Deserialize, Serialize};
     /// use serde_with::serde_as;
     ///
@@ -121,7 +121,7 @@ pub(super) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use crate::{OpReceipt, receipt::serde_bincode_compat};
+        use crate::{receipt::serde_bincode_compat, OpReceipt};
         use arbitrary::Arbitrary;
         use rand::Rng;
         use serde::{Deserialize, Serialize};
@@ -158,7 +158,7 @@ pub(super) mod serde_bincode_compat {
 mod tests {
     use super::*;
     use alloy_eips::eip2718::Encodable2718;
-    use alloy_primitives::{Bytes, address, b256, bytes, hex_literal::hex};
+    use alloy_primitives::{address, b256, bytes, hex_literal::hex, Bytes};
     use alloy_rlp::Encodable;
     use reth_codecs::Compact;
 

@@ -1,11 +1,16 @@
 //! `reth db settings` command for managing storage settings
 
 use clap::{ArgAction, Parser, Subcommand};
+use reth_db::open_db_read_only;
+use reth_db_api::{database::Database, tables::Metadata, transaction::DbTx};
 use reth_db_common::DbTool;
+use reth_node_core::args::DatabaseArgs;
 use reth_provider::{
     providers::ProviderNodeTypes, DBProvider, DatabaseProviderFactory, MetadataProvider,
     MetadataWriter, StorageSettings,
 };
+use reth_storage_api::metadata::keys::STORAGE_SETTINGS;
+use std::path::Path;
 
 use crate::common::AccessRights;
 
@@ -23,6 +28,11 @@ impl Command {
             Subcommands::Get => AccessRights::RO,
             Subcommands::Set(_) => AccessRights::RW,
         }
+    }
+
+    /// Returns `true` if this command only reads metadata from MDBX (no static files).
+    pub const fn is_get(&self) -> bool {
+        matches!(self.command, Subcommands::Get)
     }
 }
 
@@ -96,6 +106,30 @@ impl Command {
         provider_rw.commit()?;
 
         println!("Storage settings updated successfully.");
+
+        Ok(())
+    }
+
+    /// Reads storage settings directly from MDBX metadata (skips static file initialization).
+    ///
+    /// Used when legacy static file jars prevent `Environment::init` from opening storage.
+    pub fn execute_get_db_only(db_path: &Path, database_args: &DatabaseArgs) -> eyre::Result<()> {
+        let db = open_db_read_only(db_path, database_args.database_args())?;
+        let settings_bytes =
+            Database::view(&db, |tx| tx.get::<Metadata>(STORAGE_SETTINGS.to_string()))?
+                .map_err(|err| eyre::eyre!(err))?;
+
+        match settings_bytes {
+            Some(bytes) => {
+                let settings = serde_json::from_slice::<StorageSettings>(&bytes)
+                    .map_err(|err| eyre::eyre!("invalid storage_settings metadata: {err}"))?;
+                println!("Current storage settings:");
+                println!("{settings:#?}");
+            }
+            None => {
+                println!("No storage settings found.");
+            }
+        }
 
         Ok(())
     }

@@ -57,7 +57,10 @@ pub trait NetworkPrimitives: Send + Sync + Unpin + Clone + Debug + 'static {
     /// For EIP-4844 blob transactions, this includes the full blob sidecar with
     /// KZG commitments and proofs that are needed for validation but are not
     /// included in the consensus block format.
-    type PooledTransaction: SignedTransaction + TryFrom<Self::BroadcastedTransaction> + IsTyped2718 + 'static;
+    type PooledTransaction: SignedTransaction
+        + TryFrom<Self::BroadcastedTransaction>
+        + IsTyped2718
+        + 'static;
 
     /// The transaction type which peers return in `GetReceipts` messages.
     type Receipt: TxReceipt

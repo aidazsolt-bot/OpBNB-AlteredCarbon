@@ -30,8 +30,8 @@ pub use sequence::{
 
 mod service;
 pub use service::{
-    CanonicalBlockNotification, FlashBlockBuildInfo, FlashBlockService,
-    create_canonical_block_channel,
+    create_canonical_block_channel, CanonicalBlockNotification, FlashBlockBuildInfo,
+    FlashBlockService,
 };
 
 mod worker;

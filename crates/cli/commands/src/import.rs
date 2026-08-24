@@ -7,6 +7,7 @@ use clap::Parser;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_node_core::version::version_metadata;
+use reth_provider::providers::BlockchainProvider;
 use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
@@ -38,7 +39,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> ImportComm
     /// Execute `import` command
     pub async fn execute<N, Comp>(
         self,
-        components: impl FnOnce(Arc<N::ChainSpec>) -> Comp,
+        components: impl FnOnce(Arc<N::ChainSpec>, crate::common::BlockchainProviderFor<N>) -> Comp,
     ) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
@@ -48,7 +49,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> ImportComm
 
         let Environment { provider_factory, config, .. } = self.env.init::<N>(AccessRights::RW)?;
 
-        let components = components(provider_factory.chain_spec());
+        let blockchain = BlockchainProvider::new(provider_factory.clone())?;
+        let components = components(provider_factory.chain_spec(), blockchain);
 
         info!(target: "reth::cli", "Starting import of {} file(s)", self.paths.len());
 

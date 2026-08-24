@@ -20,6 +20,8 @@ pub use execute::*;
 mod execution_outcome;
 pub use execution_outcome::*;
 
+pub use reth_primitives::parlia::Snapshot;
+
 /// Bincode-compatible serde implementations for commonly used types for (EVM) block execution.
 ///
 /// `bincode` crate doesn't work with optionally serializable serde fields, but some of the

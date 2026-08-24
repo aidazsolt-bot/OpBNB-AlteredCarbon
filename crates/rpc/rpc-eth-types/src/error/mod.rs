@@ -2,7 +2,6 @@
 
 pub mod api;
 use alloy_eips::BlockId;
-use reth_bsc_consensus::BscTraceHelperError;
 use alloy_evm::{call::CallError, overrides::StateOverrideError};
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_rpc_types_eth::{error::EthRpcErrorCode, request::TransactionInputError, BlockError};
@@ -1130,12 +1129,6 @@ pub enum SignError {
     NoChainId,
 }
 
-// BSC-specific error conversion
-impl From<BscTraceHelperError> for EthApiError {
-    fn from(error: BscTraceHelperError) -> Self {
-        Self::EvmCustom(error.to_string())
-    }
-}
 
 #[cfg(test)]
 mod tests {

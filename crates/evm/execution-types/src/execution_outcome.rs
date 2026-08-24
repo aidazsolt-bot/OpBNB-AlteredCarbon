@@ -164,12 +164,22 @@ impl<T> ExecutionOutcome<T> {
         bundle: BundleState,
         results: Vec<crate::BlockExecutionResult<T>>,
     ) -> Self {
+        Self::from_blocks_with_snapshots(first_block, bundle, results, vec![])
+    }
+
+    /// Like [`Self::from_blocks`] with Parlia checkpoint snapshots persisted separately.
+    pub fn from_blocks_with_snapshots(
+        first_block: u64,
+        bundle: BundleState,
+        results: Vec<crate::BlockExecutionResult<T>>,
+        snapshots: Vec<Snapshot>,
+    ) -> Self {
         let mut value = Self {
             bundle,
             first_block,
             receipts: Vec::with_capacity(results.len()),
             requests: Vec::with_capacity(results.len()),
-            snapshots: vec![],
+            snapshots,
         };
         for result in results {
             value.receipts.push(result.receipts);

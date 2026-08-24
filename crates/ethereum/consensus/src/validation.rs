@@ -106,13 +106,13 @@ where
     }
 
     // Validate that the header block access list hash matches the calculated block access list hash
-    let is_allowed_pre_amsterdam_bal_hash = allow_bal_hashes
-        && !chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp())
-        && block.header().block_access_list_hash().is_some();
+    let is_allowed_pre_amsterdam_bal_hash = allow_bal_hashes &&
+        !chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp()) &&
+        block.header().block_access_list_hash().is_some();
 
-    if (chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp())
-        || is_allowed_pre_amsterdam_bal_hash)
-        && let Some(block_access_list_hash) = block_access_list_hash
+    if (chain_spec.is_amsterdam_active_at_timestamp(block.header().timestamp()) ||
+        is_allowed_pre_amsterdam_bal_hash) &&
+        let Some(block_access_list_hash) = block_access_list_hash
     {
         let block_bal_hash = block.header().block_access_list_hash().unwrap_or_default();
         if block_access_list_hash != block_bal_hash {

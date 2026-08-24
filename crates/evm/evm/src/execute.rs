@@ -15,7 +15,7 @@ pub use reth_execution_errors::{
     BlockExecutionError, BlockValidationError, InternalBlockExecutionError,
 };
 use reth_execution_types::BlockExecutionResult;
-pub use reth_execution_types::{BlockExecutionOutput, ExecutionOutcome};
+pub use reth_execution_types::{BlockExecutionOutput, ExecutionOutcome, Snapshot};
 use reth_primitives_traits::{
     transaction::Recovered, Block, HeaderTy, NodePrimitives, ReceiptTy, RecoveredBlock,
     SealedHeader, TxTy,
@@ -66,11 +66,7 @@ pub trait Executor<DB: Database>: Sized {
     {
         let result = self.execute_one(block)?;
         let mut state = self.into_state();
-        Ok(BlockExecutionOutput {
-            result,
-            state: state.take_bundle(),
-            snapshot: None,
-        })
+        Ok(BlockExecutionOutput { result, state: state.take_bundle(), snapshot: None })
     }
 
     /// Executes multiple inputs in the batch, and returns an aggregated [`ExecutionOutcome`].
@@ -116,11 +112,7 @@ pub trait Executor<DB: Database>: Sized {
         let result = self.execute_one(block)?;
         let mut state = self.into_state();
         f(&state);
-        Ok(BlockExecutionOutput {
-            result,
-            state: state.take_bundle(),
-            snapshot: None,
-        })
+        Ok(BlockExecutionOutput { result, state: state.take_bundle(), snapshot: None })
     }
 
     /// Executes the EVM with the given input and accepts a state closure that is always invoked
@@ -137,11 +129,7 @@ pub trait Executor<DB: Database>: Sized {
         let mut state = self.into_state();
         f(&state);
         let result = result?;
-        Ok(BlockExecutionOutput {
-            result,
-            state: state.take_bundle(),
-            snapshot: None,
-        })
+        Ok(BlockExecutionOutput { result, state: state.take_bundle(), snapshot: None })
     }
 
     /// Executes the EVM with the given input and accepts a state hook closure that is invoked with
@@ -156,11 +144,7 @@ pub trait Executor<DB: Database>: Sized {
     {
         let result = self.execute_one_with_state_hook(block, state_hook)?;
         let mut state = self.into_state();
-        Ok(BlockExecutionOutput {
-            result,
-            state: state.take_bundle(),
-            snapshot: None,
-        })
+        Ok(BlockExecutionOutput { result, state: state.take_bundle(), snapshot: None })
     }
 
     /// Consumes the executor and returns the [`State`] containing all state changes.
@@ -173,6 +157,13 @@ pub trait Executor<DB: Database>: Sized {
 
     /// Takes built [`BlockAccessList`] from executor.
     fn take_bal(&mut self) -> Option<BlockAccessList>;
+
+    /// Drains Parlia checkpoint snapshots accumulated during batch execution (BSC).
+    ///
+    /// Default: empty. Overridden by [`reth_bsc_evm::BscParliaBatchExecutor`].
+    fn take_parlia_snapshots(&mut self) -> Vec<Snapshot> {
+        Vec::new()
+    }
 }
 
 /// Input for block building. Consumed by [`BlockAssembler`].
@@ -457,7 +448,8 @@ impl<Executor: BlockExecutor> ExecutorTx<Executor> for Recovered<Executor::Trans
     }
 }
 
-impl<Executor> ExecutorTx<Executor> for (<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>)
+impl<Executor> ExecutorTx<Executor>
+    for (<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>)
 where
     Executor: BlockExecutor,
 {
@@ -466,7 +458,8 @@ where
     }
 }
 
-impl<Executor> ExecutorTx<Executor> for WithTxEnv<<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>>
+impl<Executor> ExecutorTx<Executor>
+    for WithTxEnv<<Executor::Evm as Evm>::Tx, Recovered<Executor::Transaction>>
 where
     Executor: BlockExecutor<Transaction: Clone>,
 {

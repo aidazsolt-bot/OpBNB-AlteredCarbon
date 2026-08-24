@@ -7,8 +7,8 @@ mod tx_type;
 mod signed;
 
 pub use op_alloy_consensus::{
-    OpTransaction, OpTxEnvelope, OpTxType, OpTypedTransaction, POST_EXEC_TX_TYPE_ID,
-    PostExecPayload, SDMGasEntry, TxPostExec, build_post_exec_tx,
+    build_post_exec_tx, OpTransaction, OpTxEnvelope, OpTxType, OpTypedTransaction, PostExecPayload,
+    SDMGasEntry, TxPostExec, POST_EXEC_TX_TYPE_ID,
 };
 
 /// Signed transaction.

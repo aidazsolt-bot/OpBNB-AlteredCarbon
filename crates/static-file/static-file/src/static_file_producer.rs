@@ -4,14 +4,14 @@ use crate::{segments, segments::Segment, StaticFileProducerEvent};
 use alloy_primitives::BlockNumber;
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use reth_codecs::Compact;
+use reth_db_api::table::Value;
+use reth_primitives_traits::{FastInstant as Instant, NodePrimitives};
 use reth_provider::{
     providers::StaticFileWriter, BlockReader, ChainStateBlockReader, DBProvider,
     DatabaseProviderFactory, StageCheckpointReader, StaticFileProviderFactory,
 };
 use reth_prune_types::PruneModes;
-use reth_codecs::Compact;
-use reth_db_api::table::Value;
-use reth_primitives_traits::NodePrimitives;
 use reth_stages_types::StageId;
 use reth_static_file_types::{HighestStaticFiles, StaticFileTargets};
 use reth_storage_errors::provider::ProviderResult;
@@ -20,7 +20,6 @@ use std::{
     ops::{Deref, RangeInclusive},
     sync::Arc,
 };
-use reth_primitives_traits::FastInstant as Instant;
 use tracing::{debug, trace};
 
 /// Result of [`StaticFileProducerInner::run`] execution.
@@ -96,8 +95,8 @@ where
                     Receipt: Value + Compact,
                 >,
             > + StageCheckpointReader
-                + BlockReader
-                + reth_provider::ChangeSetReader,
+                          + BlockReader
+                          + reth_provider::ChangeSetReader,
         >,
 {
     /// Listen for events on the `static_file_producer`.
@@ -196,8 +195,8 @@ where
         let targets = StaticFileTargets {
             headers: None,
             // StaticFile receipts only if they're not pruned according to the user configuration
-            receipts: if self.prune_modes.receipts.is_none()
-                && self.prune_modes.receipts_log_filter.is_empty()
+            receipts: if self.prune_modes.receipts.is_none() &&
+                self.prune_modes.receipts_log_filter.is_empty()
             {
                 finalized_block_numbers.receipts.and_then(|finalized_block_number| {
                     self.get_static_file_target(
@@ -280,8 +279,10 @@ mod tests {
         let mut receipts = Vec::new();
         for block in &blocks {
             for transaction in &block.body().transactions {
-                receipts
-                    .push((receipts.len() as u64, random_receipt(&mut rng, transaction, Some(0), None)));
+                receipts.push((
+                    receipts.len() as u64,
+                    random_receipt(&mut rng, transaction, Some(0), None),
+                ));
             }
         }
         db.insert_receipts(receipts).expect("insert receipts");

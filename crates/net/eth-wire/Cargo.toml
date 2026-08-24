@@ -90,7 +90,6 @@ serde = [
     "alloy-consensus/serde",
     "rand_08/serde",
 ]
-bsc = ["reth-primitives/bsc"]
 
 [[test]]
 name = "fuzz_roundtrip"

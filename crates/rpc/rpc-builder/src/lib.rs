@@ -30,7 +30,6 @@ use jsonrpsee::{
     server::{middleware::rpc::RpcServiceBuilder, AlreadyStoppedError, IdProvider, ServerHandle},
     Methods, RpcModule,
 };
-use reth_bsc_consensus::BscTraceHelper;
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_consensus::FullConsensus;
 use reth_engine_primitives::ConsensusEngineEvent;
@@ -104,7 +103,9 @@ pub use eth::EthHandlers;
 mod metrics;
 use crate::middleware::RethRpcMiddleware;
 pub use metrics::{MeteredBatchRequestsFuture, MeteredRequestFuture, RpcRequestMetricsService};
-use reth_chain_state::{CanonStateSubscriptions, ForkChoiceSubscriptions, PersistedBlockSubscriptions};
+use reth_chain_state::{
+    CanonStateSubscriptions, ForkChoiceSubscriptions, PersistedBlockSubscriptions,
+};
 use reth_rpc::eth::sim_bundle::EthSimBundle;
 
 // Rpc rate limiter
@@ -128,7 +129,6 @@ pub struct RpcModuleBuilder<N, Provider, Pool, Network, EvmConfig, Consensus> {
     /// The consensus implementation.
     consensus: Consensus,
     /// BSC trace helper for system contract upgrades during tracing.
-    bsc_trace_helper: Option<BscTraceHelper>,
     /// Node data primitives.
     _primitives: PhantomData<N>,
 }
@@ -154,7 +154,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper: None,
             _primitives: PhantomData,
         }
     }
@@ -164,8 +163,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         provider: P,
     ) -> RpcModuleBuilder<N, P, Pool, Network, EvmConfig, Consensus> {
-        let Self { pool, network, executor, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            pool,
+            network,
+            executor,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             network,
@@ -173,7 +179,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -183,8 +188,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         pool: P,
     ) -> RpcModuleBuilder<N, Provider, P, Network, EvmConfig, Consensus> {
-        let Self { provider, network, executor, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            network,
+            executor,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             network,
@@ -192,7 +204,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -205,8 +216,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     pub fn with_noop_pool(
         self,
     ) -> RpcModuleBuilder<N, Provider, NoopTransactionPool, Network, EvmConfig, Consensus> {
-        let Self { provider, executor, network, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            executor,
+            network,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             executor,
@@ -214,7 +232,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             evm_config,
             pool: NoopTransactionPool::default(),
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -224,8 +241,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         network: Net,
     ) -> RpcModuleBuilder<N, Provider, Pool, Net, EvmConfig, Consensus> {
-        let Self { provider, pool, executor, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            pool,
+            executor,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             network,
@@ -233,7 +257,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -246,8 +269,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     pub fn with_noop_network(
         self,
     ) -> RpcModuleBuilder<N, Provider, Pool, NoopNetwork, EvmConfig, Consensus> {
-        let Self { provider, pool, executor, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            pool,
+            executor,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             pool,
@@ -255,15 +285,21 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             network: NoopNetwork::default(),
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
 
     /// Configure the task executor to use for additional tasks.
     pub fn with_executor(self, executor: Box<dyn TaskSpawner + 'static>) -> Self {
-        let Self { pool, network, provider, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            pool,
+            network,
+            provider,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         Self {
             provider,
             network,
@@ -271,7 +307,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -281,8 +316,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     /// This will spawn additional tasks directly via `tokio::task::spawn`, See
     /// [`TokioTaskExecutor`].
     pub fn with_tokio_executor(self) -> Self {
-        let Self { pool, network, provider, evm_config, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            pool,
+            network,
+            provider,
+            evm_config,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         Self {
             provider,
             network,
@@ -290,7 +332,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor: Box::new(TokioTaskExecutor::default()),
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -300,8 +341,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         evm_config: E,
     ) -> RpcModuleBuilder<N, Provider, Pool, Network, E, Consensus> {
-        let Self { provider, pool, executor, network, consensus, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            pool,
+            executor,
+            network,
+            consensus,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             network,
@@ -309,7 +357,6 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
@@ -319,8 +366,15 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         consensus: C,
     ) -> RpcModuleBuilder<N, Provider, Pool, Network, EvmConfig, C> {
-        let Self { provider, network, pool, executor, evm_config, bsc_trace_helper, _primitives, .. } =
-            self;
+        let Self {
+            provider,
+            network,
+            pool,
+            executor,
+            evm_config,
+            _primitives,
+            ..
+        } = self;
         RpcModuleBuilder {
             provider,
             network,
@@ -328,18 +382,11 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
             executor,
             evm_config,
             consensus,
-            bsc_trace_helper,
             _primitives,
         }
     }
 
     /// Configure the BSC trace helper used during debug/trace execution.
-    pub fn with_bsc_trace_helper(
-        self,
-        bsc_trace_helper: Option<BscTraceHelper>,
-    ) -> Self {
-        Self { bsc_trace_helper, ..self }
-    }
 
     /// Instantiates a new [`EthApiBuilder`] from the configured components.
     #[expect(clippy::type_complexity)]
@@ -1443,7 +1490,11 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             constants::DEFAULT_WS_RPC_PORT,
         )));
 
-        let metrics = Self::optional_request_metrics(rpc_metrics_enabled, modules.ipc.as_ref(), RpcRequestMetrics::ipc);
+        let metrics = Self::optional_request_metrics(
+            rpc_metrics_enabled,
+            modules.ipc.as_ref(),
+            RpcRequestMetrics::ipc,
+        );
         let ipc_path =
             self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
 
@@ -1537,7 +1588,11 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                 )
                 .set_rpc_middleware(
                     RpcServiceBuilder::default()
-                        .layer(Self::optional_request_metrics(rpc_metrics_enabled, modules.ws.as_ref(), RpcRequestMetrics::ws))
+                        .layer(Self::optional_request_metrics(
+                            rpc_metrics_enabled,
+                            modules.ws.as_ref(),
+                            RpcRequestMetrics::ws,
+                        ))
                         .layer(self.rpc_middleware.clone()),
                 )
                 .build(ws_socket_addr)

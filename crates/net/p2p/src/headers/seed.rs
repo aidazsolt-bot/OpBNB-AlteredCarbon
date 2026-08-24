@@ -51,7 +51,9 @@ impl<H: BlockHeader + Clone> HeaderSeed<H> {
     /// Returns a cloned header for `start` when the seed has a single-header match.
     fn get(&self, start: BlockHashOrNumber) -> Option<H> {
         match start {
-            BlockHashOrNumber::Hash(hash) => self.by_hash.read().expect("header seed lock").get(&hash).cloned(),
+            BlockHashOrNumber::Hash(hash) => {
+                self.by_hash.read().expect("header seed lock").get(&hash).cloned()
+            }
             BlockHashOrNumber::Number(number) => {
                 let hash = *self.by_number.read().expect("header seed lock").get(&number)?;
                 self.by_hash.read().expect("header seed lock").get(&hash).cloned()
@@ -176,10 +178,7 @@ impl<C: BlockClient> HeadersClient for SeededBlockClient<C> {
         // Tip fetch is always limit=1. Serve from seed so reverse sync can start without peers that
         // know the FCU tip hash yet.
         if request.limit == 1 &&
-            matches!(
-                request.direction,
-                HeadersDirection::Falling | HeadersDirection::Rising
-            )
+            matches!(request.direction, HeadersDirection::Falling | HeadersDirection::Rising)
         {
             if let Some(header) = self.seed.get(request.start) {
                 return SeededOrInnerFut::Seeded(SeededHeadersFut { header: Some(header) });

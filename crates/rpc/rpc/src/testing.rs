@@ -14,8 +14,8 @@ use reth_ethereum_engine_primitives::EthBuiltPayload;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_evm::{execute::BlockBuilder, ConfigureEvm, NextBlockEnvAttributes};
 use reth_primitives_traits::{
-    transaction::signed::RecoveryError, AlloyBlockHeader as BlockTrait, NodePrimitives, TxTy,
-    SignedTransaction,
+    transaction::signed::RecoveryError, AlloyBlockHeader as BlockTrait, NodePrimitives,
+    SignedTransaction, TxTy,
 };
 use reth_revm::{database::StateProviderDatabase, db::State};
 use reth_rpc_api::TestingApiServer;
@@ -74,9 +74,7 @@ where
                 let parent = eth_api
                     .provider()
                     .sealed_header_by_hash(parent_block_hash)?
-                    .ok_or_else(|| {
-                        EthApiError::HeaderNotFound(parent_block_hash.into())
-                    })?;
+                    .ok_or_else(|| EthApiError::HeaderNotFound(parent_block_hash.into()))?;
 
                 let env_attrs = NextBlockEnvAttributes {
                     timestamp: payload_attributes.timestamp,
@@ -104,9 +102,8 @@ where
                 for tx in transactions {
                     let decoded = TxTy::<Evm::Primitives>::decode_2718_exact(tx.as_ref())
                         .map_err(|_| EthApiError::InvalidTransactionSignature)?;
-                    let signer = decoded
-                        .recover_signer()
-                        .ok_or(EthApiError::InvalidTransactionSignature)?;
+                    let signer =
+                        decoded.recover_signer().ok_or(EthApiError::InvalidTransactionSignature)?;
                     recovered_txs.push(alloy_consensus::transaction::Recovered::new_unchecked(
                         decoded, signer,
                     ));
@@ -147,15 +144,10 @@ where
                     .is_some()
                     .then_some(outcome.execution_result.requests);
 
-                EthBuiltPayload::new(
-                    Arc::new(outcome.block),
-                    total_fees,
-                    requests,
-                    None,
-                )
-                .try_into_v5()
-                .map_err(RethError::other)
-                .map_err(Eth::Error::from_eth_err)
+                EthBuiltPayload::new(Arc::new(outcome.block), total_fees, requests, None)
+                    .try_into_v5()
+                    .map_err(RethError::other)
+                    .map_err(Eth::Error::from_eth_err)
             })
             .await
     }

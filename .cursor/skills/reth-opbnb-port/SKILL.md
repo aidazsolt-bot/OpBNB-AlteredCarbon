@@ -18,6 +18,17 @@ description: >-
 > (`alwaysApply: true`) + Hook `sessionStart` → dieses File **und**
 > `.cursor/skills/rust-best-practices/SKILL.md` laden/befolgen, bevor sonstige Arbeit beginnt.
 
+## Workspace-Scope — opBNB only (kein BSC)
+
+| Regel | Inhalt |
+| --- | --- |
+| **Kette** | opBNB mainnet (**204**) — nicht BSC (**56**) |
+| **Binary** | `op-reth` / `make build-op` — nicht `bsc-reth` |
+| **Entfernt** | `crates/bsc/*`, BSC-Makefile-Targets, `bsc`-Features (2026-08-24) |
+| **KI-Anti-Pattern** | BSC + opBNB im **selben** Workspace → Agenten verwechseln Konsens, Sync-Checks, Fixes |
+
+Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
+
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
 Dieser Fork ist ein **Methodik-/Prozess-Experiment** (README *Project Notice* / *About This Fork*):

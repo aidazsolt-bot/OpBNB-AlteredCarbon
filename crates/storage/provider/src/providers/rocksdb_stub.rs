@@ -6,8 +6,7 @@
 
 use alloy_primitives::BlockNumber;
 use parking_lot::Mutex;
-use reth_db_api::models::StorageSettings;
-use reth_db_api::table::Table;
+use reth_db_api::{models::StorageSettings, table::Table};
 use reth_prune_types::PruneMode;
 use reth_storage_errors::{db::LogLevel, provider::ProviderResult};
 use std::{path::Path, sync::Arc};

@@ -113,23 +113,22 @@ where
 
             // Write ommers if any
             if !body.ommers.is_empty() {
-                ommers_cursor
-                    .append(
-                        block_number,
-                        &StoredBlockOmmers {
-                            ommers: body
-                                .ommers
-                                .iter()
-                                .cloned()
-                                .map(Into::<AlloyHeader>::into)
-                                .collect(),
-                        },
-                    )?;
+                ommers_cursor.append(
+                    block_number,
+                    &StoredBlockOmmers {
+                        ommers: body
+                            .ommers
+                            .iter()
+                            .cloned()
+                            .map(Into::<AlloyHeader>::into)
+                            .collect(),
+                    },
+                )?;
             }
 
             // Write withdrawals if any
-            if let Some(withdrawals) = body.withdrawals.clone()
-                && !withdrawals.is_empty()
+            if let Some(withdrawals) = body.withdrawals.clone() &&
+                !withdrawals.is_empty()
             {
                 withdrawals_cursor.append(block_number, &StoredBlockWithdrawals { withdrawals })?;
             }
@@ -191,11 +190,7 @@ where
                     .cursor_read::<tables::BlockOmmers>()?
                     .seek_exact(header.number())?
                     .map(|(_, stored_ommers)| {
-                        stored_ommers
-                            .ommers
-                            .into_iter()
-                            .map(Into::<H>::into)
-                            .collect()
+                        stored_ommers.ommers.into_iter().map(Into::<H>::into).collect()
                     })
                     .unwrap_or_default()
             };

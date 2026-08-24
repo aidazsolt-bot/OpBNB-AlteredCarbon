@@ -97,7 +97,6 @@ alloy-rlp.workspace = true
 assert_matches.workspace = true
 
 [features]
-bsc = []
 trie-debug = [
     "reth-trie-sparse/trie-debug",
     "reth-engine-primitives/trie-debug",

@@ -6,9 +6,14 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::{BlockHash, BlockNumber, TxNumber, U256};
 use parking_lot::{lock_api::RwLockWriteGuard, RawRwLock, RwLock};
 use reth_codecs::Compact;
-use reth_db::models::{AccountBeforeTx, StorageBeforeTx};
+use reth_db::{
+    models::{AccountBeforeTx, StorageBeforeTx},
+    static_file::{
+        load_segment_nippy_jar_or_remove_incomplete, remove_incomplete_static_file_bundle,
+    },
+};
 use reth_db_api::models::CompactU256;
-use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter};
+use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter, CONFIG_FILE_EXTENSION};
 use reth_node_types::NodePrimitives;
 use reth_static_file_types::{
     ChangesetOffset, ChangesetOffsetReader, ChangesetOffsetWriter, SegmentHeader,
@@ -278,20 +283,15 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let static_file_provider = Self::upgrade_provider_to_strong_reference(&reader);
 
         let block_range = static_file_provider.find_fixed_range(segment, block);
-        let (jar, path) = match static_file_provider.get_segment_provider_for_block(
-            segment,
-            block_range.start(),
-            None,
-        ) {
-            Ok(provider) => (
-                NippyJar::load(provider.data_path()).map_err(ProviderError::other)?,
-                provider.data_path().into(),
-            ),
-            Err(ProviderError::MissingStaticFileBlock(_, _)) => {
+        let data_path = static_file_provider.jar_data_path(segment, &block_range);
+        let (jar, path) = match load_segment_nippy_jar_or_remove_incomplete(&data_path)
+            .map_err(ProviderError::other)?
+        {
+            Some(jar) => (jar, data_path),
+            None => {
                 let path = static_file_provider.directory().join(segment.filename(&block_range));
                 (create_jar(segment, &path, block_range), path)
             }
-            Err(err) => return Err(err),
         };
 
         let result = match NippyJarWriter::new(jar) {
@@ -1026,10 +1026,17 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         // Clear current changeset offset tracking since we're switching files
         self.current_changeset_offset = None;
 
-        NippyJar::<SegmentHeader>::load(&current_path)
-            .map_err(ProviderError::other)?
-            .delete()
-            .map_err(ProviderError::other)?;
+        if remove_incomplete_static_file_bundle(&current_path).map_err(ProviderError::other)? ||
+            current_path.exists() ||
+            current_path.with_extension(CONFIG_FILE_EXTENSION).exists()
+        {
+            match load_segment_nippy_jar_or_remove_incomplete(&current_path)
+                .map_err(ProviderError::other)?
+            {
+                Some(jar) => jar.delete().map_err(ProviderError::other)?,
+                None => {}
+            }
+        }
         Ok(())
     }
 
@@ -1409,7 +1416,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         to_delete: u64,
         last_block: BlockNumber,
     ) -> ProviderResult<()> {
-        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::TransactionSenders);
+        debug_assert_eq!(
+            self.writer.user_header().segment(),
+            StaticFileSegment::TransactionSenders
+        );
         self.queue_prune(PruneStrategy::TransactionSenders { num_rows: to_delete, last_block })
     }
 

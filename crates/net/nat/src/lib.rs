@@ -68,6 +68,78 @@ impl fmt::Display for NatEndpoint {
     }
 }
 
+/// Which address families should be announced after NAT resolution (FLOW-N01 / P2P-006).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnounceFamilies {
+    /// Announce IPv4 only.
+    V4Only,
+    /// Announce IPv6 only.
+    V6Only,
+    /// Announce both IPv4 and IPv6 when each family has an active listener.
+    DualStack,
+}
+
+/// Resolved dialable endpoints per address family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NatAnnounce {
+    /// IPv4 endpoint (discv4 + ENR `ip4`/`tcp4`/`udp4`).
+    pub ipv4: Option<NatEndpoint>,
+    /// IPv6 endpoint (ENR `ip6`/`tcp6`/`udp6`).
+    pub ipv6: Option<NatEndpoint>,
+}
+
+impl NatAnnounce {
+    /// Primary enode family: IPv4 when available, otherwise IPv6.
+    pub fn primary(&self) -> Option<NatEndpoint> {
+        self.ipv4.or(self.ipv6)
+    }
+
+    /// Whether any family was established via UPnP/IGD mapping.
+    pub fn via_upnp(&self) -> bool {
+        self.ipv4.is_some_and(|e| e.via_upnp) || self.ipv6.is_some_and(|e| e.via_upnp)
+    }
+}
+
+/// Derives announce families from the RLPx bind address and active discovery listeners.
+///
+/// * Concrete `--addr <ip>` → only that IP family.
+/// * Wildcard bind (`0.0.0.0` / `::`) with listeners on both families →
+///   [`AnnounceFamilies::DualStack`].
+/// * Wildcard with a single active family → that family only.
+pub fn announce_families(
+    listener_ip: IpAddr,
+    discovery_v4_addr: IpAddr,
+    discv5_ipv4_listen: bool,
+    discv5_ipv6_listen: bool,
+) -> AnnounceFamilies {
+    if !listener_ip.is_unspecified() {
+        return if listener_ip.is_ipv4() {
+            AnnounceFamilies::V4Only
+        } else {
+            AnnounceFamilies::V6Only
+        };
+    }
+
+    let v4_listen = listener_ip.is_ipv4() ||
+        discovery_v4_addr.is_ipv4() ||
+        discovery_v4_addr.is_unspecified() ||
+        discv5_ipv4_listen;
+    let v6_listen = listener_ip.is_ipv6() || discv5_ipv6_listen;
+
+    match (v4_listen, v6_listen) {
+        (true, true) => AnnounceFamilies::DualStack,
+        (true, false) => AnnounceFamilies::V4Only,
+        (false, true) => AnnounceFamilies::V6Only,
+        (false, false) => {
+            if listener_ip.is_ipv4() {
+                AnnounceFamilies::V4Only
+            } else {
+                AnnounceFamilies::V6Only
+            }
+        }
+    }
+}
+
 /// All builtin resolvers.
 #[derive(Debug, Clone, Eq, PartialEq, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(SerializeDisplay, DeserializeFromStr))]

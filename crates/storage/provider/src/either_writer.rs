@@ -123,9 +123,7 @@ impl<'a> EitherWriter<'a, (), ()> {
                 provider.get_static_file_writer(block_number, StaticFileSegment::Receipts)?,
             ))
         } else {
-            Ok(EitherWriter::Database(
-                provider.tx_ref().cursor_write::<tables::Receipts>()?,
-            ))
+            Ok(EitherWriter::Database(provider.tx_ref().cursor_write::<tables::Receipts>()?))
         }
     }
 
@@ -183,7 +181,8 @@ impl<'a> EitherWriter<'a, (), ()> {
     pub fn receipts_destination<P: DBProvider + StorageSettingsCache>(
         provider: &P,
     ) -> EitherWriterDestination {
-        let receipts_in_static_files = provider.cached_storage_settings().receipts_in_static_files();
+        let receipts_in_static_files =
+            provider.cached_storage_settings().receipts_in_static_files();
         let prune_modes = provider.prune_modes_ref();
 
         if !receipts_in_static_files && prune_modes.has_receipts_pruning() ||
@@ -1093,20 +1092,29 @@ where
                     for block in start..=static_end {
                         let block_changesets = provider.storage_block_changeset(block)?;
                         for changeset in block_changesets {
-                            changed_storages.entry(changeset.address).or_default().insert(changeset.key);
+                            changed_storages
+                                .entry(changeset.address)
+                                .or_default()
+                                .insert(changeset.key);
                         }
                     }
                 }
 
                 Ok(changed_storages)
             }
-            Self::Database(provider, _) => provider
-                .walk_range(BlockNumberAddress::range(range))?
-                .try_fold(BTreeMap::default(), |mut accounts: BTreeMap<Address, BTreeSet<B256>>, entry| {
-                    let (block_address, storage_entry) = entry?;
-                    accounts.entry(block_address.address()).or_default().insert(storage_entry.key);
-                    Ok(accounts)
-                }),
+            Self::Database(provider, _) => {
+                provider.walk_range(BlockNumberAddress::range(range))?.try_fold(
+                    BTreeMap::default(),
+                    |mut accounts: BTreeMap<Address, BTreeSet<B256>>, entry| {
+                        let (block_address, storage_entry) = entry?;
+                        accounts
+                            .entry(block_address.address())
+                            .or_default()
+                            .insert(storage_entry.key);
+                        Ok(accounts)
+                    },
+                )
+            }
             #[cfg(all(unix, feature = "rocksdb"))]
             Self::RocksDB(_) => Err(ProviderError::UnsupportedProvider),
         }
@@ -1186,7 +1194,8 @@ mod tests {
         ];
 
         for settings in [StorageSettings::v1(), StorageSettings::v2()] {
-            let transaction_senders_in_static_files = settings.transaction_senders_in_static_files();
+            let transaction_senders_in_static_files =
+                settings.transaction_senders_in_static_files();
             factory.set_storage_settings_cache(settings);
 
             let provider = factory.database_provider_rw().unwrap();
@@ -1535,24 +1544,14 @@ mod rocksdb_tests {
                     PhantomData,
                 );
             let mdbx_result = mdbx_reader
-                .account_history_info(
-                    address,
-                    query.block_number,
-                    query.lowest_available,
-                    u64::MAX,
-                )
+                .account_history_info(address, query.block_number, query.lowest_available, u64::MAX)
                 .unwrap();
 
             // RocksDB query via EitherReader
             let mut rocks_reader: EitherReader<'_, AccountsHistoryReadCursor, EthPrimitives> =
                 EitherReader::RocksDB(rocks_snapshot);
             let rocks_result = rocks_reader
-                .account_history_info(
-                    address,
-                    query.block_number,
-                    query.lowest_available,
-                    u64::MAX,
-                )
+                .account_history_info(address, query.block_number, query.lowest_available, u64::MAX)
                 .unwrap();
 
             // Assert both backends produce identical results

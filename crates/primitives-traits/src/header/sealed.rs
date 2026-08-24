@@ -1,5 +1,5 @@
 use super::{BlockHeader, Header};
-use crate::InMemorySize;
+use crate::{sync::OnceLock, InMemorySize, NodePrimitives};
 use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
 use alloy_primitives::{keccak256, BlockHash, Sealable};
 #[cfg(any(test, feature = "test-utils"))]
@@ -10,8 +10,6 @@ use core::mem;
 use derive_more::{AsRef, Deref};
 use reth_codecs::add_arbitrary_tests;
 use serde::{Deserialize, Serialize};
-use crate::sync::OnceLock;
-use crate::NodePrimitives;
 
 /// Sealed header type for a [`NodePrimitives`] implementation.
 pub type SealedHeaderFor<N> = SealedHeader<<N as NodePrimitives>::BlockHeader>;
@@ -277,10 +275,11 @@ pub(super) mod serde_bincode_compat {
         }
     }
 
-    impl<H: Sealable + SerdeBincodeCompat> SerializeAs<super::SealedHeader<H>>
-        for SealedHeader<'_, H>
-    {
-        fn serialize_as<S>(source: &super::SealedHeader<H>, serializer: S) -> Result<S::Ok, S::Error>
+    impl<H: Sealable + SerdeBincodeCompat> SerializeAs<super::SealedHeader<H>> for SealedHeader<'_, H> {
+        fn serialize_as<S>(
+            source: &super::SealedHeader<H>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {

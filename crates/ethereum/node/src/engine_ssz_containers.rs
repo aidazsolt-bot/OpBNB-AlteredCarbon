@@ -152,9 +152,9 @@ impl ssz::Encode for PayloadStatus {
     }
 
     fn ssz_bytes_len(&self) -> usize {
-        1 + ssz::BYTES_PER_LENGTH_OFFSET * 2
-            + self.latest_valid_hash.ssz_bytes_len()
-            + self.validation_error.ssz_bytes_len()
+        1 + ssz::BYTES_PER_LENGTH_OFFSET * 2 +
+            self.latest_valid_hash.ssz_bytes_len() +
+            self.validation_error.ssz_bytes_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
@@ -266,9 +266,9 @@ impl ssz::Encode for ForkchoiceUpdateResponse {
     }
 
     fn ssz_bytes_len(&self) -> usize {
-        ssz::BYTES_PER_LENGTH_OFFSET * 2
-            + self.payload_status.ssz_bytes_len()
-            + self.payload_id.ssz_bytes_len()
+        ssz::BYTES_PER_LENGTH_OFFSET * 2 +
+            self.payload_status.ssz_bytes_len() +
+            self.payload_id.ssz_bytes_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {

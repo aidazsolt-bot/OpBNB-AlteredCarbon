@@ -184,10 +184,7 @@ impl StaticFileSegment {
     /// Returns `true` if the segment is `StaticFileSegment::Receipts`,
     /// `StaticFileSegment::Transactions` or `StaticFileSegment::TransactionSenders`.
     pub const fn is_tx_based(&self) -> bool {
-        matches!(
-            self,
-            Self::Receipts | Self::Transactions | Self::TransactionSenders
-        )
+        matches!(self, Self::Receipts | Self::Transactions | Self::TransactionSenders)
     }
 
     /// Returns `true` if the segment is `StaticFileSegment::Sidecars`.
@@ -367,6 +364,17 @@ impl SegmentHeader {
         segment: StaticFileSegment,
     ) -> Self {
         Self { expected_block_range, block_range, tx_range, segment, changeset_offsets_len: 0 }
+    }
+
+    /// Builds a header from the pre-v2.4.1 on-disk layout (no `expected_block_range` field).
+    pub const fn from_legacy_fields(
+        block_range: Option<SegmentRangeInclusive>,
+        tx_range: Option<SegmentRangeInclusive>,
+        segment: StaticFileSegment,
+    ) -> Self {
+        let expected_block_range =
+            if let Some(range) = block_range { range } else { SegmentRangeInclusive::new(0, 0) };
+        Self::new(expected_block_range, block_range, tx_range, segment)
     }
 
     /// Returns the static file segment kind.
@@ -715,6 +723,19 @@ mod tests {
             let filename = segment.filename(&dummy_range);
             assert_eq!(Some((segment, dummy_range)), StaticFileSegment::parse_filename(&filename));
         }
+    }
+
+    #[test]
+    fn test_legacy_segment_header_from_fields() {
+        let header = SegmentHeader::from_legacy_fields(
+            Some(SegmentRangeInclusive::new(0, 499_999)),
+            None,
+            StaticFileSegment::Headers,
+        );
+        assert_eq!(header.block_range(), Some(&SegmentRangeInclusive::new(0, 499_999)));
+        assert_eq!(header.segment(), StaticFileSegment::Headers);
+        assert_eq!(header.expected_block_start(), 0);
+        assert_eq!(header.expected_block_end(), 499_999);
     }
 
     #[test]

@@ -633,24 +633,24 @@ fn validate_payload_attrs_version(
 ) -> Result<PayloadAttributes, &'static str> {
     let matches_version = match version {
         1 => {
-            attrs.withdrawals.is_none()
-                && attrs.parent_beacon_block_root.is_none()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_none() &&
+                attrs.parent_beacon_block_root.is_none() &&
+                attrs.slot_number.is_none()
         }
         2 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_none()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_none() &&
+                attrs.slot_number.is_none()
         }
         3 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_some()
-                && attrs.slot_number.is_none()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_some() &&
+                attrs.slot_number.is_none()
         }
         4 => {
-            attrs.withdrawals.is_some()
-                && attrs.parent_beacon_block_root.is_some()
-                && attrs.slot_number.is_some()
+            attrs.withdrawals.is_some() &&
+                attrs.parent_beacon_block_root.is_some() &&
+                attrs.slot_number.is_some()
         }
         _ => false,
     };

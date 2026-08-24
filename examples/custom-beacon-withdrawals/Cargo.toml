@@ -27,6 +27,3 @@ optimism = [
 	"reth-primitives/optimism",
 	"reth-chainspec/optimism"
 ]
-bsc = [
-  "reth-primitives/bsc"
-]

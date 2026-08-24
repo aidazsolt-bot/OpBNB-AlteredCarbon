@@ -60,13 +60,12 @@ pub async fn map_ports(
     listen_udp_port: u16,
     preferred_port: u16,
 ) -> Result<(NatEndpoint, MappedGateway), UpnpMapError> {
-    let gateway =
-        search_gateway(SearchOptions {
-            timeout: Some(SEARCH_TIMEOUT),
-            single_search_timeout: Some(Duration::from_secs(5)),
-            ..Default::default()
-        })
-        .await?;
+    let gateway = search_gateway(SearchOptions {
+        timeout: Some(SEARCH_TIMEOUT),
+        single_search_timeout: Some(Duration::from_secs(5)),
+        ..Default::default()
+    })
+    .await?;
 
     let external_ip =
         gateway.get_external_ip().await.map_err(|e| UpnpMapError::ExternalIp(e.to_string()))?;
@@ -156,17 +155,18 @@ impl MappedGateway {
 }
 
 /// Map a single UDP listen port (e.g. discv5) without deleting foreign mappings.
-pub async fn map_udp_port(listen_udp_port: u16, preferred: u16) -> Result<(IpAddr, u16), UpnpMapError> {
+pub async fn map_udp_port(
+    listen_udp_port: u16,
+    preferred: u16,
+) -> Result<(IpAddr, u16), UpnpMapError> {
     let gateway = search_gateway(SearchOptions {
         timeout: Some(SEARCH_TIMEOUT),
         single_search_timeout: Some(Duration::from_secs(5)),
         ..Default::default()
     })
     .await?;
-    let external_ip = gateway
-        .get_external_ip()
-        .await
-        .map_err(|e| UpnpMapError::ExternalIp(e.to_string()))?;
+    let external_ip =
+        gateway.get_external_ip().await.map_err(|e| UpnpMapError::ExternalIp(e.to_string()))?;
     let local_ip = local_ip_toward(gateway.addr).ok_or(UpnpMapError::LocalAddr)?;
     let udp_local = SocketAddr::new(local_ip, listen_udp_port);
     let udp_ext = map_one(&gateway, PortMappingProtocol::UDP, preferred, udp_local, UDP_DESC)

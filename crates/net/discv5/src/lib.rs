@@ -481,9 +481,9 @@ pub struct DiscoveredPeer {
 /// # [`IpMode`] behaviour
 ///
 /// - [`IpMode::Ip4`]: dial IPv4 only (`tcp4`, else UDP-port fallback).
-/// - [`IpMode::Ip6`] / [`IpMode::DualStack`]: prefer the reachable family's TCP; if missing,
-///   switch to the other family's `ip`+`tcp` when advertised; else use the other family's TCP
-///   on the reachable IP (dual-bound hosts); else UDP-port fallback (geth same-port compat).
+/// - [`IpMode::Ip6`] / [`IpMode::DualStack`]: prefer the reachable family's TCP; if missing, switch
+///   to the other family's `ip`+`tcp` when advertised; else use the other family's TCP on the
+///   reachable IP (dual-bound hosts); else UDP-port fallback (geth same-port compat).
 pub fn select_rlpx_dial_target(
     enr: &discv5::Enr,
     reachable: SocketAddr,
@@ -985,10 +985,7 @@ mod test {
         let enr = Enr::builder().tcp4(TCP).tcp6(30304).build(&key).unwrap();
         let reachable = "1.2.3.4:30304".parse().unwrap();
 
-        assert_eq!(
-            select_rlpx_dial_target(&enr, reachable, IpMode::Ip4),
-            (reachable.ip(), TCP)
-        );
+        assert_eq!(select_rlpx_dial_target(&enr, reachable, IpMode::Ip4), (reachable.ip(), TCP));
     }
 
     #[test]
@@ -1041,7 +1038,8 @@ mod test {
     #[test]
     fn select_rlpx_dial_target_udp_fallback_when_no_tcp() {
         let key = CombinedKey::generate_secp256k1();
-        let enr = Enr::builder().ip4(Ipv4Addr::new(83, 229, 71, 210)).udp4(9000).build(&key).unwrap();
+        let enr =
+            Enr::builder().ip4(Ipv4Addr::new(83, 229, 71, 210)).udp4(9000).build(&key).unwrap();
         let reachable = "[2a06:c5c0:900:15::10]:9000".parse().unwrap();
 
         assert_eq!(

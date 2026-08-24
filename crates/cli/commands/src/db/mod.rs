@@ -210,9 +210,13 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
                 println!("{}", db_path.display());
             }
             Subcommands::Settings(command) => {
-                db_exec!(self.env, tool, N, command.access_rights(), {
-                    command.execute(&tool)?;
-                });
+                if command.is_get() {
+                    settings::Command::execute_get_db_only(&db_path, &self.env.db)?;
+                } else {
+                    db_exec!(self.env, tool, N, command.access_rights(), {
+                        command.execute(&tool)?;
+                    });
+                }
             }
             Subcommands::PruneCheckpoints(command) => {
                 db_exec!(self.env, tool, N, command.access_rights(), {

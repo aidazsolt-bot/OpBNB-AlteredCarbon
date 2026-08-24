@@ -403,10 +403,12 @@ where
 
         // prepare execution output for writing
         let time = Instant::now();
-        let mut state = ExecutionOutcome::from_blocks(
+        let snapshots = executor.take_parlia_snapshots();
+        let mut state = ExecutionOutcome::from_blocks_with_snapshots(
             start_block,
             executor.into_state().take_bundle(),
             results,
+            snapshots,
         );
         let write_preparation_duration = time.elapsed();
 

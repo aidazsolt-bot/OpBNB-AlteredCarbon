@@ -47,7 +47,7 @@ mod tests {
     use metrics_exporter_prometheus::PrometheusBuilder;
     use reth_chainspec::{ChainHardforks, EthereumHardfork, ForkCondition, Hardfork};
     use reth_node_metrics::recorder::try_install_prometheus_recorder_with_builder;
-    use reth_optimism_chainspec::{OP_DEV, OpChainSpecBuilder, OpHardfork};
+    use reth_optimism_chainspec::{OpChainSpecBuilder, OpHardfork, OP_DEV};
 
     #[test]
     fn registers_only_l2_hardfork_activation_metrics() {

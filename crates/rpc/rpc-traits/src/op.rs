@@ -4,8 +4,8 @@ use alloy_consensus::SignableTransaction;
 use alloy_primitives::{Address, Signature};
 use core::convert::Infallible;
 use op_alloy_consensus::{
-    OpTxEnvelope, TxDeposit,
     transaction::{OpTransaction, OpTransactionInfo},
+    OpTxEnvelope, TxDeposit,
 };
 use op_alloy_rpc_types::OpTransactionRequest;
 

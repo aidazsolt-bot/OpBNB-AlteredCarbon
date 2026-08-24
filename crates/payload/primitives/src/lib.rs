@@ -162,12 +162,12 @@ pub fn validate_payload_timestamp(
 
     // Staggered endpoint upgrades must reject Amsterdam payloads until the Amsterdam-specific
     // method version is used.
-    if is_amsterdam
-        && matches!(
+    if is_amsterdam &&
+        matches!(
             (version, kind),
-            (EngineApiMessageVersion::V3, MessageValidationKind::PayloadAttributes)
-                | (EngineApiMessageVersion::V4, MessageValidationKind::Payload)
-                | (EngineApiMessageVersion::V5, MessageValidationKind::GetPayload)
+            (EngineApiMessageVersion::V3, MessageValidationKind::PayloadAttributes) |
+                (EngineApiMessageVersion::V4, MessageValidationKind::Payload) |
+                (EngineApiMessageVersion::V5, MessageValidationKind::GetPayload)
         )
     {
         return Err(EngineObjectValidationError::UnsupportedFork);
@@ -205,10 +205,10 @@ pub fn validate_block_access_list_presence<T: EthereumHardforks>(
 ) -> Result<(), EngineObjectValidationError> {
     let is_amsterdam_active = chain_spec.is_amsterdam_active_at_timestamp(timestamp);
     match version {
-        EngineApiMessageVersion::V1
-        | EngineApiMessageVersion::V2
-        | EngineApiMessageVersion::V3
-        | EngineApiMessageVersion::V4 => {
+        EngineApiMessageVersion::V1 |
+        EngineApiMessageVersion::V2 |
+        EngineApiMessageVersion::V3 |
+        EngineApiMessageVersion::V4 => {
             if has_block_access_list {
                 return Err(message_validation_kind
                     .to_error(VersionSpecificValidationError::BlockAccessListNotSupported));
@@ -332,11 +332,11 @@ pub fn validate_withdrawals_presence<T: EthereumHardforks>(
                     .to_error(VersionSpecificValidationError::WithdrawalsNotSupportedInV1));
             }
         }
-        EngineApiMessageVersion::V2
-        | EngineApiMessageVersion::V3
-        | EngineApiMessageVersion::V4
-        | EngineApiMessageVersion::V5
-        | EngineApiMessageVersion::V6 => {
+        EngineApiMessageVersion::V2 |
+        EngineApiMessageVersion::V3 |
+        EngineApiMessageVersion::V4 |
+        EngineApiMessageVersion::V5 |
+        EngineApiMessageVersion::V6 => {
             if is_shanghai_active && !has_withdrawals {
                 return Err(message_validation_kind
                     .to_error(VersionSpecificValidationError::NoWithdrawalsPostShanghai));
@@ -437,10 +437,10 @@ pub fn validate_parent_beacon_block_root_presence<T: EthereumHardforks>(
                 ));
             }
         }
-        EngineApiMessageVersion::V3
-        | EngineApiMessageVersion::V4
-        | EngineApiMessageVersion::V5
-        | EngineApiMessageVersion::V6 => {
+        EngineApiMessageVersion::V3 |
+        EngineApiMessageVersion::V4 |
+        EngineApiMessageVersion::V5 |
+        EngineApiMessageVersion::V6 => {
             if !has_parent_beacon_block_root {
                 return Err(validation_kind
                     .to_error(VersionSpecificValidationError::NoParentBeaconBlockRootPostCancun));

@@ -1410,10 +1410,16 @@ where
             .state
             .buffer
             .block(&state.head_block_hash)
-            .or_else(|| self.state.buffer.lowest_ancestor(&state.head_block_hash))
-            && self.exceeds_backfill_run_threshold(local_tip, buffered.number())
+            .or_else(|| self.state.buffer.lowest_ancestor(&state.head_block_hash)) &&
+            self.exceeds_backfill_run_threshold(local_tip, buffered.number())
         {
-            let backfill_hash = self.backfill_target_hash(state);
+            // Parlia / optimistic-sync FCUs use zero finalized. Match
+            // `backfill_sync_target`'s head fallback so pipeline backfill can start
+            // once the FCU head is buffered via `newPayload`.
+            let mut backfill_hash = self.backfill_target_hash(state);
+            if backfill_hash.is_zero() && state.finalized_block_hash.is_zero() {
+                backfill_hash = state.head_block_hash;
+            }
             if !backfill_hash.is_zero() {
                 // Prefer the backfill tip header (often the FCU head itself) so Headers stage does
                 // not depend on P2P tip fetch for a hash peers may not serve yet.

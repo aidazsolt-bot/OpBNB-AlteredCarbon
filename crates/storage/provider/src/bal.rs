@@ -1,5 +1,4 @@
-use alloy_eips::eip7928::BAL_RETENTION_PERIOD_SLOTS;
-use alloy_eips::NumHash;
+use alloy_eips::{eip7928::BAL_RETENTION_PERIOD_SLOTS, NumHash};
 use alloy_primitives::{BlockHash, BlockNumber, Bytes};
 use parking_lot::RwLock;
 use reth_prune_types::PruneMode;

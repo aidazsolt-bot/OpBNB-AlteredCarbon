@@ -62,8 +62,9 @@ impl<Provider> Stage<Provider> for SenderRecoveryStage
 where
     Provider: DBProvider<Tx: DbTxMut>
         + BlockReader
-        + StaticFileProviderFactory<Primitives: NodePrimitives<SignedTx: Value + SignedTransaction + SignerRecoverable>>
-        + StatsReader
+        + StaticFileProviderFactory<
+            Primitives: NodePrimitives<SignedTx: Value + SignedTransaction + SignerRecoverable>,
+        > + StatsReader
         + PruneCheckpointReader
         + StorageSettingsCache,
 {
@@ -283,7 +284,9 @@ fn setup_range_recovery<Provider>(
 where
     Provider: DBProvider
         + HeaderProvider
-        + StaticFileProviderFactory<Primitives: NodePrimitives<SignedTx: Value + SignedTransaction + SignerRecoverable>>,
+        + StaticFileProviderFactory<
+            Primitives: NodePrimitives<SignedTx: Value + SignedTransaction + SignerRecoverable>,
+        >,
 {
     let (tx_sender, tx_receiver) = mpsc::channel::<Vec<(Range<u64>, RecoveryResultSender)>>();
     let static_file_provider = provider.static_file_provider();

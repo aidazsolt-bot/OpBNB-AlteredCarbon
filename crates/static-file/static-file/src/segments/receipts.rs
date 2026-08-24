@@ -45,9 +45,8 @@ where
                 // SAFETY: `tables::Receipts` stores `reth_ethereum_primitives::Receipt` and all
                 // node implementations in this repository use the same type for
                 // `NodePrimitives::Receipt`.
-                let receipt: <Provider::Primitives as NodePrimitives>::Receipt = unsafe {
-                    std::mem::transmute_copy(&stored_receipt)
-                };
+                let receipt: <Provider::Primitives as NodePrimitives>::Receipt =
+                    unsafe { std::mem::transmute_copy(&stored_receipt) };
                 static_file_writer.append_receipt(tx_num, &receipt)?;
             }
         }

@@ -9,7 +9,10 @@ use crate::{
     Block, BlockBody, InMemorySize, SealedHeader,
 };
 use alloc::vec::Vec;
-use alloy_consensus::{transaction::{TransactionMeta, TxHashRef}, BlockHeader as _};
+use alloy_consensus::{
+    transaction::{TransactionMeta, TxHashRef},
+    BlockHeader as _,
+};
 use alloy_eips::{eip1898::BlockWithParent, BlockNumHash};
 use alloy_primitives::{Address, BlockHash, Sealed, TxHash, B256};
 use derive_more::Deref;

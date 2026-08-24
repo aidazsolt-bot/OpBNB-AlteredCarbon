@@ -1,10 +1,10 @@
 //! Loads and formats OP receipt RPC response.
 
-use crate::{OpEthApi, OpEthApiError, eth::RpcNodeCore};
+use crate::{eth::RpcNodeCore, OpEthApi, OpEthApiError};
 use alloy_consensus::{BlockHeader, Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_eips::eip2718::Encodable2718;
 use alloy_rpc_types_eth::{Log, TransactionReceipt};
-use op_alloy_consensus::{OpReceipt, OpTransaction, parse_post_exec_payload_from_transactions};
+use op_alloy_consensus::{parse_post_exec_payload_from_transactions, OpReceipt, OpTransaction};
 use op_alloy_rpc_types::{L1BlockInfo, OpTransactionReceipt, OpTransactionReceiptFields};
 use op_revm::estimate_tx_compressed_size;
 use reth_chainspec::{ChainSpecProvider, EthChainSpec};
@@ -13,11 +13,11 @@ use reth_optimism_evm::RethL1BlockInfo;
 use reth_optimism_forks::OpHardforks;
 use reth_primitives_traits::{BlockBody, SealedBlock};
 use reth_rpc_eth_api::{
-    RpcConvert,
     helpers::LoadReceipt,
     transaction::{ConvertReceiptInput, ReceiptConverter},
+    RpcConvert,
 };
-use reth_rpc_eth_types::{EthApiError, receipt::build_receipt};
+use reth_rpc_eth_types::{receipt::build_receipt, EthApiError};
 use reth_storage_api::BlockReader;
 use std::fmt::Debug;
 
@@ -370,17 +370,17 @@ impl OpReceiptBuilder {
 mod test {
     use super::*;
     use alloy_consensus::{
-        Block, BlockBody, Eip658Value, Header, Receipt, Sealable, SignableTransaction, TxEip7702,
-        transaction::TransactionMeta,
+        transaction::TransactionMeta, Block, BlockBody, Eip658Value, Header, Receipt, Sealable,
+        SignableTransaction, TxEip7702,
     };
     use alloy_genesis::Genesis;
     use alloy_op_hardforks::{
-        OP_MAINNET_ISTHMUS_TIMESTAMP, OP_MAINNET_JOVIAN_TIMESTAMP, OpChainHardforks,
+        OpChainHardforks, OP_MAINNET_ISTHMUS_TIMESTAMP, OP_MAINNET_JOVIAN_TIMESTAMP,
     };
-    use alloy_primitives::{Address, Bytes, Signature, U256, hex};
-    use op_alloy_consensus::{OpTypedTransaction, SDMGasEntry, build_post_exec_tx};
+    use alloy_primitives::{hex, Address, Bytes, Signature, U256};
+    use op_alloy_consensus::{build_post_exec_tx, OpTypedTransaction, SDMGasEntry};
     use op_alloy_network::eip2718::Decodable2718;
-    use reth_optimism_chainspec::{OP_MAINNET, OpChainSpecBuilder};
+    use reth_optimism_chainspec::{OpChainSpecBuilder, OP_MAINNET};
     use reth_optimism_primitives::{OpPrimitives, OpTransactionSigned};
     use reth_primitives_traits::{Recovered, SealedBlock};
     use std::sync::Arc;

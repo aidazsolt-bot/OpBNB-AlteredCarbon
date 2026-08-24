@@ -6,8 +6,8 @@ use reth_errors::ProviderError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::{FastInstant as Instant, NodePrimitives};
 use reth_provider::{
-    providers::ProviderNodeTypes, BlockExecutionWriter, BlockHashReader,
-    ChainStateBlockWriter, DBProvider, DatabaseProviderFactory, ProviderFactory, SaveBlocksMode,
+    providers::ProviderNodeTypes, BlockExecutionWriter, BlockHashReader, ChainStateBlockWriter,
+    DBProvider, DatabaseProviderFactory, ProviderFactory, SaveBlocksMode,
 };
 use reth_prune::{PrunerError, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -281,12 +281,7 @@ impl<T: NodePrimitives> PersistenceHandle<T> {
     where
         N: ProviderNodeTypes,
     {
-        Self::spawn_service_with_state_cache(
-            provider_factory,
-            pruner,
-            sync_metrics_tx,
-            false,
-        )
+        Self::spawn_service_with_state_cache(provider_factory, pruner, sync_metrics_tx, false)
     }
 
     /// Like [`Self::spawn_service`] but allows enabling the BSC plain-state cache.

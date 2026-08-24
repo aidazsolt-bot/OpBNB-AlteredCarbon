@@ -1,34 +1,34 @@
 use crate::{
-    PendingFlashBlock,
     pending_state::PendingBlockState,
     tx_cache::{CachedExecutionMeta, TransactionCache},
+    PendingFlashBlock,
 };
-use alloy_eips::{BlockNumberOrTag, eip2718::WithEncoded};
+use alloy_eips::{eip2718::WithEncoded, BlockNumberOrTag};
 use alloy_primitives::B256;
 use op_alloy_rpc_types_engine::OpFlashblockPayloadBase;
 use reth_chain_state::ExecutedBlock;
 use reth_errors::RethError;
 use reth_evm::{
-    ConfigureEvm, Evm,
     execute::{
         BlockAssembler, BlockAssemblerInput, BlockBuilder, BlockBuilderOutcome, BlockExecutor,
     },
+    ConfigureEvm, Evm,
 };
 use reth_execution_types::{BlockExecutionOutput, BlockExecutionResult};
 use reth_optimism_primitives::OpReceipt;
 use reth_primitives_traits::{
-    AlloyBlockHeader, BlockTy, HeaderTy, NodePrimitives, ReceiptTy, Recovered, RecoveredBlock,
-    SealedHeader, transaction::TxHashRef,
+    transaction::TxHashRef, AlloyBlockHeader, BlockTy, HeaderTy, NodePrimitives, ReceiptTy,
+    Recovered, RecoveredBlock, SealedHeader,
 };
 use reth_revm::{
     cached::CachedReads,
     database::StateProviderDatabase,
-    db::{BundleState, State, states::bundle_state::BundleRetention},
+    db::{states::bundle_state::BundleRetention, BundleState, State},
 };
 use reth_rpc_eth_types::{EthApiError, PendingBlock};
 use reth_storage_api::{
-    BlockReaderIdExt, HashedPostStateProvider, StateProviderFactory, StateRootProvider,
-    noop::NoopProvider,
+    noop::NoopProvider, BlockReaderIdExt, HashedPostStateProvider, StateProviderFactory,
+    StateRootProvider,
 };
 use reth_trie_common::ComputedTrieData;
 use std::{
@@ -493,12 +493,12 @@ impl<EvmConfig: Clone, Provider: Clone> Clone for FlashBlockBuilder<EvmConfig, P
 
 #[cfg(test)]
 mod tests {
-    use super::{BuildArgs, FlashBlockBuilder, is_consistent_speculative_parent_hashes};
-    use crate::{TransactionCache, tx_cache::CachedExecutionMeta};
+    use super::{is_consistent_speculative_parent_hashes, BuildArgs, FlashBlockBuilder};
+    use crate::{tx_cache::CachedExecutionMeta, TransactionCache};
     use alloy_consensus::{SignableTransaction, TxEip1559};
     use alloy_eips::eip2718::Encodable2718;
     use alloy_network::TxSignerSync;
-    use alloy_primitives::{Address, B256, StorageKey, StorageValue, TxKind, U256};
+    use alloy_primitives::{Address, StorageKey, StorageValue, TxKind, B256, U256};
     use alloy_signer_local::PrivateKeySigner;
     use op_alloy_rpc_types_engine::OpFlashblockPayloadBase;
     use op_revm::constants::L1_BLOCK_CONTRACT;

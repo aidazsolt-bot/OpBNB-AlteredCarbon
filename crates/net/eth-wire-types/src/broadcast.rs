@@ -17,8 +17,9 @@ use core::{fmt::Debug, mem};
 use derive_more::{Constructor, Deref, DerefMut, From, IntoIterator};
 use reth_codecs_derive::{add_arbitrary_tests, generate_tests};
 use reth_ethereum_primitives::TransactionSigned;
-use reth_primitives_traits::BlobSidecars;
-use reth_primitives_traits::{sync::OnceLock, Block, InMemorySize, SignedTransaction};
+use reth_primitives_traits::{
+    sync::OnceLock, BlobSidecars, Block, InMemorySize, SignedTransaction,
+};
 
 /// Soft limit for the number of hashes in a
 /// [`NewPooledTransactionHashes`] broadcast message.
@@ -890,10 +891,10 @@ impl NewPooledTransactionHashes72 {
     }
 
     fn payload_length(&self) -> usize {
-        self.types.as_slice().length()
-            + self.sizes.length()
-            + self.hashes.length()
-            + self.cell_mask.as_ref().map_or(1, Encodable::length)
+        self.types.as_slice().length() +
+            self.sizes.length() +
+            self.hashes.length() +
+            self.cell_mask.as_ref().map_or(1, Encodable::length)
     }
 }
 
@@ -1339,15 +1340,15 @@ impl InMemorySize for NewPooledTransactionHashes {
         match self {
             Self::Eth66(msg) => msg.0.len() * core::mem::size_of::<B256>(),
             Self::Eth68(msg) => {
-                msg.types.len() * core::mem::size_of::<u8>()
-                    + msg.sizes.len() * core::mem::size_of::<usize>()
-                    + msg.hashes.len() * core::mem::size_of::<B256>()
+                msg.types.len() * core::mem::size_of::<u8>() +
+                    msg.sizes.len() * core::mem::size_of::<usize>() +
+                    msg.hashes.len() * core::mem::size_of::<B256>()
             }
             Self::Eth72(msg) => {
-                msg.types.len() * core::mem::size_of::<u8>()
-                    + msg.sizes.len() * core::mem::size_of::<usize>()
-                    + msg.hashes.len() * core::mem::size_of::<B256>()
-                    + core::mem::size_of::<B128>()
+                msg.types.len() * core::mem::size_of::<u8>() +
+                    msg.sizes.len() * core::mem::size_of::<usize>() +
+                    msg.hashes.len() * core::mem::size_of::<B256>() +
+                    core::mem::size_of::<B128>()
             }
         }
     }

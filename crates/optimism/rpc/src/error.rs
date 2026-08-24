@@ -3,7 +3,7 @@
 use alloy_json_rpc::ErrorPayload;
 use alloy_op_evm::OpTxError;
 use alloy_primitives::Bytes;
-use alloy_rpc_types_eth::{BlockError, error::EthRpcErrorCode};
+use alloy_rpc_types_eth::{error::EthRpcErrorCode, BlockError};
 use alloy_transport::{RpcError, TransportErrorKind};
 use jsonrpsee_types::error::{INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE};
 use op_alloy_consensus::PostExecPayloadValidationError;
@@ -12,8 +12,8 @@ use reth_evm::execute::ProviderError;
 use reth_optimism_evm::OpBlockExecutionError;
 use reth_rpc_eth_api::{AsEthApiError, EthTxEnvError, TransactionConversionError};
 use reth_rpc_eth_types::{
-    EthApiError,
     error::api::{FromEvmHalt, FromRevert},
+    EthApiError,
 };
 use reth_rpc_server_types::result::{internal_rpc_err, rpc_err};
 use revm::context_interface::result::{EVMError, InvalidTransaction};

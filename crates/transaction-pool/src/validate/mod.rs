@@ -480,10 +480,10 @@ impl<T: PoolTransaction> ValidPoolTransaction<T> {
             maybe_replacement.transaction.max_priority_fee_per_gas().unwrap_or_default();
 
         // Check max priority fee per gas (relevant for EIP-1559 transactions only)
-        if existing_max_priority_fee_per_gas != 0
-            && replacement_max_priority_fee_per_gas != 0
-            && replacement_max_priority_fee_per_gas
-                < required_bumped_fee(existing_max_priority_fee_per_gas)
+        if existing_max_priority_fee_per_gas != 0 &&
+            replacement_max_priority_fee_per_gas != 0 &&
+            replacement_max_priority_fee_per_gas <
+                required_bumped_fee(existing_max_priority_fee_per_gas)
         {
             return true;
         }

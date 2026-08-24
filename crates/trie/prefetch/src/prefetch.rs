@@ -4,7 +4,6 @@ use alloy_primitives::B256;
 use dashmap::DashMap;
 use rayon::prelude::*;
 use reth_execution_errors::StorageRootError;
-use revm::state::EvmState;
 use reth_provider::{
     providers::ConsistentDbView, BlockReader, DBProvider, DatabaseProviderFactory, ProviderError,
 };
@@ -20,6 +19,7 @@ use reth_trie::{
 };
 use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, LegacyKeyAdapter};
 use reth_trie_parallel::StorageRootTargets;
+use revm::state::EvmState;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc::UnboundedReceiver, oneshot::Receiver, Mutex},
@@ -117,7 +117,8 @@ impl TriePrefetch {
 
     /// Deduplicate `hashed_state` based on `cached` and update `cached`.
     fn deduplicate_and_update_cached(&mut self, state: EvmState) -> HashedPostState {
-        let hashed_state = reth_trie_parallel::state_root_task::evm_state_to_hashed_post_state(state);
+        let hashed_state =
+            reth_trie_parallel::state_root_task::evm_state_to_hashed_post_state(state);
         let mut new_hashed_state = HashedPostState::default();
 
         // deduplicate accounts if their keys are not present in storages
@@ -276,7 +277,8 @@ impl TriePrefetch {
             .into_par_iter()
             .map(|(hashed_address, prefix_set)| {
                 let provider_ro = consistent_view.provider_ro()?;
-                let trie_cursor_factory = DatabaseTrieCursorFactory::<_, LegacyKeyAdapter>::new(provider_ro.tx_ref());
+                let trie_cursor_factory =
+                    DatabaseTrieCursorFactory::<_, LegacyKeyAdapter>::new(provider_ro.tx_ref());
                 let hashed_cursor_factory = HashedPostStateCursorFactory::new(
                     DatabaseHashedCursorFactory::new(provider_ro.tx_ref()),
                     &hashed_state_sorted,
@@ -290,7 +292,9 @@ impl TriePrefetch {
                 )
                 .root();
 
-                Ok::<_, TriePrefetchError>(storage_root_result.map_err(TriePrefetchError::StorageRoot)?)
+                Ok::<_, TriePrefetchError>(
+                    storage_root_result.map_err(TriePrefetchError::StorageRoot)?,
+                )
             })
             .collect::<Result<Vec<_>, TriePrefetchError>>()?;
 

@@ -327,6 +327,11 @@ where
         Self { to_engine }
     }
 
+    /// Returns a clone of the engine message sender.
+    pub fn to_engine(&self) -> UnboundedSender<BeaconEngineMessage<Payload>> {
+        self.to_engine.clone()
+    }
+
     /// Sends a new payload message to the beacon consensus engine and waits for a response.
     ///
     /// See also <https://github.com/ethereum/execution-apis/blob/3d627c95a4d3510a8187dd02e0250ecb4331d27e/src/engine/shanghai.md#engine_newpayloadv2>

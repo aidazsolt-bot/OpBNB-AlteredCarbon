@@ -28,7 +28,7 @@ use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::{
-    BlockBodyIndicesProvider, BalProvider, BalStoreHandle, NodePrimitivesProvider,
+    BalProvider, BalStoreHandle, BlockBodyIndicesProvider, NodePrimitivesProvider,
     StorageChangeSetReader,
 };
 use reth_storage_errors::provider::ProviderResult;
@@ -633,10 +633,7 @@ impl<N: ProviderNodeTypes> StateProviderFactory for BlockchainProvider<N> {
 }
 
 impl<N: NodeTypesWithDB> HashedPostStateProvider for BlockchainProvider<N> {
-    fn hashed_post_state(
-        &self,
-        bundle_state: &BundleState,
-    ) -> HashedPostState {
+    fn hashed_post_state(&self, bundle_state: &BundleState) -> HashedPostState {
         HashedPostState::from_bundle_state::<KeccakKeyHasher>(bundle_state.state())
     }
 }
