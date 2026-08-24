@@ -68,7 +68,7 @@ where
     where
         C: ChainSpecParser<ChainSpec = ChainSpec>,
     {
-        let components = |spec: Arc<ChainSpec>| {
+        let components = |spec: Arc<ChainSpec>, _provider| {
             (EthEvmConfig::ethereum(spec.clone()), Arc::new(EthBeaconConsensus::new(spec)))
         };
 

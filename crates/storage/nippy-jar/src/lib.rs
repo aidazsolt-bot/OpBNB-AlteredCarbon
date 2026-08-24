@@ -34,6 +34,19 @@ use compression::Compressors;
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Functions {}
 
+/// On-disk layout for [`NippyJar`] configs written before `filter`/`phf` were skipped on serialize.
+#[derive(Deserialize)]
+struct NippyJarWithLegacyFields<H> {
+    version: usize,
+    user_header: H,
+    columns: usize,
+    rows: usize,
+    compressor: Option<Compressors>,
+    filter: Option<u32>,
+    phf: Option<u32>,
+    max_row_size: usize,
+}
+
 /// empty enum for backwards compatibility
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -195,6 +208,34 @@ impl<H: NippyJarHeader> NippyJar<H> {
         self.compressor.as_mut()
     }
 
+    /// Reconstructs a jar from on-disk fields (legacy loaders).
+    pub fn from_on_disk_parts(
+        version: usize,
+        user_header: H,
+        columns: usize,
+        rows: usize,
+        compressor: Option<Compressors>,
+        max_row_size: usize,
+    ) -> Self {
+        Self {
+            version,
+            user_header,
+            columns,
+            rows,
+            compressor,
+            filter: None,
+            phf: None,
+            max_row_size,
+            path: PathBuf::new(),
+        }
+    }
+
+    /// Sets the data file path for this jar.
+    pub fn with_data_path(mut self, path: PathBuf) -> Self {
+        self.path = path;
+        self
+    }
+
     /// Loads the file configuration and returns [`Self`].
     ///
     /// **The user must ensure the header type matches the one used during the jar's creation.**
@@ -213,8 +254,34 @@ impl<H: NippyJarHeader> NippyJar<H> {
     }
 
     /// Deserializes an instance of [`Self`] from a [`Read`] type.
-    pub fn load_from_reader<R: Read>(reader: R) -> Result<Self, NippyJarError> {
-        Ok(bincode::deserialize_from(reader)?)
+    pub fn load_from_reader<R: Read>(mut reader: R) -> Result<Self, NippyJarError> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map_err(|err| NippyJarError::Custom(err.to_string()))?;
+        Self::load_from_bytes(&bytes)
+    }
+
+    /// Deserializes an instance of [`Self`] from its on-disk bincode representation.
+    pub fn load_from_bytes(bytes: &[u8]) -> Result<Self, NippyJarError> {
+        if let Ok(jar) = bincode::deserialize::<Self>(bytes) {
+            return Ok(jar);
+        }
+
+        // Older jars included `filter` and `phf` fields before they were marked `serde(skip)`.
+        if let Ok(legacy) = bincode::deserialize::<NippyJarWithLegacyFields<H>>(bytes) {
+            return Ok(Self {
+                version: legacy.version,
+                user_header: legacy.user_header,
+                columns: legacy.columns,
+                rows: legacy.rows,
+                compressor: legacy.compressor,
+                filter: None,
+                phf: None,
+                max_row_size: legacy.max_row_size,
+                path: PathBuf::new(),
+            });
+        }
+
+        Err(bincode::deserialize::<Self>(bytes).unwrap_err().into())
     }
 
     /// Serializes an instance of [`Self`] to a [`Write`] type.
@@ -326,8 +393,8 @@ impl<H: NippyJarHeader> NippyJar<H> {
             return Err(NippyJarError::ColumnLenMismatch(self.columns, columns.len()));
         }
 
-        if let Some(compression) = &self.compressor
-            && !compression.is_ready()
+        if let Some(compression) = &self.compressor &&
+            !compression.is_ready()
         {
             return Err(NippyJarError::CompressorNotReady);
         }

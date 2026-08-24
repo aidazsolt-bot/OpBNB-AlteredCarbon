@@ -183,8 +183,8 @@ where
     ///
     /// Returns `None` if no more requests are required.
     fn next_request(&mut self) -> Option<HeadersRequest> {
-        if let Some(local_head) = self.local_block_number()
-            && self.next_request_block_number > local_head
+        if let Some(local_head) = self.local_block_number() &&
+            self.next_request_block_number > local_head
         {
             let request =
                 calc_next_request(local_head, self.next_request_block_number, self.request_limit);
@@ -452,7 +452,8 @@ where
 
                 trace!(target: "downloaders::headers", head=?self.local_block_number(), hash=?target.hash(), number=%target.number(), "Received sync target");
 
-                // If peers cannot cover the CL tip, work from max peer best instead (keep eventual tip).
+                // If peers cannot cover the CL tip, work from max peer best instead (keep eventual
+                // tip).
                 if self.should_cap_working_tip(target.number()) {
                     self.apply_working_tip_cap(target.hash(), target.number());
                     return Ok(());
@@ -618,8 +619,10 @@ where
             return;
         }
         if self.eventual_sync_target.is_none() {
-            self.eventual_sync_target =
-                Some(SyncTargetBlock::HashAndNumber { hash: eventual_hash, number: eventual_number });
+            self.eventual_sync_target = Some(SyncTargetBlock::HashAndNumber {
+                hash: eventual_hash,
+                number: eventual_number,
+            });
         }
         debug!(
             target: "downloaders::headers",
@@ -648,8 +651,8 @@ where
         let Some(current_tip) = self.sync_target.as_ref().and_then(|t| t.number()) else {
             return;
         };
-        if !self.should_cap_working_tip(current_tip)
-            && !self.should_cap_working_tip(self.next_request_block_number.saturating_add(1))
+        if !self.should_cap_working_tip(current_tip) &&
+            !self.should_cap_working_tip(self.next_request_block_number.saturating_add(1))
         {
             return;
         }
@@ -912,8 +915,7 @@ where
                     this.sync_target_retry = Some((retry_at, request));
                     return Poll::Pending;
                 }
-                this.sync_target_request =
-                    Some(this.request_fut(request, Priority::High));
+                this.sync_target_request = Some(this.request_fut(request, Priority::High));
             }
         }
 
@@ -1008,8 +1010,8 @@ where
 
             let concurrent_request_limit = this.concurrent_request_limit();
             // populate requests
-            while this.in_progress_queue.len() < concurrent_request_limit
-                && this.buffered_responses.len() < this.max_buffered_responses
+            while this.in_progress_queue.len() < concurrent_request_limit &&
+                this.buffered_responses.len() < this.max_buffered_responses
             {
                 if let Some(request) = this.next_request() {
                     trace!(

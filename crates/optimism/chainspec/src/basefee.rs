@@ -4,7 +4,7 @@ use core::cmp::max;
 
 use alloy_consensus::BlockHeader;
 use alloy_eips::calc_next_block_base_fee;
-use op_alloy_consensus::{EIP1559ParamError, decode_holocene_extra_data, decode_jovian_extra_data};
+use op_alloy_consensus::{decode_holocene_extra_data, decode_jovian_extra_data, EIP1559ParamError};
 use reth_chainspec::BaseFeeParams;
 
 /// Extracts the Holocene 1599 parameters from the encoded extra data from the parent header.
@@ -67,7 +67,7 @@ mod tests {
     use reth_chainspec::{ChainSpec, ForkCondition, Hardfork};
     use reth_optimism_forks::OpHardfork;
 
-    use crate::{OP_SEPOLIA, OpChainSpec};
+    use crate::{OpChainSpec, OP_SEPOLIA};
 
     use super::*;
 

@@ -46,10 +46,8 @@ fn build_overlay(spec: OpSpecId, flags: OpBnbPrecompileFlags) -> Precompiles {
         // `validatorSetChanged` (BSC Hertz semantics). There is no opBNB "before Hertz"
         // map — injecting BEFORE_HERTZ forced `false` and skipped IBC validator-set
         // SSTOREs → under-gas receipts (FLOW-X04 / PIPE-014 @ 21591154 tx#10).
-        precompiles.extend([
-            bls::BLS_SIGNATURE_VALIDATION,
-            cometbft::COMETBFT_LIGHT_BLOCK_VALIDATION,
-        ]);
+        precompiles
+            .extend([bls::BLS_SIGNATURE_VALIDATION, cometbft::COMETBFT_LIGHT_BLOCK_VALIDATION]);
     }
     if flags.haber_p256 {
         precompiles.extend([secp256r1::P256VERIFY]);

@@ -20,10 +20,10 @@ use serde::{de::DeserializeOwned, Serialize};
 // Re-export [`ExecutionPayload`] moved to `reth_payload_primitives`
 #[cfg(feature = "std")]
 pub use reth_evm::{ConfigureEngineEvm, ConvertTx, ExecutableTxIterator, ExecutableTxTuple};
-pub use reth_payload_primitives::ExecutionPayload;
 pub use reth_payload_primitives::{
-    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
-    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
+    EngineApiMessageVersion, EngineObjectValidationError, ExecutionPayload,
+    InvalidPayloadAttributesError, NewPayloadError, PayloadAttributes, PayloadOrAttributes,
+    PayloadTypes,
 };
 
 mod error;

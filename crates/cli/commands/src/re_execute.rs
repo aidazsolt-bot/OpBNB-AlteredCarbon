@@ -6,8 +6,8 @@
 //! checkpoint (PlainState tip) — see `DatabaseProvider::try_into_history_at_block`.
 
 use crate::common::{
-    AccessRights, CliComponentsBuilder, CliNodeComponents, CliNodeTypes, Environment,
-    EnvironmentArgs,
+    AccessRights, BlockchainProviderFor, CliComponentsBuilder, CliNodeComponents, CliNodeTypes,
+    Environment, EnvironmentArgs,
 };
 use alloy_consensus::{transaction::TxHashRef, BlockHeader, TxReceipt};
 use clap::Parser;
@@ -82,7 +82,9 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     {
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
 
-        let components = components(provider_factory.chain_spec());
+        let blockchain =
+            reth_provider::providers::BlockchainProvider::new(provider_factory.clone())?;
+        let components = components(provider_factory.chain_spec(), blockchain);
 
         let min_block = self.from;
         let provider_ro = DatabaseProviderFactory::database_provider_ro(&provider_factory)?;
@@ -377,7 +379,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     }
 }
 
-/// Compact receipt rows for FLOW-X04 public-RPC diffs (`files/harness-receipt-diff-*/diff_receipts.py`).
+/// Compact receipt rows for FLOW-X04 public-RPC diffs
+/// (`files/harness-receipt-diff-*/diff_receipts.py`).
 fn dump_executed_receipts_summary<B, R>(
     path: &std::path::Path,
     block: &reth_primitives_traits::RecoveredBlock<B>,

@@ -12,8 +12,6 @@ use crate::{
     CanDisconnect, DisconnectReason, EthMessage, EthNetworkPrimitives, EthVersion, ProtocolMessage,
     UnifiedStatus,
 };
-#[cfg(feature = "bsc")]
-use crate::{UpgradeStatus, UpgradeStatusExtension};
 use alloy_primitives::bytes::{Bytes, BytesMut};
 use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
@@ -94,53 +92,6 @@ where
         let their_status =
             EthereumEthHandshake(&mut self.inner).eth_handshake(status, fork_filter).await?;
 
-        #[cfg(feature = "bsc")]
-        {
-            if status.version > EthVersion::Eth66 {
-                self.inner
-                    .send(
-                        alloy_rlp::encode(ProtocolMessage::from(EthMessage::<N>::UpgradeStatus(
-                            UpgradeStatus {
-                                extension: UpgradeStatusExtension {
-                                    disable_peer_tx_broadcast: false,
-                                },
-                            },
-                        )))
-                        .into(),
-                    )
-                    .await?;
-
-                let their_msg = match self.inner.next().await {
-                    Some(msg) => msg,
-                    None => {
-                        self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                        return Err(EthStreamError::EthHandshakeError(
-                            EthHandshakeError::NoResponse,
-                        ));
-                    }
-                }?;
-
-                let msg = match ProtocolMessage::decode_message(
-                    status.version,
-                    &mut their_msg.as_ref(),
-                ) {
-                    Ok(m) => m,
-                    Err(err) => {
-                        debug!("decode error in eth handshake: msg={their_msg:x}");
-                        self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                        return Err(EthStreamError::InvalidMessage(err));
-                    }
-                };
-
-                if !matches!(msg.message, EthMessage::<N>::UpgradeStatus(_)) {
-                    self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
-                    return Err(EthStreamError::EthHandshakeError(
-                        EthHandshakeError::NonStatusMessageInHandshake,
-                    ));
-                }
-            }
-        }
-
         // now we can create the `EthStream` because the peer has successfully completed
         // the handshake
         let stream = EthStream::new(status.version, self.inner);
@@ -199,9 +150,9 @@ where
             return Err(EthStreamError::MessageTooBig(bytes.len()));
         }
 
-        if self.reject_block_announcements
-            && let Some(&id) = bytes.first()
-            && (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
+        if self.reject_block_announcements &&
+            let Some(&id) = bytes.first() &&
+            (id == EthMessageID::NewBlock.to_u8() || id == EthMessageID::NewBlockHashes.to_u8())
         {
             return Err(EthStreamError::UnsupportedMessage { message_id: id });
         }
@@ -617,10 +568,7 @@ mod tests {
             assert!(matches!(
                 handshake_res,
                 Err(EthStreamError::EthHandshakeError(
-                    EthHandshakeError::EarliestBlockGreaterThanLatestBlock {
-                        got: 10,
-                        latest: 5
-                    }
+                    EthHandshakeError::EarliestBlockGreaterThanLatestBlock { got: 10, latest: 5 }
                 ))
             ));
         });
@@ -634,10 +582,7 @@ mod tests {
         assert!(matches!(
             handshake_res,
             Err(EthStreamError::EthHandshakeError(
-                EthHandshakeError::EarliestBlockGreaterThanLatestBlock {
-                    got: 10,
-                    latest: 5
-                }
+                EthHandshakeError::EarliestBlockGreaterThanLatestBlock { got: 10, latest: 5 }
             ))
         ));
 

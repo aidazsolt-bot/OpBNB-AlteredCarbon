@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use alloy_eips::BlockNumberOrTag;
-use alloy_primitives::{Address, B256, Bytes};
+use alloy_primitives::{Address, Bytes, B256};
 use serde::{Deserialize, Serialize};
 
 /// Single-block replay request, accepting either a block tag/number or a block hash.

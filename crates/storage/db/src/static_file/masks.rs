@@ -4,9 +4,7 @@ use crate::{
     HeaderTerminalDifficulties, RawValue, Transactions,
 };
 use alloy_primitives::{Address, BlockHash};
-use reth_db_api::table::Table;
-use reth_db_api::models::StorageBeforeTx;
-use reth_db_api::AccountChangeSets;
+use reth_db_api::{models::StorageBeforeTx, table::Table, AccountChangeSets};
 
 // HEADER MASKS
 add_static_file_mask! {

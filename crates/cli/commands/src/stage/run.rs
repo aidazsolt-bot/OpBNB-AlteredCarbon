@@ -2,7 +2,10 @@
 //!
 //! Stage debugging tool
 
-use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
+use crate::common::{
+    AccessRights, BlockchainProviderFor, CliNodeComponents, CliNodeTypes, Environment,
+    EnvironmentArgs,
+};
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::Sealable;
 use clap::Parser;
@@ -105,7 +108,7 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
         Comp: CliNodeComponents<N>,
-        F: FnOnce(Arc<C::ChainSpec>) -> Comp,
+        F: FnOnce(Arc<C::ChainSpec>, BlockchainProviderFor<N>) -> Comp,
     {
         // Quit early if the stages requires a commit and `--commit` is not provided.
         if self.requires_commit() && !self.commit {
@@ -123,7 +126,8 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
             self.env.init::<N>(AccessRights::RW)?;
 
         let mut provider_rw = provider_factory.database_provider_rw()?;
-        let components = components(provider_factory.chain_spec());
+        let blockchain = BlockchainProvider::new(provider_factory.clone())?;
+        let components = components(provider_factory.chain_spec(), blockchain);
 
         let task_executor = ctx.task_executor.clone();
 

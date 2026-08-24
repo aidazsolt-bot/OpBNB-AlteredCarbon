@@ -68,7 +68,9 @@ impl<'a, R> WriteStateInput<'a, R> {
     /// Returns an iterator over receipt sets for each block.
     pub fn receipts(&self) -> impl Iterator<Item = &Vec<R>> {
         match self {
-            Self::Single { outcome, .. } => Either::Left(core::iter::once(&outcome.result.receipts)),
+            Self::Single { outcome, .. } => {
+                Either::Left(core::iter::once(&outcome.result.receipts))
+            }
             Self::Multiple(outcome) => Either::Right(outcome.receipts.iter()),
         }
     }

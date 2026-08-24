@@ -18,4 +18,4 @@ mod parlia_provider;
 pub use parlia_provider::ParliaProvider;
 
 mod parlia_snapshot;
-pub use parlia_snapshot::ParliaSnapshotReader;
+pub use parlia_snapshot::{ParliaSnapshotReader, ParliaSnapshotWriter};

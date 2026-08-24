@@ -4,7 +4,6 @@
 //! and intelligently selects which sequence to build based on the local chain tip.
 
 use crate::{
-    FlashBlock, FlashBlockCompleteSequence, PendingFlashBlock,
     pending_state::PendingBlockState,
     sequence::{FlashBlockPendingSequence, SequenceExecutionOutcome},
     validation::{
@@ -12,13 +11,14 @@ use crate::{
         TrackedBlockFingerprint,
     },
     worker::BuildArgs,
+    FlashBlock, FlashBlockCompleteSequence, PendingFlashBlock,
 };
+use alloy_consensus::transaction::SignerRecoverable;
 use alloy_eips::eip2718::WithEncoded;
 use alloy_primitives::B256;
 use alloy_rpc_types_engine::PayloadId;
-use alloy_consensus::transaction::SignerRecoverable;
 use reth_primitives_traits::{
-    NodePrimitives, Recovered, SignedTransaction, transaction::TxHashRef,
+    transaction::TxHashRef, NodePrimitives, Recovered, SignedTransaction,
 };
 use reth_revm::cached::CachedReads;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -179,7 +179,8 @@ impl<T: SignedTransaction + SignerRecoverable> PendingSequence<T> {
         }
 
         // Only recover transactions once we've validated that this flashblock is accepted.
-        let recovered_txs = flashblock.recover_transactions::<T>().collect::<Result<Vec<_>, _>>()?;
+        let recovered_txs =
+            flashblock.recover_transactions::<T>().collect::<Result<Vec<_>, _>>()?;
         let flashblock_index = flashblock.index;
 
         // Index 0 starts a fresh pending block, so clear any stale in-progress data.

@@ -952,7 +952,7 @@ where
             AHC,
             AsyncAccountValueEncoder<STC, SHC>,
         >,
-        v2_storage_calculator: Rc<RefCell<proof_v2::StorageProofCalculator<STC, SHC>>        >,
+        v2_storage_calculator: Rc<RefCell<proof_v2::StorageProofCalculator<STC, SHC>>>,
         targets: MultiProofTargetsV2,
     ) -> Result<(DecodedMultiProofV2, ValueEncoderStats), StateRootTaskError>
     where
@@ -1078,8 +1078,8 @@ fn dispatch_v2_storage_proofs(
     // For storage targets with associated account proofs, ensure the first target has
     // min_len(0) so the root node is returned for storage root computation
     for (hashed_address, targets) in &mut storage_targets {
-        if account_target_addresses.contains(hashed_address)
-            && let Some(first) = targets.first_mut()
+        if account_target_addresses.contains(hashed_address) &&
+            let Some(first) = targets.first_mut()
         {
             *first = first.with_min_len(0);
         }

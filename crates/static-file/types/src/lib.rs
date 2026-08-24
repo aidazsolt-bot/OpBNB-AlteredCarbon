@@ -8,8 +8,8 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-mod compression;
 mod changeset_offsets;
+mod compression;
 mod event;
 mod segment;
 
@@ -18,7 +18,9 @@ pub use changeset_offsets::{ChangesetOffsetReader, ChangesetOffsetWriter};
 pub use compression::Compression;
 use core::ops::RangeInclusive;
 pub use event::StaticFileProducerEvent;
-pub use segment::{ChangesetOffset, SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment};
+pub use segment::{
+    ChangesetOffset, SegmentConfig, SegmentHeader, SegmentRangeInclusive, StaticFileSegment,
+};
 
 /// Map keyed by [`StaticFileSegment`].
 pub type StaticFileMap<T> = std::collections::HashMap<StaticFileSegment, T>;
@@ -122,10 +124,10 @@ pub struct StaticFileTargets {
 impl StaticFileTargets {
     /// Returns `true` if any of the targets are [Some].
     pub const fn any(&self) -> bool {
-        self.headers.is_some()
-            || self.receipts.is_some()
-            || self.transactions.is_some()
-            || self.sidecars.is_some()
+        self.headers.is_some() ||
+            self.receipts.is_some() ||
+            self.transactions.is_some() ||
+            self.sidecars.is_some()
     }
 
     /// Returns `true` if all targets are either [`None`] or contiguous to the current static files.
@@ -139,10 +141,9 @@ impl StaticFileTargets {
         .into_iter()
         .all(|(target_block_range, highest_static_file_block)| {
             target_block_range.is_none_or(|target_block_range| {
-                *target_block_range.start()
-                    == highest_static_file_block.map_or(0, |highest_static_file_block| {
-                        highest_static_file_block + 1
-                    })
+                *target_block_range.start() ==
+                    highest_static_file_block
+                        .map_or(0, |highest_static_file_block| highest_static_file_block + 1)
             })
         })
     }

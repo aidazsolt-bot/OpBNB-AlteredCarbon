@@ -1,7 +1,7 @@
 //! Unwinding a certain block range
 
 use crate::{
-    common::{AccessRights, CliNodeTypes, Environment, EnvironmentArgs},
+    common::{AccessRights, BlockchainProviderFor, CliNodeTypes, Environment, EnvironmentArgs},
     stage::CliNodeComponents,
 };
 use alloy_eips::BlockHashOrNumber;
@@ -15,7 +15,10 @@ use reth_db::DatabaseEnv;
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_evm::ConfigureEvm;
 use reth_exex::ExExManagerHandle;
-use reth_provider::{providers::ProviderNodeTypes, BlockNumReader, ProviderFactory};
+use reth_provider::{
+    providers::{BlockchainProvider, ProviderNodeTypes},
+    BlockNumReader, ProviderFactory,
+};
 use reth_stages::{
     sets::{DefaultStages, OfflineStages},
     stages::ExecutionStage,
@@ -50,13 +53,14 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
     ) -> eyre::Result<()>
     where
         Comp: CliNodeComponents<N>,
-        F: FnOnce(Arc<C::ChainSpec>) -> Comp,
+        F: FnOnce(Arc<C::ChainSpec>, BlockchainProviderFor<N>) -> Comp,
     {
         let Environment { provider_factory, config, .. } = self.env.init::<N>(AccessRights::RW)?;
 
         let target = self.command.unwind_target(provider_factory.clone())?;
 
-        let components = components(provider_factory.chain_spec());
+        let blockchain = BlockchainProvider::new(provider_factory.clone())?;
+        let components = components(provider_factory.chain_spec(), blockchain);
 
         if self.offline {
             info!(target: "reth::cli", "Performing an unwind for offline-only data!");

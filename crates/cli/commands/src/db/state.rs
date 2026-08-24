@@ -247,45 +247,44 @@ impl Command {
         thread::scope(|s| {
             let handles: Vec<_> = (0..num_threads)
                 .map(|thread_id| {
-                    spawn_scoped_os_thread(s, "db-state-worker", move || {
-                        loop {
-                            let chunk_idx = {
-                                let mut idx = next_chunk_ref.lock();
-                                if *idx >= chunks_ref.len() {
-                                    return Ok::<_, eyre::Report>(());
-                                }
-                                let current = *idx;
-                                *idx += 1;
-                                current
-                            };
-
-                            let (chunk_start, chunk_end) = chunks_ref[chunk_idx];
-
-                            let mut local_keys = BTreeSet::new();
-                            let mut entries_in_chunk = 0usize;
-
-                            let walker =
-                                sf_provider_ref.clone().walk_storage_changeset_range(chunk_start..=chunk_end);
-                            for entry in walker {
-                                let (block_address, storage_entry) = entry?;
-                                if block_address.address() == address {
-                                    local_keys.insert(storage_entry.key);
-                                }
-                                entries_in_chunk += 1;
+                    spawn_scoped_os_thread(s, "db-state-worker", move || loop {
+                        let chunk_idx = {
+                            let mut idx = next_chunk_ref.lock();
+                            if *idx >= chunks_ref.len() {
+                                return Ok::<_, eyre::Report>(());
                             }
+                            let current = *idx;
+                            *idx += 1;
+                            current
+                        };
 
-                            collected_keys_ref.lock().extend(local_keys);
-                            *total_entries_ref.lock() += entries_in_chunk;
+                        let (chunk_start, chunk_end) = chunks_ref[chunk_idx];
 
-                            info!(
-                                target: "reth::cli",
-                                thread_id,
-                                chunk_start,
-                                chunk_end,
-                                entries_in_chunk,
-                                "Thread completed chunk"
-                            );
+                        let mut local_keys = BTreeSet::new();
+                        let mut entries_in_chunk = 0usize;
+
+                        let walker = sf_provider_ref
+                            .clone()
+                            .walk_storage_changeset_range(chunk_start..=chunk_end);
+                        for entry in walker {
+                            let (block_address, storage_entry) = entry?;
+                            if block_address.address() == address {
+                                local_keys.insert(storage_entry.key);
+                            }
+                            entries_in_chunk += 1;
                         }
+
+                        collected_keys_ref.lock().extend(local_keys);
+                        *total_entries_ref.lock() += entries_in_chunk;
+
+                        info!(
+                            target: "reth::cli",
+                            thread_id,
+                            chunk_start,
+                            chunk_end,
+                            entries_in_chunk,
+                            "Thread completed chunk"
+                        );
                     })
                 })
                 .collect();

@@ -140,7 +140,6 @@ test-utils = [
     "reth-evm-ethereum?/test-utils",
     "reth-tasks/test-utils",
 ]
-bsc = ["reth-eth-wire/bsc"]
 
 [[bench]]
 name = "bench"

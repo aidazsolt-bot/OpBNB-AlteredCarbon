@@ -10,12 +10,14 @@ use alloy_consensus::transaction::TransactionMeta;
 use alloy_eips::{eip2718::Encodable2718, BlockHashOrNumber};
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use reth_chainspec::ChainInfo;
-use reth_db::static_file::{
-    AccountChangesetMask, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
-    StaticFileCursor, StorageChangesetMask, TDWithHashMask, TotalDifficultyMask, TransactionMask,
-    TransactionSenderMask,
+use reth_db::{
+    models::{AccountBeforeTx, StorageBeforeTx},
+    static_file::{
+        AccountChangesetMask, BlockHashMask, HeaderMask, HeaderWithHashMask, ReceiptMask,
+        StaticFileCursor, StorageChangesetMask, TDWithHashMask, TotalDifficultyMask,
+        TransactionMask, TransactionSenderMask,
+    },
 };
-use reth_db::models::{AccountBeforeTx, StorageBeforeTx};
 use reth_db_api::table::{Decompress, Value};
 use reth_node_types::NodePrimitives;
 use reth_primitives_traits::{SealedHeader, SignedTransaction};
@@ -102,13 +104,12 @@ impl<'a, N: NodePrimitives> StaticFileJarProvider<'a, N> {
         &self,
         block: BlockNumber,
     ) -> ProviderResult<Option<ChangesetOffset>> {
-        let Some(index) = self.user_header().changeset_offset_index(block) else {
-            return Ok(None)
-        };
+        let Some(index) = self.user_header().changeset_offset_index(block) else { return Ok(None) };
 
         let csoff_path = self.data_path().with_extension("csoff");
-        let reader = ChangesetOffsetReader::new(&csoff_path, self.user_header().changeset_offsets_len())
-            .map_err(ProviderError::other)?;
+        let reader =
+            ChangesetOffsetReader::new(&csoff_path, self.user_header().changeset_offsets_len())
+                .map_err(ProviderError::other)?;
         reader.get(index).map_err(ProviderError::other)
     }
 

@@ -2,8 +2,8 @@
 
 use alloy_consensus::Receipt;
 use alloy_primitives::{
-    Address, B256, Bloom, Bytes, Log,
     bytes::{Buf, BytesMut},
+    Address, Bloom, Bytes, Log, B256,
 };
 use alloy_rlp::{Decodable, RlpDecodable};
 use op_alloy_consensus::{OpDepositReceipt, OpTxType};
@@ -122,7 +122,7 @@ impl TryFrom<OpGethReceipt> for OpReceipt {
 #[cfg(test)]
 pub(crate) mod test {
     use alloy_consensus::{Receipt, TxReceipt};
-    use alloy_primitives::{LogData, address, b256, hex};
+    use alloy_primitives::{address, b256, hex, LogData};
 
     use super::*;
 

@@ -998,7 +998,13 @@ where
         let Self { eth_api_builder, engine_api_builder, hooks, .. } = self;
 
         let engine_api = engine_api_builder.build_engine_api(&ctx).await?;
-        let AddOnsContext { node, config, beacon_engine_handle, jwt_secret, engine_events, bsc_trace_helper: _ } = ctx;
+        let AddOnsContext {
+            node,
+            config,
+            beacon_engine_handle,
+            jwt_secret,
+            engine_events,
+        } = ctx;
 
         info!(target: "reth::cli", "Engine API handler initialized");
 
@@ -1345,9 +1351,9 @@ where
     >,
     EV: PayloadValidatorBuilder<Node>,
     EV::Validator: reth_engine_primitives::PayloadValidator<
-        <Node::Types as NodeTypes>::Payload,
-        Block = BlockTy<Node::Types>,
-    > + Clone,
+            <Node::Types as NodeTypes>::Payload,
+            Block = BlockTy<Node::Types>,
+        > + Clone,
 {
     type EngineValidator = BasicEngineValidator<Node::Provider, Node::Evm, EV::Validator>;
 

@@ -165,8 +165,8 @@ impl ConfigBuilder {
     /// Adds a comma-separated list of enodes, serialized unsigned node records, to boot nodes.
     pub fn add_serialized_unsigned_boot_nodes(mut self, enodes: &[&str]) -> Self {
         for node in enodes {
-            if let Ok(node) = node.parse()
-                && let Ok(node) = BootNode::from_unsigned(node)
+            if let Ok(node) = node.parse() &&
+                let Ok(node) = BootNode::from_unsigned(node)
             {
                 self.bootstrap_nodes.insert(node);
             }
@@ -363,8 +363,8 @@ impl Config {
 
     /// Returns `true` if any socket in the discv5 listen config matches the given address.
     pub fn has_matching_socket(&self, addr: SocketAddr) -> bool {
-        ipv4(&self.discv5_config.listen_config).is_some_and(|v4| SocketAddr::V4(v4) == addr)
-            || ipv6(&self.discv5_config.listen_config).is_some_and(|v6| SocketAddr::V6(v6) == addr)
+        ipv4(&self.discv5_config.listen_config).is_some_and(|v4| SocketAddr::V4(v4) == addr) ||
+            ipv6(&self.discv5_config.listen_config).is_some_and(|v6| SocketAddr::V6(v6) == addr)
     }
 
     /// Inserts a new boot node to the list of boot nodes.
@@ -415,8 +415,8 @@ impl Config {
 /// Returns the IPv4 discovery socket if one is configured.
 pub fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
     match listen_config {
-        ListenConfig::Ipv4 { ip, port }
-        | ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
+        ListenConfig::Ipv4 { ip, port } |
+        ListenConfig::DualStack { ipv4: ip, ipv4_port: port, .. } => {
             Some(SocketAddrV4::new(*ip, *port))
         }
         ListenConfig::FromSockets { ipv4: Some(s), .. } => match s.local_addr().ok()? {
@@ -430,8 +430,8 @@ pub fn ipv4(listen_config: &ListenConfig) -> Option<SocketAddrV4> {
 /// Returns the IPv6 discovery socket if one is configured.
 pub fn ipv6(listen_config: &ListenConfig) -> Option<SocketAddrV6> {
     match listen_config {
-        ListenConfig::Ipv6 { ip, port }
-        | ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
+        ListenConfig::Ipv6 { ip, port } |
+        ListenConfig::DualStack { ipv6: ip, ipv6_port: port, .. } => {
             Some(SocketAddrV6::new(*ip, *port, 0, 0))
         }
         ListenConfig::FromSockets { ipv6: Some(s), .. } => match s.local_addr().ok()? {
@@ -484,8 +484,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv6 =
                 discv5_addr_ipv6.map(|ip| SocketAddrV6::new(ip, discv5_port_ipv6, 0, 0));
 
-            if let Some(discv5_addr) = discv5_addr_ipv4
-                && discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv4 &&
+                discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -503,8 +503,8 @@ pub fn discv5_sockets_wrt_rlpx_addr(
             let discv5_socket_ipv4 =
                 discv5_addr_ipv4.map(|ip| SocketAddrV4::new(ip, discv5_port_ipv4));
 
-            if let Some(discv5_addr) = discv5_addr_ipv6
-                && discv5_addr != rlpx_addr
+            if let Some(discv5_addr) = discv5_addr_ipv6 &&
+                discv5_addr != rlpx_addr
             {
                 debug!(target: "net::discv5",
                     %discv5_addr,
@@ -584,9 +584,9 @@ mod test {
         for node in config.bootstrap_nodes {
             let BootNode::Enr(node) = node else { panic!() };
             assert!(
-                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap()
-                    || socket_2 == node.udp4_socket().unwrap()
-                        && socket_2 == node.tcp4_socket().unwrap()
+                socket_1 == node.udp4_socket().unwrap() && socket_1 == node.tcp4_socket().unwrap() ||
+                    socket_2 == node.udp4_socket().unwrap() &&
+                        socket_2 == node.tcp4_socket().unwrap()
             );
             assert_eq!("84b4940500", hex::encode(node.get_raw_rlp("opstack").unwrap()));
         }

@@ -33,7 +33,9 @@ pub struct BuiltPayloadExecutedBlock<N: NodePrimitives> {
 impl<N: NodePrimitives> BuiltPayloadExecutedBlock<N> {
     /// Converts this into an [`reth_chain_state::ExecutedBlock`].
     pub fn into_executed_payload(self) -> reth_chain_state::ExecutedBlock<N> {
-        use reth_trie_common::{updates::TrieUpdatesSorted, ComputedTrieData, HashedPostStateSorted};
+        use reth_trie_common::{
+            updates::TrieUpdatesSorted, ComputedTrieData, HashedPostStateSorted,
+        };
 
         reth_chain_state::ExecutedBlock::new(
             self.recovered_block,

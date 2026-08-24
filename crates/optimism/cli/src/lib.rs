@@ -150,9 +150,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::{Cli, chainspec::OpChainSpecParser, commands::Commands};
+    use crate::{chainspec::OpChainSpecParser, commands::Commands, Cli};
     use clap::Parser;
-    use reth_cli_commands::{NodeCommand, node::NoArgs};
+    use reth_cli_commands::{node::NoArgs, NodeCommand};
     use reth_optimism_chainspec::{OP_DEV, OP_MAINNET};
     use reth_optimism_node::args::RollupArgs;
 

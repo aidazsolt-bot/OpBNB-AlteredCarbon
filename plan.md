@@ -8,6 +8,19 @@
 > Nicht zur Veröffentlichung/als Marketing gedacht — reines Arbeitsprotokoll für Nachvollziehbarkeit,
 > Aufwandsschätzung und Session-Übergaben.
 
+## Workspace-Scope — opBNB only (2026-08-24)
+
+**Verbindlich:** Dieser Workspace enthält **kein** BSC/Parlia/`crates/bsc`/`bsc-reth` mehr. Zielkette:
+**opBNB mainnet (chain 204)**, Binary **`op-reth`**, Referenz **`bnb-chain/op-geth`**.
+
+**KI-Lektion (Session BSC-Sync-Fehldiagnose):** Solange BSC und opBNB im **selben** Monorepo lagen, haben
+Agenten den Kontext **systematisch verwechselt** — z. B. Parlia-Header-Extra statt opBNB-Engine-Sync,
+`bsc-reth` statt `op-reth`, falsche Live-Health-Checks, falsche PORT-*-Gates. **Ähnliche Projekte im
+selben Workspace sind für KI-Portierung ein Anti-Pattern:** getrennte Repos oder explizit eine Kette pro
+Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
+
+Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
+
 ## Ziel & Kontext
 
 Ziel des Projekts: Evaluierung, wie weit aktuelle KI-Coding-Assistenten (GitHub Copilot CLI) eine
@@ -157,7 +170,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 
 1. **Phase 1 — Bestandsaufnahme & Diff-Baseline** ✅ erledigt
 2. **Phase 2 — Kern-Crates auf v2.4.1 rebasen** ✅ Merge/Konflikte erledigt, Detailarbeit läuft (s.u.)
-3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** ✅ Compile-Meilenstein: `reth-bsc-node --features bsc` grün (2026-08-09)
+3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** 🔄 Compile ✅ (08-09); **Fork-Nachzug** `bnb-chain/reth-bsc` → Pasteur (08-23 Slice 1: Hardforks+System-Contracts+SpecId)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
 6. **Phase 6 — Doku & Freigabe** 🔄 Effort-Log Session 6+8+9+**10**; **Migrations-Gate PIPE+FLOW** nachgezogen; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
@@ -183,6 +196,31 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 
 **P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1½–2½ Mo) · FLOW-X05 watch.
 
+### BSC Mainnet Port (parallel, opBNB unverändert) — Stand 2026-08-23
+
+Referenz: `github.com/bnb-chain/reth-bsc` main (live Tip); Workspace bleibt **reth v2.4.1** Monorepo.
+
+| ID | Inhalt | Status |
+| --- | --- | --- |
+| PORT-BSC-001 | Hardforks Tycho→Pasteur + Prague (`crates/bsc/hardforks`) | ✅ Slice 1 |
+| PORT-BSC-002 | System-Contracts Pascal/Pasteur/Maxwell/Lorentz/Fermi | ✅ Slice 1 (dirs from reth-bsc) |
+| PORT-BSC-003 | `revm_spec_by_timestamp_and_block_number` + SpecId map | ✅ Slice 1 |
+| PORT-BSC-004 | Prague HistoryStorage + `apply_blockhashes` in executor | ✅ Slice 2 legacy · ✅ Slice 3 `BscAlloyBlockExecutor` (+ Eth `apply_pre`) |
+| PORT-BSC-005 | Pasteur state-hook on system-contract upgrade (trie) | ✅ Slice 2 legacy · 🔬 main path (upgrade `mark_touch`; engine hook noch nicht alloy-verdrahtet) |
+| PORT-BSC-006 | Parlia/network live-sync PIPE+FLOW | ✅ Slice 8: `ParliaEngineBuilder::build(true)` + `BscBlockImport`/`ImportService` beim Node-Launch; engine-handle oneshot wie upstream reth-bsc. **Offen:** live verify (007). |
+| PORT-BSC-007 | Live smoke / Point-4 post-Pascal | 🔜 Human |
+| PORT-BSC-008 | `reth-bsc-cli` v2.4.1 (stage/import/launcher) | ✅ Slice 4 |
+| PORT-BSC-009 | Legacy `static_files/*.conf` → `tag for enum is not valid, found 247` on node/`db` init | Official reth-bsc datadir: pre-v2.4.1 `SegmentHeader` + jars with serialized `filter`/`phf` | ✅ fix: `load_segment_nippy_jar` + `NippyJar::load_from_bytes` legacy paths |
+| PORT-BSC-CLI-009 | `--datadir` semantics: explicit path = chain data dir (no auto `/bsc` suffix); default = `~/.local/share/reth/<chain>` | `DatadirArgs::resolve_datadir` / `MaybePlatformPath::unwrap_or_chain_default` | 📝 ops doc |
+| PORT-BSC-SF-002 | Hybrid v2: `TransactionSenders` SF genesis-only, SenderRecovery @ 117M, MDBX still has senders → unwind target 0 panic | `storage_v2` flipped before senders migrated to SF | ✅ skip unwind when MDBX has senders; warn to backfill SenderRecovery |
+| PORT-BSC-SF-003 | Orphan SF / wrong slot path on heal (`117500000` without `.conf`) | Interrupted append + legacy filename inside slot | ✅ orphan delete + `jar_data_path` legacy resolve + missing jar → create (reth-bsc datadir pattern) |
+
+**PORT-BSC-FLOW-006** (Parlia checkpoint persistenz): Checkpoint-Blöcke (`N % 1024 == 0`) → `put` keyed by `block_hash`; Execution-Unwind (`take_state_above` / `remove_state_above`) → `delete` alle Einträge mit `snapshot.block_number > unwind_to`; Read-Pfad: MDBX vor LRU-Cache an Checkpoints.
+
+**PORT-BSC-FLOW-007** (Node-Launch live-sync): `BscNode::new()` + oneshot → `ImportService::from_channels` + `BscBlockImport` in `BscNetworkBuilder::network_config`; nach Launch `engine_handle_tx.send(beacon_engine_handle)`; `on_node_started` → `spawn_parlia_engine` (`ParliaEngineBuilder::build(true)` → FCU/newPayload an Engine-Tree). Invariante: ohne beides bleibt Pipeline-`target=Hash(<db-tip>)` frozen („Target block already reached“).
+
+**Nächster Slice:** PORT-BSC-007 Live smoke post-Pascal (human deploy + verify FCU/tip advance).
+
 ## Todo-Status (Stand 2026-08-20)
 
 | ID | Titel | Status |
@@ -205,6 +243,8 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-CLI-003 | `--ipcpath /tmp/foo.ipc` wurde zu `/tmp/foo.ipc-1` | `NodeConfig.instance` war `u16` mit Default `1`; `adjust_instance_ports` hängte immer `-{instance}` an | ✅ fixed: `instance: Option<u16>` (None ohne `--instance`), wie Upstream |
 | PORT-CLI-004 | Log `Storage settings settings=None`; trotz `--storage.v2` keine v2-Persistenz / kein „Loaded storage settings“ | `init_genesis_with_settings` war Stub (ignorierte Settings); Log lief **vor** Genesis | ✅ fixed: Settings bei frischer DB schreiben; bestehende DB: fehlende Metadata = v1 + Warn bei CLI-Mismatch; Log nach Genesis |
 | PORT-CLI-005 | OTLP (`--tracing-otlp` / `--logs-otlp`) wirkt in Live-/maxperf-`op-reth` nicht; Grafana sieht nur Prometheus | Code pfad ist verdrahtet (`reth-tracing-otlp`, `TraceArgs`, Optimism/Eth CLI), aber hinter optionalen Features `otlp` / `otlp-logs` — **nicht** in `default`, **nicht** in `make maxperf-op` (`jemalloc,asm-keccak,keccak-cache-global`). Ohne Feature: Warn „compile with the `otlp` feature“ | 📝 bewusst so (wie Upstream Feature-Gate). **Ops:** `--metrics` (Prometheus) reicht für Grafana; OTLP nur bei Bedarf mit `--features …,otlp[,otlp-logs]` bauen |
+| PORT-BSC-SF-001 | BSC prod: node + `db` crash `tag for enum is not valid, found 247` at `StaticFileProviderBuilder::build` | Legacy reth-bsc `static_files/*.conf` incompatible with v2.4.1 `SegmentHeader` / skipped `filter`/`phf` in `NippyJar` | ✅ + legacy **offsets-before-segment** change-set headers (`117470000` jar) |
+| PORT-BSC-SF-003 | Node crash `failed to read static file config …117500000_117999999.conf: No such file` | Orphan data file without committed `.conf` after interrupted append | ✅ RW startup: `remove_orphan_static_files` deletes incomplete bundle (not skip) |
 | PORT-STOR-001 | Fresh start crash: `append Headers #0 but expected #1` | Incomplete port: AccountChangeSets SF stub wrote into **Headers** during `write_state` (genesis); Senders stub similarly unsafe | ✅ closed via PORT-STOR-004/005 (dedicated segments; no Headers/Tx reuse) |
 | PORT-STOR-004 | TransactionSenders SF stub reused Transactions/Receipts | Wrong segment literals + prune stub; v2 expected senders in SF | ✅ fixed: dedicated TransactionSenders writer/prune/readers; `transaction_senders_in_static_files() → storage_v2` |
 | PORT-STOR-005 | AccountChangeSets SF incomplete (Headers corruption) | Missing `.csoff` sidecar / header len / writer heal; stubs wrote Headers | ✅ fixed: SegmentHeader `changeset_offsets_len` + sidecar writer/heal/truncate; `account_changesets_in_static_files() → storage_v2` |
@@ -250,7 +290,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-005 | Bodies | Canyon empty withdrawals; Ecotone `blobGasUsed=0` | ✅ OP `validate_block_pre_execution` / blob-gas=0 | **B01–B04 ✅** | ✅ umgesetzt · ✅ **live** Bodies=Tip @08-12 ~03:02 CEST (s. Live Sync Progress) |
 | PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery (`OpTransactionSigned::recover_signer` → Deposit.`from`) | **R01 ✅** | ✅ umgesetzt · ✅ **live OK** Tip @15:54 CEST (s. Live Sync Progress) |
 | PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 ✅ Fermat** | ✅ umgesetzt · ✅ **live** Exec≫Fermat; IPC stateRoot MATCH an `9397477`± (s. Live Sync Progress) |
-| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 Haber ⏳** | ✅ umgesetzt · ⏳ live ab Haber-Timestamp `1718872200` |
+| PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 Haber ✅** | ✅ umgesetzt · ✅ **live** Haber Point-4 MATCH (08-17) |
 | PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | **Analyse 08-16:** `factory.rs` setzt `skip_l1_data_fee=true` ab Wright; **op-revm** skippt L1-Cost nur bei Flag **∧** `gas_price==0` — ≡ op-geth `state_transition.go` L254/L587. Frühere Plan-Lesart „skip für alle Txs“ war falsch. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`); Haber ~**27118477**. | **X02 ✅** | ✅ **Code aligned** · Unit-Test · 🔬 Live stateRoot @ Wright-Fenster |
 | PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ EL braucht keine Snow-Logik (Deposit-Parse stock OP) | — | ➖ n/a EL · 📝 CL liefert L1-Info |
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |

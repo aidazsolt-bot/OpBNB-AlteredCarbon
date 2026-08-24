@@ -1,5 +1,8 @@
 //! Database debugging tool
-use crate::common::{AccessRights, CliNodeComponents, CliNodeTypes, Environment, EnvironmentArgs};
+use crate::common::{
+    AccessRights, BlockchainProviderFor, CliNodeComponents, CliNodeTypes, Environment,
+    EnvironmentArgs,
+};
 use clap::Parser;
 use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_cli::chainspec::ChainSpecParser;
@@ -14,6 +17,7 @@ use reth_node_core::{
     args::DatadirArgs,
     dirs::{DataDirPath, PlatformPath},
 };
+use reth_provider::providers::BlockchainProvider;
 use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
@@ -93,11 +97,12 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + EthereumHardforks>> Command<C>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
         Comp: CliNodeComponents<N>,
-        F: FnOnce(Arc<C::ChainSpec>) -> Comp,
+        F: FnOnce(Arc<C::ChainSpec>, BlockchainProviderFor<N>) -> Comp,
     {
         let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RO)?;
         let tool = DbTool::new(provider_factory)?;
-        let components = components(tool.chain());
+        let blockchain = BlockchainProvider::new(tool.provider_factory.clone())?;
+        let components = components(tool.chain(), blockchain);
         let evm_config = components.evm_config().clone();
         let consensus = components.consensus().clone();
 

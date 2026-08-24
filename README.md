@@ -57,12 +57,20 @@ Zusatzbeschränkung **nicht** verwendet.
 
 -------
 
-# reth-bsc-trail
+# opBNB-AlteredCarbon (reth-bsc-trail workspace)
 
 This is an experimental, community/hobbyist fork of a blockchain client based on
-[Reth](https://github.com/paradigmxyz/reth/), historically providing support for
-[BNB Smart Chain (BSC)](https://github.com/bnb-chain/bsc) and [opBNB](https://github.com/bnb-chain/op-geth)
-network protocols. See the project notice above for the current status and intent of this repository.
+[Reth](https://github.com/paradigmxyz/reth/) for **[opBNB](https://github.com/bnb-chain/op-geth) only**
+(chain ID **204**, binary **`op-reth`** / `make build-op`). See the project notice above for status and intent.
+
+> **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
+> this tree. Do not reintroduce BSC mainnet (chain 56) work here — use a **separate repository** if you need
+> both chains.
+>
+> **AI agents:** When BSC and opBNB lived in the same workspace, assistants **systematically confused** chain
+> context (wrong binary, wrong consensus rules, wrong live-sync checks, wrong PORT-* gates). Treat dual-chain
+> monorepos as **unsafe for agent-driven port work** unless the active chain is unambiguous in path, docs, and
+> session start (this repo: **opBNB only**).
 
 **CI:** This public mirror ships **without** GitHub Actions workflows (personal experiment; no Actions
 burn). Use local `cargo` / `cargo nextest` checks — see `docs/repo/ci.md`.
@@ -79,25 +87,13 @@ git clone https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon.git
 cd OpBNB-AlteredCarbon
 ```
 
-In the realm of BSC, you have the option to execute the following commands to compile bsc-reth:
-
-```shell
-make build-bsc
-```
-
-Alternatively, you can install reth using the following command:
-
-```shell
-make install-bsc
-```
-
-When it comes to opBNB, you can run the following commands to compile op-reth:
+Build **op-reth** (opBNB):
 
 ```shell
 make build-op
 ```
 
-Or, opt for installing op-reth with the command:
+Or install:
 
 ```shell
 make install-op
@@ -123,113 +119,6 @@ Use a real tuning stack; distro **defaults are not a blockchain-node profile**:
 - **[irqbalance](https://github.com/Irqbalance/irqbalance)**: useful so NVMe and NIC IRQs are not stuck on CPU0, but **stock irqbalance policy is often wrong** for a hot node datapath. Ban/affinity (or stop irqbalance and pin IRQs yourself) after looking at `/proc/interrupts` under the stage that actually hurts. Same rule as sysctl: configure it; do not trust defaults.
 
 This experiment does not ship a TuneD profile or irqbalance config — those belong to **your** hardware and workload, not a README.
-
-## Run Reth for BSC
-
-### Hardware (ballpark — not a shopping list)
-
-There is **no** fixed “minimum SKU.” Need depends on chain, node mode (`archive` / `full` / pruned /
-minimal-style), catch-up vs tip, and what else shares the box.
-
-**One** client is usually a modest slice of a normal workstation/server — not a dedicated dual-socket
-box and not “enterprise NVMe or bust”:
-
-* **CPU:** often only a few busy cores outside hotter stages; execution bursts and later hashing/Merkle
-  use more threads *if* you have them. A single node does not need a whole mid-range Xeon to itself.
-* **RAM:** headroom for MDBX mmap + OS page cache — typically **tens of GiB** class for a busy archive
-  catch-up, less for pruned/minimal. Hundreds-of-GiB quotes are for **fleets** (many ELs, and often CLs /
-  rollup-nodes co-located), not one process’s floor.
-* **Disk:** **consumer** SSD/NVMe is fine for correctness and everyday sync. Capacity grows with history
-  and mode (minimal ≪ full ≪ archive) into the **multi-terabyte** range for long-lived archives — watch
-  growth; don’t treat a fixed TB number or drive brand as a requirement.
-* **Network:** stable broadband; stage mix and peers matter more than a marketed MB/s figure.
-
-**Many** nodes on one host (several chains × archive/full/minimal/fast, maybe plus consensus /
-rollup-node sidecars) is a different problem: shared **RAM pool** and a **multi-volume SSD/NVMe** setup
-matter far more than cores-per-node. One mid-range multicore server can run that kind of lab if you
-accept shared load; the old “16+ cores / 128 GB / high-end NVMe” README shopping list was describing
-that *shared* lab class poorly, and overstated what **one** node needs. Tune per host (see Host OS
-tuning above).
-
-### Steps to Run bsc-reth
-
-The command below is for an archive node. To run a full node, simply add the `--full` tag.
-
-```shell
-# for mainnet
-export network=bsc
-
-# for testnet
-# export network=bsc-testnet
-
-./target/release/bsc-reth node \
-    --datadir=./datadir \
-    --chain=${network} \
-    --http \
-    --http.api="eth, net, txpool, web3, rpc" \
-    --log.file.directory ./datadir/logs
-```
-
-New databases use storage V2 by default (`--storage.v2`; opt out with `--storage.v2=false`).
-Legacy BSC flags `--enable-prefetch` / `--optimize.enable-execution-cache` are **obsolete** on this
-v2.4.1 rebase — use engine prewarming/cache controls instead (e.g. `--engine.disable-prewarming` to
-opt out; see `bsc-reth node --help` under Engine).
-
-You can run `bsc-reth --help` for command explanations.
-
-
-### Snapshots — not a shortcut here
-
-**Do not expect a public snapshot to replace sync on this fork.** Community and historical snapshot links
-for older BSC/Reth trees are outdated, format-incompatible with this v2.4.1 rebase (storage layout,
-static-file segments, protocol epoch), or otherwise not usable for a correct archive/full node. That gap —
-needing a client that can **sync for real** instead of importing someone else’s datadir — is part of why
-this experiment exists. Plan hardware and wall-clock for a full staged sync from genesis (or your own
-private datadir), not for a download-and-run snapshot.
-
-#### Measured wall clock — live opBNB mainnet archive (chain 204)
-
-Observed on one continuous archive run (with unwind/rebuild interruptions). Times are **stage wall
-clock**, not “machine was idle.” Heights and fork gates below were cross-checked against public
-`eth_blockNumber` / `eth_getBlockByNumber` on `https://opbnb-mainnet-rpc.bnbchain.org` (Alloy-compatible
-JSON-RPC). Snapshot local time: **2026-08-20 ~10:28 CEST**.
-
-| Stage / phase | When (CEST) | Wall clock | Result |
-| --- | --- | ---: | --- |
-| Headers (tip-resolve → ETL write) | 08-11 ~16:40 → ~18:47 | **~2.1 h** productive | Checkpoint → ~173.4 M; later tip **174 027 661** |
-| Bodies (1st full tip) | 08-11 ~18:58 → 08-12 ~03:02 | **~8.25 h** | Tip @ ~5.8 k blk/s |
-| SenderRecovery (1st tip) | 08-12 → ~15:54 | **~12.9 h** | Tip |
-| Bodies catch-up (post receipt-root fix) | 08-15 ~19:00 → ~22:42 | **~3.7 h** | Tip **174 027 661** |
-| SenderRecovery (3rd / tip) | 08-15 ~22:42 → 08-16 ~03:38 | **~5.0 h** | Tip **174 027 661** |
-| Execution (current, past fail `21591154`) | 08-16 ~03:38 CEST → ongoing | **~4.3 d** so far (at 08-20 snapshot) | **~37.13 M** (~21 % Headers tip); Haber **Point-4 MATCH** (08-17); **past Wright** height |
-
-Interruptions that **add** calendar time (not pure stage progress): receipt-root fail @ `21591154`, unwind
-storms, capped rebuilds, offline single-block verify — see `plan.md` *Live Sync Progress*.
-
-**Done at Headers tip `174 027 661`:** Headers · Bodies · SenderRecovery (validation errors **0**).  
-**In progress:** Execution (past Fermat / Haber / Wright heights). **Not started:** Merkle\* · TxLookup · History indexes · Finish.
-
-#### Live progress + ETA (snapshot **2026-08-20 ~10:28 CEST**)
-
-| Gate | Height (RPC) | Remaining vs Exec | ETA @ ~33 blk/s (1 h) | ETA @ ~22 blk/s (24 h, more conservative) |
-| --- | ---: | ---: | --- | --- |
-| Haber | **27 118 477** | — | **passed** (Point-4 MATCH 08-17) | — |
-| Wright | **32 984 677** | — | **passed** (Exec ≫ height; optional Point-4 sample still nice-to-have) | — |
-| Local Headers tip | **174 027 661** | ~136.9 M | **~48 d** (~2026-10-07) | **~73 d** (~2026-11-01) |
-| Public tip (now) | **~176 390 000** | ~139.3 M | **~49 d** (~2026-10-08) | **~74 d** (~2026-11-02) |
-
-- Execution rate window (cooled vs early Exec): **~15 m ≈ 19 blk/s**, **1 h ≈ 33 blk/s**, **6 h ≈ 24 blk/s**,
-  **24 h ≈ 22 blk/s**, **~4 d blended ≈ 40 blk/s** (early hotter hours still in the long average).
-- **Overall to Headers tip:** long pole is still Execution — at the **current cooled** 1 h/24 h bands roughly
-  **~1½–2½ months** (Oct–early Nov). If the longer blended ~40 blk/s returns, closer to **~5–6 weeks**.
-  **Post-Execution** (hashing / Merkle / history) is **not yet timed** — budget **additional multi-day** wall
-  after Execution reaches tip.
-- Headers tip remains **parked** (~2.4 M behind public tip ≈ ~14 d of 0.5 s blocks); catching that gap is a
-  later Headers/Bodies pass, small vs remaining Execution.
-- Health at snapshot: peers **16**, bodies validation/timeout/unexpected **0**, invalid messages **0**.
-  Metrics snapshot: `files/opbnb-archive-sync-snapshot-20260820.json`.
-
-Fork hashes (public RPC, for spot-checks): Fermat `9397477` · Haber `27118477` · Wright `32984677`.
 
 ## Run Reth for opBNB
 

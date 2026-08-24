@@ -15,7 +15,11 @@ pub fn from_legacy_primitive_signature(
     chain_id: Option<u64>,
 ) -> Signature {
     let v = if let Some(chain_id) = chain_id {
-        if signature.v() { chain_id * 2 + 36 } else { chain_id * 2 + 35 }
+        if signature.v() {
+            chain_id * 2 + 36
+        } else {
+            chain_id * 2 + 35
+        }
     } else if signature.v() {
         28
     } else {

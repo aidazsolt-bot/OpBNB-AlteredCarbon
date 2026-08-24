@@ -2,8 +2,8 @@
 
 use alloy_consensus::Transaction;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use crate::interop_filter::CROSS_L2_INBOX_ADDRESS;

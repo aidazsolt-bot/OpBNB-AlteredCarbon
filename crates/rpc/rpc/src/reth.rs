@@ -62,10 +62,7 @@ where
     }
 
     /// Returns a map of addresses to changed account balanced for a particular block.
-    pub async fn balance_changes_in_block(
-        &self,
-        block_id: BlockId,
-    ) -> EthResult<AddressMap<U256>> {
+    pub async fn balance_changes_in_block(&self, block_id: BlockId) -> EthResult<AddressMap<U256>> {
         self.on_blocking_task(|this| async move { this.try_balance_changes_in_block(block_id) })
             .await
     }

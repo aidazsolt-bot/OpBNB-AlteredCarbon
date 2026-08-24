@@ -66,10 +66,13 @@ pub fn generated_chain_value_parser(s: &str) -> Option<Arc<OpChainSpec>> {
 }
 
 use reth_chainspec::{
-    BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder, DepositContract, EthChainSpec,
-    EthereumHardforks, ForkFilter, ForkFilterKey, ForkId, Hardforks, Head, make_genesis_header,
+    make_genesis_header, BaseFeeParams, BaseFeeParamsKind, ChainSpec, ChainSpecBuilder,
+    DepositContract, EthChainSpec, EthereumHardforks, ForkFilter, ForkFilterKey, ForkId, Hardforks,
+    Head,
 };
-use reth_ethereum_forks::{ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork};
+use reth_ethereum_forks::{
+    ChainHardforks, DisplayHardforks, EthereumHardfork, ForkCondition, Hardfork,
+};
 use reth_network_peers::NodeRecord;
 pub use reth_optimism_forks::{OpHardfork, OpHardforks, OptimismHardfork, OptimismHardforks};
 use reth_primitives_traits::{Header, SealedHeader};
@@ -404,11 +407,7 @@ impl Hardforks for OpChainSpec {
     fn latest_fork_id(&self) -> ForkId {
         if self.is_opbnb_chain() {
             // Far-future head so every scheduled forkid fork is applied.
-            self.fork_id(&Head {
-                number: u64::MAX,
-                timestamp: u64::MAX,
-                ..Default::default()
-            })
+            self.fork_id(&Head { number: u64::MAX, timestamp: u64::MAX, ..Default::default() })
         } else {
             self.inner.latest_fork_id()
         }
@@ -437,9 +436,9 @@ impl OpChainSpec {
     ///
     /// op-geth only reflects fields whose names end in `Block` or `Time`. That means:
     /// - `Fermat *big.Int` is **omitted** from the EL forkid (even though it activates by block)
-    /// - `Snow` / `Volta` / `Fourier` are not present as `*Time` fields on op-geth `develop`,
-    ///   so they must also be omitted from the forkid while remaining in [`ChainHardforks`]
-    ///   for EVM / helper activation checks.
+    /// - `Snow` / `Volta` / `Fourier` are not present as `*Time` fields on op-geth `develop`, so
+    ///   they must also be omitted from the forkid while remaining in [`ChainHardforks`] for EVM /
+    ///   helper activation checks.
     ///
     /// Without this filter, Status handshake against opBNB bootnodes fails with incompatible
     /// forkid and `net_peerCount` stays 0.
@@ -460,10 +459,7 @@ impl OpChainSpec {
 }
 
 impl EthereumHardforks for OpChainSpec {
-    fn ethereum_fork_activation(
-        &self,
-        fork: EthereumHardfork,
-    ) -> ForkCondition {
+    fn ethereum_fork_activation(&self, fork: EthereumHardfork) -> ForkCondition {
         self.inner.ethereum_fork_activation(fork)
     }
 }
@@ -575,8 +571,7 @@ impl From<Genesis> for OpChainSpec {
         ordered_hardforks.append(&mut block_hardforks);
 
         let hardforks = ChainHardforks::new(ordered_hardforks);
-        let genesis_header =
-            SealedHeader::seal_slow(make_genesis_header(&genesis, &hardforks));
+        let genesis_header = SealedHeader::seal_slow(make_genesis_header(&genesis, &hardforks));
 
         Self {
             inner: ChainSpec {
@@ -873,11 +868,7 @@ mod tests {
 
         let genesis_ts = OPBNB_MAINNET.genesis_timestamp();
         let at_genesis = Head { number: 0, timestamp: genesis_ts, ..Default::default() };
-        let at_tip = Head {
-            number: 200_000_000,
-            timestamp: 1_900_000_000,
-            ..Default::default()
-        };
+        let at_tip = Head { number: 200_000_000, timestamp: 1_900_000_000, ..Default::default() };
 
         assert_eq!(
             OPBNB_MAINNET.fork_id(&at_genesis),

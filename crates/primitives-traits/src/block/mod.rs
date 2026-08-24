@@ -10,8 +10,8 @@ pub mod body;
 pub mod error;
 pub mod header;
 
-use alloc::{fmt, vec::Vec};
 use crate::block::header::FullBlockHeader;
+use alloc::{fmt, vec::Vec};
 use alloy_primitives::{Address, B256};
 use alloy_rlp::{Decodable, Encodable};
 

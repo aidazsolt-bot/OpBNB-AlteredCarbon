@@ -37,9 +37,6 @@ reth-trie.workspace = true
 reth-prune-types.workspace = true
 reth-execution-types.workspace = true
 
-# bsc-reth
-reth-bsc-primitives = { workspace = true, optional = true }
-
 # ethereum
 alloy-evm = { workspace = true, features = ["overrides", "call-util"] }
 alloy-rlp.workspace = true
@@ -75,7 +72,3 @@ tracing.workspace = true
 [features]
 js-tracer = ["revm-inspectors/js-tracer", "reth-rpc-eth-types/js-tracer"]
 client = ["jsonrpsee/client", "jsonrpsee/async-client"]
-bsc = [
-    "reth-primitives/bsc",
-    "dep:reth-bsc-primitives",
-]

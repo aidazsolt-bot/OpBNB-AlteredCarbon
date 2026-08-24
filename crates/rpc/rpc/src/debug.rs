@@ -23,7 +23,10 @@ use reth_chainspec::{ChainSpecProvider, EthChainSpec, EthereumHardforks};
 use reth_engine_primitives::ConsensusEngineEvent;
 use reth_errors::RethError;
 use reth_evm::{execute::Executor, ConfigureEvm, EvmEnvFor, TxEnvFor};
-use reth_primitives_traits::{Block as BlockTrait, BlockBody, BlockTy, NodePrimitives, RecoveredBlock, SignedTransaction, TxHashRef};
+use reth_primitives_traits::{
+    Block as BlockTrait, BlockBody, BlockTy, NodePrimitives, RecoveredBlock, SignedTransaction,
+    TxHashRef,
+};
 use reth_revm::{db::State, witness::ExecutionWitnessRecord};
 use reth_rpc_api::DebugApiServer;
 use reth_rpc_convert::RpcTxReq;
@@ -37,8 +40,9 @@ use reth_rpc_server_types::{
     ToRpcResult,
 };
 use reth_storage_api::{
-    BlockIdReader, BlockReader, BlockReaderIdExt, HeaderProvider, ProviderBlock, ReceiptProviderIdExt,
-    StateProofProvider, StateProviderFactory, StateRootProvider, TransactionVariant,
+    BlockIdReader, BlockReader, BlockReaderIdExt, HeaderProvider, ProviderBlock,
+    ReceiptProviderIdExt, StateProofProvider, StateProviderFactory, StateRootProvider,
+    TransactionVariant,
 };
 use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner};
 use reth_trie_common::{updates::TrieUpdates, ExecutionWitnessMode, HashedPostState};
@@ -135,9 +139,10 @@ where
     /// `gas` field for the callTracer entry, matching geth/erigon behavior where the
     /// top-level `gas` equals the transaction's gas limit.
     fn fix_mux_frame_gas_limit(frame: &mut MuxFrame, gas_limit: u64) {
-        if let Some(GethTrace::CallTracer(call_frame)) = frame.0.get_mut(
-            &GethDebugTracerType::BuiltInTracer(GethDebugBuiltInTracerType::CallTracer),
-        ) {
+        if let Some(GethTrace::CallTracer(call_frame)) = frame
+            .0
+            .get_mut(&GethDebugTracerType::BuiltInTracer(GethDebugBuiltInTracerType::CallTracer))
+        {
             call_frame.gas = U256::from(gas_limit);
         }
     }
@@ -269,9 +274,8 @@ where
         self.eth_api()
             .spawn_with_state_at_block(state_at, move |eth_api, mut db| {
                 let (tx, tx_info) = transaction.split();
-                let tx_index = tx_info
-                    .index
-                    .expect("transaction in block must have index") as usize;
+                let tx_index =
+                    tx_info.index.expect("transaction in block must have index") as usize;
                 let tx_hash = *tx.tx_hash();
 
                 eth_api.replay_block_until(&mut db, &block, tx_index)?;
@@ -455,7 +459,9 @@ where
                                             evm_env.block_env.number().saturating_to(),
                                         ),
                                         base_fee: Some(evm_env.block_env.basefee()),
-                                        block_timestamp: Some(evm_env.block_env.timestamp().saturating_to()),
+                                        block_timestamp: Some(
+                                            evm_env.block_env.timestamp().saturating_to(),
+                                        ),
                                         hash: None,
                                         block_hash: None,
                                         index: None,

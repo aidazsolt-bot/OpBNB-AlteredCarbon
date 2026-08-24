@@ -132,10 +132,10 @@ impl<Http: HttpClient + Clone> EraClient<Http> {
 
         if let Ok(mut dir) = fs::read_dir(&self.folder).await {
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(name) = entry.file_name().to_str()
-                    && self.is_matching_era_file(name)
-                    && let Some(number) = self.file_name_to_number(name)
-                    && (max.is_none() || matches!(max, Some(max) if number > max))
+                if let Some(name) = entry.file_name().to_str() &&
+                    self.is_matching_era_file(name) &&
+                    let Some(number) = self.file_name_to_number(name) &&
+                    (max.is_none() || matches!(max, Some(max) if number > max))
                 {
                     max.replace(number + 1);
                 }
@@ -151,10 +151,10 @@ impl<Http: HttpClient + Clone> EraClient<Http> {
 
         if let Ok(mut dir) = fs::read_dir(&self.folder).await {
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(name) = entry.file_name().to_str()
-                    && self.is_matching_era_file(name)
-                    && let Some(number) = self.file_name_to_number(name)
-                    && (number < index || number >= last)
+                if let Some(name) = entry.file_name().to_str() &&
+                    self.is_matching_era_file(name) &&
+                    let Some(number) = self.file_name_to_number(name) &&
+                    (number < index || number >= last)
                 {
                     reth_fs_util::remove_file_if_exists(entry.path())?;
                 }
@@ -175,9 +175,8 @@ impl<Http: HttpClient + Clone> EraClient<Http> {
 
         if let Ok(mut dir) = fs::read_dir(&self.folder).await {
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(ext) = entry.path().extension().and_then(|ext| ext.to_str())
-                    && self
-                        .era_type
+                if let Some(ext) = entry.path().extension().and_then(|ext| ext.to_str()) &&
+                    self.era_type
                         .extensions()
                         .iter()
                         .any(|valid| valid.trim_start_matches('.') == ext)
@@ -352,8 +351,8 @@ impl<Http: HttpClient + Clone> EraClient<Http> {
 /// `extensions` are tried in order; pass them longest-first so `.ere` never matches inside `.erae`.
 fn extract_era_filename<'a>(line: &'a str, extensions: &[&str]) -> Option<&'a str> {
     for ext in extensions {
-        if let Some(j) = line.find(ext)
-            && let Some(i) = line[..j].rfind(|c: char| !c.is_alphanumeric() && c != '-')
+        if let Some(j) = line.find(ext) &&
+            let Some(i) = line[..j].rfind(|c: char| !c.is_alphanumeric() && c != '-')
         {
             return Some(&line[i + 1..j + ext.len()]);
         }

@@ -1139,11 +1139,7 @@ where
         None,
     )
     .builder()
-    .add_set(ExecutionStages::new(
-        evm_config,
-        consensus,
-        stages_config,
-    ))
+    .add_set(ExecutionStages::new(evm_config, consensus, stages_config))
     .add_set(HashingStages::default())
     .add_stage(FinishStage::default());
 

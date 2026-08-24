@@ -25,10 +25,12 @@ pub mod receipt;
 pub use receipt::{FullReceipt, Receipt, ReceiptFromStorage};
 
 pub mod transaction;
-pub use transaction::{
-    execute::FillTxEnv, signed::{FullSignedTx, SignedTransaction}, FullTransaction, Transaction,
-};
 pub use alloy_consensus::transaction::{Recovered, SignerRecoverable, TransactionMeta, TxHashRef};
+pub use transaction::{
+    execute::FillTxEnv,
+    signed::{FullSignedTx, SignedTransaction},
+    FullTransaction, Transaction,
+};
 
 pub mod crypto;
 pub mod proofs;
@@ -39,8 +41,11 @@ pub use integer_list::{IntegerList, IntegerListError};
 
 pub mod block;
 pub use block::{
-    body::{BlockBody, FullBlockBody}, error::BlockRecoveryError, header::{AlloyBlockHeader, FullBlockHeader},
-    recovered::IndexedTx, Block, FullBlock, RecoveredBlock, SealedBlock,
+    body::{BlockBody, FullBlockBody},
+    error::BlockRecoveryError,
+    header::{AlloyBlockHeader, FullBlockHeader},
+    recovered::IndexedTx,
+    Block, FullBlock, RecoveredBlock, SealedBlock,
 };
 
 mod withdrawal;

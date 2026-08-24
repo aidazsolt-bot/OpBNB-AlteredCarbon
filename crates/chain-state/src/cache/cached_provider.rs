@@ -2,8 +2,8 @@ use alloy_primitives::{Address, BlockNumber, Bytes, StorageKey, StorageValue, B2
 use reth_errors::ProviderResult;
 use reth_primitives::{Account, Bytecode};
 use reth_storage_api::{
-    AccountReader, BlockHashReader, BytecodeReader, HashedPostStateProvider,
-    StateProofProvider, StateProvider, StateProviderBox, StateRootProvider, StorageRootProvider,
+    AccountReader, BlockHashReader, BytecodeReader, HashedPostStateProvider, StateProofProvider,
+    StateProvider, StateProviderBox, StateRootProvider, StorageRootProvider,
 };
 use reth_trie::{
     updates::TrieUpdates, AccountProof, ExecutionWitnessMode, HashedPostState, HashedStorage,
@@ -159,7 +159,6 @@ impl StateProvider for CachedStateProvider {
         }
         Ok(None)
     }
-
 }
 
 impl BytecodeReader for CachedStateProvider {

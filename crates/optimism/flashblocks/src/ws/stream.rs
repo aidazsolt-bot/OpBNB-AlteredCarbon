@@ -1,18 +1,19 @@
-use crate::{FlashBlock, ws::FlashBlockDecoder};
+use crate::{ws::FlashBlockDecoder, FlashBlock};
 use futures_util::{
-    FutureExt, Sink, Stream, StreamExt,
     stream::{SplitSink, SplitStream},
+    FutureExt, Sink, Stream, StreamExt,
 };
 use std::{
     fmt::{Debug, Formatter},
     future::Future,
     pin::Pin,
-    task::{Context, Poll, ready},
+    task::{ready, Context, Poll},
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async,
-    tungstenite::{Bytes, Error, Message, protocol::CloseFrame},
+    connect_async,
+    tungstenite::{protocol::CloseFrame, Bytes, Error, Message},
+    MaybeTlsStream, WebSocketStream,
 };
 use tracing::debug;
 use url::Url;
@@ -105,12 +106,12 @@ where
                     let _ = ready!(sink.as_mut().poll_flush(cx));
                 }
 
-                let Some(msg) = ready!(
-                    this.stream
-                        .as_mut()
-                        .expect("Stream state should be unreachable without stream")
-                        .poll_next_unpin(cx)
-                ) else {
+                let Some(msg) = ready!(this
+                    .stream
+                    .as_mut()
+                    .expect("Stream state should be unreachable without stream")
+                    .poll_next_unpin(cx))
+                else {
                     this.state = State::Initial;
 
                     continue 'start;
@@ -269,8 +270,8 @@ mod tests {
     use brotli::enc::BrotliEncoderParams;
     use std::{future, iter};
     use tokio_tungstenite::tungstenite::{
+        protocol::frame::{coding::CloseCode, Frame},
         Error,
-        protocol::frame::{Frame, coding::CloseCode},
     };
 
     #[test]

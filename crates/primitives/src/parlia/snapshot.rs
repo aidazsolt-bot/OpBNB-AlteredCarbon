@@ -14,6 +14,25 @@ pub const CHECKPOINT_INTERVAL: u64 = 1024;
 /// Default turn length before Bohr upgrade
 pub const DEFAULT_TURN_LENGTH: u8 = 1;
 
+/// Default epoch length before Lorentz.
+pub const DEFAULT_EPOCH_LENGTH: u64 = 200;
+/// Lorentz hard-fork parameters.
+pub const LORENTZ_EPOCH_LENGTH: u64 = 500;
+pub const LORENTZ_TURN_LENGTH: u8 = 8;
+/// Maxwell hard-fork parameters.
+pub const MAXWELL_EPOCH_LENGTH: u64 = 1000;
+pub const MAXWELL_TURN_LENGTH: u8 = 16;
+
+/// Block interval in milliseconds (Parlia block time).
+pub const DEFAULT_BLOCK_INTERVAL: u64 = 3000;
+pub const LORENTZ_BLOCK_INTERVAL: u64 = 1500;
+pub const MAXWELL_BLOCK_INTERVAL: u64 = 750;
+pub const FERMI_BLOCK_INTERVAL: u64 = 450;
+
+fn default_block_interval() -> u64 {
+    DEFAULT_BLOCK_INTERVAL
+}
+
 /// record validators information
 #[derive(Debug, Default, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
@@ -47,6 +66,9 @@ pub struct Snapshot {
     /// record length of `turn`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_length: Option<u8>,
+    /// Expected block interval in milliseconds.
+    #[serde(default = "default_block_interval")]
+    pub block_interval: u64,
 }
 
 impl Snapshot {
@@ -88,6 +110,7 @@ impl Snapshot {
             recent_proposers: Default::default(),
             vote_data: Default::default(),
             turn_length: Some(DEFAULT_TURN_LENGTH),
+            block_interval: DEFAULT_BLOCK_INTERVAL,
         }
     }
 
@@ -125,8 +148,8 @@ impl Snapshot {
         snap.recent_proposers.insert(block_number, validator);
 
         let epoch_key = u64::MAX - next_header.number / snap.epoch_num;
-        if !new_validators.is_empty()
-            && (!is_bohr || !snap.recent_proposers.contains_key(&epoch_key))
+        if !new_validators.is_empty() &&
+            (!is_bohr || !snap.recent_proposers.contains_key(&epoch_key))
         {
             new_validators.sort();
             if let Some(turn_length) = turn_length {
@@ -171,6 +194,22 @@ impl Snapshot {
             snap.vote_data = attestation.data;
         }
         Some(snap)
+    }
+
+    /// Updates `block_interval` for Lorentz/Maxwell/Fermi-era blocks.
+    pub fn update_block_interval_from_hardforks(
+        &mut self,
+        is_lorentz: bool,
+        is_maxwell: bool,
+        is_fermi: bool,
+    ) {
+        if is_fermi {
+            self.block_interval = FERMI_BLOCK_INTERVAL;
+        } else if is_maxwell {
+            self.block_interval = MAXWELL_BLOCK_INTERVAL;
+        } else if is_lorentz {
+            self.block_interval = LORENTZ_BLOCK_INTERVAL;
+        }
     }
 
     /// Returns true if the block difficulty should be inturn

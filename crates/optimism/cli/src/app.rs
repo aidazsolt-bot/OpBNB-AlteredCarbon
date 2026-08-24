@@ -1,5 +1,5 @@
-use crate::{Cli, Commands, metrics::register_hardfork_activation_metrics};
-use eyre::{Result, eyre};
+use crate::{metrics::register_hardfork_activation_metrics, Cli, Commands};
+use eyre::{eyre, Result};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::launcher::Launcher;
 use reth_cli_runner::CliRunner;
@@ -78,7 +78,7 @@ where
             register_hardfork_activation_metrics(chain_spec);
         }
 
-        let components = |spec: Arc<OpChainSpec>| {
+        let components = |spec: Arc<OpChainSpec>, _provider| {
             (OpExecutorProvider::optimism(spec.clone()), Arc::new(OpBeaconConsensus::new(spec)))
         };
 

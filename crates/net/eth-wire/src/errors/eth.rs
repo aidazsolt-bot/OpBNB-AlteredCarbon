@@ -73,18 +73,18 @@ impl EthStreamError {
     pub const fn is_protocol_breach(&self) -> bool {
         matches!(
             self,
-            Self::InvalidMessage(_)
-                | Self::InvalidSnapMessage(_)
-                | Self::MessageTooBig(_)
-                | Self::TransactionHashesInvalidLenOfFields { .. }
-                | Self::UnsupportedMessage { .. }
-                | Self::P2PStreamError(
-                    P2PStreamError::Rlp(_)
-                        | P2PStreamError::Snap(_)
-                        | P2PStreamError::MessageTooBig { .. }
-                        | P2PStreamError::UnknownReservedMessageId(_)
-                        | P2PStreamError::EmptyProtocolMessage
-                        | P2PStreamError::UnknownDisconnectReason(_)
+            Self::InvalidMessage(_) |
+                Self::InvalidSnapMessage(_) |
+                Self::MessageTooBig(_) |
+                Self::TransactionHashesInvalidLenOfFields { .. } |
+                Self::UnsupportedMessage { .. } |
+                Self::P2PStreamError(
+                    P2PStreamError::Rlp(_) |
+                        P2PStreamError::Snap(_) |
+                        P2PStreamError::MessageTooBig { .. } |
+                        P2PStreamError::UnknownReservedMessageId(_) |
+                        P2PStreamError::EmptyProtocolMessage |
+                        P2PStreamError::UnknownDisconnectReason(_)
                 )
         )
     }

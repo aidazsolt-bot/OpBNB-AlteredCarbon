@@ -1,4 +1,4 @@
-use crate::{InvalidCrossTx, OpPooledTx, interop_filter::InteropFilterClient};
+use crate::{interop_filter::InteropFilterClient, InvalidCrossTx, OpPooledTx};
 use alloy_consensus::{BlockHeader, Transaction};
 use op_revm::L1BlockInfo;
 use parking_lot::RwLock;
@@ -7,17 +7,17 @@ use reth_evm::ConfigureEvm;
 use reth_optimism_evm::RethL1BlockInfo;
 use reth_optimism_forks::OpHardforks;
 use reth_primitives_traits::{
-    Block, BlockBody, BlockTy, GotExpected, SealedBlock,
-    transaction::error::InvalidTransactionError,
+    transaction::error::InvalidTransactionError, Block, BlockBody, BlockTy, GotExpected,
+    SealedBlock,
 };
 use reth_storage_api::{AccountInfoReader, BlockReaderIdExt, StateProviderFactory};
 use reth_transaction_pool::{
-    EthPoolTransaction, EthTransactionValidator, TransactionOrigin, TransactionValidationOutcome,
-    TransactionValidator, error::InvalidPoolTransactionError,
+    error::InvalidPoolTransactionError, EthPoolTransaction, EthTransactionValidator,
+    TransactionOrigin, TransactionValidationOutcome, TransactionValidator,
 };
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
 };
 
 /// The timeout for cross-chain transaction validation against the interop filter.

@@ -10,8 +10,8 @@
 use alloy_primitives::B256;
 use reth_execution_types::BlockExecutionOutput;
 use reth_optimism_flashblocks::{
-    CanonicalBlockNotification, PendingBlockState, PendingStateRegistry,
     validation::{CanonicalBlockFingerprint, ReconciliationStrategy},
+    CanonicalBlockNotification, PendingBlockState, PendingStateRegistry,
 };
 use reth_optimism_primitives::OpPrimitives;
 use reth_revm::cached::CachedReads;

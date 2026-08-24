@@ -104,9 +104,6 @@ optimism = [
 opbnb = [
     "reth-primitives/opbnb",
 ]
-bsc = [
-    "reth-primitives/bsc",
-]
 
 [build-dependencies]
 vergen = { workspace = true, features = ["build", "cargo", "emit_and_set"] }

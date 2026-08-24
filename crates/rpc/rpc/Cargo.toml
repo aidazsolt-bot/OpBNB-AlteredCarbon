@@ -118,6 +118,3 @@ js-tracer = [
     "reth-rpc-eth-types/js-tracer",
     "reth-rpc-eth-api/js-tracer",
 ]
-bsc = [
-    "reth-rpc-eth-api/bsc",
-]

@@ -5,15 +5,15 @@
 use std::{
     fmt,
     sync::{
-        Arc, RwLock,
         atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
     },
     time::{Duration, Instant},
 };
 
 use alloy_consensus::Transaction;
 use alloy_eips::eip7594::BlobTransactionSidecarVariant;
-use alloy_primitives::{Address, B256, TxHash};
+use alloy_primitives::{Address, TxHash, B256};
 use metrics::Counter;
 use reth_eth_wire_types::HandleMempoolData;
 use reth_metrics::Metrics;

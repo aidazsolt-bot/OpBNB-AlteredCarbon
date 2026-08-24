@@ -118,8 +118,7 @@ fn verify_only<N: ProviderNodeTypes>(tool: &DbTool<N>) -> eyre::Result<()> {
 
     // Create the verifier
     let hashed_cursor_factory = DatabaseHashedCursorFactory::new(&tx);
-    let trie_cursor_factory =
-        DatabaseTrieCursorFactory::<&_, LegacyKeyAdapter>::new(&tx);
+    let trie_cursor_factory = DatabaseTrieCursorFactory::<&_, LegacyKeyAdapter>::new(&tx);
     let verifier = Verifier::new(&trie_cursor_factory, hashed_cursor_factory)?;
 
     let metrics = RepairTrieMetrics::new();

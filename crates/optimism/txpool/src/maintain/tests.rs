@@ -1,18 +1,18 @@
 use super::*;
 use crate::{
+    interop_filter::{InteropTxValidatorError, CROSS_L2_INBOX_ADDRESS},
     InvalidCrossTx, OpPooledTransaction,
-    interop_filter::{CROSS_L2_INBOX_ADDRESS, InteropTxValidatorError},
 };
-use alloy_consensus::{SignableTransaction, TxEip1559, transaction::Recovered};
+use alloy_consensus::{transaction::Recovered, SignableTransaction, TxEip1559};
 use alloy_eips::eip2930::{AccessList, AccessListItem};
-use alloy_primitives::{Address, B256, Signature, TxKind, U256};
+use alloy_primitives::{Address, Signature, TxKind, B256, U256};
 use op_alloy_rpc_types::SuperchainDAError;
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_optimism_primitives::{OpBlock, OpPrimitives};
 use reth_primitives_traits::RecoveredBlock;
 use reth_transaction_pool::{
-    CoinbaseTipOrdering, Pool, PoolConfig, TransactionOrigin, blobstore::InMemoryBlobStore,
-    noop::MockTransactionValidator,
+    blobstore::InMemoryBlobStore, noop::MockTransactionValidator, CoinbaseTipOrdering, Pool,
+    PoolConfig, TransactionOrigin,
 };
 use rstest::rstest;
 use std::{collections::BTreeMap, sync::Arc};

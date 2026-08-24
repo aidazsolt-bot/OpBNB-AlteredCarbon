@@ -1,11 +1,11 @@
 use super::{
-    ExecutionInfo, OpPayloadBuilderCtx, PayloadTransactionsWithCommitHook, RethPayloadTransactions,
-    build_post_exec_recovered_tx, try_include_post_exec_tx,
+    build_post_exec_recovered_tx, try_include_post_exec_tx, ExecutionInfo, OpPayloadBuilderCtx,
+    PayloadTransactionsWithCommitHook, RethPayloadTransactions,
 };
-use crate::{OpPayloadBuilderAttributes, config::OpBuilderConfig};
+use crate::{config::OpBuilderConfig, OpPayloadBuilderAttributes};
 use alloy_consensus::{
-    Header, Sealable, SignableTransaction, Transaction, TxEip1559, Typed2718,
     transaction::{Recovered, TxHashRef},
+    Header, Sealable, SignableTransaction, Transaction, TxEip1559, Typed2718,
 };
 use alloy_eips::{
     eip2718::{Encodable2718, WithEncoded},
@@ -13,9 +13,9 @@ use alloy_eips::{
     eip7702::SignedAuthorization,
 };
 use alloy_evm::RecoveredTx;
-use alloy_primitives::{Address, B64, B256, Bytes, Signature, TxHash, TxKind, U256};
+use alloy_primitives::{Address, Bytes, Signature, TxHash, TxKind, B256, B64, U256};
 use alloy_rpc_types_eth::erc4337::TransactionConditional;
-use op_alloy_consensus::{SDMGasEntry, build_post_exec_tx};
+use op_alloy_consensus::{build_post_exec_tx, SDMGasEntry};
 use reth_basic_payload_builder::PayloadConfig;
 use reth_chainspec::MIN_TRANSACTION_GAS;
 use reth_evm::execute::{BlockBuilder, BlockExecutionError};
@@ -23,11 +23,11 @@ use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder};
 use reth_optimism_evm::{OpEvmConfig, PostExecMode};
 use reth_optimism_primitives::{OpPrimitives, OpTransactionSigned};
 use reth_optimism_txpool::{
-    OpPooledTransaction, OpPooledTx,
     conditional::MaybeConditionalTransaction,
     estimated_da_size::DataAvailabilitySized,
     interop::{InteropFailsafe, MaybeInteropTransaction},
     interop_filter::CROSS_L2_INBOX_ADDRESS,
+    OpPooledTransaction, OpPooledTx,
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_util::PayloadTransactionsFixed;
@@ -255,8 +255,8 @@ where
     let mut builder = ctx.block_builder(&mut db).expect("block builder can be created");
     let mut info = ExecutionInfo::new();
 
-    assert!(
-        ctx.execute_best_transactions(
+    assert!(ctx
+        .execute_best_transactions(
             &mut info,
             &mut builder,
             RethPayloadTransactions(best_txs),
@@ -264,8 +264,7 @@ where
             committed_txs
         )
         .expect("best transactions execute")
-        .is_none()
-    );
+        .is_none());
 
     let outcome = builder
         .finish(state_provider.clone(), Some((B256::ZERO, Default::default())))

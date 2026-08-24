@@ -7,25 +7,24 @@
 const MAX_INTEROP_QUERIES: usize = 10;
 
 use crate::{
-    InvalidCrossTx,
     interop::InteropFailsafe,
     interop_filter::{
-        ExecutingDescriptor, InteropTxValidatorError,
         metrics::{
-            EndpointMetrics, InteropMetrics, REASON_NONE, RESULT_ALLOWED, RESULT_REJECTED_FAILSAFE,
-            RESULT_REJECTED_PRE_INTEROP, decision_for_error,
+            decision_for_error, EndpointMetrics, InteropMetrics, REASON_NONE, RESULT_ALLOWED,
+            RESULT_REJECTED_FAILSAFE, RESULT_REJECTED_PRE_INTEROP,
         },
-        parse_access_list_items_to_inbox_entries,
+        parse_access_list_items_to_inbox_entries, ExecutingDescriptor, InteropTxValidatorError,
     },
     maintain::FAILSAFE_HEARTBEAT_INTERVAL,
+    InvalidCrossTx,
 };
 use alloy_eips::eip2930::AccessList;
-use alloy_primitives::{B256, TxHash};
+use alloy_primitives::{TxHash, B256};
 use alloy_rpc_client::ReqwestClient;
 use futures_util::{
-    FutureExt, Stream,
     future::BoxFuture,
     stream::{self, FuturesUnordered, StreamExt},
+    FutureExt, Stream,
 };
 use op_alloy_consensus::interop::SafetyLevel;
 use reth_transaction_pool::PoolTransaction;
@@ -33,8 +32,8 @@ use std::{
     borrow::Cow,
     future::IntoFuture,
     sync::{
-        Arc,
         atomic::{AtomicU64, Ordering},
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -662,8 +661,9 @@ mod tests {
         Valid,
         /// Responds immediately with a definitive validation rejection (maps to `InvalidEntry`).
         Invalid,
-        /// Responds immediately with a generic `-32602` rejection that is not a `SuperchainDAError`
-        /// code (e.g. "failed to parse access entry"). Maps to `Rejected`, a definitive verdict.
+        /// Responds immediately with a generic `-32602` rejection that is not a
+        /// `SuperchainDAError` code (e.g. "failed to parse access entry"). Maps to
+        /// `Rejected`, a definitive verdict.
         GenericRejection,
         /// Responds immediately with a non-definitive internal error (maps to `Other`).
         InternalError,

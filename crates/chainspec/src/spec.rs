@@ -355,8 +355,8 @@ pub fn blob_params_to_schedule(
     let bpo_forks = EthereumHardfork::bpo_variants();
     for (timestamp, blob_params) in &params.scheduled {
         for bpo_fork in bpo_forks {
-            if let ForkCondition::Timestamp(fork_ts) = hardforks.fork(bpo_fork)
-                && fork_ts == *timestamp
+            if let ForkCondition::Timestamp(fork_ts) = hardforks.fork(bpo_fork) &&
+                fork_ts == *timestamp
             {
                 schedule.insert(bpo_fork.name().to_lowercase(), *blob_params);
                 break;
@@ -449,15 +449,15 @@ pub struct ChainSpec<H: BlockHeader = Header> {
 
 impl<H: BlockHeader + Sealable> PartialEq for ChainSpec<H> {
     fn eq(&self, other: &Self) -> bool {
-        self.chain == other.chain
-            && self.genesis == other.genesis
-            && self.genesis_header == other.genesis_header
-            && self.paris_block_and_final_difficulty == other.paris_block_and_final_difficulty
-            && self.hardforks == other.hardforks
-            && self.deposit_contract == other.deposit_contract
-            && self.base_fee_params == other.base_fee_params
-            && self.prune_delete_limit == other.prune_delete_limit
-            && self.blob_params == other.blob_params
+        self.chain == other.chain &&
+            self.genesis == other.genesis &&
+            self.genesis_header == other.genesis_header &&
+            self.paris_block_and_final_difficulty == other.paris_block_and_final_difficulty &&
+            self.hardforks == other.hardforks &&
+            self.deposit_contract == other.deposit_contract &&
+            self.base_fee_params == other.base_fee_params &&
+            self.prune_delete_limit == other.prune_delete_limit &&
+            self.blob_params == other.blob_params
     }
 }
 
@@ -534,9 +534,9 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     /// Returns `true` if this chain contains Bsc configuration.
     #[inline]
     pub fn is_bsc(&self) -> bool {
-        self.chain == Chain::bsc_mainnet()
-            || self.chain == Chain::bsc_testnet()
-            || self.chain == Chain::from_id(714)
+        self.chain == Chain::bsc_mainnet() ||
+            self.chain == Chain::bsc_testnet() ||
+            self.chain == Chain::from_id(714)
     }
 
     /// Returns `true` if this chain is Bsc mainnet.
@@ -549,8 +549,8 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     #[inline]
     #[cfg(feature = "optimism")]
     pub fn is_optimism(&self) -> bool {
-        self.chain.is_optimism()
-            || self.hardforks.get(reth_optimism_forks::OptimismHardfork::Bedrock).is_some()
+        self.chain.is_optimism() ||
+            self.hardforks.get(reth_optimism_forks::OptimismHardfork::Bedrock).is_some()
     }
 
     /// Returns `true` if this chain contains Optimism configuration.
@@ -711,8 +711,8 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
             // We filter out TTD-based forks w/o a pre-known block since those do not show up in
             // the fork filter.
             Some(match condition {
-                ForkCondition::Block(block)
-                | ForkCondition::TTD { fork_block: Some(block), .. } => ForkFilterKey::Block(block),
+                ForkCondition::Block(block) |
+                ForkCondition::TTD { fork_block: Some(block), .. } => ForkFilterKey::Block(block),
                 ForkCondition::Timestamp(time) => ForkFilterKey::Time(time),
                 _ => return None,
             })
@@ -746,8 +746,8 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
         for (_, cond) in self.hardforks.forks_iter() {
             // handle block based forks and the sepolia merge netsplit block edge case (TTD
             // ForkCondition with Some(block))
-            if let ForkCondition::Block(block)
-            | ForkCondition::TTD { fork_block: Some(block), .. } = cond
+            if let ForkCondition::Block(block) |
+            ForkCondition::TTD { fork_block: Some(block), .. } = cond
             {
                 if head.number >= block {
                     // skip duplicated hardforks: hardforks enabled at genesis block
@@ -1065,8 +1065,6 @@ impl<H: BlockHeader> EthereumHardforks for ChainSpec<H> {
 #[cfg(feature = "optimism")]
 impl reth_optimism_forks::OptimismHardforks for ChainSpec {}
 
-#[cfg(feature = "bsc")]
-impl reth_bsc_forks::BscHardforks for ChainSpec {}
 
 /// A trait for reading the current chainspec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -2714,7 +2712,6 @@ Post-merge hard forks (timestamp based):
     }
 
     #[test]
-    #[cfg(not(feature = "bsc"))]
     fn test_default_cancun_header_forkhash() {
         use alloy_primitives::b256;
         use std::str::FromStr;

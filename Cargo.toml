@@ -13,16 +13,6 @@ members = [
     "bin/reth/",
     "crates/storage/rpc-provider/",
     "crates/chain-state/",
-    "crates/bsc/bin/",
-    "crates/bsc/chainspec/",
-    "crates/bsc/cli/",
-    "crates/bsc/consensus/",
-    "crates/bsc/engine/",
-    "crates/bsc/evm/",
-    "crates/bsc/hardforks/",
-    "crates/bsc/node/",
-    "crates/bsc/payload/",
-    "crates/bsc/primitives/",
     "crates/optimism/bin/",
     "crates/optimism/chainspec/",
     "crates/optimism/consensus/",
@@ -147,7 +137,6 @@ members = [
     "crates/trie/trie",
     "examples/beacon-api-sidecar-fetcher/",
     "examples/beacon-api-sse/",
-    "examples/bsc-p2p",
     "examples/custom-dev-node/",
     # Excluded: stale API drift (EngineTypes/PayloadBuilder/ExecutorBuilder/AddOns middleware)
     # "examples/custom-state-root/",
@@ -344,22 +333,12 @@ incremental = false
 
 [workspace.dependencies]
 # reth
-bsc-reth = { path = "crates/bsc/bin" }
 op-reth = { path = "crates/optimism/bin" }
 reth = { path = "bin/reth" }
 reth-storage-rpc-provider = { path = "crates/storage/rpc-provider" }
 reth-basic-payload-builder = { path = "crates/payload/basic" }
 reth-beacon-consensus = { path = "crates/consensus/beacon" }
 reth-bench = { path = "bin/reth-bench" }
-reth-bsc-chainspec = { path = "crates/bsc/chainspec" }
-reth-bsc-forks = { path = "crates/bsc/hardforks" }
-reth-bsc-cli = { path = "crates/bsc/cli" }
-reth-bsc-consensus = { path = "crates/bsc/consensus" }
-reth-bsc-engine = { path = "crates/bsc/engine" }
-reth-bsc-evm = { path = "crates/bsc/evm" }
-reth-bsc-node = { path = "crates/bsc/node" }
-reth-bsc-payload-builder = { path = "crates/bsc/payload" }
-reth-bsc-primitives = { path = "crates/bsc/primitives" }
 reth-blockchain-tree = { path = "crates/blockchain-tree" }
 reth-blockchain-tree-api = { path = "crates/blockchain-tree-api" }
 reth-chain-state = { path = "crates/chain-state" }
@@ -800,8 +779,7 @@ ipnet = "2.11"
 # all - instead it reimplements BSC-specific EVM behavior (BLS, CometBFT/
 # Tendermint light-client, IAVL, double-sign, tm_secp256k1 precompiles) natively
 # as precompile injections in its own `evm` crate on top of stock revm/alloy.
-# Follow-up work (see `bsc-crate-update` todo) must port those precompiles the
-# same way into `crates/bsc/evm` rather than restoring a patched revm/alloy.
+# Follow-up work must port opBNB precompiles into `crates/optimism/evm` rather than restoring a patched revm/alloy.
 
 # NOTE: `reth-rpc-traits` was originally an external crates.io dependency
 # (matching upstream v2.4.1's own pin), but its published version depends on

@@ -354,7 +354,8 @@ where
     fn local_payload_attributes_builder(
         chain_spec: &Self::ChainSpec,
     ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        // `LocalPayloadAttributesBuilder` (engine-local) builds wire attrs; wrap as [`OpPayloadAttrs`].
+        // `LocalPayloadAttributesBuilder` (engine-local) builds wire attrs; wrap as
+        // [`OpPayloadAttrs`].
         let builder = Arc::new(LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone())));
         move |parent: reth_primitives_traits::SealedHeader| OpPayloadAttrs(builder.build(&parent))
     }

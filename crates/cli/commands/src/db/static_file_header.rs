@@ -54,7 +54,11 @@ impl Command {
         let header = provider.user_header();
 
         println!("Segment: {}", header.segment());
-        println!("Expected Block Range: {}..={}", header.expected_block_start(), header.expected_block_end());
+        println!(
+            "Expected Block Range: {}..={}",
+            header.expected_block_start(),
+            header.expected_block_end()
+        );
         println!("Block Range: {:?}", header.block_range());
         println!("Transaction Range: {:?}", header.tx_range());
 

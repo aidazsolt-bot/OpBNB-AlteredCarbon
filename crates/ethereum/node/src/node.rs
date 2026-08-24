@@ -2,10 +2,10 @@
 
 pub use crate::{payload::EthereumPayloadBuilder, EthereumEngineValidator};
 use crate::{EthEngineTypes, EthEvmConfig};
+use alloy_consensus::Header;
 use alloy_eips::{eip7840::BlobParams, merge::EPOCH_SLOTS};
 use alloy_network::Ethereum;
 use alloy_rpc_types_engine::ExecutionData;
-use alloy_consensus::Header;
 use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks, Hardforks};
 use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_engine_primitives::EngineTypes;
@@ -54,8 +54,8 @@ use reth_rpc_eth_types::{error::FromEvmError, EthApiError};
 use reth_rpc_server_types::RethRpcModule;
 use reth_tracing::tracing::{debug, info};
 use reth_transaction_pool::{
-    blobstore::DiskFileBlobStore, EthPooledTransaction, EthTransactionValidator,
-    PoolPooledTx, PoolTransaction, TransactionPool, TransactionValidationTaskExecutor,
+    blobstore::DiskFileBlobStore, EthPooledTransaction, EthTransactionValidator, PoolPooledTx,
+    PoolTransaction, TransactionPool, TransactionValidationTaskExecutor,
 };
 use revm::context::TxEnv;
 use std::{marker::PhantomData, sync::Arc, time::SystemTime};
@@ -460,16 +460,17 @@ where
             reth_node_builder::components::create_blob_store_with_cache(ctx, blob_cache_size)?;
 
         let evm_config = EthEvmConfig::new(ctx.chain_spec());
-        let validator = TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone(), evm_config)
-            .set_eip4844(!blobs_disabled)
-            .kzg_settings(ctx.kzg_settings()?)
-            .with_max_tx_input_bytes(ctx.config().txpool.max_tx_input_bytes)
-            .with_local_transactions_config(pool_config.local_transactions_config.clone())
-            .set_tx_fee_cap(ctx.config().rpc.rpc_tx_fee_cap)
-            .with_max_tx_gas_limit(ctx.config().txpool.max_tx_gas_limit)
-            .with_minimum_priority_fee(ctx.config().txpool.minimum_priority_fee)
-            .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
-            .build_with_tasks(ctx.task_executor().clone(), blob_store.clone());
+        let validator =
+            TransactionValidationTaskExecutor::eth_builder(ctx.provider().clone(), evm_config)
+                .set_eip4844(!blobs_disabled)
+                .kzg_settings(ctx.kzg_settings()?)
+                .with_max_tx_input_bytes(ctx.config().txpool.max_tx_input_bytes)
+                .with_local_transactions_config(pool_config.local_transactions_config.clone())
+                .set_tx_fee_cap(ctx.config().rpc.rpc_tx_fee_cap)
+                .with_max_tx_gas_limit(ctx.config().txpool.max_tx_gas_limit)
+                .with_minimum_priority_fee(ctx.config().txpool.minimum_priority_fee)
+                .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
+                .build_with_tasks(ctx.task_executor().clone(), blob_store.clone());
 
         if validator.validator().eip4844() {
             let kzg_settings = validator.validator().kzg_settings().clone();

@@ -3,7 +3,7 @@
 use crate::sequencer::Error;
 use alloy_eips::BlockId;
 use alloy_json_rpc::{RpcRecv, RpcSend};
-use alloy_primitives::{B256, BlockNumber};
+use alloy_primitives::{BlockNumber, B256};
 use alloy_rpc_client::RpcClient;
 use jsonrpsee::BatchResponseBuilder;
 use jsonrpsee_core::{

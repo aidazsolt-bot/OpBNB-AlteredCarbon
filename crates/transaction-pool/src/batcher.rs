@@ -82,8 +82,8 @@ where
 
         // Same-origin batches can skip the per-transaction origins allocation.
         let mut batch_iter = batch.iter();
-        if let Some(origin) = batch_iter.next().map(|req| req.origin)
-            && batch_iter.all(|req| req.origin == origin)
+        if let Some(origin) = batch_iter.next().map(|req| req.origin) &&
+            batch_iter.all(|req| req.origin == origin)
         {
             let (transactions, response_txs): (Vec<_>, Vec<_>) =
                 batch.into_iter().map(|req| (req.pool_tx, req.response_tx)).unzip();

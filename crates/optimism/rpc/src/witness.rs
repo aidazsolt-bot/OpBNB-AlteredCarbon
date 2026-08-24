@@ -2,10 +2,10 @@
 
 use alloy_consensus::{Block as AlloyBlock, BlockHeader};
 use alloy_eips::BlockId;
-use alloy_primitives::{B256, Sealed};
+use alloy_primitives::{Sealed, B256};
 use alloy_rpc_types_debug::ExecutionWitness;
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee_core::{RpcResult, async_trait};
+use jsonrpsee_core::{async_trait, RpcResult};
 use op_alloy_consensus::TxPostExec;
 use reth_chainspec::ChainSpecProvider;
 use reth_node_api::{BuildNextEnv, NodePrimitives};
@@ -13,13 +13,13 @@ use reth_optimism_evm::ConfigurePostExecEvm;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_payload_builder::{OpAttributes, OpPayloadBuilder, OpPayloadPrimitives};
 use reth_optimism_post_exec_replay::{
-    PostExecReplayBlock, PostExecReplayConfig, ReplayPostExecBlockOptions,
-    ReplayPostExecBlockRequest, replay_block,
+    replay_block, PostExecReplayBlock, PostExecReplayConfig, ReplayPostExecBlockOptions,
+    ReplayPostExecBlockRequest,
 };
 use reth_optimism_txpool::OpPooledTx;
 use reth_primitives_traits::{RecoveredBlock, SealedHeader, TxTy};
 use reth_revm::database::StateProviderDatabase;
-use reth_rpc_server_types::{ToRpcResult, result::internal_rpc_err};
+use reth_rpc_server_types::{result::internal_rpc_err, ToRpcResult};
 
 /// Trait for the `debug_executePayload` endpoint, which re-executes a payload and returns the
 /// resulting execution witness.
@@ -39,13 +39,13 @@ pub trait DebugExecutionWitnessApi<Attributes> {
     ) -> RpcResult<ExecutionWitness>;
 }
 use reth_storage_api::{
-    BlockReaderIdExt, NodePrimitivesProvider, StateProviderFactory, TransactionVariant,
     errors::{ProviderError, ProviderResult},
+    BlockReaderIdExt, NodePrimitivesProvider, StateProviderFactory, TransactionVariant,
 };
 use reth_tasks::Runtime;
 use reth_transaction_pool::TransactionPool;
 use std::{fmt::Debug, sync::Arc};
-use tokio::sync::{Semaphore, oneshot};
+use tokio::sync::{oneshot, Semaphore};
 
 /// An extension to the `debug_` namespace for post-exec replay.
 ///
@@ -126,10 +126,7 @@ where
                 .recovered_block(hash.into(), TransactionVariant::NoHash)?
                 .ok_or_else(|| ProviderError::HeaderNotFound(hash.into())),
             ReplayPostExecBlockRequest::Number(number_or_tag) => provider
-                .recovered_block_by_id(
-                    BlockId::Number(number_or_tag),
-                    TransactionVariant::NoHash,
-                )?
+                .recovered_block_by_id(BlockId::Number(number_or_tag), TransactionVariant::NoHash)?
                 .ok_or_else(|| {
                     ProviderError::HeaderNotFound(
                         number_or_tag.as_number().unwrap_or_default().into(),

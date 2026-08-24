@@ -96,7 +96,8 @@ impl StorageHistory {
         range_end: BlockNumber,
     ) -> Result<SegmentOutput, PrunerError>
     where
-        Provider: DBProvider<Tx: DbTxMut> + StaticFileProviderFactory + StorageChangeSetReader + Sync,
+        Provider:
+            DBProvider<Tx: DbTxMut> + StaticFileProviderFactory + StorageChangeSetReader + Sync,
     {
         let mut limiter = if let Some(limit) = input.limiter.deleted_entries_limit() {
             input.limiter.set_deleted_entries_limit(limit / STORAGE_HISTORY_TABLES_TO_PRUNE)

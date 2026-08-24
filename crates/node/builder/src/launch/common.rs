@@ -67,9 +67,9 @@ use reth_node_metrics::{
 };
 use reth_provider::{
     providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
-    BlockHashReader, BlockNumReader, BlockReaderIdExt, DatabaseProviderFactory, HeaderProvider,
-    ProviderError, ProviderFactory, ProviderResult, RocksDBProviderFactory, StageCheckpointReader,
-    StaticFileProviderBuilder, StaticFileProviderFactory,
+    BlockHashReader, BlockNumReader, BlockReaderIdExt, DBProvider, DatabaseProviderFactory,
+    HeaderProvider, ProviderError, ProviderFactory, ProviderResult, RocksDBProviderFactory,
+    StageCheckpointReader, StaticFileProviderBuilder, StaticFileProviderFactory,
 };
 use reth_prune::{PruneModes, PrunerBuilder};
 use reth_rpc_builder::config::RethRpcServerConfig;
@@ -637,22 +637,28 @@ where
         //
         // Compute one unwind target and run a single unwind.
 
-        let provider_ro = factory.database_provider_ro()?;
+        let provider_rw = factory.database_provider_rw()?;
 
         // Step 1: heal file-level inconsistencies (no pruning)
-        factory.static_file_provider().check_file_consistency(&provider_ro)?;
+        factory.static_file_provider().check_file_consistency(&provider_rw)?;
+
+        factory.static_file_provider().recover_transaction_senders_hybrid_gap(&provider_rw)?;
 
         // Step 2: RocksDB consistency check (needs static files tx data)
-        let rocksdb_unwind = factory.rocksdb_provider().check_consistency(&provider_ro)?;
+        let rocksdb_unwind = factory.rocksdb_provider().check_consistency(&provider_rw)?;
 
-        // Step 3: Static file checkpoint consistency (may prune)
+        // Step 3: Static file checkpoint consistency (may prune / reset stage checkpoints)
         let static_file_unwind = factory
             .static_file_provider()
-            .check_consistency(&provider_ro)?
+            .check_consistency(&provider_rw)?
             .map(|target| match target {
                 PipelineTarget::Unwind(block) => block,
                 PipelineTarget::Sync(_) => unreachable!("check_consistency returns Unwind"),
             });
+
+        // Persist checkpoint resets (e.g. SenderRecovery hybrid-gap recovery) and any
+        // consistency-driven stage checkpoint updates before unwinding or continuing startup.
+        provider_rw.commit()?;
 
         // Take the minimum block number to ensure all storage layers are consistent.
         let unwind_target = [rocksdb_unwind, static_file_unwind].into_iter().flatten().min();
@@ -796,10 +802,7 @@ where
 
     /// Convenience function to [`Self::init_genesis`]
     pub fn with_genesis(self) -> Result<Self, InitStorageError> {
-        init_genesis_with_settings(
-            self.provider_factory(),
-            self.node_config().storage_settings(),
-        )?;
+        init_genesis_with_settings(self.provider_factory(), self.node_config().storage_settings())?;
         Ok(self)
     }
 
@@ -1336,6 +1339,7 @@ where
     /// Returns a stream that monitors consensus layer health if:
     /// - No debug tip is configured
     /// - Not running in dev mode
+    /// - The chain uses an external beacon/consensus client (not BSC Parlia)
     ///
     /// Otherwise returns an empty stream.
     pub fn consensus_layer_events(
@@ -1344,7 +1348,11 @@ where
     where
         T::Provider: reth_provider::CanonChainTracker,
     {
-        if self.node_config().debug.tip.is_none() && !self.is_dev() {
+        let chain = self.chain_spec();
+        if self.node_config().debug.tip.is_none() &&
+            !self.is_dev() &&
+            !chain.is_bsc()
+        {
             Either::Left(
                 ConsensusLayerHealthEvents::new(Box::new(self.blockchain_db().clone()))
                     .map(Into::into),

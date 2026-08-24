@@ -4,7 +4,6 @@ use std::{fmt::Debug, future::Future, marker::PhantomData};
 
 use alloy_rpc_types_engine::JwtSecret;
 use reth_basic_payload_builder::PayloadBuilder;
-use reth_bsc_consensus::BscTraceHelper;
 use reth_consensus::FullConsensus;
 use reth_db_api::{database_metrics::DatabaseMetrics, Database};
 use reth_engine_primitives::{ConsensusEngineEvent, ConsensusEngineHandle};
@@ -113,9 +112,6 @@ pub struct AddOnsContext<'a, N: FullNodeComponents> {
     pub engine_events: EventSender<ConsensusEngineEvent<<N::Types as NodeTypes>::Primitives>>,
     /// JWT secret for the node.
     pub jwt_secret: JwtSecret,
-
-    /// Handle bsc trace rpc calls.
-    pub bsc_trace_helper: Option<BscTraceHelper>,
 }
 
 /// Customizable node add-on types.

@@ -16,11 +16,9 @@ pub fn from_block<T: TransactionCompat>(
     tx_resp_builder: &T,
 ) -> Result<RpcBlock<T::Transaction>, BlockError> {
     match kind {
-        BlockTransactionsKind::Hashes => Ok(from_block_with_tx_hashes::<T::Transaction>(
-            block,
-            total_difficulty,
-            block_hash,
-        )),
+        BlockTransactionsKind::Hashes => {
+            Ok(from_block_with_tx_hashes::<T::Transaction>(block, total_difficulty, block_hash))
+        }
         BlockTransactionsKind::Full => {
             from_block_full::<T>(block, total_difficulty, block_hash, tx_resp_builder)
         }
@@ -156,9 +154,7 @@ fn from_block_with_transactions<T>(
     header.total_difficulty = Some(total_difficulty);
     header.size = Some(U256::from(block_length));
 
-    RpcBlock::new(header, transactions)
-        .with_uncles(uncles)
-        .with_withdrawals(block.body.withdrawals)
+    RpcBlock::new(header, transactions).with_uncles(uncles).with_withdrawals(block.body.withdrawals)
 }
 
 pub fn uncle_block_from_header<T>(header: PrimitiveHeader) -> RpcBlock<T> {

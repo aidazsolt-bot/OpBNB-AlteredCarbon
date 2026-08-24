@@ -210,8 +210,8 @@ impl ArchiveFetcher {
             let existing_size =
                 fs::metadata(self.paths.part_path()).map(|meta| meta.len()).unwrap_or(0);
 
-            if let Some(total) = total_size
-                && existing_size >= total
+            if let Some(total) = total_size &&
+                existing_size >= total
             {
                 return self.finalize_download(total);
             }
@@ -928,12 +928,12 @@ fn piece_retry_backoff(attempt: u32, throttled: bool) -> Duration {
 fn is_retryable_piece_status(status: StatusCode) -> bool {
     matches!(
         status,
-        StatusCode::REQUEST_TIMEOUT
-            | StatusCode::TOO_MANY_REQUESTS
-            | StatusCode::INTERNAL_SERVER_ERROR
-            | StatusCode::BAD_GATEWAY
-            | StatusCode::SERVICE_UNAVAILABLE
-            | StatusCode::GATEWAY_TIMEOUT
+        StatusCode::REQUEST_TIMEOUT |
+            StatusCode::TOO_MANY_REQUESTS |
+            StatusCode::INTERNAL_SERVER_ERROR |
+            StatusCode::BAD_GATEWAY |
+            StatusCode::SERVICE_UNAVAILABLE |
+            StatusCode::GATEWAY_TIMEOUT
     )
 }
 
@@ -946,10 +946,10 @@ fn should_retry_piece_status(status: StatusCode) -> bool {
 fn is_throttle_piece_status(status: StatusCode) -> bool {
     matches!(
         status,
-        StatusCode::REQUEST_TIMEOUT
-            | StatusCode::TOO_MANY_REQUESTS
-            | StatusCode::SERVICE_UNAVAILABLE
-            | StatusCode::GATEWAY_TIMEOUT
+        StatusCode::REQUEST_TIMEOUT |
+            StatusCode::TOO_MANY_REQUESTS |
+            StatusCode::SERVICE_UNAVAILABLE |
+            StatusCode::GATEWAY_TIMEOUT
     )
 }
 

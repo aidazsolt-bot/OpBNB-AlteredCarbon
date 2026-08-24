@@ -37,4 +37,3 @@ std = [
     "reth-ethereum-primitives/std",
     "alloy-primitives/std",
 ]
-bsc = ["reth-chainspec/bsc"]

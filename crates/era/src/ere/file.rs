@@ -122,17 +122,13 @@ impl<R: Read + Seek> EreBlockTupleIterator<R> {
                 TOTAL_DIFFICULTY => difficulties.push(TotalDifficulty::from_entry(&entry)?),
                 ACCUMULATOR => {
                     if self.accumulator.is_some() {
-                        return Err(E2sError::Ssz(
-                            "Multiple accumulator entries found".to_string(),
-                        ));
+                        return Err(E2sError::Ssz("Multiple accumulator entries found".to_string()));
                     }
                     self.accumulator = Some(Accumulator::from_entry(&entry)?);
                 }
                 DYNAMIC_BLOCK_INDEX => {
                     if self.index.is_some() {
-                        return Err(E2sError::Ssz(
-                            "Multiple block index entries found".to_string(),
-                        ));
+                        return Err(E2sError::Ssz("Multiple block index entries found".to_string()));
                     }
                     self.index = Some(DynamicBlockIndex::from_entry(&entry)?);
                 }
@@ -149,8 +145,8 @@ impl<R: Read + Seek> Iterator for EreBlockTupleIterator<R> {
     type Item = Result<BlockTuple, E2sError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.loaded
-            && let Err(err) = self.load()
+        if !self.loaded &&
+            let Err(err) = self.load()
         {
             return Some(Err(err));
         }
@@ -322,9 +318,9 @@ fn validate_blocks_and_index(
         (first.receipts.is_some(), first.total_difficulty.is_some(), first.proof.is_some());
 
     for block in blocks {
-        if block.receipts.is_some() != has_receipts
-            || block.total_difficulty.is_some() != has_difficulty
-            || block.proof.is_some() != has_proof
+        if block.receipts.is_some() != has_receipts ||
+            block.total_difficulty.is_some() != has_difficulty ||
+            block.proof.is_some() != has_proof
         {
             return Err(E2sError::Ssz(
                 "ere blocks must share the same optional components (each component present for \

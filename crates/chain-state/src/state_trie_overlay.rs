@@ -6,15 +6,13 @@
 
 use crate::{EthPrimitives, ExecutedBlock, PreservedSparseTrie, PreservedTrieGuard};
 use alloy_primitives::B256;
+use dashmap::{mapref::entry::Entry, DashMap};
 use parking_lot::Mutex;
 use reth_metrics::{
     metrics::{Counter, Histogram},
     Metrics,
 };
-use dashmap::{mapref::entry::Entry, DashMap};
-use reth_primitives_traits::{
-    AlloyBlockHeader, FastInstant, NodePrimitives,
-};
+use reth_primitives_traits::{AlloyBlockHeader, FastInstant, NodePrimitives};
 #[cfg(feature = "rayon")]
 use reth_tasks::WorkerPool;
 use reth_trie::{updates::TrieUpdatesSorted, HashedPostStateSorted, TrieInputSorted};
@@ -230,9 +228,9 @@ impl<N: NodePrimitives> StateTrieOverlayManager<N> {
             let overlays_before = self.overlays.len();
             let blocks = Arc::clone(&self.blocks);
             self.overlays.retain(|key, _| {
-                key.tip_hash != key.anchor_hash
-                    && Self::anchor_for_parent_in(blocks.as_ref(), key.tip_hash, key.anchor_hash)
-                        == Some(key.anchor_hash)
+                key.tip_hash != key.anchor_hash &&
+                    Self::anchor_for_parent_in(blocks.as_ref(), key.tip_hash, key.anchor_hash) ==
+                        Some(key.anchor_hash)
             });
             pruned_overlays = overlays_before.saturating_sub(self.overlays.len());
             span.record("pruned_overlays", pruned_overlays);

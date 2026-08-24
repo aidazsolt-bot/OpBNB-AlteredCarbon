@@ -2,9 +2,9 @@ use crate::{
     ChainSpecProvider, DBProvider, EitherWriter, HistoryWriter, NodePrimitivesProvider,
     ProviderResult, RocksDBProviderFactory, StorageSettingsCache,
 };
+use alloy_consensus::BlockHeader as _;
 use alloy_genesis::GenesisAccount;
 use alloy_primitives::Address;
-use alloy_consensus::BlockHeader as _;
 use reth_chainspec::EthChainSpec;
 use reth_db::{
     models::{storage_sharded_key::StorageShardedKey, ShardedKey},

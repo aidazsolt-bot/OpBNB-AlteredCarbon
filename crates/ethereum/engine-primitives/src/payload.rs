@@ -13,8 +13,7 @@ use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3, ExecutionPayloadEnvelopeV4,
     ExecutionPayloadEnvelopeV5, ExecutionPayloadEnvelopeV6, ExecutionPayloadFieldV2,
     ExecutionPayloadSidecar, ExecutionPayloadV1, ExecutionPayloadV3, ExecutionPayloadV4,
-    PayloadAttributes, PayloadId,
-    PraguePayloadFields,
+    PayloadAttributes, PayloadId, PraguePayloadFields,
 };
 use core::convert::Infallible;
 use reth_ethereum_primitives::EthPrimitives;

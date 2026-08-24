@@ -11,12 +11,12 @@ use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_util::hash_or_num_value_parser;
 use reth_config::Config;
 use reth_network::NetworkConfigBuilder;
-use reth_tasks::Runtime;
 use reth_network_p2p::bodies::client::BodiesClient;
 use reth_node_core::{
     args::{DatadirArgs, NetworkArgs},
     utils::get_single_header,
 };
+use reth_tasks::Runtime;
 
 pub mod bootnode;
 pub mod rlpx;

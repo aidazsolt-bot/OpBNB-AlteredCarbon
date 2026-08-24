@@ -3,11 +3,11 @@ use reth_network_types::{PeersConfig, SessionsConfig};
 use reth_prune_types::PruneModes;
 use reth_stages_types::ExecutionStageThresholds;
 use reth_static_file_types::{StaticFileMap, StaticFileSegment};
-use strum::IntoEnumIterator;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+use strum::IntoEnumIterator;
 use url::Url;
 
 #[cfg(feature = "serde")]

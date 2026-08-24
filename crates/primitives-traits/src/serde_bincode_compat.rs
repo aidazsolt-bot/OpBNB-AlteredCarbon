@@ -51,7 +51,10 @@ impl SerdeBincodeCompat for alloy_consensus::Header {
     }
 }
 
-impl<T: alloy_consensus::TxTy + alloy_rlp::Encodable> RlpBincode for alloy_consensus::EthereumReceipt<T> {}
+impl<T: alloy_consensus::TxTy + alloy_rlp::Encodable> RlpBincode
+    for alloy_consensus::EthereumReceipt<T>
+{
+}
 
 /// Type alias for the [`SerdeBincodeCompat::BincodeRepr`] associated type.
 ///

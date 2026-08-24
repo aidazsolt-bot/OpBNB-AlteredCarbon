@@ -8,7 +8,8 @@ use reth_node_api::{FullNodeComponents, NodePrimitives, PrimitivesTy};
 use reth_primitives_traits::{BlockTy, HeaderTy, ReceiptTy, TxTy};
 use reth_rpc_eth_types::EthStateCache;
 use reth_storage_api::{
-    BlockReader, BlockReaderIdExt, PruneCheckpointReader, StageCheckpointReader, StateProviderFactory,
+    BlockReader, BlockReaderIdExt, PruneCheckpointReader, StageCheckpointReader,
+    StateProviderFactory,
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 

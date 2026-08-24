@@ -1,11 +1,11 @@
 use crate::{
-    FlashBlock, FlashBlockCompleteSequence, FlashBlockCompleteSequenceRx, InProgressFlashBlockRx,
-    PendingFlashBlock,
     cache::{BuildApplyOutcome, BuildTicket, SequenceManager},
     pending_state::PendingStateRegistry,
     tx_cache::TransactionCache,
     validation::{CanonicalBlockFingerprint, ReconciliationStrategy},
     worker::{BuildResult, FlashBlockBuilder, FlashblockCachedReceipt},
+    FlashBlock, FlashBlockCompleteSequence, FlashBlockCompleteSequenceRx, InProgressFlashBlockRx,
+    PendingFlashBlock,
 };
 use alloy_primitives::B256;
 use futures_util::{FutureExt, Stream, StreamExt};
@@ -506,8 +506,8 @@ struct BuildJob<N: NodePrimitives> {
 /// block until space is available.
 ///
 /// Returns `(sender, receiver)` tuple for use with [`FlashBlockService::with_canonical_block_rx`].
-pub fn create_canonical_block_channel()
--> (mpsc::Sender<CanonicalBlockNotification>, mpsc::Receiver<CanonicalBlockNotification>) {
+pub fn create_canonical_block_channel(
+) -> (mpsc::Sender<CanonicalBlockNotification>, mpsc::Receiver<CanonicalBlockNotification>) {
     mpsc::channel(CANONICAL_BLOCK_CHANNEL_CAPACITY)
 }
 

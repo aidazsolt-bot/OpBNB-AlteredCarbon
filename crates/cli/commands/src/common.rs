@@ -291,6 +291,9 @@ type ConsensusFor<N> =
         FullTypesAdapter<N>,
     >>::Components as NodeComponents<FullTypesAdapter<N>>>::Consensus;
 
+/// Blockchain provider type used when building CLI execution components.
+pub type BlockchainProviderFor<N> = BlockchainProvider<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>;
+
 /// Helper trait aggregating components required for the CLI.
 pub trait CliNodeComponents<N: CliNodeTypes>: Send + Sync + 'static {
     /// Returns the configured EVM.
@@ -311,14 +314,14 @@ impl<N: CliNodeTypes> CliNodeComponents<N> for (EvmFor<N>, ConsensusFor<N>) {
 
 /// Helper trait alias for an [`FnOnce`] producing [`CliNodeComponents`].
 pub trait CliComponentsBuilder<N: CliNodeTypes>:
-    FnOnce(Arc<N::ChainSpec>) -> Self::Components + Send + Sync + 'static
+    FnOnce(Arc<N::ChainSpec>, BlockchainProviderFor<N>) -> Self::Components + Send + Sync + 'static
 {
     type Components: CliNodeComponents<N>;
 }
 
 impl<N: CliNodeTypes, F, Comp> CliComponentsBuilder<N> for F
 where
-    F: FnOnce(Arc<N::ChainSpec>) -> Comp + Send + Sync + 'static,
+    F: FnOnce(Arc<N::ChainSpec>, BlockchainProviderFor<N>) -> Comp + Send + Sync + 'static,
     Comp: CliNodeComponents<N>,
 {
     type Components = Comp;

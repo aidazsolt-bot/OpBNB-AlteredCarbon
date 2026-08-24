@@ -424,9 +424,9 @@ impl<N: NetworkPrimitives> EthMessage<N> {
             Self::NewBlockHashes(_) => EthMessageID::NewBlockHashes,
             Self::NewBlock(_) => EthMessageID::NewBlock,
             Self::Transactions(_) => EthMessageID::Transactions,
-            Self::NewPooledTransactionHashes66(_)
-            | Self::NewPooledTransactionHashes68(_)
-            | Self::NewPooledTransactionHashes72(_) => EthMessageID::NewPooledTransactionHashes,
+            Self::NewPooledTransactionHashes66(_) |
+            Self::NewPooledTransactionHashes68(_) |
+            Self::NewPooledTransactionHashes72(_) => EthMessageID::NewPooledTransactionHashes,
             Self::GetBlockHeaders(_) => EthMessageID::GetBlockHeaders,
             Self::BlockHeaders(_) => EthMessageID::BlockHeaders,
             Self::GetBlockBodies(_) => EthMessageID::GetBlockBodies,
@@ -451,14 +451,14 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_request(&self) -> bool {
         matches!(
             self,
-            Self::GetBlockBodies(_)
-                | Self::GetBlockHeaders(_)
-                | Self::GetReceipts(_)
-                | Self::GetReceipts70(_)
-                | Self::GetBlockAccessLists(_)
-                | Self::GetCells(_)
-                | Self::GetPooledTransactions(_)
-                | Self::GetNodeData(_)
+            Self::GetBlockBodies(_) |
+                Self::GetBlockHeaders(_) |
+                Self::GetReceipts(_) |
+                Self::GetReceipts70(_) |
+                Self::GetBlockAccessLists(_) |
+                Self::GetCells(_) |
+                Self::GetPooledTransactions(_) |
+                Self::GetNodeData(_)
         )
     }
 
@@ -466,15 +466,15 @@ impl<N: NetworkPrimitives> EthMessage<N> {
     pub const fn is_response(&self) -> bool {
         matches!(
             self,
-            Self::PooledTransactions(_)
-                | Self::Receipts(_)
-                | Self::Receipts69(_)
-                | Self::Receipts70(_)
-                | Self::BlockAccessLists(_)
-                | Self::BlockHeaders(_)
-                | Self::BlockBodies(_)
-                | Self::NodeData(_)
-                | Self::Cells(_)
+            Self::PooledTransactions(_) |
+                Self::Receipts(_) |
+                Self::Receipts69(_) |
+                Self::Receipts70(_) |
+                Self::BlockAccessLists(_) |
+                Self::BlockHeaders(_) |
+                Self::BlockBodies(_) |
+                Self::NodeData(_) |
+                Self::Cells(_)
         )
     }
 

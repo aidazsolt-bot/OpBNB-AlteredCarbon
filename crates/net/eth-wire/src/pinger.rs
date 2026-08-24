@@ -95,8 +95,8 @@ impl Pinger {
             PingState::Ready => {
                 // Skip polling the timer while it already holds an equivalent waker for a live
                 // deadline; the pending registration is guaranteed to wake this task.
-                if self.ping_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker()))
-                    && !self.ping_timer.is_elapsed()
+                if self.ping_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker())) &&
+                    !self.ping_timer.is_elapsed()
                 {
                     return Poll::Pending;
                 }
@@ -112,8 +112,8 @@ impl Pinger {
             }
             PingState::WaitingForPong => {
                 // Same skip as above: the timeout timer already holds an equivalent waker.
-                if self.timeout_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker()))
-                    && !self.timeout_timer.is_elapsed()
+                if self.timeout_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker())) &&
+                    !self.timeout_timer.is_elapsed()
                 {
                     return Poll::Pending;
                 }

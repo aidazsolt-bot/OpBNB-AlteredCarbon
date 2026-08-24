@@ -1,7 +1,7 @@
-use crate::{OpEthApi, OpEthApiError, eth::RpcNodeCore};
+use crate::{eth::RpcNodeCore, OpEthApi, OpEthApiError};
 use reth_rpc_eth_api::{
+    helpers::{estimate::EstimateCall, Call, EthCall},
     FromEvmError, RpcConvert,
-    helpers::{Call, EthCall, estimate::EstimateCall},
 };
 
 impl<N, Rpc> EthCall for OpEthApi<N, Rpc>

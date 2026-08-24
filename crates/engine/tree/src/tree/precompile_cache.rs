@@ -4,9 +4,9 @@ use alloy_primitives::{
     map::{DefaultHashBuilder, FbBuildHasher},
     Address, Bytes,
 };
+use dashmap::DashMap;
 use moka::policy::EvictionPolicy;
 use reth_evm::precompiles::{DynPrecompile, Precompile, PrecompileInput};
-use dashmap::DashMap;
 use revm::precompile::{PrecompileId, PrecompileOutput, PrecompileResult};
 use std::{hash::Hash, sync::Arc};
 use tracing::error;

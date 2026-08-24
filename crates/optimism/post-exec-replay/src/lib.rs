@@ -10,7 +10,7 @@ use reth_optimism_primitives as _;
 mod replay;
 mod types;
 
-pub use replay::{PostExecReplayError, replay_block, strip_post_exec_tx_for_replay};
+pub use replay::{replay_block, strip_post_exec_tx_for_replay, PostExecReplayError};
 pub use types::{
     PostExecReplayBlock, PostExecReplayConfig, PostExecReplayMismatch, PostExecReplayMismatchKind,
     PostExecReplayPayload, PostExecReplayPayloadEntry, PostExecReplayRefundEvent,

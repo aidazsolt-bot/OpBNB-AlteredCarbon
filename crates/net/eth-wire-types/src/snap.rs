@@ -38,9 +38,9 @@ impl SnapVersion {
         match self {
             // snap/2: 0x00..=0x05 plus BAL (0x08/0x09). TrieNodes (0x06/0x07) removed.
             Self::V2 => {
-                id <= SnapMessageId::ByteCodes as u8
-                    || id == SnapMessageId::GetBlockAccessLists as u8
-                    || id == SnapMessageId::BlockAccessLists as u8
+                id <= SnapMessageId::ByteCodes as u8 ||
+                    id == SnapMessageId::GetBlockAccessLists as u8 ||
+                    id == SnapMessageId::BlockAccessLists as u8
             }
         }
     }
@@ -295,10 +295,10 @@ impl SnapProtocolMessage {
     pub const fn is_response(&self) -> bool {
         matches!(
             self,
-            Self::AccountRange(_)
-                | Self::StorageRanges(_)
-                | Self::ByteCodes(_)
-                | Self::BlockAccessLists(_)
+            Self::AccountRange(_) |
+                Self::StorageRanges(_) |
+                Self::ByteCodes(_) |
+                Self::BlockAccessLists(_)
         )
     }
 

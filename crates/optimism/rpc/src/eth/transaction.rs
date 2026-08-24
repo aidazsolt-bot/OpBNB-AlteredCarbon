@@ -1,23 +1,23 @@
 //! Loads and formats OP transaction RPC response.
 
 use crate::{OpEthApi, OpEthApiError, SequencerClient};
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{Bytes, B256};
 use alloy_rpc_types_eth::TransactionInfo;
 use futures::StreamExt;
 use op_alloy_consensus::{
-    OpTransaction,
     transaction::{OpDepositInfo, OpTransactionInfo},
+    OpTransaction,
 };
 use reth_chain_state::CanonStateSubscriptions;
 use reth_optimism_primitives::DepositReceipt;
 use reth_primitives_traits::{SignedTransaction, SignerRecoverable, WithEncoded};
 use reth_rpc_eth_api::{
+    helpers::{spec::SignersForRpc, EthTransactions, LoadReceipt, LoadTransaction, SpawnBlocking},
     EthApiTypes as _, FromEthApiError, FromEvmError, RpcConvert, RpcNodeCore, RpcReceipt,
     TxInfoMapper,
-    helpers::{EthTransactions, LoadReceipt, LoadTransaction, SpawnBlocking, spec::SignersForRpc},
 };
-use reth_rpc_eth_types::{EthApiError, TransactionSource, block::convert_transaction_receipt};
-use reth_storage_api::{ProviderTx, ReceiptProvider, TransactionsProvider, errors::ProviderError};
+use reth_rpc_eth_types::{block::convert_transaction_receipt, EthApiError, TransactionSource};
+use reth_storage_api::{errors::ProviderError, ProviderTx, ReceiptProvider, TransactionsProvider};
 use reth_transaction_pool::{
     AddedTransactionOutcome, PoolTransaction, PoolTx, TransactionOrigin, TransactionPool,
 };

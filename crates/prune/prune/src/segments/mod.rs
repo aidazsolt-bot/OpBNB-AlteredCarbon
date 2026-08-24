@@ -48,13 +48,15 @@ where
 
     let tx_ranges = deleted_headers.iter().filter_map(|header| header.tx_range());
 
-    let pruned = tx_ranges
-        .clone()
-        .map(|range| range.end().saturating_sub(range.start()) + 1)
-        .sum::<u64>() as usize;
+    let pruned =
+        tx_ranges.clone().map(|range| range.end().saturating_sub(range.start()) + 1).sum::<u64>()
+            as usize;
 
-    let checkpoint_block =
-        deleted_headers.iter().filter_map(|header| header.block_range()).map(|range| range.end()).max();
+    let checkpoint_block = deleted_headers
+        .iter()
+        .filter_map(|header| header.block_range())
+        .map(|range| range.end())
+        .max();
 
     Ok(SegmentOutput {
         progress: PruneProgress::Finished,
