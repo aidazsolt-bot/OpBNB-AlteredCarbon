@@ -180,7 +180,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-08-20 ~10:28 CEST:** H+Bodies+Sender Tip ✅ `174 027 661`. Exec **~37.13 M↑** (~21 %, ~22–33 blk/s cooled). Haber Point-4 ✅; **past Wright**. **ETA Tip ~1½–2½ Mo** (Oct–early Nov @ current bands). X02/PIPE-009 ✅. P2P-002 ✅; P2P-006 offen. Live-Node: **kein Restart**.
+- **Stand 2026-09-01 ~18:52 CEST:** H+Bodies+Sender Tip ✅ `174 027 661`. Exec **`65 828 907`** (~38 %, ~19–33 blk/s cooled). Haber Point-4 ✅; **past Wright**. **ETA Tip ~1¼–2¼ Mo** (current bands). X02/PIPE-009 ✅. P2P-002 ✅; P2P-006 offen. Live-Node: **kein Restart**.
 
 ## Roadmap (aktuell — Exec-Fenster)
 
@@ -190,11 +190,11 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 laufend |
 | **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
 | **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt bis Restart |
-| **~1½–2½ Mo** | Execution Tip → MerkleExecute → History/Finish | unsupervised + Spot-Checks | 🔄 Exec ~37 M↑ (~21 %); rate cooled |
+| **~1¼–2¼ Mo** | Execution Tip → MerkleExecute → History/Finish | unsupervised + Spot-Checks | 🔄 Exec `65 828 907` (~38 %); rate cooled |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
-**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1½–2½ Mo) · FLOW-X05 watch.
+**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1¼–2¼ Mo) · FLOW-X05 watch.
 
 ### BSC Mainnet Port (parallel, opBNB unverändert) — Stand 2026-08-23
 
@@ -228,9 +228,9 @@ Referenz: `github.com/bnb-chain/reth-bsc` main (live Tip); Workspace bleibt **re
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Tip H/B/S **174 M**; Exec ~37 M↑ (~21 %) past Haber/Wright; ETA Tip ~1½–2½ Mo; X02 ✅; P2P-002 ✅; P2P-006 todo |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Tip H/B/S **174 M**; Exec `65 828 907` (~38 %) past Haber/Wright; ETA Tip ~1¼–2¼ Mo; X02 ✅; P2P-002 ✅; P2P-006 todo |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
-| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Gate+ETA 08-20; finale Zahlen nach Exec Tip |
+| docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Gate+ETA 09-01; finale Zahlen nach Exec Tip |
 
 ## Portierungs-Bugliste (v2.4.1 rebase)
 
@@ -264,7 +264,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-DEV-001 | `--dev --dev.block-time 250ms`/`1s`: nach ~5–7 Blöcken Dauer-Spam `Error advancing the chain: No payload`; Tip bleibt stehen | **Nur `--dev` / `LocalMiner`:** (1) `advance()` = FCU+Attrs → `resolve_kind(payload_id)`; `resolve` liefert `None` wenn Job nicht (mehr) in `payload_jobs` (Race: Job noch nicht inserted / schon removed / ID stale). (2) Parallel hartcodiert `fcu_interval=1s` mit **bare FCU** (`attrs=None`) im selben `select!` — verschärft Timing; Interval-`MissedTickBehavior::Burst` feuerzt Catch-up-Ticks. (3) Persistence/SF (STOR-010) ist **nicht** die Ursache (nach Fix kein Fatal mehr). **Mainnet/Archive-Follow:** trifft **nicht** denselben Pfad — kein `LocalMiner`; Tip-Follow = CL `newPayload` + FCU oft **ohne** Attrs. Sequencer-Build (FCU+Attrs → `getPayload`) steuert die CL zeitlich; kein 1s-bare-FCU aus LocalMiner. Ähnliches Risiko nur, wenn ein Client Attrs-Build und bare-FCU unsynchronisiert spamt (nicht op-node Normalbetrieb). | 🧊 **parked** (2026-08-11): keine Prio / kein maxperf-Rebuild dafür. Soll irgendwann funktionieren **oder** `--dev`/LocalMiner dekommissionieren (kein klarer Mehrwert für Archive-Port). Fix-Idee bleibt: bare-FCU während pending Build unterdrücken; Burst ab; Job vor Resolve. Reproduce: `files/dev-250ms` tip≈7 |
 | PORT-DEV-002 | `--dev.payload-wait-time` wirkte nicht | `DebugNodeLauncher` spawnte `LocalMiner::new` ohne `with_payload_wait_time_opt` | ✅ fixed (Session 11): Flag an `LocalMiner` durchgereicht; allein **kein** Ersatz für DEV-001 (Race bleibt) |
 | PORT-CONS-001 | Headers-Stage: `TimestampIsInPast` trotz gültiger opBNB-Kette; Peers `BadMessage`-Ban; Checkpoint 0 | Eth-`validate_against_parent_timestamp` (Sekunden). opBNB speichert Subsekunden in `mixHash` (`MilliTimestamp = Time*1000 + mixHash[:2]`, bnb-chain/op-geth); gleiche Unix-Sekunde + steigende Milli ist gültig | ✅ fixed (Session 10): `validation/milli_timestamp.rs` + `OpBeaconConsensus` für Chain-ID **204/5611**; Unit-Tests live equal-second + OP-Mainnet reject |
-| PORT-EXEC-001 | Archive Execution: `receipt root mismatch` @ **`21591154`**; Unwind-Sturm 2× | FLOW-X04 idx=10 `syncLightBlock`→`0x67`; Fix Hertz-Overlay. `re-execute` ✅ 08-15. **Live 08-20:** Exec ~37 M↑ ≫ Fail/Haber/Wright. | ✅ **fix + live past Fail** · FLOW-X05 watch · Tip ~1½–2½ Mo |
+| PORT-EXEC-001 | Archive Execution: `receipt root mismatch` @ **`21591154`**; Unwind-Sturm 2× | FLOW-X04 idx=10 `syncLightBlock`→`0x67`; Fix Hertz-Overlay. `re-execute` ✅ 08-15. **Live 09-01:** Exec `65 828 907` ≫ Fail/Haber/Wright. | ✅ **fix + live past Fail** · FLOW-X05 watch · Tip ~1¼–2¼ Mo |
 | PORT-ENGINE-004 | `systemctl` Reload/Stop: Panic `SelectNextSome polled after terminated` in Critical task `consensus engine` | Shutdown-Pfad Engine/`futures_util::SelectNextSome` nach Stream-Ende noch gepollt (Reload 08-14 13:29 + Stop 17:49) | 🧊 **parked** — später analysieren; Tip/DB nicht primär betroffen |
 | PORT-OPS-001 | `--debug.max-block H` als „Park vor Fail“ → Merkle-Fail @ H + `unwind_to=0` | Wenn Stage-Checkpoints **bereits > H**: Pipeline skippt Bodies/Exec (`Stage reached target… skipping`) → Hashing/Merkle auf Restzustand; 08-14 13:43 `bad_block=21579110` state-root mismatch (`got 0x99a6…` / `expected 0x1817…` ≠ Public `0x7b77…`) → Unwind Tip→0 | 🐛 **Ops-Gate** · Cap nur für **Clean-Rebuild** 0…H wenn Checkpoints ≤ H; sonst Process-Stop |
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed + **live** Backfill/`Preparing stage Headers` (FLOW-E01/E02). Checkpoint Headers weiter 0 bis FLOW-H05 |
@@ -332,7 +332,7 @@ Quelle: `make maxperf-op` / `cargo build --profile maxperf … --bin op-reth` Wa
 | Prio | ID | Scope | Aktion | Done wenn |
 | --- | --- | --- | --- | --- |
 | **P0** | — | **PORT-EXEC-001 / PIPE-014** offline ✅; **live Exec≫`21591154` ✅** (08-16 ~03:46); FLOW-X05 watch; **PORT-OPS-001** | — | ✅ **P0 live** (Fail durch); Unwind-Sturm weiter beobachten |
-| **P0** | — | Execution live → FLOW-X01 Haber + X02/X03 (+ PIPE-008/009) | Fermat ✅; past Fail ✅; Haber Point-4 ✅; past Wright; **X02/PIPE-009 aligned**; Tip ETA ~1½–2½ Mo | Optional Wright Point-4 sample; Tip catch-up |
+| **P0** | — | Execution live → FLOW-X01 Haber + X02/X03 (+ PIPE-008/009) | Fermat ✅; past Fail ✅; Haber Point-4 ✅; past Wright; **X02/PIPE-009 aligned**; Tip ETA ~1¼–2¼ Mo | Optional Wright Point-4 sample; Tip catch-up |
 | **P1** | — | **PORT-P2P-002 / FLOW-N02** `--nat any`: UPnP geth-style + konsistente Announce/Logs | ✅ **live** 08-15 ~21:37 (Alt-Ports, hairpin, inbound_conn); Serve-RX noch 0 | DoD Map/ENR ✅; Serve optional post-Bodies |
 | **P1** | — | **PORT-P2P-006 / FLOW-N01** Dual-Stack Default + single-family `--addr` | Bind≡Announce dialbar; `--addr` = Familie only (NAT matched family schon) | DoD (a)+(b)+(c) |
 | **P1** | CLEANUP-A02 | Dead crate deps (engine-tree `trie_prefetch`/tree/beacon, engine-local/service/util, payload-builder, prune `rayon`, static-file-types, …) | 🔄 **partial 08-16:** engine-tree, engine-local, engine-service, engine-util, payload-builder, prune, static-file-types bereinigt; Rest (provider/rpc/db/…) offen | betroffene Crates ohne `unused_crate_dependencies` |
@@ -1281,7 +1281,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 | Headers | **174 027 661** | ✅ Tip (parked; public ~**176.4 M**) |
 | Bodies | **174 027 661** | ✅ Tip; validation_errors **0** |
 | SenderRecovery | **174 027 661** | ✅ Tip |
-| Execution | **~37.13 M↑** / Tip **174 M** (~21 %) | 🔄 past Fail/Haber/Wright; ~22–33 blk/s cooled; **ETA Tip ~1½–2½ Mo** (Oct–early Nov) |
+| Execution | **`65 828 907`** / Tip **174 M** (~38 %) | 🔄 past Fail/Haber/Wright; ~19–33 blk/s cooled; **ETA Tip ~1¼–2¼ Mo** |
 | MerkleExecute | **0** | ⏳ nach Exec Tip |
 | History / Finish | — | ⏳ |
 | P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`; Serve-RX 0 |
@@ -1368,7 +1368,7 @@ Details + SF-Erklärung: `files/harness-receipt-diff-21591154/README.md`.
 | --- | --- |
 | Fail-Block `21591154` live? | ✅ **durch** — Exec ≫ Fail seit 08-16; PIPE-014 Hertz bestätigt |
 | Bodies / Sender | ✅ Tip **174 027 661**; body validation **0** |
-| Execution | 🔄 **~37.13 M** / Tip **174 M** (~21 %); past Haber/Wright; ~22–33 blk/s; **ETA Tip ~1½–2½ Mo** |
+| Execution | 🔄 **`65 828 907`** / Tip **174 M** (~38 %); past Haber/Wright; ~19–33 blk/s; **ETA Tip ~1¼–2¼ Mo** |
 | X02 / PIPE-009 | ✅ Code ≡ op-geth (Unit); Haber Point-4 ✅; Wright height passed |
 | Headers Tip | ✅ **174 027 661** (parked; public ~176.4 M) |
 | P2P UPnP / Announce | ✅ **P2P-002**; 📋 **P2P-006** offen |
