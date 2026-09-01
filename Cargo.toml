@@ -483,9 +483,9 @@ revm-primitives = { version = "20.0.0", features = ["std"], default-features = f
 revmc = { git = "https://github.com/paradigmxyz/revmc", rev = "520462a463523a3bcd0a47226ddbc3200d62232e", default-features = false, features = ["llvm-prefer-static"] }
 revm-inspectors = "0.41.0"
 # Path deps: crates.io op-revm@20 / alloy-op-evm@0.32 still pin revm 38 / alloy-evm 0.33.
-op-revm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-revm", version = "20.0.0", default-features = false }
-alloy-op-evm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "alloy-op-evm", version = "0.32.0", default-features = false }
-alloy-op-hardforks = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "alloy-op-hardforks", version = "0.5.0", default-features = false }
+op-revm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-revm", version = "20.0.0", default-features = false }
+alloy-op-evm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "alloy-op-evm", version = "0.32.0", default-features = false }
+alloy-op-hardforks = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "alloy-op-hardforks", version = "0.5.0", default-features = false }
 
 # opBNB Fermat/Haber precompiles (ported from bnb-chain/reth-bsc / bnb-chain/revm)
 bls_on_arkworks = "0.3.0"
@@ -538,12 +538,12 @@ alloy-transport-http = { version = "2.1.1", features = ["reqwest-rustls-tls"], d
 alloy-transport-ipc = { version = "2.1.1", default-features = false }
 alloy-transport-ws = { version = "2.1.1", default-features = false }
 # Path-aligned with optimism.git upstream (PostExec / Lagoon APIs + revm41).
-op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-alloy-consensus", version = "2.0.0", default-features = false }
+op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-alloy-consensus", version = "2.0.0", default-features = false }
 op-alloy-flz = { version = "0.13.1", default-features = false }
-op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-alloy-network", version = "2.0.0", default-features = false }
-op-alloy-rpc-jsonrpsee = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-alloy-rpc-jsonrpsee", version = "2.0.0", default-features = false }
-op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-alloy-rpc-types", version = "2.0.0", default-features = false }
-op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "22e6fa476dba8b550f71b4adc0d5a68872d3ed17", package = "op-alloy-rpc-types-engine", version = "2.0.0", default-features = false }
+op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-alloy-network", version = "2.0.0", default-features = false }
+op-alloy-rpc-jsonrpsee = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-alloy-rpc-jsonrpsee", version = "2.0.0", default-features = false }
+op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-alloy-rpc-types", version = "2.0.0", default-features = false }
+op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "465b8249d1", package = "op-alloy-rpc-types-engine", version = "2.0.0", default-features = false }
 
 # misc
 either = { version = "1.16.0", default-features = false }
