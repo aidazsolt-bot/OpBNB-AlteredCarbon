@@ -458,12 +458,15 @@ dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-evm",
+ "alloy-hardforks 0.4.7",
  "alloy-op-hardforks",
  "alloy-primitives",
  "auto_impl",
  "op-alloy",
  "op-revm",
  "revm",
+ "revm-inspectors",
+ "test-case",
  "thiserror 2.0.19",
 ]
 
@@ -1119,6 +1122,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 dependencies = [
  "derive_arbitrary",
+]
+
+[[package]]
+name = "arbtest"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a3be567977128c0f71ad1462d9624ccda712193d124e944252f0c5789a06d46"
+dependencies = [
+ "arbitrary",
 ]
 
 [[package]]
@@ -3326,14 +3338,6 @@ dependencies = [
  "futures",
  "tokio",
  "tokio-util",
-]
-
-[[package]]
-name = "depprobe-igd"
-version = "0.1.0"
-dependencies = [
- "igd-next",
- "tokio",
 ]
 
 [[package]]
@@ -6043,6 +6047,9 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+dependencies = [
+ "spin",
+]
 
 [[package]]
 name = "lazycell"
@@ -6949,6 +6956,7 @@ dependencies = [
  "op-alloy-consensus",
  "op-alloy-network",
  "op-alloy-provider",
+ "op-alloy-rpc-jsonrpsee",
  "op-alloy-rpc-types",
  "op-alloy-rpc-types-engine",
 ]
@@ -6964,14 +6972,18 @@ dependencies = [
  "alloy-rlp",
  "alloy-rpc-types-eth",
  "alloy-serde",
+ "alloy-signer",
  "arbitrary",
+ "bincode",
  "bytes",
  "derive_more 2.1.1",
  "modular-bitfield",
+ "rand 0.9.5",
  "reth-codecs",
  "reth-codecs-derive",
  "reth-zstd-compressors",
  "serde",
+ "serde_json",
  "serde_with",
  "thiserror 2.0.19",
 ]
@@ -7026,11 +7038,15 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
  "alloy-serde",
+ "alloy-signer",
+ "arbitrary",
  "derive_more 2.1.1",
+ "jsonrpsee",
  "op-alloy-consensus",
- "reth-rpc-traits 0.5.2",
+ "rand 0.9.5",
  "serde",
  "serde_json",
+ "similar-asserts",
  "thiserror 2.0.19",
 ]
 
@@ -7044,10 +7060,13 @@ dependencies = [
  "alloy-rlp",
  "alloy-rpc-types-engine",
  "alloy-serde",
+ "arbitrary",
+ "arbtest",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "op-alloy-consensus",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.19",
 ]
@@ -7068,10 +7087,16 @@ dependencies = [
 name = "op-revm"
 version = "20.0.0"
 dependencies = [
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-sol-types",
  "auto_impl",
  "op-alloy-consensus",
  "revm",
+ "rstest",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -11086,30 +11111,6 @@ dependencies = [
 
 [[package]]
 name = "reth-primitives-traits"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f59c928b2865af5bcdbce94800270b7f7798f27a22ca0aabdd2b7d3e6587c9ce"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-genesis",
- "alloy-primitives",
- "alloy-rlp",
- "alloy-rpc-types-eth",
- "alloy-trie",
- "bytes",
- "derive_more 2.1.1",
- "once_cell",
- "revm-bytecode 41.0.0",
- "revm-primitives 41.0.0",
- "revm-state 41.0.0",
- "secp256k1 0.30.0",
- "serde",
- "thiserror 2.0.19",
-]
-
-[[package]]
-name = "reth-primitives-traits"
 version = "2.4.1"
 dependencies = [
  "alloy-consensus",
@@ -11479,7 +11480,7 @@ dependencies = [
  "jsonrpsee-types",
  "reth-evm",
  "reth-primitives-traits 2.4.1",
- "reth-rpc-traits 2.4.1",
+ "reth-rpc-traits",
  "serde_json",
  "thiserror 2.0.19",
 ]
@@ -11676,21 +11677,6 @@ dependencies = [
  "reth-network-api",
  "serde",
  "strum 0.27.2",
-]
-
-[[package]]
-name = "reth-rpc-traits"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace77dbcdd59c014fda4565ebfec76cd1fe6f5d98584b4655e8d22a947b9eee3"
-dependencies = [
- "alloy-consensus",
- "alloy-network",
- "alloy-primitives",
- "alloy-rpc-types-eth",
- "alloy-signer",
- "reth-primitives-traits 0.5.2",
- "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -12523,6 +12509,7 @@ dependencies = [
  "ripemd",
  "secp256k1 0.31.1",
  "sha2 0.10.9",
+ "substrate-bn",
 ]
 
 [[package]]
@@ -14116,6 +14103,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "substrate-bn"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b5bbfa79abbae15dd642ea8176a21a635ff3c00059961d1ea27ad04e5b441c"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "lazy_static",
+ "rand 0.8.5",
+ "rustc-hex",
 ]
 
 [[package]]

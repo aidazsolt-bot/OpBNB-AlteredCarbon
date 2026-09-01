@@ -198,6 +198,7 @@ where
             // No parent header on this path to detect fork-activation blocks, so the executor's
             // check is skipped; the derivation layer enforces the rule instead.
             no_user_tx_activation_block: false,
+            apply_pre_contract_hardfork: self.is_pre_contract_fork_block(block.header().number()),
             parent_beacon_block_root: block.header().parent_beacon_block_root(),
             extra_data: block.header().extra_data().clone(),
             post_exec_mode: post_exec_mode.unwrap_or_default(),
@@ -216,6 +217,8 @@ where
             no_user_tx_activation_block: self
                 .chain_spec()
                 .is_no_user_tx_activation_block(parent.timestamp(), attributes.timestamp),
+            apply_pre_contract_hardfork: self
+                .is_pre_contract_fork_block(parent.number().saturating_add(1)),
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             extra_data: attributes.extra_data,
             post_exec_mode,
@@ -431,6 +434,8 @@ where
             // No parent header on this path to detect fork-activation blocks, so the executor's
             // check is skipped; the derivation layer enforces the rule instead.
             no_user_tx_activation_block: false,
+            apply_pre_contract_hardfork: self
+                .is_pre_contract_fork_block(payload.payload.block_number()),
             parent_beacon_block_root: payload.sidecar.parent_beacon_block_root(),
             extra_data: payload.payload.as_v1().extra_data.clone(),
             post_exec_mode,
@@ -468,7 +473,7 @@ mod tests {
     use reth_execution_types::{
         AccountRevertInit, BundleStateInit, Chain, ExecutionOutcome, RevertsInit,
     };
-    use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder, OP_MAINNET};
+    use reth_optimism_chainspec::{OPBNB_TESTNET, OpChainSpec, OpChainSpecBuilder, OP_MAINNET};
     use reth_optimism_primitives::{OpBlock, OpPrimitives, OpReceipt, OpTransactionSigned};
     use reth_primitives_traits::{Account, RecoveredBlock, SealedBlock};
     use revm::{
@@ -540,6 +545,28 @@ mod tests {
                 ..Default::default()
             },
         })
+    }
+
+    fn empty_block(number: u64) -> SealedBlock<OpBlock> {
+        SealedBlock::new_unhashed(Block {
+            header: Header { number, ..Default::default() },
+            body: BlockBody::default(),
+        })
+    }
+
+    #[test]
+    fn pre_contract_transition_is_only_flagged_at_activation_block() {
+        let evm_config = OpEvmConfig::optimism(OPBNB_TESTNET.clone());
+
+        for (block_number, expected) in [(5_805_493, false), (5_805_494, true), (5_805_495, false)] {
+            let ctx = evm_config
+                .context_for_block(&empty_block(block_number))
+                .expect("empty block context is valid");
+            assert_eq!(
+                ctx.apply_pre_contract_hardfork, expected,
+                "unexpected PreContractForkBlock flag at block {block_number}"
+            );
+        }
     }
 
     // Covers Interop-driven SDM activation for imported blocks: pre-Interop blocks reject 0x7d,
