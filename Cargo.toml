@@ -168,7 +168,7 @@ members = [
     "testing/ef-tests/",
     "testing/testing-utils",
     "testing/runner",
-    "crates/tracing-otlp", "files/depprobe-igd",
+    "crates/tracing-otlp",
 ]
 default-members = ["bin/reth"]
 exclude = ["docs/cli"]
