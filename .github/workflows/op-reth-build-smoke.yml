@@ -1,0 +1,97 @@
+name: op-reth build and smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - Makefile
+      - crates/**
+      - .github/workflows/op-reth-build-smoke.yml
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: release
+            build_args: --locked --release --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml
+            binary: target/release/op-reth
+            rustflags: ""
+          - profile: maxperf
+            build_args: --locked --profile maxperf --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml --features jemalloc,asm-keccak,keccak-cache-global
+            binary: target/maxperf/op-reth
+            rustflags: -C target-cpu=native
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+
+      - name: Build op-reth (${{ matrix.profile }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ matrix.rustflags }}" ]; then
+            export RUSTFLAGS="${{ matrix.rustflags }}"
+          fi
+          cargo build ${{ matrix.build_args }}
+
+      - name: Smoke op-reth on opbnb-mainnet (${{ matrix.profile }})
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BIN="${{ matrix.binary }}"
+          JWT_SECRET="$RUNNER_TEMP/jwt-${{ matrix.profile }}.hex"
+          DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${{ matrix.profile }}"
+
+          mkdir -p "$DATA_DIR"
+          openssl rand -hex 32 > "$JWT_SECRET"
+
+          set +e
+          timeout 5m "$BIN" node \
+            --chain opbnb-mainnet \
+            --datadir "$DATA_DIR" \
+            --disable-discovery \
+            --port 0 \
+            --rollup.sequencer-http https://opbnb-mainnet-rpc.bnbchain.org \
+            --http \
+            --http.addr 127.0.0.1 \
+            --http.port 8545 \
+            --http.api eth,net,web3 \
+            --authrpc.addr 127.0.0.1 \
+            --authrpc.port 8551 \
+            --authrpc.jwtsecret "$JWT_SECRET" \
+            --metrics \
+            --metrics.addr 127.0.0.1 \
+            --metrics.port 6060
+          status=$?
+          set -e
+
+          if [ "$status" -eq 124 ]; then
+            echo "Smoke test ran for 5 minutes."
+          else
+            echo "Smoke test exited early with status $status."
+            exit 1
+          fi
