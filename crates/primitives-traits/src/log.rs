@@ -7,8 +7,7 @@ mod tests {
     use reth_codecs::{add_arbitrary_tests, Compact};
     use serde::{Deserialize, Serialize};
 
-    /// This type is kept for compatibility tests after the codec support was added to
-    /// alloy-primitives Log type natively
+    /// This type represents the compact layout used by Reth's database.
     #[derive(
         Clone,
         Debug,
@@ -51,19 +50,15 @@ mod tests {
     proptest! {
         #[test]
         fn test_roundtrip_conversion_between_log_and_alloy_log(log in arb::<Log>()) {
-            // Convert log to buffer and then create alloy_log from buffer and compare
             let mut compacted_log = Vec::<u8>::new();
             let len = log.to_compact(&mut compacted_log);
+            let (decoded, remainder) = Log::from_compact(&compacted_log, len);
 
-            let alloy_log = AlloyLog::from_compact(&compacted_log, len).0;
-            assert_eq!(log, alloy_log.into());
+            assert_eq!(decoded, log);
+            assert!(remainder.is_empty());
 
-            // Create alloy_log from log and then convert it to buffer and compare compacted_alloy_log and compacted_log
-            let alloy_log = AlloyLog::new_unchecked(log.address, log.topics, log.data);
-            let mut compacted_alloy_log = Vec::<u8>::new();
-            let alloy_len = alloy_log.to_compact(&mut compacted_alloy_log);
-            assert_eq!(len, alloy_len);
-            assert_eq!(compacted_log, compacted_alloy_log);
+            let alloy_log = AlloyLog::from(log.clone());
+            assert_eq!(Log::from(alloy_log), log);
         }
     }
 }
