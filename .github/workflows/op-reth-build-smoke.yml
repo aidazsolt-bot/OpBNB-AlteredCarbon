@@ -25,11 +25,11 @@ jobs:
       matrix:
         include:
           - profile: release
-            build_args: --locked --manifest-path crates/optimism/bin/Cargo.toml --release
+            build_args: --manifest-path crates/optimism/bin/Cargo.toml --release
             binary: target/release/op-reth
             rustflags: ""
           - profile: maxperf
-            build_args: --locked --manifest-path crates/optimism/bin/Cargo.toml --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global
+            build_args: --manifest-path crates/optimism/bin/Cargo.toml --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global
             binary: target/maxperf/op-reth
             rustflags: -C target-cpu=native
 
