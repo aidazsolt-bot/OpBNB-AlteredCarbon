@@ -17,6 +17,16 @@ members = [
     "crates/optimism/chainspec/",
     "crates/optimism/consensus/",
     "crates/optimism/evm/",
+    "crates/optimism/op-revm/",
+    "crates/optimism/alloy-op-evm/",
+    "crates/optimism/alloy-op-hardforks/",
+    "crates/optimism/op-alloy/consensus/",
+    "crates/optimism/op-alloy/network/",
+    "crates/optimism/op-alloy/op-alloy/",
+    "crates/optimism/op-alloy/provider/",
+    "crates/optimism/op-alloy/rpc-jsonrpsee/",
+    "crates/optimism/op-alloy/rpc-types/",
+    "crates/optimism/op-alloy/rpc-types-engine/",
     "crates/optimism/flashblocks/",
     "crates/optimism/hardforks/",
     "crates/optimism/cli/",
@@ -482,9 +492,9 @@ revm = { version = "41.0.0", default-features = false }
 revm-primitives = { version = "20.0.0", features = ["std"], default-features = false }
 revmc = { git = "https://github.com/paradigmxyz/revmc", rev = "520462a463523a3bcd0a47226ddbc3200d62232e", default-features = false, features = ["llvm-prefer-static"] }
 revm-inspectors = "0.41.0"
-op-revm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-revm", version = "20.0.0", default-features = false }
-alloy-op-evm = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "alloy-op-evm", version = "0.32.0", default-features = false }
-alloy-op-hardforks = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "alloy-op-hardforks", version = "0.5.0", default-features = false }
+op-revm = { path = "crates/optimism/op-revm", default-features = false }
+alloy-op-evm = { path = "crates/optimism/alloy-op-evm", default-features = false }
+alloy-op-hardforks = { path = "crates/optimism/alloy-op-hardforks", default-features = false }
 
 # opBNB Fermat/Haber precompiles (ported from bnb-chain/reth-bsc / bnb-chain/revm)
 bls_on_arkworks = "0.3.0"
@@ -536,17 +546,19 @@ alloy-transport = { version = "2.1.1" }
 alloy-transport-http = { version = "2.1.1", features = ["reqwest-rustls-tls"], default-features = false }
 alloy-transport-ipc = { version = "2.1.1", default-features = false }
 alloy-transport-ws = { version = "2.1.1", default-features = false }
-# Git-pinned to the build-time working optimism commit.
-op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-alloy-consensus", version = "2.0.0", default-features = false }
+op-alloy-consensus = { path = "crates/optimism/op-alloy/consensus", default-features = false }
+op-alloy = { path = "crates/optimism/op-alloy/op-alloy", default-features = false }
+op-alloy-provider = { path = "crates/optimism/op-alloy/provider", default-features = false }
 op-alloy-flz = { version = "0.13.1", default-features = false }
-op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-alloy-network", version = "2.0.0", default-features = false }
-op-alloy-rpc-jsonrpsee = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-alloy-rpc-jsonrpsee", version = "2.0.0", default-features = false }
-op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-alloy-rpc-types", version = "2.0.0", default-features = false }
-op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism.git", rev = "2a6b7013afe4041036ff631c218e6c53c0f2d44e", package = "op-alloy-rpc-types-engine", version = "2.0.0", default-features = false }
+op-alloy-network = { path = "crates/optimism/op-alloy/network", default-features = false }
+op-alloy-rpc-jsonrpsee = { path = "crates/optimism/op-alloy/rpc-jsonrpsee", default-features = false }
+op-alloy-rpc-types = { path = "crates/optimism/op-alloy/rpc-types", default-features = false }
+op-alloy-rpc-types-engine = { path = "crates/optimism/op-alloy/rpc-types-engine", default-features = false }
 
 # misc
 either = { version = "1.16.0", default-features = false }
 arrayvec = { version = "0.7.6", default-features = false }
+arbtest = "0.3.2"
 aquamarine = "0.6"
 auto_impl = "1"
 backon = { version = "1.2", default-features = false, features = ["std-blocking-sleep", "tokio-sleep"] }
