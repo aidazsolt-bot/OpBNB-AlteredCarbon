@@ -173,7 +173,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 3. **Phase 3 — BSC-Crate (`crates/bsc`) aktualisieren** 🔄 Compile ✅ (08-09); **Fork-Nachzug** `bnb-chain/reth-bsc` → Pasteur (08-23 Slice 1: Hardforks+System-Contracts+SpecId)
 4. **Phase 4 — Optimism/opBNB-Crate + Snow/Volta/Fourier-Hardforks** 🔄 Hardforks+stack through **node/cli/op-reth bin** compile-green; nextest prim/consensus/evm/node/rpc ✅; trie/proofs deferred
 5. **Phase 5 — Build/Lint/Test/EF-Tests** ✅ check/Clippy/nextest stages+op-stack; EF **v17.0** + Bytecode Compact → **62/62** nach nextest-Timeout-Override (`valid_blocks`/`invalid_blocks` re-verified)
-6. **Phase 6 — Doku, CI & Freigabe** 🔄 Effort-Log Session 6+8+9+**10**; **Migrations-Gate PIPE+FLOW** nachgezogen; GitHub Action für op-reth Build+Smoke auf upstream-Git-Pfade umgestellt; Workspace um lokales Artifact `files/depprobe-igd` bereinigt; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
+6. **Phase 6 — Doku, CI & Freigabe** 🔄 Effort-Log Session 6+8+9+**10**; **Migrations-Gate PIPE+FLOW** nachgezogen; GitHub Action für op-reth Build+Smoke auf upstream-Git-Pfade gepinnt; Workspace um lokales Artifact `files/depprobe-igd` bereinigt; Human Catch-up/Full-Sync + finale Zahlen nach Live-Tests
 
 ### Sync-Tests (Human-owned)
 
