@@ -312,7 +312,7 @@ Portierte Helper oder Alt-Pfade ohne Call-Site — **nicht** mit „fehlender St
 | PORT-PIPE-U06 | Alt-CLI `TriePrefetch` / `--enable-prefetch` / `--optimize.enable-execution-cache` | Beim v2.4.1-Port verloren; Upstream ersetzt durch `--engine.*` Prewarm/Cache (siehe PORT-CLI-002). | ♻️ ersetzt (Upstream-Engine) · 📝 bewusst nicht wiederbelebt · 🔜 nur falls Produkt-Parity zu altem BSC-Fork |
 | PORT-PIPE-U07 | `COMETBFT_LIGHT_BLOCK_VALIDATION_BEFORE_HERTZ` + `…_PASTEUR` in `opbnb_precompiles/cometbft.rs` | Overlay injectiert jetzt **`COMETBFT_LIGHT_BLOCK_VALIDATION`** (Hertz = op-geth). BEFORE_HERTZ/Pasteur = BSC-Era; tot im OP-Pfad. **Früher falsch:** BEFORE_HERTZ ≈ op-geth — op-geth hat immer pre-update `validatorSetChanged` (PIPE-014). | ✅ Overlay-Fix 08-15 · ⚠️ BEFORE_HERTZ/Pasteur tot · 🔜 cfg-gaten/löschen oder nach `reth-bsc` |
 | PORT-PIPE-U08 | Unused imports in `optimism/hardforks/src/hardfork.rs` (+ Spiegel `bsc/hardforks`) | `Box`/`format`/`String`/`Display`/`FromStr` nach Macro-Refactor übrig (`maxperf-op` warn). | 🧹 CLEANUP-A01 · kein Port-Gap |
-| PORT-PIPE-U09 | `reth-engine-tree`: unused crate dep `reth_trie_prefetch` | Prefetch-Crate hängt noch als Dependency, Code-Pfad entfernt (U06). | ✅ CLEANUP-A02 (08-16): Dep entfernt |
+| PORT-PIPE-U09 | `reth-engine-tree`: unused crate dep `reth_trie_prefetch` | Prefetch-Crate hängt noch als Dependency, Code-Pfad entfernt (U06). | ✅ CLEANUP-A02 (08-16): Dep entfernt; `reth-engine-tree` check grün |
 | PORT-PIPE-U10 | `reth-stages`: `load_history_indices` / `load_indices` / `LoadMode` | storage.v2/EitherWriter-Port hat alten History-Load-Pfad obsolet gemacht; Funktionen blieben liegen. | ♻️ ersetzt (v2 history writers) · 🧹 löschen oder hinter Feature · Verify: PIPE-012 |
 | PORT-PIPE-U11 | `reth-prune`: `AccountHistory::prune_static_files` / `StorageHistory::prune_static_files` | SF-Changeset-Prune vorbereitet, Call-Site fehlt (v2-Port unvollständig verdrahtet). | ⚠️ unwired · 🔜 nachportieren wenn SF-History-Prune live nötig · sonst dead entfernen |
 | PORT-PIPE-U12 | `reth-beacon-consensus`: `MAX_INVALID_HEADERS`, `StaticFileHook` fields, Metrics-Imports | Engine-Tree ersetzt Beacon-Engine-Laufzeit; Crate oft nur noch Stub/Compat → tote Felder. | ♻️ Architektur (engine-tree) · 🧹 Stub aufräumen oder Crate schrumpfen (CLEANUP-B) |
@@ -1409,4 +1409,3 @@ Siehe `files/fermat-point4-20260812.txt`. **Haber** noch nicht erreicht.
 | Execution (bis Fail) | ~**0.6 Mbit/s** | ~**0.7 Mbit/s** | peers~12–13 |
 
 Kein `reth_network_*_bytes` auf `:6060` — Bandbreite über CT-Exporter `:9100`.
-
