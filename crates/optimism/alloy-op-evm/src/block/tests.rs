@@ -4,7 +4,7 @@ use alloy_eips::eip2718::WithEncoded;
 use alloy_evm::{EvmEnv, ToTxEnv};
 use alloy_hardforks::ForkCondition;
 use alloy_op_hardforks::{OpHardfork, OpHardforks};
-use alloy_primitives::{Address, B256, Bytes, Signature, TxKind, U256, keccak256, uint};
+use alloy_primitives::{Address, B256, Bytes, Signature, TxKind, U256, address, keccak256, uint};
 use op_alloy::consensus::{
     OpTxEnvelope, PostExecPayload, SDMGasEntry, TxDeposit, build_post_exec_tx,
 };
@@ -66,6 +66,38 @@ fn test_with_encoded() {
     // make sure we can use both `WithEncoded` and transaction itself as inputs.
     let _ = executor.execute_transaction(&tx);
     let _ = executor.execute_transaction(&tx_with_encoded);
+}
+
+#[test]
+fn pre_contract_hardfork_runs_before_transactions() {
+    const WBNB: Address = address!("0x4200000000000000000000000000000000000006");
+    const GOVERNANCE_TOKEN: Address = address!("0x4200000000000000000000000000000000000042");
+    const NAME_VALUE: U256 =
+        uint!(0x5772617070656420424e42000000000000000000000000000000000000000016_U256);
+    const SYMBOL_VALUE: U256 =
+        uint!(0x57424e4200000000000000000000000000000000000000000000000000000008_U256);
+
+    let executor_factory = OpBlockExecutorFactory::new(
+        OpAlloyReceiptBuilder::default(),
+        OpChainHardforks::op_mainnet(),
+        OpEvmFactory::<crate::OpTx>::default(),
+    );
+    let mut db = State::builder().with_database(CacheDB::<EmptyDB>::default()).build();
+    db.insert_account(WBNB, AccountInfo { nonce: 1, ..Default::default() });
+    db.insert_account(GOVERNANCE_TOKEN, AccountInfo { nonce: 1, ..Default::default() });
+    db.load_cache_account(WBNB).unwrap();
+    db.load_cache_account(GOVERNANCE_TOKEN).unwrap();
+    let evm = executor_factory.evm_factory.create_evm(&mut db, EvmEnv::default());
+    let mut executor = executor_factory.create_executor(
+        evm,
+        OpBlockExecutionCtx { apply_pre_contract_hardfork: true, ..Default::default() },
+    );
+
+    executor.apply_pre_execution_changes().unwrap();
+
+    assert_eq!(executor.evm.db_mut().storage(WBNB, U256::ZERO).unwrap(), NAME_VALUE);
+    assert_eq!(executor.evm.db_mut().storage(WBNB, U256::from(1)).unwrap(), SYMBOL_VALUE);
+    assert!(executor.evm.db_mut().basic(GOVERNANCE_TOKEN).unwrap().is_none());
 }
 
 fn prepare_jovian_db(da_footprint_gas_scalar: u16) -> State<InMemoryDB> {
