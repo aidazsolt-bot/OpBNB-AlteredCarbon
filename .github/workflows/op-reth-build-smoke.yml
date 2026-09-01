@@ -25,11 +25,11 @@ jobs:
       matrix:
         include:
           - profile: release
-            build_args: --locked --release --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml
+            build_args: --locked --manifest-path crates/optimism/bin/Cargo.toml --release
             binary: target/release/op-reth
             rustflags: ""
           - profile: maxperf
-            build_args: --locked --profile maxperf --bin op-reth --manifest-path crates/optimism/bin/Cargo.toml --features jemalloc,asm-keccak,keccak-cache-global
+            build_args: --locked --manifest-path crates/optimism/bin/Cargo.toml --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global
             binary: target/maxperf/op-reth
             rustflags: -C target-cpu=native
 
@@ -55,7 +55,7 @@ jobs:
           if [ -n "${{ matrix.rustflags }}" ]; then
             export RUSTFLAGS="${{ matrix.rustflags }}"
           fi
-          cargo build -p op-reth ${{ matrix.build_args }}
+          cargo build ${{ matrix.build_args }}
 
       - name: Smoke op-reth on opbnb-mainnet (${{ matrix.profile }})
         shell: bash
