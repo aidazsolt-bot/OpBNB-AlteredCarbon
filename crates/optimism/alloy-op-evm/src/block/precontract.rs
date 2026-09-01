@@ -45,7 +45,8 @@ where
     wbnb.mark_touch();
 
     let mut governance: Account = db.basic(GOVERNANCE_TOKEN)?.unwrap_or_default().into();
-    governance.selfdestruct();
+    governance.mark_touch();
+    governance.mark_selfdestruct();
 
     db.commit(HashMap::from_iter([(WBNB_CONTRACT, wbnb), (GOVERNANCE_TOKEN, governance)]));
     Ok(())
