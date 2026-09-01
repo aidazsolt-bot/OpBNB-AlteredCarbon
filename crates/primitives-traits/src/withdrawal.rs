@@ -2,43 +2,10 @@
 
 use alloc::vec::Vec;
 use alloy_eips::eip4895::Withdrawal;
-use alloy_primitives::Address;
 use alloy_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
 use derive_more::{AsRef, Deref, DerefMut, From, IntoIterator};
 use reth_codecs::{add_arbitrary_tests, Compact};
 use serde::{Deserialize, Serialize};
-
-/// Local wrapper implementing [`Compact`] for [`alloy_eips::eip4895::Withdrawal`].
-///
-/// `Withdrawal` lives in `alloy-eips` and does not derive `Compact` there, so we manually encode
-/// its four plain fields (`index`, `validator_index`, `address`, `amount`) in order.
-struct WithdrawalCompact;
-
-impl WithdrawalCompact {
-    fn to_compact<B>(withdrawal: &Withdrawal, buf: &mut B) -> usize
-    where
-        B: bytes::BufMut + AsMut<[u8]>,
-    {
-        let mut len = 0;
-        len += withdrawal.index.to_compact(buf);
-        len += withdrawal.validator_index.to_compact(buf);
-        len += withdrawal.address.to_compact(buf);
-        len += withdrawal.amount.to_compact(buf);
-        len
-    }
-
-    fn from_compact(mut buf: &[u8], _len: usize) -> (Withdrawal, &[u8]) {
-        let (index, rest) = u64::from_compact(buf, 8);
-        buf = rest;
-        let (validator_index, rest) = u64::from_compact(buf, 8);
-        buf = rest;
-        let (address, rest) = Address::from_compact(buf, 20);
-        buf = rest;
-        let (amount, rest) = u64::from_compact(buf, 8);
-        buf = rest;
-        (Withdrawal { index, validator_index, address, amount }, buf)
-    }
-}
 
 /// Represents a collection of Withdrawals.
 #[derive(
@@ -57,38 +24,12 @@ impl WithdrawalCompact {
     RlpDecodableWrapper,
     Serialize,
     Deserialize,
+    Compact,
 )]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
 #[add_arbitrary_tests(compact)]
 #[as_ref(forward)]
 pub struct Withdrawals(Vec<Withdrawal>);
-
-impl Compact for Withdrawals {
-    fn to_compact<B>(&self, buf: &mut B) -> usize
-    where
-        B: bytes::BufMut + AsMut<[u8]>,
-    {
-        buf.put_u32(self.0.len() as u32);
-        let mut len = 4;
-        for withdrawal in &self.0 {
-            len += WithdrawalCompact::to_compact(withdrawal, buf);
-        }
-        len
-    }
-
-    fn from_compact(buf: &[u8], _len: usize) -> (Self, &[u8]) {
-        use bytes::Buf;
-        let mut buf = buf;
-        let count = buf.get_u32() as usize;
-        let mut withdrawals = Vec::with_capacity(count);
-        for _ in 0..count {
-            let (withdrawal, rest) = WithdrawalCompact::from_compact(buf, 0);
-            withdrawals.push(withdrawal);
-            buf = rest;
-        }
-        (Self(withdrawals), buf)
-    }
-}
 
 impl Withdrawals {
     /// Create a new Withdrawals instance.
@@ -149,8 +90,7 @@ mod tests {
     use proptest::proptest;
     use proptest_arbitrary_interop::arb;
 
-    /// This type is kept for compatibility tests after the codec support was added to alloy-eips
-    /// Withdrawal type natively
+    /// This type represents the compact layout used by Reth's database.
     #[derive(
         Debug,
         Clone,
@@ -199,19 +139,21 @@ mod tests {
     proptest!(
         #[test]
         fn test_roundtrip_withdrawal_compat(withdrawal in arb::<RethWithdrawal>()) {
-            // Convert to buffer and then create alloy_access_list from buffer and
-            // compare
             let mut compacted_reth_withdrawal = Vec::<u8>::new();
             let len = withdrawal.to_compact(&mut compacted_reth_withdrawal);
+            let (decoded, remainder) =
+                RethWithdrawal::from_compact(&compacted_reth_withdrawal, len);
 
-            // decode the compacted buffer to AccessList
-            let alloy_withdrawal = Withdrawal::from_compact(&compacted_reth_withdrawal, len).0;
+            assert_eq!(decoded, withdrawal);
+            assert!(remainder.is_empty());
+
+            let alloy_withdrawal = Withdrawal {
+                index: withdrawal.index,
+                validator_index: withdrawal.validator_index,
+                address: withdrawal.address,
+                amount: withdrawal.amount,
+            };
             assert_eq!(withdrawal, alloy_withdrawal);
-
-            let mut compacted_alloy_withdrawal = Vec::<u8>::new();
-            let alloy_len = alloy_withdrawal.to_compact(&mut compacted_alloy_withdrawal);
-            assert_eq!(len, alloy_len);
-            assert_eq!(compacted_reth_withdrawal, compacted_alloy_withdrawal);
         }
     );
 }

@@ -12,7 +12,7 @@ description = "Common types in reth."
 workspace = true
 
 [dependencies]
-reth-codecs.workspace = true
+reth-codecs = { workspace = true, features = ["alloy"] }
 
 alloy-consensus = { workspace = true, features = ["serde", "k256"] }
 alloy-eips.workspace = true
