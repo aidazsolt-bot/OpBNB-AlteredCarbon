@@ -153,7 +153,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
 | PORT-FLOW-S03 | Metrics/Healing | Alle `StaticFileSegment`s in Metrics registriert (STOR-009-Klasse) | STOR-009 | ✅ |
-| PORT-FLOW-S04 | V1→V2 layout migration | `storage_v2` darf erst nach vollständiger Datenmigration gesetzt werden; ein Teilabbruch muss aus MDBX in die bestehenden Zielsegmente fortsetzbar sein. Prune-Checkpoints repräsentieren absichtlich entfernte Static-File-Abdeckung, nicht Korruption. | STOR-007/008 | 📋 Code: direkte Metadatenmutation gesperrt; ChangeSet-Resume + Prune-Coverage portiert. Live: Trie-Rebuild bis `71185159`, danach Backfill-Übergang offen. |
+| PORT-FLOW-S04 | V1→V2 layout migration / repair backfill | `storage_v2` darf erst nach vollständiger Datenmigration gesetzt werden; ein Teilabbruch muss aus MDBX in die bestehenden Zielsegmente fortsetzbar sein. Prune-Checkpoints repräsentieren absichtlich entfernte Static-File-Abdeckung, nicht Korruption. Bei einem unterbrochenen Reparaturlauf startet `initial_backfill_target` absichtlich am letzten konsistenten Header; eintreffende FCUs werden als neuestes Sync-Ziel gehalten und dürfen nach Pipeline-Idle nicht verloren gehen. | STOR-007/008, ENGINE-001 | 📋 Code: direkte Metadatenmutation gesperrt; ChangeSet-Resume + Prune-Coverage portiert. Live 09-02: lokaler Repair-Target `71185159` (`0x005603…`) korrekt geschlossen, CL-Head ~`180.94M` als `SYNCING` registriert; externer Backfill nach Merkle/Pipeline-Idle offen. |
 
 **Regel für neue FLOW-Zeilen:** sobald ein Stall/Ban/„total=1“/Grafana-No-data auftritt und **kein** FLOW die Transition beschreibt → zuerst Zeile anlegen, dann fixen. Nicht unter PIPE oder Chat begraben.
 
@@ -180,11 +180,24 @@ Header-Downloader-Validierungsfehler.
 No-op. `db migrate-v2` setzt vorhandene Account-/StorageChangeSet-Static-File-Segmente fort.
 Der Upstream-Prune-Coverage-Fix ist für Receipts, Senders und beide ChangeSet-Segmente portiert.
 
-**Live-Status:** Nach Neustart arbeitet der lokale erste Pipeline-Pass bis `71185159`; Headers
-beginnen dabei erwartungsgemäß mit `target=None`. Anschließend läuft der vollständige
-Merkle-Rebuild des vorhandenen Hashed State (2.84B Entitäten); erst wenn die Pipeline idle ist,
-kann der vom Engine-Backfill vorgemerkte Netz-Target wieder Headers/Bodies bis zum Tip führen.
-Dieser Übergang sowie vollständige Crash-Resume-Semantik von `migrate-v2` bleiben offen.
+**Header-/Engine-Analyse (14:13–14:23 CEST):** Der Logeintrag `Headers target=None` bedeutet
+nicht, dass die Header-Stage keinen Tip kennt: Pipeline-Events zeigen dort nur keinen numerischen
+Zielblock. Wegen `MerkleExecute=0` erkennt `check_pipeline_consistency()` einen unterbrochenen
+Lauf und setzt `initial_backfill_target` auf den letzten konsistenten Header
+`71185159`/`0x005603ad…`. Die Header-Stage erhält diesen Hash intern und schließt den lokalen
+Gap folgerichtig sofort mit `Target block already reached`. Direkt danach lieferte der
+Konsens-Client `newPayload`/FCU bei Block `180937060` und fortlaufend weitere Payloads. Während
+der exklusive Reparatur-Backfill aktiv ist, antwortet der Engine-Tree auf FCUs absichtlich
+`SYNCING`; `ForkchoiceStateTracker::set_latest` speichert dabei den neuesten Sync-Target. Nach
+`BackfillSyncFinished` soll `on_backfill_sync_finished()` daraus den nächsten Backfill bis zum
+Netz-Head anfordern. Es gibt bislang keinen Header-/P2P-Validierungsfehler und keinen Beleg für
+einen stale Tip; der Live-Beleg dieses Übergangs nach Pipeline-Idle steht noch aus.
+
+**Live-Status:** Der lokale Reparatur-Pass ist bis `71185159` geschlossen. Der vollständige
+Merkle-Rebuild des vorhandenen Hashed State (2.84B Entitäten) hält die Pipeline weiter exklusiv;
+danach müssen Headers/Bodies über den vorgemerkten Engine-Target bis zum dann aktuellen CL-Tip
+weiterlaufen. Dieser Übergang sowie vollständige Crash-Resume-Semantik von `migrate-v2` bleiben
+offen.
 
 **Aufwand/Kosten:** Journal-/Mimir-Analyse, drei fokussierte Rust-Dateien plus Dokumentation;
 `cargo +nightly check -p reth-cli-commands --lib`, fokussierte Settings-Tests,
@@ -216,7 +229,8 @@ ergänzt.
 | **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 laufend |
 | **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
 | **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt bis Restart |
-| **~1¼–2¼ Mo** | Execution Tip → MerkleExecute → History/Finish | unsupervised + Spot-Checks | 🔄 Exec `65 828 907` (~38 %); rate cooled |
+| **aktuell: Repair-Rebuild** | MerkleExecute bis `71 185 159` abschließen, dann Engine-Backfill zu CL-Head nachweisen | unsupervised + Spot-Checks | 🔄 Header/Bodies/Sender/Exec lokal `71 185 159`; Merkle outer checkpoint `0`, inner Fortschritt persistiert; CL-Head ~`180.94M` |
+| **nach Repair-Backfill** | Execution Tip → Merkle/History/Finish | unsupervised + Spot-Checks | ⏳ erneut zu berechnen, sobald die Header- und Execution-Rate nach dem Wiederanlauf messbar ist |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
@@ -254,7 +268,7 @@ Referenz: `github.com/bnb-chain/reth-bsc` main (live Tip); Workspace bleibt **re
 | inventory-diff | Bestandsaufnahme & Diff-Baseline erstellen | ✅ done |
 | core-rebase | Kern-Crates auf reth v2.4.1 rebasen | ✅ done |
 | bsc-crate-update | BSC-Crate (crates/bsc) aktualisieren | ✅ done (compile: bsc-node grün) |
-| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Tip H/B/S **174 M**; Exec `65 828 907` (~38 %) past Haber/Wright; ETA Tip ~1¼–2¼ Mo; X02 ✅; P2P-002 ✅; P2P-006 todo |
+| opbnb-hardforks | Optimism/opBNB-Crate + Snow/Volta/Fourier | 🔄 Storage-v2 recovery forced local checkpoints to **71 185 159**; repair Merkle active, then Engine Backfill must resume toward CL ~**180.94M**. X02 ✅; P2P-002 ✅; P2P-006 todo |
 | build-test-validate | Build, Lint, Tests, EF-Tests | ✅ stages/op-stack nextest; EF v17.0 → **62/62** |
 | docs-release | Doku aktualisieren, Freigabe vorbereiten | 🔄 Gate+ETA 09-01; finale Zahlen nach Exec Tip |
 
@@ -296,6 +310,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed + **live** Backfill/`Preparing stage Headers` (FLOW-E01/E02). Checkpoint Headers weiter 0 bis FLOW-H05 |
 | PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
 | PORT-ENGINE-003 | Headers nach Backfill-Start: Tip-Hash per P2P → empty → Ban | Tip muss von CL/HeaderSeed kommen (op-geth Skeleton), nicht P2P Hash | ✅ **closed** · Tip-Seed + Falling live; Headers Tip **174 M** (FLOW-E03/H05) |
+| PORT-ENGINE-005 | Restart mit inkonsistenten Stages: lokaler Konsistenz-Target wird als „Headers stuck“ fehlgedeutet; Netz-FCU trifft während Repair-Pipeline ein | `check_pipeline_consistency()` setzt absichtlich den letzten konsistenten Header als initialen Backfill-Target. Während Backfill `Active` ist, antwortet FCU `SYNCING`, aber `ForkchoiceStateTracker::set_latest` muss den neuesten Head erhalten; nach `BackfillSyncFinished` löst `on_backfill_sync_finished()` den nächsten Backfill aus. **Live 09-02:** lokaler Hash `0x005603…` bei `71185159` korrekt erreicht; anschließend FCU/newPayload ~`180937060+` beobachtet. | 📋 Codepfad nachvollzogen; **Live-Gate offen:** nach Merkle/Pipeline-Idle `Preparing Headers` mit aktuellem externem Target und Checkpoint-Anstieg nachweisen |
 
 ### Pipeline-Verify-Matrix (PORT-PIPE) — op-geth ↔ Reth, Stage für Stage
 
