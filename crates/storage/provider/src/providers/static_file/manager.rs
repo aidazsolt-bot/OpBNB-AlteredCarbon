@@ -43,14 +43,15 @@ use reth_primitives_traits::{
     AlloyBlockHeader as _, BlockBody as _, RecoveredBlock, SealedHeader, SignedTransaction,
     StorageEntry,
 };
+use reth_prune_types::PruneSegment;
 use reth_stages_types::{PipelineTarget, StageCheckpoint, StageId};
 use reth_static_file_types::{
     find_fixed_range, HighestStaticFiles, SegmentHeader, SegmentRangeInclusive, StaticFileMap,
     StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE,
 };
 use reth_storage_api::{
-    BlockBodyIndicesProvider, ChangeSetReader, DBProvider, StorageChangeSetReader,
-    StorageSettingsCache,
+    BlockBodyIndicesProvider, ChangeSetReader, DBProvider, PruneCheckpointReader,
+    StorageChangeSetReader, StorageSettingsCache,
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult, StaticFileWriterError};
 use std::{
@@ -1409,6 +1410,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     where
         Provider: DBProvider
             + BlockReader
+            + PruneCheckpointReader
             + StageCheckpointReader
             + ChainSpecProvider
             + StorageSettingsCache,
@@ -1808,7 +1810,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         highest_static_file_block: Option<BlockNumber>,
     ) -> ProviderResult<Option<BlockNumber>>
     where
-        Provider: DBProvider + BlockReader + StageCheckpointReader,
+        Provider: DBProvider + BlockReader + PruneCheckpointReader + StageCheckpointReader,
     {
         debug!(target: "reth::providers::static_file", ?segment, ?highest_static_file_entry, ?highest_static_file_block, "Ensuring invariants");
         let mut db_cursor = provider.tx_ref().cursor_read::<T>()?;
@@ -1879,16 +1881,19 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             return Ok(None);
         }
 
+        let effective_coverage_block =
+            Self::effective_coverage_block(provider, segment, highest_static_file_block)?;
+
         // If the checkpoint is ahead, then we lost static file data. May be data corruption.
-        if checkpoint_block_number > highest_static_file_block {
+        if checkpoint_block_number > effective_coverage_block {
             info!(
                 target: "reth::providers::static_file",
                 checkpoint_block_number,
-                unwind_target = highest_static_file_block,
+                unwind_target = effective_coverage_block,
                 ?segment,
                 "Setting unwind target."
             );
-            return Ok(Some(highest_static_file_block));
+            return Ok(Some(effective_coverage_block));
         }
 
         // If the checkpoint is behind, then we failed to do a database commit **but committed** to
@@ -1957,6 +1962,41 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         Ok(None)
     }
 
+    /// Returns the highest block accounted for in this segment, either through data present in
+    /// static files or through data intentionally removed by pruning.
+    fn effective_coverage_block<Provider>(
+        provider: &Provider,
+        segment: StaticFileSegment,
+        highest_static_file_block: BlockNumber,
+    ) -> ProviderResult<BlockNumber>
+    where
+        Provider: PruneCheckpointReader,
+    {
+        let Some(prune_segment) = Self::prune_segment_for_static_file(segment) else {
+            return Ok(highest_static_file_block);
+        };
+
+        let prune_checkpoint_block = provider
+            .get_prune_checkpoint(prune_segment)?
+            .and_then(|checkpoint| checkpoint.block_number)
+            .unwrap_or_default();
+
+        Ok(highest_static_file_block.max(prune_checkpoint_block))
+    }
+
+    /// Returns the prune segment that governs data availability for a static file segment.
+    const fn prune_segment_for_static_file(segment: StaticFileSegment) -> Option<PruneSegment> {
+        match segment {
+            StaticFileSegment::Receipts => Some(PruneSegment::Receipts),
+            StaticFileSegment::TransactionSenders => Some(PruneSegment::SenderRecovery),
+            StaticFileSegment::AccountChangeSets => Some(PruneSegment::AccountHistory),
+            StaticFileSegment::StorageChangeSets => Some(PruneSegment::StorageHistory),
+            StaticFileSegment::Headers |
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Sidecars => None,
+        }
+    }
+
     /// Like [`Self::ensure_invariants`], but for change-based segments whose database table key
     /// (e.g. [`tables::StorageChangeSets`]'s [`reth_db_api::models::BlockNumberAddress`]) is not
     /// directly a [`BlockNumber`]. `block_from_key` extracts the block number component of the
@@ -1969,7 +2009,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
         block_from_key: F,
     ) -> ProviderResult<Option<BlockNumber>>
     where
-        Provider: DBProvider + BlockReader + StageCheckpointReader,
+        Provider: DBProvider + BlockReader + PruneCheckpointReader + StageCheckpointReader,
         T: Table,
         F: Fn(&T::Key) -> BlockNumber,
     {
@@ -2013,15 +2053,18 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             provider.get_stage_checkpoint(stage_id)?.unwrap_or_default().block_number;
         debug!(target: "reth::providers::static_file", ?segment, ?stage_id, checkpoint_block_number, highest_static_file_block, "Retrieved stage checkpoint");
 
-        if checkpoint_block_number > highest_static_file_block {
+        let effective_coverage_block =
+            Self::effective_coverage_block(provider, segment, highest_static_file_block)?;
+
+        if checkpoint_block_number > effective_coverage_block {
             info!(
                 target: "reth::providers::static_file",
                 checkpoint_block_number,
-                unwind_target = highest_static_file_block,
+                unwind_target = effective_coverage_block,
                 ?segment,
                 "Setting unwind target."
             );
-            return Ok(Some(highest_static_file_block));
+            return Ok(Some(effective_coverage_block));
         }
 
         if checkpoint_block_number < highest_static_file_block {
