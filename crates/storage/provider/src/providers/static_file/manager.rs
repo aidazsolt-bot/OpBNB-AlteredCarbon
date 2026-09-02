@@ -475,8 +475,13 @@ impl<N: NodePrimitives> StaticFileProviderInner<N> {
                 // Didn't find matching range for an existing file, derive a new range from the end
                 // of the last existing file range.
                 //
-                // `block` is always higher than `range.end()` here, because we iterated over all
-                // `block_index` ranges above and didn't find one that contains our block
+                // `block` is normally higher than `range.end()` here, because we iterated over all
+                // `block_index` ranges above and didn't find one that contains our block. Guard
+                // against a violated index invariant instead of wrapping the subtraction, which
+                // would silently derive a bogus range in release builds.
+                if block <= range.end() {
+                    return *range;
+                }
                 let blocks_after_last_range = block - range.end();
                 let segments_to_skip = (blocks_after_last_range - 1) / blocks_per_file;
                 let start = range.end() + 1 + segments_to_skip * blocks_per_file;
@@ -1208,10 +1213,14 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                         index
                             .expected_block_ranges_by_max_block
                             .retain(|_, block_range| block_range.start() < fixed_range.start());
-                        // Insert new expected block range
+                        // Insert new expected block range.
+                        //
+                        // Keyed by the range end, not the currently highest written block:
+                        // `find_fixed_range_with_block_index` treats these keys as range ends when
+                        // deciding whether a block falls into an existing file.
                         index
                             .expected_block_ranges_by_max_block
-                            .insert(segment_max_block, fixed_range);
+                            .insert(fixed_range.end(), fixed_range);
                     })
                     .or_insert_with(|| StaticFileSegmentIndex {
                         min_block_range: None,
