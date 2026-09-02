@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -79,9 +79,7 @@ jobs:
             --authrpc.addr 127.0.0.1 \
             --authrpc.port 8551 \
             --authrpc.jwtsecret "$JWT_SECRET" \
-            --metrics \
-            --metrics.addr 127.0.0.1 \
-            --metrics.port 6060
+            --metrics 127.0.0.1:6060
           status=$?
           set -e
 
