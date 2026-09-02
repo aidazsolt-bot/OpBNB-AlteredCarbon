@@ -2,6 +2,7 @@ use crate::stages::MERKLE_STAGE_DEFAULT_INCREMENTAL_THRESHOLD;
 use alloy_consensus::BlockHeader;
 use alloy_primitives::BlockNumber;
 use num_traits::Zero;
+use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_config::config::ExecutionConfig;
 use reth_consensus::FullConsensus;
 use reth_db::{static_file::HeaderMask, tables};
@@ -14,7 +15,7 @@ use reth_provider::{
     providers::{StaticFileProvider, StaticFileWriter},
     BlockHashReader, BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HeaderProvider,
     LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriteConfig, StateWriter,
-    StaticFileProviderFactory, StatsReader, StorageSettingsCache, TransactionVariant,
+    StaticFileProviderFactory, StatsReader, StoragePath, StorageSettingsCache, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
@@ -36,6 +37,8 @@ use std::{
 use tracing::*;
 
 use super::missing_static_data_error;
+
+mod slot_preimages;
 
 /// The execution stage executes all transactions and
 /// update history indexes.
@@ -270,7 +273,9 @@ where
         > + StatsReader
         + BlockHashReader
         + StateWriter<Receipt = <E::Primitives as NodePrimitives>::Receipt>
-        + StorageSettingsCache,
+        + StorageSettingsCache
+        + StoragePath
+        + ChainSpecProvider<ChainSpec: EthereumHardforks>,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -468,6 +473,28 @@ where
             }
         }
 
+        // When using hashed state (storage.v2), inject plain storage-slot keys into wipe
+        // reverts for self-destructed accounts. Without this, the changeset writer would only
+        // see hashed slot keys (from `HashedStorages`) which pollutes the entire codebase.
+        //
+        // SELFDESTRUCT no longer destroys storage post-Cancun, so this is only needed for
+        // pre-Cancun blocks. Post-Cancun we can remove the preimage db entirely.
+        if provider.cached_storage_settings().use_hashed_state() {
+            let start_header = provider
+                .header_by_number(start_block)?
+                .ok_or_else(|| ProviderError::HeaderNotFound(start_block.into()))?;
+
+            let path = provider.storage_path().join("preimage");
+            if provider.chain_spec().is_cancun_active_at_timestamp(start_header.timestamp()) {
+                // Post-Cancun: no more self-destructs, preimage db is no longer needed.
+                if path.exists() {
+                    let _ = std::fs::remove_dir_all(&path);
+                }
+            } else {
+                slot_preimages::inject_plain_wipe_slots(&path, provider, &mut state)?;
+            }
+        }
+
         // write output
         provider.write_state(&state, OriginalValuesKnown::Yes, StateWriteConfig::default())?;
 
@@ -605,6 +632,8 @@ where
             })
         }
 
+        reject_cancun_boundary_unwind(provider, input.checkpoint.block_number, unwind_to)?;
+
         self.ensure_consistency(provider, input.checkpoint.block_number, Some(unwind_to))?;
 
         // Unwind account and storage changesets, as well as receipts.
@@ -709,6 +738,40 @@ where
 
         Ok(())
     }
+}
+
+fn reject_cancun_boundary_unwind<Provider>(
+    provider: &Provider,
+    checkpoint_block: u64,
+    unwind_to: u64,
+) -> Result<(), StageError>
+where
+    Provider: HeaderProvider + ChainSpecProvider<ChainSpec: EthereumHardforks>,
+{
+    let checkpoint_header = provider
+        .header_by_number(checkpoint_block)?
+        .ok_or_else(|| ProviderError::HeaderNotFound(checkpoint_block.into()))?;
+    let unwind_to_header = provider
+        .header_by_number(unwind_to)?
+        .ok_or_else(|| ProviderError::HeaderNotFound(unwind_to.into()))?;
+    let checkpoint_is_cancun =
+        provider.chain_spec().is_cancun_active_at_timestamp(checkpoint_header.timestamp());
+    let unwind_to_is_cancun =
+        provider.chain_spec().is_cancun_active_at_timestamp(unwind_to_header.timestamp());
+    if checkpoint_is_cancun && !unwind_to_is_cancun {
+        return Err(StageError::Fatal(
+            std::io::Error::other(format!(
+                "execution unwind across Cancun activation boundary is not allowed: checkpoint \
+                 block #{checkpoint_block} (ts={}) is Cancun-active but unwind target \
+                 #{unwind_to} (ts={}) is pre-Cancun",
+                checkpoint_header.timestamp(),
+                unwind_to_header.timestamp()
+            ))
+            .into(),
+        ))
+    }
+
+    Ok(())
 }
 
 fn execution_checkpoint<N>(
