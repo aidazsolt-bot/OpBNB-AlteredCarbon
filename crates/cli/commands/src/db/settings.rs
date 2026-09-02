@@ -7,7 +7,7 @@ use reth_db_common::DbTool;
 use reth_node_core::args::DatabaseArgs;
 use reth_provider::{
     providers::ProviderNodeTypes, DBProvider, DatabaseProviderFactory, MetadataProvider,
-    MetadataWriter, StorageSettings,
+    StorageSettings,
 };
 use reth_storage_api::metadata::keys::STORAGE_SETTINGS;
 use std::path::Path;
@@ -83,31 +83,26 @@ impl Command {
     }
 
     fn set<N: ProviderNodeTypes>(&self, cmd: SetCommand, tool: &DbTool<N>) -> eyre::Result<()> {
-        let provider_rw = tool.provider_factory.database_provider_rw()?;
-        let settings = provider_rw.storage_settings()?;
-        if settings.is_none() {
-            println!("No storage settings found, creating new settings.");
-        }
-
-        let mut settings = settings.unwrap_or_else(StorageSettings::v1);
-
         match cmd {
             SetCommand::StorageV2 { value } => {
-                if settings.storage_v2 == value {
+                let current = tool
+                    .provider_factory
+                    .provider()?
+                    .storage_settings()?
+                    .unwrap_or_else(StorageSettings::v1);
+
+                if current.storage_v2 == value {
                     println!("storage_v2 is already set to {value}");
                     return Ok(());
                 }
-                settings.storage_v2 = value;
-                println!("Set storage_v2 = {value}");
+
+                eyre::bail!(
+                    "refusing to change storage_v2 directly: this changes the on-disk routing \
+                     between MDBX, static files, and RocksDB. Use `reth db migrate-v2` to \
+                     migrate from v1 to v2. Downgrading a v2 database is unsupported."
+                );
             }
         }
-
-        provider_rw.write_storage_settings(settings)?;
-        provider_rw.commit()?;
-
-        println!("Storage settings updated successfully.");
-
-        Ok(())
     }
 
     /// Reads storage settings directly from MDBX metadata (skips static file initialization).
@@ -132,5 +127,52 @@ impl Command {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reth_provider::{
+        test_utils::create_test_provider_factory, DatabaseProviderFactory, MetadataProvider,
+        MetadataWriter,
+    };
+
+    #[test]
+    fn rejects_direct_storage_layout_change() {
+        let provider_factory = create_test_provider_factory();
+        let tool = DbTool::new(provider_factory.clone()).expect("db tool");
+
+        let err = Command { command: Subcommands::Set(SetCommand::StorageV2 { value: true }) }
+            .execute(&tool)
+            .expect_err("must reject an unmigrated v1 database");
+
+        assert!(err.to_string().contains("reth db migrate-v2"));
+        assert_eq!(
+            provider_factory
+                .provider()
+                .expect("provider")
+                .storage_settings()
+                .expect("storage settings"),
+            None
+        );
+    }
+
+    #[test]
+    fn accepts_noop_storage_layout_change() {
+        let provider_factory = create_test_provider_factory();
+        let tool = DbTool::new(provider_factory.clone()).expect("db tool");
+
+        {
+            let provider_rw = provider_factory.database_provider_rw().expect("rw provider");
+            provider_rw
+                .write_storage_settings(StorageSettings::v2())
+                .expect("write storage settings");
+            provider_rw.commit().expect("commit storage settings");
+        }
+
+        Command { command: Subcommands::Set(SetCommand::StorageV2 { value: true }) }
+            .execute(&tool)
+            .expect("same layout is a no-op");
     }
 }

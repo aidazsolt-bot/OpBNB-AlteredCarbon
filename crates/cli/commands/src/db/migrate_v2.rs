@@ -55,9 +55,12 @@ impl Command {
         let provider = provider_factory.provider()?;
         let current_settings = provider.storage_settings()?;
 
-        if current_settings.is_some_and(|s| s.is_v2()) {
-            info!(target: "reth::cli", "Storage is already v2, nothing to do");
-            return Ok(());
+        let migration_was_started = current_settings.is_some_and(|s| s.is_v2());
+        if migration_was_started {
+            warn!(
+                target: "reth::cli",
+                "Storage settings already indicate v2; verifying and resuming the migration"
+            );
         }
 
         let tip =
@@ -67,13 +70,27 @@ impl Command {
 
         let sf_provider = provider_factory.static_file_provider();
 
-        for segment in [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets]
-        {
-            if sf_provider.get_highest_static_file_block(segment).is_some() {
-                eyre::bail!(
-                    "Static file segment {segment:?} already contains data. \
-                     Cannot migrate — target must be empty."
-                );
+        if migration_was_started {
+            let changesets_complete =
+                [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets]
+                    .into_iter()
+                    .all(|segment| {
+                        sf_provider.get_highest_static_file_block(segment).is_some_and(|b| b >= tip)
+                    });
+            let receipts_complete = provider
+                .prune_modes_ref()
+                .receipts_log_filter
+                .is_empty()
+                .then(|| {
+                    sf_provider
+                        .get_highest_static_file_block(StaticFileSegment::Receipts)
+                        .is_some_and(|b| b >= tip)
+                })
+                .unwrap_or(true);
+
+            if changesets_complete && receipts_complete {
+                info!(target: "reth::cli", "Storage v2 migration is already complete");
+                return Ok(());
             }
         }
 
@@ -139,10 +156,18 @@ impl Command {
 
         let mut cursor = provider.tx_ref().cursor_read::<tables::AccountChangeSets>()?;
 
-        let first_block = provider
+        let prune_start = provider
             .get_prune_checkpoint(PruneSegment::AccountHistory)?
             .and_then(|cp| cp.block_number)
             .map_or(0, |b| b + 1);
+        let existing =
+            sf_provider.get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
+        let first_block = prune_start.max(existing.map_or(0, |block| block + 1));
+
+        if first_block > tip {
+            info!(target: "reth::cli", "AccountChangeSets already migrated");
+            return Ok(());
+        }
 
         // The writer always starts at the fixed range boundary (e.g. 2500000) which may be
         // earlier than first_block (e.g. 2603897 from prune checkpoint).
@@ -185,10 +210,18 @@ impl Command {
 
         let mut cursor = provider.tx_ref().cursor_read::<tables::StorageChangeSets>()?;
 
-        let first_block = provider
+        let prune_start = provider
             .get_prune_checkpoint(PruneSegment::StorageHistory)?
             .and_then(|cp| cp.block_number)
             .map_or(0, |b| b + 1);
+        let existing =
+            sf_provider.get_highest_static_file_block(StaticFileSegment::StorageChangeSets);
+        let first_block = prune_start.max(existing.map_or(0, |block| block + 1));
+
+        if first_block > tip {
+            info!(target: "reth::cli", "StorageChangeSets already migrated");
+            return Ok(());
+        }
 
         // The writer always starts at the fixed range boundary (e.g. 2500000) which may be
         // earlier than first_block (e.g. 2603897 from prune checkpoint).

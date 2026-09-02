@@ -153,6 +153,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
 | PORT-FLOW-S03 | Metrics/Healing | Alle `StaticFileSegment`s in Metrics registriert (STOR-009-Klasse) | STOR-009 | ✅ |
+| PORT-FLOW-S04 | V1→V2 layout migration | `storage_v2` darf erst nach vollständiger Datenmigration gesetzt werden; ein Teilabbruch muss aus MDBX in die bestehenden Zielsegmente fortsetzbar sein. Prune-Checkpoints repräsentieren absichtlich entfernte Static-File-Abdeckung, nicht Korruption. | STOR-007/008 | 📋 Code: direkte Metadatenmutation gesperrt; ChangeSet-Resume + Prune-Coverage portiert. Live: Trie-Rebuild bis `71185159`, danach Backfill-Übergang offen. |
 
 **Regel für neue FLOW-Zeilen:** sobald ein Stall/Ban/„total=1“/Grafana-No-data auftritt und **kein** FLOW die Transition beschreibt → zuerst Zeile anlegen, dann fixen. Nicht unter PIPE oder Chat begraben.
 
@@ -165,6 +166,31 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - eth/68 Tip-Hash mit `best_number` verwechseln
 - Ban auf Empty Headers/Bodies
 - „Workspace kompiliert“ / nextest grün als Protokoll-Done
+
+### Session 13 — Storage-v2 recovery (2026-09-02)
+
+**Befund:** Ein manueller `storage_v2`-Metadatenwechsel routete Receipts in Static Files, obwohl
+deren Daten nur in MDBX lagen. `ExecutionStage::ensure_consistency` erkannte den fehlenden
+Receipt-Static-File-Block bei `71185160` korrekt und löste den abhängigen Unwind aus:
+Execution `71242925→71185159`, danach SenderRecovery/Bodies/Headers
+`174027661→71185159`. Das beobachtete Header-Verhalten war Folge dieses Unwinds, nicht ein
+Header-Downloader-Validierungsfehler.
+
+**Umgesetzt:** `db settings set storage_v2` verweigert Layoutwechsel; nur gleiche Werte bleiben
+No-op. `db migrate-v2` setzt vorhandene Account-/StorageChangeSet-Static-File-Segmente fort.
+Der Upstream-Prune-Coverage-Fix ist für Receipts, Senders und beide ChangeSet-Segmente portiert.
+
+**Live-Status:** Nach Neustart arbeitet der lokale erste Pipeline-Pass bis `71185159`; Headers
+beginnen dabei erwartungsgemäß mit `target=None`. Anschließend läuft der vollständige
+Merkle-Rebuild des vorhandenen Hashed State (2.84B Entitäten); erst wenn die Pipeline idle ist,
+kann der vom Engine-Backfill vorgemerkte Netz-Target wieder Headers/Bodies bis zum Tip führen.
+Dieser Übergang sowie vollständige Crash-Resume-Semantik von `migrate-v2` bleiben offen.
+
+**Aufwand/Kosten:** Journal-/Mimir-Analyse, drei fokussierte Rust-Dateien plus Dokumentation;
+`cargo +nightly check -p reth-cli-commands --lib`, fokussierte Settings-Tests,
+`cargo +nightly check -p reth-provider --lib` und ein `make maxperf-op` erfolgreich. Für diese
+Copilot-Session liegt kein belastbarer Billed-Token-/Kosten-Ledger vor; keine Kostenschätzung
+ergänzt.
 
 ## Phasenübersicht (Soll)
 
