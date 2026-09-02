@@ -169,12 +169,16 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 
 ### Session 13 — Storage-v2 recovery (2026-09-02)
 
-**Befund:** Ein manueller `storage_v2`-Metadatenwechsel routete Receipts in Static Files, obwohl
-deren Daten nur in MDBX lagen. `ExecutionStage::ensure_consistency` erkannte den fehlenden
-Receipt-Static-File-Block bei `71185160` korrekt und löste den abhängigen Unwind aus:
+**Korrektur (15:02 CEST):** Der Archive-Datadir lief mindestens seit 2026-08-14 durchgehend mit
+`storage_v2=true`; es gab weder einen manuellen `storage_v2`-Metadatenwechsel noch einen
+`migrate-v2`-Lauf. Die frühere Layoutwechsel-Hypothese ist damit verworfen. Der
+`ExecutionStage::ensure_consistency`-Befund bleibt real: Receipt-Static-File-Daten fehlen ab
+`71185160` trotz V2-Betrieb und lösten den abhängigen Unwind aus:
 Execution `71242925→71185159`, danach SenderRecovery/Bodies/Headers
-`174027661→71185159`. Das beobachtete Header-Verhalten war Folge dieses Unwinds, nicht ein
-Header-Downloader-Validierungsfehler.
+`174027661→71185159`. Der anschließende vollständige Merkle-Rebuild bestätigte eine zweite
+V2-Integritätsverletzung: für `71185159` berechnete er `0x0edebae1…`, während der lokale
+kanonische Header und der öffentliche opBNB-RPC `0x68efa1b2…` liefern. Das beobachtete
+Header-Verhalten war Folge dieser Unwinds, nicht ein Header-Downloader-Validierungsfehler.
 
 **Umgesetzt:** `db settings set storage_v2` verweigert Layoutwechsel; nur gleiche Werte bleiben
 No-op. `db migrate-v2` setzt vorhandene Account-/StorageChangeSet-Static-File-Segmente fort.
@@ -198,6 +202,12 @@ Merkle-Rebuild des vorhandenen Hashed State (2.84B Entitäten) hält die Pipelin
 danach müssen Headers/Bodies über den vorgemerkten Engine-Target bis zum dann aktuellen CL-Tip
 weiterlaufen. Dieser Übergang sowie vollständige Crash-Resume-Semantik von `migrate-v2` bleiben
 offen.
+
+**Auswirkung / Status:** Der State-Root-Fail um 14:54:12 CEST erzwingt aktuell einen vollständigen
+Unwind (`StorageHashing 71185159→0` in 100k-Block-Chunks), bevor irgendein externer
+Header-Backfill möglich ist. Das ist kein Stillstand und kein bloßer Grafana-Anzeigefehler.
+Die Ursache liegt im V2-Sync-/State-/Static-File-Datenpfad und ist offen; die zuvor ergänzten
+Migrations-Guidrails sind präventiv, aber keine bestätigte Fehlerbehebung für diesen Datadir.
 
 **Aufwand/Kosten:** Journal-/Mimir-Analyse, drei fokussierte Rust-Dateien plus Dokumentation;
 `cargo +nightly check -p reth-cli-commands --lib`, fokussierte Settings-Tests,
@@ -310,7 +320,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-ENGINE-001 | Nach Tip-FCU: Status `latest_block=0` **ohne** `stage=…`; Grafana Stages **No data**; Pipeline startet nicht (oder nur kurz) | (1) Engine API Flood: `incoming_requests` vor `downloader.poll` → keine `DownloadedBlocks` → kein Backfill. (2) `handle_missing_block` nur `Download(single_block)` bei gleitendem Buffer (Limit 64) → Tip-Chase, nie Pipeline. (3) `NewDownloadStarted` als Poll-Ready blockierte Inflight-Advance | ✅ fixed + **live** Backfill/`Preparing stage Headers` (FLOW-E01/E02). Checkpoint Headers weiter 0 bis FLOW-H05 |
 | PORT-ENGINE-002 | Grafana Stages „0 Blöcke“ vs „No data“ verwechselt | „0“ = Pipeline aktiv, Checkpoint 0. „No data“ = keine Stage-Series (Pipeline idle / Backfill nie gestartet) | 📝 docs only (kein Code) |
 | PORT-ENGINE-003 | Headers nach Backfill-Start: Tip-Hash per P2P → empty → Ban | Tip muss von CL/HeaderSeed kommen (op-geth Skeleton), nicht P2P Hash | ✅ **closed** · Tip-Seed + Falling live; Headers Tip **174 M** (FLOW-E03/H05) |
-| PORT-ENGINE-005 | Restart mit inkonsistenten Stages: lokaler Konsistenz-Target wird als „Headers stuck“ fehlgedeutet; Netz-FCU trifft während Repair-Pipeline ein | `check_pipeline_consistency()` setzt absichtlich den letzten konsistenten Header als initialen Backfill-Target. Während Backfill `Active` ist, antwortet FCU `SYNCING`, aber `ForkchoiceStateTracker::set_latest` muss den neuesten Head erhalten; nach `BackfillSyncFinished` löst `on_backfill_sync_finished()` den nächsten Backfill aus. **Live 09-02:** lokaler Hash `0x005603…` bei `71185159` korrekt erreicht; anschließend FCU/newPayload ~`180937060+` beobachtet. | 📋 Codepfad nachvollzogen; **Live-Gate offen:** nach Merkle/Pipeline-Idle `Preparing Headers` mit aktuellem externem Target und Checkpoint-Anstieg nachweisen |
+| PORT-ENGINE-005 | Restart mit inkonsistenten Stages: lokaler Konsistenz-Target wird als „Headers stuck“ fehlgedeutet; Netz-FCU trifft während Repair-Pipeline ein | `check_pipeline_consistency()` setzt absichtlich den letzten konsistenten Header als initialen Backfill-Target. Während Backfill `Active` ist, antwortet FCU `SYNCING`, aber `ForkchoiceStateTracker::set_latest` muss den neuesten Head erhalten; nach `BackfillSyncFinished` löst `on_backfill_sync_finished()` den nächsten Backfill aus. **Live 09-02:** lokaler Hash `0x005603…` bei `71185159` korrekt erreicht; anschließend FCU/newPayload ~`180937060+` beobachtet. | 📋 Codepfad nachvollzogen; durch bestätigten Merkle-State-Root-Fail bei `71185159` wieder blockiert. Nach sauberem V2-State-Recovery: `Preparing Headers` mit aktuellem externem Target und Checkpoint-Anstieg nachweisen |
 
 ### Pipeline-Verify-Matrix (PORT-PIPE) — op-geth ↔ Reth, Stage für Stage
 
