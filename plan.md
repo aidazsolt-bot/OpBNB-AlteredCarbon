@@ -257,7 +257,84 @@ No-ops sind (`use_hashed_state()` → nur Checkpoint auf Target setzen), wird de
 Der aktuell laufende MerkleExecute-Pass (ETA 2–3 h) wird deshalb mit hoher Wahrscheinlichkeit
 erneut einen falschen State Root liefern. Upstream v2.4.1 enthält denselben ungeschützten
 No-op; es fehlt ein Konsistenz-Guard „Hashing-Checkpoint < Execution-Checkpoint“ bzw. eine
-persistierte Unwind-Fortsetzung. Fix offen.
+persistierte Unwind-Fortsetzung. **Gefixt lokal:** Startup-Guard bricht nun unter Storage-V2 ab,
+wenn Execution bereits auf dem Header-Tip steht, aber Account-/StorageHashing darunter liegen.
+
+### Forensik 09-02 17:00–17:50 CEST — Datadir-Obduktion (Node gestoppt, read-only)
+
+Vor dem Verwerfen des Datadirs wurde der State offline vermessen (`db state`,
+`db static-file-header`, `mdbx_stat`) und gegen `https://opbnb.drpc.org` (einziger
+gefundener öffentlicher Archive-Endpoint mit historischem State) abgeglichen. Ergebnis: **ein
+Datadir mit drei verschiedenen Höhen** — die eigentliche Ursache des Root-Mismatch.
+
+| Komponente | Tatsächliche Höhe (gemessen) | Checkpoint behauptete |
+| --- | --- | --- |
+| `HashedAccounts` | **71 242 925** | 71 185 159 |
+| `HashedStorages` | **70 885 156** | 71 185 159 |
+| Blockdaten / Static Files | 71 185 159 | 71 185 159 |
+
+Belege (je zwei unabhängige Indikatoren):
+*Accounts* — `0x4200…0006` (WBNB) Balance `864879264746320059412` und `0x4200…0011`
+(SequencerFeeVault) `7907590433894700094` matchen **exakt und nur** bei Block `71242925`.
+*Storage* — `0x4200…0015` (`L1Block`) Slot 0 = `l1num 55898140 | ts 1753921625` matcht
+**exakt und nur** bei Block `70885156`.
+
+**Ursachenkette (vollständig rekonstruiert):**
+1. **PORT-STOR-009** meldete durch den Index-Underflow fälschlich fehlende Receipts bei
+   `71185160`; der Startup-Consistency-Check kürzte daraufhin **alle** Static-File-Segmente auf
+   `71185159` (per `static-file-header` bestätigt: Headers/Receipts/Transactions sowie
+   Account-/StorageChangeSets enden alle exakt dort).
+2. Der anschließende Execution-Unwind lief ins Leere — **PORT-STOR-011**: in
+   `remove_state_above` ist `range = block + 1..=self.last_block_number()?`; `last_block_number()`
+   war durch (1) bereits `71185159`, die Range damit leer, und `if range.is_empty() { return
+   Ok(()) }` kehrt **still** zurück. Der Hashed-Account-Revert `71242925 → 71185159` fand nie
+   statt, der Checkpoint wurde trotzdem gesetzt.
+3. MerkleExecute rechnete bei `71185159` gegen Accounts von `71242925` → der Mismatch war
+   zwingend, nicht zufällig. Damit ist der Root-Fail vom 09-02 **restlos erklärt**; die zuvor
+   notierte Hypothese „beschädigter Static-File-Zustand“ ist damit erledigt.
+4. Der ausgelöste Unwind Richtung Genesis rollte `HashedStorages` batchweise auf `70885156` und
+   wurde dort unterbrochen.
+5. Neustart: **PORT-STAGE-006** hob die Hashing-Checkpoints per Forward-No-op zurück auf
+   `71185159`, ohne Daten zu rekonstruieren.
+
+**Warum keine Teilrettung möglich war.** `unwind_account_hashing` ist rein changeset-getrieben
+(`changesets.map(|(_, e)| (keccak256(e.address), e.info))`) — Accounts ohne Changeset im
+unwindeten Bereich werden nie angefasst. Die AccountChangeSets für `71185160..=71242925` waren
+durch (1) mitgekürzt und lokal unwiederbringlich; insbesondere in diesem Fenster **neu
+entstandene** Accounts hätten als Phantome im State überlebt und jeden weiteren Merkle-Lauf
+erneut vergiftet. Ein Reparatur-Unwind auf `70885156` war damit ausgeschlossen. Eine Reparatur
+über einen Referenz-Archive-Node (`eth_getProof`-Descent) wäre theoretisch möglich, scheiterte
+praktisch am Rate-Limit der öffentlichen Endpoints.
+
+**PORT-STAGE-007 (daraus abgeleitet, sicherheitsrelevant).** `unwind()` in `hashing_account.rs`
+/ `hashing_storage.rs` besitzt **keinen** Table-Clear-Pfad — auch nicht bei Unwind-Ziel 0. Ein
+„Unwind auf Genesis“ leert `HashedAccounts`/`HashedStorages` also **nicht**; Phantom-Einträge
+überleben und würden einen nachfolgenden Sync ab Block 0 von Beginn an korrumpieren. Konsequenz
+für den Betrieb war bis zum Fix: nach einem V2-State-Schaden **Datadir verwerfen, nicht auf 0
+unwinden**. **Gefixt lokal:** Hashing-Unwind auf Ziel 0 leert unter Storage-V2 die jeweiligen
+Hashed-State-Tabellen explizit.
+
+**Recovery-Guard-Fixes 19:34–19:50 CEST.** Nach Vergleich mit Reth v2.4.1/v2.5.0/main,
+`bnb-chain/reth` v0.1.2 und den go-geth/op-geth Recovery-Pfaden wurden drei lokale
+Sicherungen umgesetzt:
+1. `stage drop Execution` ist nun upstream-konform Storage-V2-aware und leert
+   `HashedAccounts`/`HashedStorages` statt der leeren Plain-State-Tabellen.
+2. `remove_state_above` bricht unter Storage-V2 ab, wenn der Execution-Checkpoint über den
+   verfügbaren Blockdaten liegt, statt einen leeren Range-Revert still als Erfolg zu behandeln.
+3. Account-/StorageHashing-Unwind auf Genesis leert unter Storage-V2 die Hashed-State-Tabellen.
+
+Der bewusst **nicht** in den Hashing-Stages selbst gesetzte Forward-Guard wurde verworfen: ein
+naiver `checkpoint < target`-Abort blockiert legitimen frischen V2-Sync (`0 → 1`). Der Guard sitzt
+daher im Startup-Consistency-Check, wo der konkrete gefährliche Zustand erkennbar ist
+(Execution == Header-Tip, Hashing darunter).
+
+**Entscheidung 17:53 CEST:** Datadir (inkl. Static Files, verifiziert: 2861 → 21 Dateien)
+verworfen, Re-Sync ab Genesis mit `333ba71` gestartet. Log sauber:
+`Wrote storage settings genesis_storage_settings=StorageSettings { storage_v2: true }` —
+Storage-V2 also **ab Genesis** statt via Migration; Headers laden rückwärts ab `179 239 838`.
+Der Re-Sync durchquert erstmals scharf die pre-Cancun-Selfdestructs, womit die in `333ba71e10`
+portierte Slot-Preimage-DB (**PORT-STAGE-005**) produktiv zum Tragen kommt; `preimage/` wird
+erwartungsgemäß erst mit Beginn der Execution-Stage angelegt.
 
 **Aufwand/Kosten:** Journal-/Mimir-Analyse, drei fokussierte Rust-Dateien plus Dokumentation;
 `cargo +nightly check -p reth-cli-commands --lib`, fokussierte Settings-Tests,
@@ -289,10 +366,10 @@ ergänzt.
 | **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 laufend |
 | **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
 | **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt bis Restart |
-| **aktuell: Repair-Rebuild** | MerkleExecute bis `71 185 159` abschließen, dann Engine-Backfill zu CL-Head nachweisen | unsupervised + Spot-Checks | ⚠️ Neustart 09-02 16:31 mit `333ba71e10`; Merkle inner ~1.6 %, ETA 2–3 h. **PORT-STAGE-006**: `StorageHashing` sprang nach abgebrochenem Unwind von `70885156` per V2-No-op auf `71185159`, ohne den Hashed State zu rekonstruieren → erneuter Root-Fail wahrscheinlich; CL-Head ~`180.97M` |
+| **aktuell: Re-Sync ab Genesis** | Headers → Bodies → Execution neu aufbauen; Gates Haber/Wright Point-4 erneut ziehen | unsupervised + Spot-Checks | 🔄 **Neustart 09-02 17:53** mit `333ba71`, Datadir verworfen (Static Files 2861 → 21). `storage_v2: true` **ab Genesis** statt via Migration; Headers laden rückwärts ab `179 239 838`. Vorheriger Repair-Versuch aufgegeben — Ursache forensisch geklärt (**PORT-STOR-011**), Teilrettung wegen gekürzter AccountChangeSets unmöglich. CL-Head ~`180.99M` |
 | **nach Repair-Backfill** | Execution Tip → Merkle/History/Finish | unsupervised + Spot-Checks | ⏳ erneut zu berechnen, sobald die Header- und Execution-Rate nach dem Wiederanlauf messbar ist |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
-| **latent, nach Sync-Gates** | **PORT-STAGE-006** — V2-Hashing-Konsistenz-Guard: `AccountHashing`/`StorageHashing` sind unter `use_hashed_state()` im Forward reine No-ops (Checkpoint → Target). Bricht ein Unwind zwischen Hashing und Execution ab, bleibt der Hashed State für die Differenz ungehasht und wird nie rekonstruiert. Nötig: Fehler/Recovery bei `Hashing-Checkpoint < Execution-Checkpoint` **oder** persistierte Unwind-Fortsetzung statt Forward-Backfill in `check_pipeline_consistency()` | ~0.5–1 d Code + Regressionstest | 📋 **latenter Design-Gap, auch upstream v2.4.1 vorhanden** — kein lokaler Portfehler. Live 09-02 durch abgebrochenen Unwind ausgelöst; Fix bewusst nach den Sync-Gates, da er Recovery-Semantik der Pipeline berührt. Upstream-Issue/PR prüfen bzw. melden |
+| **erledigt 09-02** | **V2-State-Integrität — drei gekoppelte Guards.** (a) **PORT-STOR-011**: `remove_state_above` kehrt still zurück, wenn Static Files bereits gekürzt sind → State-Revert entfällt, Checkpoint wird trotzdem gesetzt. (b) **PORT-STAGE-006**: `AccountHashing`/`StorageHashing` sind unter `use_hashed_state()` im Forward reine No-ops; nach abgebrochenem Unwind bleibt die Differenz ungehasht. (c) **PORT-STAGE-007**: Hashing-`unwind()` hat keinen Table-Clear-Pfad, „Unwind auf 0“ leert den Hashed State nicht. Zusammen erzeugen sie **stillen, nicht reparierbaren State-Verlust** | ~1–2 d Code + Regressionstests | ✅ lokal gehärtet: Storage-V2-aware `stage drop Execution`, `remove_state_above`-Abort bei Execution>Blockdaten, Startup-Consistency-Guard bei Execution==Header-Tip aber Hashing darunter, Hashing-Unwind-to-0 clear. Upstream-Issue/PR später prüfen bzw. melden |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
 **P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1¼–2¼ Mo) · FLOW-X05 watch.
@@ -374,7 +451,9 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-ENGINE-005 | Restart mit inkonsistenten Stages: lokaler Konsistenz-Target wird als „Headers stuck“ fehlgedeutet; Netz-FCU trifft während Repair-Pipeline ein | `check_pipeline_consistency()` setzt absichtlich den letzten konsistenten Header als initialen Backfill-Target. Während Backfill `Active` ist, antwortet FCU `SYNCING`, aber `ForkchoiceStateTracker::set_latest` muss den neuesten Head erhalten; nach `BackfillSyncFinished` löst `on_backfill_sync_finished()` den nächsten Backfill aus. **Live 09-02:** lokaler Hash `0x005603…` bei `71185159` korrekt erreicht; anschließend FCU/newPayload ~`180937060+` beobachtet. | 📋 Codepfad nachvollzogen; durch bestätigten Merkle-State-Root-Fail bei `71185159` wieder blockiert. Nach sauberem V2-State-Recovery: `Preparing Headers` mit aktuellem externem Target und Checkpoint-Anstieg nachweisen |
 | PORT-STOR-009 | Static-File-Block-Index unter `segment_max_block` statt Range-Ende verschlüsselt → u64-Underflow in `find_fixed_range_with_block_index` | Lokale Abweichung aus `9fdf8220cc`: Leseseite und `or_insert_with` behandeln die BTreeMap-Keys als Range-Enden. Bei angeschriebener, ungefüllter Datei schlägt der Lookup fehl → `block - range.end()` wrappt im Release-Build still → vorhandene Static-File-Daten gelten als fehlend (`missing static file data … segment=Receipts` @ `71185160`) | ✅ **fixed** `34f19ebdd4` · Key wieder `fixed_range.end()` + Underflow-Guard; `tests/preimage.rs` reproduzierte den Panic vorher zuverlässig |
 | PORT-STAGE-005 | Slot-Preimage-DB (Upstream #22379) im Port fehlend → unvollständige V2-Wipe-ChangeSets | `write_state_reverts` liest Vor-Wipe-Slots aus `PlainStorageState`, das unter `storage_v2` nie geschrieben wird. Die kommentierte Preimage-Injektion existierte nicht; nur die Tests waren übernommen und in `5b8488b606` per `#[ignore]` deaktiviert. Selfdestructs mit Storage verloren dadurch ihre Revert-Daten | ✅ **fixed** `333ba71e10` · `execution/slot_preimages.rs` + Pre-Cancun-Anbindung + `reject_cancun_boundary_unwind`; 6/6 Tests reaktiviert und grün. **Nicht** ursächlich für `71185159` (post-Cancun), aber Pflicht für den Re-Sync ab Genesis |
-| PORT-STAGE-006 | Abgebrochener Unwind + V2-Forward-No-op ⇒ Hashed State wird nie wiederhergestellt | Pipeline unwindet Hashing **vor** Execution. Bricht der Lauf dort ab (live: `StorageHashing` bei `70885156`, Execution weiter `71185159`), setzt `check_pipeline_consistency()` beim Neustart einen Forward-Backfill an statt den Unwind fortzusetzen. Unter V2 sind `AccountHashing`/`StorageHashing` im Forward reine No-ops (Checkpoint → Target), sodass `70885157..=71185159` ungehasht bleibt. Upstream v2.4.1 hat denselben ungeschützten No-op | 🐛 **offen / aktiver Blocker** · Live 09-02 16:31 beobachtet; laufender MerkleExecute-Pass wird voraussichtlich erneut falschen Root liefern. Nötig: Guard „Hashing-Checkpoint < Execution-Checkpoint“ oder persistierte Unwind-Fortsetzung |
+| PORT-STAGE-006 | Abgebrochener Unwind + V2-Forward-No-op ⇒ Hashed State wird nie wiederhergestellt | Pipeline unwindet Hashing **vor** Execution. Bricht der Lauf dort ab (live: `StorageHashing` bei `70885156`, Execution weiter `71185159`), setzt `check_pipeline_consistency()` beim Neustart einen Forward-Backfill an statt den Unwind fortzusetzen. Unter V2 sind `AccountHashing`/`StorageHashing` im Forward reine No-ops (Checkpoint → Target), sodass `70885157..=71185159` ungehasht bleibt. Upstream v2.4.1 hat denselben ungeschützten No-op | ✅ **fixed lokal** · Startup-Guard in `check_pipeline_consistency`: wenn Storage-V2 aktiv ist und Execution bereits auf Header-Tip steht, aber Account-/StorageHashing darunter liegt, bricht der Node laut ab statt die Hashing-Stages per No-op hochzusetzen. Naiver Stage-Guard verworfen, da er frischen V2-Sync (`0→1`) blockiert |
+| PORT-STOR-011 | `remove_state_above` überspringt den State-Revert **still**, wenn Static Files bereits gekürzt sind | `let range = block + 1..=self.last_block_number()?; if range.is_empty() { return Ok(()) }`. Nachdem der Startup-Consistency-Check die Static Files (ausgelöst durch PORT-STOR-009) auf `71185159` gekürzt hatte, war `last_block_number()` bereits `71185159` → Range leer → der Hashed-Account-Revert `71242925 → 71185159` wurde übersprungen, der Checkpoint aber gesetzt. Forensisch belegt: `HashedAccounts` stand real auf `71242925` (WBNB- und SequencerFeeVault-Balance matchen exakt nur dort) | ✅ **fixed lokal** · unter Storage-V2 Fehler statt stillem `Ok(())`, wenn Execution-Checkpoint über den verfügbaren Blockdaten liegt; verhindert erneuten stillen Hashed-State-Rewind-Skip |
+| PORT-STAGE-007 | Hashing-`unwind()` besitzt keinen Table-Clear-Pfad — „Unwind auf 0“ leert den Hashed State nicht | `unwind()` in `hashing_account.rs`/`hashing_storage.rs` rief ausschließlich `unwind_*_hashing_range(range)`, das rein changeset-getrieben arbeitet. Accounts ohne Changeset im Bereich — insbesondere im unwindeten Fenster neu entstandene — blieben stehen. Auch bei Ziel 0 wurden `HashedAccounts`/`HashedStorages` daher **nicht** geleert; Phantom-Einträge überlebten und korrumpierten einen nachfolgenden Sync ab Genesis | ✅ **fixed lokal** · Account-/StorageHashing-Unwind leert bei `unwind_progress == 0` unter Storage-V2 die jeweilige Hashed-State-Tabelle explizit; Regressionstests ergänzt |
 
 ### Pipeline-Verify-Matrix (PORT-PIPE) — op-geth ↔ Reth, Stage für Stage
 

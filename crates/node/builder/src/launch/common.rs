@@ -42,7 +42,7 @@ use rayon::ThreadPoolBuilder;
 use reth_chainspec::{Chain, EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_config::{config::EtlConfig, PruneConfig, StateDbConfig};
 use reth_consensus::noop::NoopConsensus;
-use reth_db_api::{database::Database, database_metrics::DatabaseMetrics};
+use reth_db_api::{database::Database, database_metrics::DatabaseMetrics, DatabaseError};
 use reth_db_common::init::{init_genesis_with_settings, InitStorageError};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_engine_local::MiningMode;
@@ -70,6 +70,7 @@ use reth_provider::{
     BlockHashReader, BlockNumReader, BlockReaderIdExt, DBProvider, DatabaseProviderFactory,
     HeaderProvider, ProviderError, ProviderFactory, ProviderResult, RocksDBProviderFactory,
     StageCheckpointReader, StaticFileProviderBuilder, StaticFileProviderFactory,
+    StorageSettingsCache,
 };
 use reth_prune::{PruneModes, PrunerBuilder};
 use reth_rpc_builder::config::RethRpcServerConfig;
@@ -1110,6 +1111,36 @@ where
             .get_stage_checkpoint(first_stage)?
             .unwrap_or_default()
             .block_number;
+
+        if self.provider_factory().cached_storage_settings().use_hashed_state() {
+            let execution_checkpoint = self
+                .blockchain_db()
+                .get_stage_checkpoint(StageId::Execution)?
+                .unwrap_or_default()
+                .block_number;
+            let account_hashing_checkpoint = self
+                .blockchain_db()
+                .get_stage_checkpoint(StageId::AccountHashing)?
+                .unwrap_or_default()
+                .block_number;
+            let storage_hashing_checkpoint = self
+                .blockchain_db()
+                .get_stage_checkpoint(StageId::StorageHashing)?
+                .unwrap_or_default()
+                .block_number;
+
+            if execution_checkpoint == first_stage_checkpoint &&
+                (account_hashing_checkpoint < execution_checkpoint ||
+                    storage_hashing_checkpoint < execution_checkpoint)
+            {
+                return Err(ProviderError::Database(DatabaseError::Other(format!(
+                    "storage-v2 pipeline is inconsistent after execution completed: \
+                     execution={execution_checkpoint}, account_hashing={account_hashing_checkpoint}, \
+                     storage_hashing={storage_hashing_checkpoint}; refusing to advance hashing \
+                     stages by no-op because hashed state may have been partially unwound"
+                ))))
+            }
+        }
 
         // Compare all other stages against the first
         for stage_id in all_stages {

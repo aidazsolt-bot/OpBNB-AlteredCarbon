@@ -188,7 +188,11 @@ where
         let (range, unwind_progress, _) =
             input.unwind_block_range_with_threshold(self.commit_threshold);
 
-        provider.unwind_storage_hashing_range(range)?;
+        if provider.cached_storage_settings().use_hashed_state() && unwind_progress == 0 {
+            provider.tx_ref().clear::<tables::HashedStorages>()?;
+        } else {
+            provider.unwind_storage_hashing_range(range)?;
+        }
 
         let mut stage_checkpoint =
             input.checkpoint.storage_hashing_stage_checkpoint().unwrap_or_default();
@@ -236,16 +240,36 @@ mod tests {
     use rand::Rng;
     use reth_db_api::{
         cursor::{DbCursorRW, DbDupCursorRO},
-        models::StoredBlockBodyIndices,
+        models::{BlockNumberAddress, StoredBlockBodyIndices},
     };
     use reth_ethereum_primitives::Block;
     use reth_primitives_traits::SealedBlock;
-    use reth_provider::providers::StaticFileWriter;
+    use reth_provider::{providers::StaticFileWriter, StorageSettings};
     use reth_testing_utils::generators::{
         self, random_block_range, random_contract_account_range, BlockRangeParams,
     };
 
     stage_test_suite_ext!(StorageHashingTestRunner, storage_hashing);
+
+    #[tokio::test]
+    async fn unwind_storage_v2_to_genesis_clears_hashed_storages() {
+        let runner = StorageHashingTestRunner::with_storage_v2();
+        runner
+            .db
+            .commit(|tx| {
+                Ok(tx.put::<tables::HashedStorages>(
+                    B256::repeat_byte(1),
+                    StorageEntry { key: B256::repeat_byte(2), value: U256::from(1) },
+                )?)
+            })
+            .unwrap();
+
+        let input =
+            UnwindInput { checkpoint: StageCheckpoint::new(10), unwind_to: 0, bad_block: None };
+
+        assert_matches!(runner.unwind(input).await, Ok(_));
+        assert!(runner.db.table_is_empty::<tables::HashedStorages>().unwrap());
+    }
 
     /// Execute with low clean threshold so as to hash whole storage
     #[tokio::test]
@@ -455,6 +479,12 @@ mod tests {
     }
 
     impl StorageHashingTestRunner {
+        fn with_storage_v2() -> Self {
+            let runner = Self::default();
+            runner.db.factory.set_storage_settings_cache(StorageSettings::v2());
+            runner
+        }
+
         fn set_clean_threshold(&mut self, threshold: u64) {
             self.clean_threshold = threshold;
         }

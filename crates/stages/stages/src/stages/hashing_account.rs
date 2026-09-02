@@ -248,8 +248,13 @@ where
         let (range, unwind_progress, _) =
             input.unwind_block_range_with_threshold(self.commit_threshold);
 
-        // Aggregate all transition changesets and make a list of accounts that have been changed.
-        provider.unwind_account_hashing_range(range)?;
+        if provider.cached_storage_settings().use_hashed_state() && unwind_progress == 0 {
+            provider.tx_ref().clear::<tables::HashedAccounts>()?;
+        } else {
+            // Aggregate all transition changesets and make a list of accounts that have been
+            // changed.
+            provider.unwind_account_hashing_range(range)?;
+        }
 
         let mut stage_checkpoint =
             input.checkpoint.account_hashing_stage_checkpoint().unwrap_or_default();
@@ -316,11 +321,31 @@ mod tests {
     use alloy_primitives::U256;
     use assert_matches::assert_matches;
     use reth_primitives_traits::Account;
-    use reth_provider::providers::StaticFileWriter;
+    use reth_provider::{providers::StaticFileWriter, StorageSettings};
     use reth_stages_api::StageUnitCheckpoint;
     use test_utils::*;
 
     stage_test_suite_ext!(AccountHashingTestRunner, account_hashing);
+
+    #[tokio::test]
+    async fn unwind_storage_v2_to_genesis_clears_hashed_accounts() {
+        let runner = AccountHashingTestRunner::with_storage_v2();
+        runner
+            .db
+            .commit(|tx| {
+                Ok(tx.put::<tables::HashedAccounts>(
+                    B256::repeat_byte(1),
+                    Account { nonce: 1, ..Default::default() },
+                )?)
+            })
+            .unwrap();
+
+        let input =
+            UnwindInput { checkpoint: StageCheckpoint::new(10), unwind_to: 0, bad_block: None };
+
+        assert_matches!(runner.unwind(input).await, Ok(_));
+        assert!(runner.db.table_is_empty::<tables::HashedAccounts>().unwrap());
+    }
 
     #[tokio::test]
     async fn execute_clean_account_hashing() {
@@ -376,6 +401,12 @@ mod tests {
         }
 
         impl AccountHashingTestRunner {
+            pub(crate) fn with_storage_v2() -> Self {
+                let runner = Self::default();
+                runner.db.factory.set_storage_settings_cache(StorageSettings::v2());
+                runner
+            }
+
             pub(crate) fn set_clean_threshold(&mut self, threshold: u64) {
                 self.clean_threshold = threshold;
             }

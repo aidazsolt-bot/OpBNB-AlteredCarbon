@@ -2741,9 +2741,23 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
     ///     2. Take the new value from the local state
     ///     3. Set the local state to the value in the changeset
     fn remove_state_above(&self, block: BlockNumber) -> ProviderResult<()> {
-        let range = block + 1..=self.last_block_number()?;
+        let last_block_number = self.last_block_number()?;
+        let range = block + 1..=last_block_number;
 
         if range.is_empty() {
+            let execution_checkpoint = self
+                .get_stage_checkpoint(StageId::Execution)?
+                .map(|checkpoint| checkpoint.block_number);
+            if self.cached_storage_settings().use_hashed_state() &&
+                execution_checkpoint.is_some_and(|checkpoint| checkpoint > last_block_number)
+            {
+                return Err(ProviderError::Database(DatabaseError::Other(format!(
+                    "cannot remove state above block {block}: execution checkpoint is ahead of \
+                     available block data (execution={}, last_block={last_block_number}); \
+                     refusing to skip storage-v2 hashed-state rewind",
+                    execution_checkpoint.unwrap_or_default()
+                ))))
+            }
             return Ok(());
         }
 
