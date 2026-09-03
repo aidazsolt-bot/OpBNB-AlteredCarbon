@@ -42,6 +42,7 @@ use crate::{
 use futures::{Future, StreamExt};
 use parking_lot::Mutex;
 use reth_chainspec::EnrForkIdEntry;
+use reth_discv5::IpMode;
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
 use reth_fs_util::{self as fs, FsPathError};
 use reth_metrics::common::mpsc::MemoryBoundedSender;
@@ -58,7 +59,7 @@ use reth_tasks::shutdown::GracefulShutdown;
 use reth_tokio_util::EventSender;
 use secp256k1::SecretKey;
 use std::{
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::Path,
     pin::Pin,
     sync::{
@@ -312,9 +313,13 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
 
         let advertised_nat: Arc<Mutex<Option<NatEndpoint>>> = Arc::new(Mutex::new(None));
         if let Some(resolver) = nat.clone() {
-            if let Some(endpoint) =
-                resolve_nat_endpoint(resolver, listen_tcp_port, listen_udp_port, listener_addr.ip())
-                    .await
+            if let Some(endpoint) = resolve_nat_endpoint(
+                resolver.clone(),
+                listen_tcp_port,
+                listen_udp_port,
+                listener_addr.ip(),
+            )
+            .await
             {
                 if let Some(discv4) = discv4.as_ref() {
                     discv4.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, endpoint.udp_port);
@@ -367,6 +372,43 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                     listen_udp_port,
                     "Announced dialable enode after NAT resolution"
                 );
+            }
+
+            // discv5 opened two independent UDP sockets (real dual-stack, not the OS-dependent
+            // single `RLPx` TCP socket) only when `--addr` was left unset. In that case also
+            // resolve and apply the NAT endpoint for the *other* IP family to discv5's ENR.
+            // `RLPx`-TCP and discv4 intentionally stay single-family (see resolve_nat_endpoint's
+            // FLOW-N01/P2P-006 note above) and are not touched here.
+            if discv5.as_ref().is_some_and(|d| d.ip_mode() == IpMode::DualStack) {
+                let other_family_ip = if listener_addr.ip().is_ipv4() {
+                    IpAddr::V6(Ipv6Addr::UNSPECIFIED)
+                } else {
+                    IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+                };
+                if let Some(other_endpoint) = resolve_nat_endpoint(
+                    resolver,
+                    listen_tcp_port,
+                    listen_udp_port,
+                    other_family_ip,
+                )
+                .await
+                {
+                    if let Some(discv5) = discv5.as_ref() {
+                        discv5.apply_nat_endpoint(
+                            other_endpoint.ip,
+                            other_endpoint.tcp_port,
+                            other_endpoint.udp_port,
+                        );
+                    }
+                    info!(
+                        target: "net",
+                        ip=%other_endpoint.ip,
+                        tcp_port=other_endpoint.tcp_port,
+                        udp_port=other_endpoint.udp_port,
+                        via_upnp=other_endpoint.via_upnp,
+                        "Announced additional discv5 dual-stack NAT endpoint"
+                    );
+                }
             }
         }
 
