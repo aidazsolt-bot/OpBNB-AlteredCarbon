@@ -387,7 +387,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                     via_upnp=endpoint.via_upnp,
                     listen_tcp_port,
                     listen_udp_port,
-                    "Announced dialable enode after NAT resolution"
+                    "Announced dialable enode"
                 );
             }
 
@@ -429,7 +429,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                         tcp_port=other_endpoint.tcp_port,
                         udp_port=other_endpoint.udp_port,
                         via_upnp=other_endpoint.via_upnp,
-                        "Announced additional discv5 dual-stack NAT endpoint"
+                        "Announced additional discv5 dual-stack endpoint"
                     );
                 }
             }

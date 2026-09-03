@@ -187,7 +187,7 @@ impl Discv5 {
             %ip,
             tcp_port,
             udp_port,
-            "Updated discv5 ENR with NAT endpoint"
+            "Updated discv5 ENR with dialable endpoint"
         );
     }
 

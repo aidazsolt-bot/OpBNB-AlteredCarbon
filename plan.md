@@ -152,7 +152,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
 | PORT-FLOW-H04 | Cap → Falling | `SyncTarget::Number(N)` / Tip-Outcome `old==new` **primt** Falling-Tracker (`next_request_*`) | P2P-005 | ✅ live |
 | PORT-FLOW-H05 | Headers Persistenz | ETL=`TempDir` → Checkpoint/Metriken erst nach `Writing headers`; Restart vor Write = Download von Tip neu | Upstream #6154 | ✅ **live** (2026-08-11T16:35–~16:47Z): Write `173369140` → Headers checkpoint=tip; Bodies gestartet |
-| PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS (modern AAAA→A); Announce = preferierte **dialbare** Adresse ≡ Listen. **`--addr <ip>`:** nur diese Familie; andere nicht initialisieren. **Live-Repro 08-15 (anonymisiert):** Bind-Default `0.0.0.0:30303` (v4-only); NAT/`admin_nodeInfo` announcte zeitweise **`<host-global-ipv6>`** der Node-NIC (SLAAC/EUI-64, gleiche MAC wie privates v4 — **nicht** Router); Ping auf announced v6 OK, **TCP:30303 refused** (kein v6-Listener); effektive Sessions über `<host-lan-ip>`; inbound=0; Announce kann später auf Public-v4 aus HTTP-NAT umspringen. | P2P-006 | ✅ **09-03**: `NetworkArgs::addr` jetzt `Option<IpAddr>` (`wants_os_dual_stack()`); ohne `--addr` bindet discv5 nachweislich `mode=DualStack` auf beiden UDP-Sockets (`0.0.0.0:9200` + `[::]:9200`, Dev-Host-Isolationstest), NAT announct beide Familien separat (`Announced dialable enode` für IPv6 + `Announced additional discv5 dual-stack NAT endpoint` für IPv4). `--addr` weiterhin single-family (RLPx-TCP/discv4 bleiben single-stack by design). |
+| PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS (modern AAAA→A); Announce = preferierte **dialbare** Adresse ≡ Listen. **`--addr <ip>`:** nur diese Familie; andere nicht initialisieren. **Live-Repro 08-15 (anonymisiert):** Bind-Default `0.0.0.0:30303` (v4-only); NAT/`admin_nodeInfo` announcte zeitweise **`<host-global-ipv6>`** der Node-NIC (SLAAC/EUI-64, gleiche MAC wie privates v4 — **nicht** Router); Ping auf announced v6 OK, **TCP:30303 refused** (kein v6-Listener); effektive Sessions über `<host-lan-ip>`; inbound=0; Announce kann später auf Public-v4 aus HTTP-NAT umspringen. | P2P-006 | ✅ **09-03**: `NetworkArgs::addr` jetzt `Option<IpAddr>` (`wants_os_dual_stack()`); ohne `--addr` bindet discv5 nachweislich `mode=DualStack` auf beiden UDP-Sockets (`0.0.0.0:9200` + `[::]:9200`, Dev-Host-Isolationstest), NAT announct beide Familien separat (`Announced dialable enode` für IPv6 + `Announced additional discv5 dual-stack NAT endpoint` für IPv4). `--addr` weiterhin single-family (RLPx-TCP/discv4 bleiben single-stack by design). **Folgebug 09-03 (Session 16, gefixt+live bestätigt):** UPnP-Family-Handling im Dual-Stack-Pfad verwarf gültige IPv4-Mapping, erzwang flakige zweite SSDP-Suche → jetzt UPnP nur noch für IPv4-Ziele versucht. |
 | PORT-FLOW-N02 | NAT / UPnP → Announce | Default **`--nat any`:** UPnP geth-style (kein Hijack) → ENR/enode/Logs konsistent; Discv4 **und** Discv5 ENR (TCP=mapped RLPx; UDP=v5-Port, ggf. extra UPnP). Kein IGD → HTTP+Listen-Ports, **Familie ≡ `--addr`**. | P2P-002 | ✅ **live** 08-15 ~21:37: Alt-Ports (30303 bei Erigon), `via_upnp=true`, hairpin OK, inbound_conn≥2; `eth_*_requests_received` noch 0 |
 | PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | ✅ Bodies tip (08-12 ~03:02 CEST); FLOW-B beobachtet OK |
 | PORT-FLOW-B02 | Bodies Empty/Timeout | Empty/Timeout-Politik: kein Ban-Sturm; Retry/Backoff explizit | PIPE-005 | ✅ Bodies durch · Empty/Ban kein Stall |
@@ -447,7 +447,7 @@ Regressions / CLI-Drift, die beim Rebase untergegangen sind (nicht Upstream-Feat
 | PORT-P2P-003 | Headers: Empty-Spam auf Tip-Range (`best_number`≪CL-Tip); Lagging-Peers ungenutzt; Stage hängt an unreachable Tip | **Dataflow-Soll (vor Live):** eth/68 Status oft nur Tip-**Hash** → Tip-Number-Resolve; Peer-Auswahl `HeadersAtLeast` / miss-map; Empty → Backoff **ohne** Ban; eth/69 `tip_number=max(best,range.latest)` + Range-Filter. | ✅ **live** (2026-08-11T14:40Z): Tip-Resolve + Falling ab Peer-Head ~173369140 @ ~22k hdr/s (2 Peers). Code: HeadersAtLeast/miss-map; eth/69 Range; ENGINE-003 Tip-Seed. Note: Headers-ETL=`TempDir` (Upstream [#6154](https://github.com/paradigmxyz/reth/pull/6154)) — Restart vor Write = Neustart von Tip; Checkpoint erst nach ETL→SF |
 | PORT-P2P-004 | Working-Tip-Cap vs eventual CL-Tip: Cap darf Tip/Falling nicht periodisch verwerfen | **Dataflow-Soll:** `eventual_tip` (CL) ≠ `working_tip` (max peer best). Cap einmalig auf reachable Head; `maybe_recap` **idempotent** wenn already capped — sonst Re-Loop verwirft Tip-Header. Gehört in Matrix **vor** Live, nicht erst nach Stall. | ✅ fixed + live: Cap 1×; Unit-Regression Cap→Falling |
 | PORT-P2P-005 | Cap setzt `SyncTargetBlock::Number(N)` → Falling-Tracker bleiben ungesetzt → nur Tip `total=1` dann Stall | **Dataflow-Soll:** Tip-Outcome `Number(N)` mit `old==new` (lokaler Head schon N−ε) muss `next_request_block_number` / Falling-Tracker **primen**. Gehört in Matrix mit P2P-003/004 (Downloader-Zustandsautomat), nicht als „Live-Folgebug“. | ✅ fixed + live (14:40Z): Falling `total=10000` durchgehend; Test Cap→Falling-Prime |
-| PORT-P2P-006 | Ohne `--addr`: Bind/Dial/Announce folgen **OS-Netzwerk** (Dual-Stack); mit `--addr`: **nur** die IP-Familie des Werts | **Soll:** kein `--addr` → Dual-Stack nach OS (modern IPv6 first); Announce = preferierte dialbare Adresse ≡ Listen. Mit `--addr <ip>` → single-family; andere Familie tot (Docs/Help klar). **Ist heute:** CLI-Default Bind = v4-unspec `0.0.0.0:30303`; `--nat any` schreibt ENR/enode unabhängig davon (HTTP-Public-IP und/oder Interface). **Live 08-15 (IPs anonymisiert):** (1) Bind v4-only, Sessions über `<host-lan-ip>`; (2) Announce zeitweise **`<host-global-ipv6>`** derselben NIC (SLAAC/EUI-64, MAC = Node, **nicht** Router-GW) — Host pingbar, **TCP 30303 refused** weil kein v6-Listen; (3) Peers **0 inbound / N outbound**; (4) Announce kann auf Public-v4 aus NAT-API flippen — weder konsistent noch „OS preference“. | ✅ **09-03** (Commits `4bbdd60fd6`, `45db221aeb`) · FLOW-N01 · DoD (a)+(b)+(c) erfüllt: `NetworkArgs::addr: Option<IpAddr>` unterscheidet jetzt "kein `--addr`" von explizit `0.0.0.0`/`::`; `wants_os_dual_stack()` aktiviert discv5 Dual-Stack nur ohne `--addr`. Dev-Host-Isolationstest (isolierter Datadir, `--chain opbnb-mainnet`, kein `--addr`) bestätigt: `discv5::service: Discv5 Service started mode=DualStack`, echte UDP-Bindings auf `0.0.0.0:9200` **und** `[::]:9200`, NAT announct beide Familien (`Announced dialable enode` [IPv6] + `Announced additional discv5 dual-stack NAT endpoint` [IPv4]). RLPx-TCP/discv4 bleiben bewusst single-stack. Live-Node läuft weiterhin mit explizitem `--addr 0.0.0.0` (single-family, unverändert) — Dual-Stack-Pfad nur im Dev-Test verifiziert, nicht am Live-Node aktiv. |
+| PORT-P2P-006 | Ohne `--addr`: Bind/Dial/Announce folgen **OS-Netzwerk** (Dual-Stack); mit `--addr`: **nur** die IP-Familie des Werts | **Soll:** kein `--addr` → Dual-Stack nach OS (modern IPv6 first); Announce = preferierte dialbare Adresse ≡ Listen. Mit `--addr <ip>` → single-family; andere Familie tot (Docs/Help klar). **Ist heute:** CLI-Default Bind = v4-unspec `0.0.0.0:30303`; `--nat any` schreibt ENR/enode unabhängig davon (HTTP-Public-IP und/oder Interface). **Live 08-15 (IPs anonymisiert):** (1) Bind v4-only, Sessions über `<host-lan-ip>`; (2) Announce zeitweise **`<host-global-ipv6>`** derselben NIC (SLAAC/EUI-64, MAC = Node, **nicht** Router-GW) — Host pingbar, **TCP 30303 refused** weil kein v6-Listen; (3) Peers **0 inbound / N outbound**; (4) Announce kann auf Public-v4 aus NAT-API flippen — weder konsistent noch „OS preference“. | ✅ **09-03** (Commits `4bbdd60fd6`, `45db221aeb`) · FLOW-N01 · DoD (a)+(b)+(c) erfüllt: `NetworkArgs::addr: Option<IpAddr>` unterscheidet jetzt "kein `--addr`" von explizit `0.0.0.0`/`::`; `wants_os_dual_stack()` aktiviert discv5 Dual-Stack nur ohne `--addr`. Dev-Host-Isolationstest (isolierter Datadir, `--chain opbnb-mainnet`, kein `--addr`) bestätigt: `discv5::service: Discv5 Service started mode=DualStack`, echte UDP-Bindings auf `0.0.0.0:9200` **und** `[::]:9200`, NAT announct beide Familien (`Announced dialable enode` [IPv6] + `Announced additional discv5 dual-stack NAT endpoint` [IPv4]). RLPx-TCP/discv4 bleiben bewusst single-stack. **Update (Session 16):** Live-Node läuft tatsächlich bereits ohne `--addr` (Dual-Stack aktiv); dabei Folgebug im UPnP-Family-Handling gefunden+gefixt+live bestätigt (kein Family-Mismatch mehr, sauberes IPv4-UPnP-Mapping via_upnp=true, 5 Peers reconnected). |
 | PORT-STOR-003 | Neue MDBX-DBs mit 4 KiB Pagesize (OS-default) | `default_page_size()` clampte nur auf OS-Pagesize (≥4 KiB); keine Begründung gegen 16 KiB | ✅ fixed: Floor 16 KiB (max OS/libmdbx 64 KiB); nur bei DB-Erstellung wirksam |
 | PORT-STOR-007 | `test_pipeline_v2` State-Root-Mismatch / SF unwind; history `IntegerList UnsortedInput` | Incomplete v2 port: plain readers under hashed-canonical; StorageChangeSets keys wrongly hashed; take/remove_state plain-only; hashing/history unwind ignored SF; duplicate block nums in history collect | ✅ fixed: hashed `AccountReader`/`StorageReader`; plain keys in changesets; hashed take/remove; SF hashing/history unwind; dedupe history indices; test un-ignored |
 | PORT-STOR-008 | Index Account/Storage History under `storage.v2` still wrote MDBX; unwind no-op without rocksdb | Incomplete EitherWriter history load (`load_*_history`) + RocksDB clear/unwind wiring | ✅ fixed: EitherWriter append/upsert/get_last; stages use `with_rocksdb_batch_auto_commit`; MDBX fallback when rocksdb feature off |
@@ -1677,3 +1677,77 @@ Familie, (b) `--addr` weiterhin single-family, (c) keine undialbare Familie wird
 `--addr 0.0.0.0` (systemd `ExecStart`) — bindet also bewusst single-family (IPv4-only), der neue
 Dual-Stack-Pfad ist dort nicht aktiv. Der Fix wurde ausschließlich in einem isolierten Dev-Host-Test
 verifiziert, nicht am produktiven Node.
+
+> **Korrektur (Session 16):** Diese Annahme war falsch — der Live-Node läuft tatsächlich **ohne**
+> `--addr` (siehe reales `ExecStart` unten) und damit **bereits im Dual-Stack-Pfad**. Das führte
+> live zu genau dem in Session 16 gefundenen und gefixten Folgebug.
+
+### Session 16 — PORT-P2P-006 Folgebug: UPnP-Familie im Dual-Stack-Pfad falsch behandelt (2026-09-03)
+
+**Live-Journal-Fund (Live-Node, `BlockChain.service`, tatsächlicher `ExecStart` ohne `--addr`):**
+```
+NAT mapped alternative UPnP port(s) external_ip=193.81.225.224 ... local_ip=10.0.0.85
+WARN UPnP mapped IP family does not match --addr listen family; ignoring mapping listen_ip=:: mapped_ip=193.81.225.224
+Resolved public IP via HTTP (no UPnP port mapping) ip=2001:871:25c:8ad:6a05:caff:fea6:103 listen_ip=::
+Announced dialable enode after NAT resolution enode=...@[2001:871:25c:8ad:6a05:caff:fea6:103]:30303 via_upnp=false
+WARN UPnP NAT mapping failed; falling back to HTTP public IP without port mapping err=UPnP gateway search failed: No response within timeout
+Resolved public IP via HTTP (no UPnP port mapping) ip=193.81.225.224 listen_ip=0.0.0.0
+Announced additional discv5 dual-stack NAT endpoint ip=193.81.225.224 tcp_port=30303 udp_port=30303 via_upnp=false
+```
+
+**Root Cause:** `resolve_nat_endpoint()` (`crates/net/nat/src/lib.rs`) is called once per family in
+dual-stack mode with `listen_ip=::` (primary/IPv6) and `listen_ip=0.0.0.0` (secondary/IPv4). The
+old family-match check (`endpoint.ip.is_ipv4() != want_ipv4`) discarded the perfectly good IPv4
+UPnP mapping obtained during the *primary* (`::`) call — because UPnP/IGD only maps IPv4 (no
+consumer router exposes an IPv6 IGD; globally routable IPv6 isn't behind NAT to begin with, at
+most a stateful firewall pinhole). This forced the *second* (IPv4) call to redo an independent SSDP
+gateway search from scratch, which is inherently flaky (multicast discovery) and failed with
+`No response within timeout` here — falling back to announcing the raw, **unmapped** listen port
+(`30303`) as if it were externally reachable, when in fact no port-forward exists for it.
+
+Also flagged (same live log): `Announced dialable enode after NAT resolution` /
+`Updated discv5 ENR with NAT endpoint` for the plain global-IPv6 HTTP-resolved address is a
+misnomer — no NAT/UPnP was actually involved for that IPv6 leg, it's just public IP resolution.
+
+**Fix:**
+- `crates/net/nat/src/lib.rs`: `resolve_nat_endpoint()` now only attempts UPnP/IGD when the target
+  family is IPv4 (`want_ipv4`); IPv6 targets always skip straight to HTTP/interface resolution.
+  Removes the family-mismatch-discard branch entirely (structurally impossible now) and its
+  misleading warning.
+- `crates/net/network/src/manager.rs` / `crates/net/discv5/src/lib.rs`: log wording no longer
+  unconditionally claims "NAT resolution"/"NAT endpoint" — the pre-existing `via_upnp` field
+  already conveys whether real NAT/UPnP mapping happened.
+
+**Verification (dev-host, `dist/bin/op-reth-bnb` built via `make maxperf-op`, no `--addr`):**
+```
+INFO net::nat: Resolved public IP via HTTP (no UPnP port mapping) ip=<global-ipv6> listen_ip=::
+INFO net: Announced dialable enode enode=...@[<global-ipv6>]:30303 via_upnp=false
+INFO net::nat: NAT mapped alternative UPnP port(s) external_ip=193.81.225.224 ... tcp_ext=54099 udp_ext=33431
+INFO net::nat: NAT mapped additional UPnP UDP port external_ip=193.81.225.224 udp_ext=9200
+INFO net: Announced additional discv5 dual-stack endpoint ip=193.81.225.224 tcp_port=54099 udp_port=33431 via_upnp=true
+```
+No family-mismatch warning, no wasted/failed second SSDP search, IPv4 leg now correctly UPnP-mapped
+(`via_upnp=true`) instead of falling back to an unmapped announce. `cargo test -p reth-net-nat`
+green (5 passed, 2 ignored network tests).
+
+**Not yet done:** live-node binary not redeployed (deploy/restart is user-controlled); this fix is
+built (`dist/bin/op-reth-bnb`, maxperf) and dev-host-verified only, pending the user's own restart
+of `BlockChain.service`.
+
+**Update — live-deployed and confirmed (same day):** User rebuilt+restarted `BlockChain.service`
+with the fixed binary. Live journal confirms the fix end-to-end:
+```
+INFO Resolved public IP via HTTP (no UPnP port mapping) ip=<global-ipv6> listen_ip=::
+INFO Updated discv5 ENR with dialable endpoint ip=<global-ipv6> tcp_port=30303 udp_port=9200
+INFO Announced dialable enode enode=...@[<global-ipv6>]:30303 via_upnp=false
+INFO NAT mapped alternative UPnP port(s) external_ip=193.81.225.224 tcp_ext=65285 udp_ext=64591
+INFO NAT mapped additional UPnP UDP port external_ip=193.81.225.224 udp_ext=62383
+INFO Updated discv5 ENR with dialable endpoint ip=193.81.225.224 tcp_port=65285 udp_port=62383
+INFO Announced additional discv5 dual-stack endpoint ip=193.81.225.224 tcp_port=65285 udp_port=64591 via_upnp=true
+```
+No family-mismatch warning, no failed second SSDP search — single clean UPnP mapping for IPv4.
+`ss -tulpen` on the live host confirms both UDP sockets bound (`0.0.0.0:9200` + `[::]:9200`,
+`0.0.0.0:30303`) and the single dual-stack TCP listener (`*:30303 v6only:0`). 5 known peers
+reconnected normally, sync (Bodies stage) resumed without disruption. `PORT-P2P-006`/`FLOW-N01`
+dual-stack fix is now confirmed correct **both** in an isolated dev-host test **and** in live
+production.
