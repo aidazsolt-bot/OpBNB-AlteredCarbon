@@ -31,10 +31,13 @@ pub static OP_TESTNET_BOOTNODES: &[&str] = &[
 /// <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
 /// (`OpBNBMainnetBootnodes`, ENR→enode), plus legacy community nodes.
 pub static OPBNB_MAINNET_BOOTNODES: &[&str] = &[
-    // bnb-chain/op-geth OpBNBMainnetBootnodes (ENR→enode).
-    // ENRs advertise eth TCP on 30303 and discovery UDP on 30304 — dialing 30304 times out.
-    "enode://db109c6cac5c8b6225edd3176fc3764c58e0720950fe94c122c80978e706a9c9e976629b718e48b6306ea0f9126e5394d3424c9716c5703549e2e7eba216353b@52.193.218.151:30303?discport=30304",
-    "enode://afe18782053bb31fb7ea41e1acf659ab9bd1eec181fb97331f0a6b61871a469b4f75138f903c977796be1cc2a3c985d33150a396e878d3cd6e4723b6040ff9c0@52.195.105.192:30303?discport=30304",
+    // bnb-chain/op-geth OpBNBMainnetBootnodes (decoded from the signed `enr:` strings in
+    // params/bootnodes.go: ENR pubkey -> uncompressed secp256k1 -> enode id; ip4/tcp4 from ENR).
+    "enode://547af4cbde12708f6d484f6182e9568da95404b0914fb4db4efa57794133427ca6968b86ca1322b29671d39e5db44e417f3be4b83a4c4d3772a708f82ff3948e@54.178.145.73:30303",
+    "enode://50849e69a823e74db2bdda011cd85f7ccbebb53a0655008d4cb31f948877b36376489ff848efb8f5c5a523024ede177ee6c944d0c487c1a57b04b51f1a3d8923@54.227.72.206:30303",
+    // legacy community nodes (kept as extra fallback candidates; harmless if unreachable).
+    "enode://db109c6cac5c8b6225edd3176fc3764c58e0720950fe94c122c80978e706a9c9e976629b718e48b6306ea0f9126e5394d3424c9716c5703549e2e7eba216353b@52.193.218.151:30304",
+    "enode://afe18782053bb31fb7ea41e1acf659ab9bd1eec181fb97331f0a6b61871a469b4f75138f903c977796be1cc2a3c985d33150a396e878d3cd6e4723b6040ff9c0@52.195.105.192:30304",
 ];
 
 /// OPBNB testnet boot nodes.

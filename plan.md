@@ -167,7 +167,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
 | PORT-FLOW-S03 | Metrics/Healing | Alle `StaticFileSegment`s in Metrics registriert (STOR-009-Klasse) | STOR-009 | ✅ |
-| PORT-FLOW-S04 | V1→V2 layout migration / repair backfill | `storage_v2` darf erst nach vollständiger Datenmigration gesetzt werden; ein Teilabbruch muss aus MDBX in die bestehenden Zielsegmente fortsetzbar sein. Prune-Checkpoints repräsentieren absichtlich entfernte Static-File-Abdeckung, nicht Korruption. Bei einem unterbrochenen Reparaturlauf startet `initial_backfill_target` absichtlich am letzten konsistenten Header; eintreffende FCUs werden als neuestes Sync-Ziel gehalten und dürfen nach Pipeline-Idle nicht verloren gehen. | STOR-007/008, ENGINE-001 | 📋 Code: direkte Metadatenmutation gesperrt; ChangeSet-Resume + Prune-Coverage portiert. Live 09-02: lokaler Repair-Target `71185159` (`0x005603…`) korrekt geschlossen, CL-Head ~`180.94M` als `SYNCING` registriert; externer Backfill nach Merkle/Pipeline-Idle offen. |
+| PORT-FLOW-S04 | V1→V2 layout migration / repair backfill | `storage_v2` darf erst nach vollständiger Datenmigration gesetzt werden; ein Teilabbruch muss aus MDBX in die bestehenden Zielsegmente fortsetzbar sein. Prune-Checkpoints repräsentieren absichtlich entfernte Static-File-Abdeckung, nicht Korruption. Bei einem unterbrochenen Reparaturlauf startet `initial_backfill_target` absichtlich am letzten konsistenten Header; eintreffende FCUs werden als neuestes Sync-Ziel gehalten und dürfen nach Pipeline-Idle nicht verloren gehen. | STOR-007/008, ENGINE-001 | 📋 Code: direkte Metadatenmutation gesperrt; ChangeSet-Resume + Prune-Coverage portiert. Live 09-02: lokaler Repair-Target `71185159` (`0x005603…`) korrekt geschlossen, CL-Head ~`180.94M` als `SYNCING` registriert; externer Backfill nach Merkle/Pipeline-Idle offen. ✅ 09-03 Dev-Host: sauberer (nicht unterbrochener) `db migrate-v2` End-zu-Ende-Test (V1-Sync 0→300 via `--debug.tip`/`--debug.terminate`, dann Migration, dann Rebuild-Neustart) reproduzierte **keinen** Fehler; alle 13 Stage-Checkpoints konsistent @300 nach Rebuild. Crash-Resume-Semantik (Abbruch *während* `migrate-v2`) bleibt weiterhin ungetestet. |
 
 **Regel für neue FLOW-Zeilen:** sobald ein Stall/Ban/„total=1“/Grafana-No-data auftritt und **kein** FLOW die Transition beschreibt → zuerst Zeile anlegen, dann fixen. Nicht unter PIPE oder Chat begraben.
 
@@ -1607,3 +1607,50 @@ Siehe `files/fermat-point4-20260812.txt`. **Haber** noch nicht erreicht.
 | Execution (bis Fail) | ~**0.6 Mbit/s** | ~**0.7 Mbit/s** | peers~12–13 |
 
 Kein `reth_network_*_bytes` auf `:6060` — Bandbreite über CT-Exporter `:9100`.
+
+### Session 14 — opBNB Peer-Connectivity-Degradation + migrate-v2 Dev-Host-Validierung (2026-09-03)
+
+**Symptom:** Live-Archive-Node fiel von historisch 8–17 auf konstant **5 connected_peers**.
+Bootnode-Fix (`crates/net/peers/src/optimism.rs`) aus früherer Session gegen offizielle
+opBNB-ENRs (`bnb-chain/opbnb#105`) re-verifiziert — Pubkeys stimmen exakt überein, Fix bleibt
+korrekt. Kein offizieller statischer opBNB-Peer-Discovery-Mechanismus existiert (Design-Lücke,
+seit 2024 unadressiert laut `bnb-chain/opbnb#105`/`#310`).
+
+**ForkHash-Korrektur:** Der reale opBNB-Netz-ForkHash ist **`45eac6aa`** (ENR-Key `"eth"`), *nicht*
+`716d4a3a` — letzterer ist `NetworkStackId::OPEL` (`"opel"`, `crates/net/discv5/src/network_stack_id.rs`),
+unser **eigener**, vom aktuellen Sync-Stand abhängiger Pre-Canyon-ForkHash. EIP-2124
+(`alloy-eip2124` `ForkFilter::validate()`) akzeptiert Peers mit `45eac6aa` korrekt via Regel 3
+(remote = bekannter zukünftiger Fork) — kein Bug.
+
+**Peer-Injection-Tool:** `.cursor/local/opbnb-peer-inject.py` (gitignored) erstellt — liest
+`admin_peers`/schreibt `admin_addTrustedPeer` roh über den IPC-Unix-Socket (kein HTTP-Framing
+verfügbar). 11 verifizierte ForkHash-`45eac6aa`-Peers aus `reth.log`-Traces extrahiert; 6 davon
+neu. Live-Injection zeigte: 4× `Disconnected(TooManyPeers)` (Gegenstelle gesund, aber
+Slot-limitiert), 2× `ECIES UnreadableStream`.
+
+**Reachability-Isolationstest** (`op-reth-bnb p2p body`, Scratch-Datadir, `--trusted-only
+--disable-discovery`): Von diesem Dev-Host aus scheiterten alle 6 Kandidaten bereits am
+ECIES-Handshake (nie `TooManyPeers`) — härterer Fehlermodus als beim Live-Node. Kontrolltest mit
+einem der 5 **verbundenen** Peers (`167.235.95.170:30305`) gelang sofort (`Session established`
++ `Successfully downloaded body`) → bestätigt: Tool/Setup/Netzwerkpfad des Dev-Hosts sind
+grundsätzlich funktionsfähig; das Scheitern ist spezifisch auf die 6 Kandidatenhosts beschränkt
+(Überlastung/Reputation), kein generelles Konnektivitätsproblem.
+
+**Automatisierung:** `opbnb-peer-inject.service` (oneshot) + `opbnb-peer-inject.timer`
+(`OnBootSec=5min`, `OnUnitActiveSec=20min`, `Persistent=true`) auf dem Dev-Host als
+root-systemd-Units angelegt und aktiviert (`systemctl enable --now opbnb-peer-inject.timer`) —
+retriggert periodisch `admin_addTrustedPeer` für die 6 kapazitätslimitierten Kandidaten, da deren
+Slots sich jederzeit freimachen können. Nur der Timer ist enabled (`static` Service, kein eigenes
+`[Install]`, läuft ausschließlich getriggert).
+
+**migrate-v2 End-zu-Ende-Validierung (Dev-Host, isoliert):** Frischer `op-reth-bnb`-Node mit
+`--storage.v2 false` + `--debug.tip <hash Block 300>` + `--debug.terminate` bis Block 300
+gesynct (V1-Layout bestätigt: `Loaded storage settings settings=StorageSettings { storage_v2:
+false }`). Anschließend `db migrate-v2` ausgeführt: ChangeSets → Static Files,
+3 MDBX-Tabellen → RocksDB, `StorageSettings` → v2, Recompute-Tabellen geleert, MDBX kompaktiert —
+**keine Fehler**. Neustart nach Migration bestätigte `storage_v2: true`; Pipeline baute alle
+geleerten Daten (SenderRecovery, MerkleExecute@100%, Hashing) korrekt neu auf.
+`stage-checkpoints get` zeigt alle 13 Stages konsistent @ Block 300. Kein Repro des
+`71185159`/`71185160`-Vorfalls (fehlende Receipt-SF, canonical-root-Mismatch) bei diesem kleinen,
+sauberen (nicht unterbrochenen) Testlauf — Crash-Resume-Semantik von `migrate-v2` bleibt
+weiterhin ungetestet (siehe PORT-FLOW-S04).
