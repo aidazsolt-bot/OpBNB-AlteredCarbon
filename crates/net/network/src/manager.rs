@@ -42,7 +42,7 @@ use crate::{
 use futures::{Future, StreamExt};
 use parking_lot::Mutex;
 use reth_chainspec::EnrForkIdEntry;
-use reth_discv5::IpMode;
+use reth_discv5::{Discv5, IpMode};
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
 use reth_fs_util::{self as fs, FsPathError};
 use reth_metrics::common::mpsc::MemoryBoundedSender;
@@ -150,6 +150,50 @@ pub struct NetworkManager<N: NetworkPrimitives = EthNetworkPrimitives> {
     pending_session_failure_metrics: PendingSessionFailureMetrics,
     /// Backed off peers metrics, split by reason.
     backed_off_peers_metrics: BackedOffPeersMetrics,
+}
+
+/// Resolves the UDP port to announce for discv5 in a NAT endpoint.
+///
+/// discv5 may listen on a different UDP port than the one `endpoint` was resolved for (e.g. it
+/// was resolved using discv4's listen port). If the ports match, `endpoint`'s (possibly
+/// UPnP-mapped) UDP port is reused as-is. Otherwise, when the endpoint was itself established via
+/// UPnP, this attempts a dedicated UPnP mapping for discv5's own UDP port; on any failure (or when
+/// NAT resolution didn't go through UPnP at all) this falls back to announcing discv5's raw listen
+/// port, since it can't be verified externally without a mapping.
+async fn resolve_discv5_udp_announce_port(
+    discv5: &Discv5,
+    listen_udp_port: u16,
+    endpoint: &NatEndpoint,
+) -> u16 {
+    let v5_udp_listen = discv5.local_port();
+    if v5_udp_listen == listen_udp_port {
+        return endpoint.udp_port;
+    }
+    if endpoint.via_upnp {
+        return match map_udp_port(v5_udp_listen, v5_udp_listen).await {
+            Ok((ip, port)) => {
+                if ip != endpoint.ip {
+                    warn!(
+                        target: "net",
+                        endpoint_ip=%endpoint.ip,
+                        discv5_ip=%ip,
+                        "discv5 UPnP external IP differs from resolved NAT endpoint; using endpoint IP for ENR TCP"
+                    );
+                }
+                port
+            }
+            Err(err) => {
+                warn!(
+                    target: "net",
+                    %err,
+                    v5_udp_listen,
+                    "Failed to UPnP-map discv5 UDP; announcing listen port"
+                );
+                v5_udp_listen
+            }
+        };
+    }
+    v5_udp_listen
 }
 
 impl NetworkManager {
@@ -325,35 +369,8 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                     discv4.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, endpoint.udp_port);
                 }
                 if let Some(discv5) = discv5.as_ref() {
-                    let v5_udp_listen = discv5.local_port();
-                    let v5_udp_ext = if v5_udp_listen == listen_udp_port {
-                        endpoint.udp_port
-                    } else if endpoint.via_upnp {
-                        match map_udp_port(v5_udp_listen, v5_udp_listen).await {
-                            Ok((ip, port)) => {
-                                if ip != endpoint.ip {
-                                    warn!(
-                                        target: "net",
-                                        discv4_ip=%endpoint.ip,
-                                        discv5_ip=%ip,
-                                        "discv5 UPnP external IP differs from discv4; using discv4 IP for ENR TCP"
-                                    );
-                                }
-                                port
-                            }
-                            Err(err) => {
-                                warn!(
-                                    target: "net",
-                                    %err,
-                                    v5_udp_listen,
-                                    "Failed to UPnP-map discv5 UDP; announcing listen port"
-                                );
-                                v5_udp_listen
-                            }
-                        }
-                    } else {
-                        v5_udp_listen
-                    };
+                    let v5_udp_ext =
+                        resolve_discv5_udp_announce_port(discv5, listen_udp_port, &endpoint).await;
                     discv5.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, v5_udp_ext);
                 }
                 *advertised_nat.lock() = Some(endpoint);
@@ -394,10 +411,16 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                 .await
                 {
                     if let Some(discv5) = discv5.as_ref() {
+                        let v5_udp_ext = resolve_discv5_udp_announce_port(
+                            discv5,
+                            listen_udp_port,
+                            &other_endpoint,
+                        )
+                        .await;
                         discv5.apply_nat_endpoint(
                             other_endpoint.ip,
                             other_endpoint.tcp_port,
-                            other_endpoint.udp_port,
+                            v5_udp_ext,
                         );
                     }
                     info!(
