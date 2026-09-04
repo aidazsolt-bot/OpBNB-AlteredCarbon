@@ -1751,3 +1751,60 @@ No family-mismatch warning, no failed second SSDP search — single clean UPnP m
 reconnected normally, sync (Bodies stage) resumed without disruption. `PORT-P2P-006`/`FLOW-N01`
 dual-stack fix is now confirmed correct **both** in an isolated dev-host test **and** in live
 production.
+
+## Session 17 (2026-09-04): Prometheus sync-verification, clean restart, trusted-peer check
+
+**Prometheus endpoint discovered/confirmed for this environment:** `http://grafana/api/v1/query`
+and `/api/v1/query_range` — plain HTTP, port 80, no auth, nginx-proxies directly to Prometheus
+(not Grafana's own `:3000` API, which requires auth). Labels for this node: `job="reth"`,
+`instance="BSCRethArchiveNode:6060"`.
+
+**Sync-speed comparison (overnight vs. current), via `reth_sync_checkpoint{stage="Bodies"}`:**
+```
+rate(reth_sync_checkpoint{instance="BSCRethArchiveNode:6060",stage="Bodies"}[8h]) @ 07:30 → 1037.6 blocks/s (overnight)
+rate(reth_sync_checkpoint{instance="BSCRethArchiveNode:6060",stage="Bodies"}[1h]) @ now   →  642.1 blocks/s (current)
+```
+Current rate is ~62% of the overnight rate — consistent with the earlier raw-`journalctl`-derived
+estimate (1,076 vs 650 blocks/s). Not a stall, just slower throughput (peer/host load dependent).
+
+**Serving check:** all `reth_network_eth_{headers,bodies,receipts,node_data}_requests_received_total`
+and `reth_network_snap_requests_received_total` are flat at 0 — no peers are pulling data from us
+yet (expected: node hasn't progressed far enough past Headers/Bodies to be a useful full-serving
+peer for others).
+
+**Stage progress snapshot (2026-09-04 ~08:26 CEST):** Headers/Bodies both complete at block
+`181,023,934`; pipeline now in `SenderRecovery` at block `~38.45M` (`stage_progress≈43.4%`,
+`stage_eta≈8h`), advancing at ~1,088 blocks/s (30 min window) — healthy, faster than the Bodies
+download rate. Execution/Hashing/Merkle/Prune stages still at 0 (not yet reached).
+
+**Clean restart verification:** user disabled verbose debug logging (`net=trace,sync=debug,
+engine=debug` file filters) and restarted `BlockChain.service`. Journal confirmed a graceful
+shutdown/restart: `Received ctrl-c` → `Wrote network peers to file` (known-peers.json) →
+`Deactivated successfully` → `Started BlockChain.service`. `SenderRecovery` resumed from its exact
+last-committed checkpoint (no rollback/reset). Prometheus `up{job="reth",instance=
+"BSCRethArchiveNode:6060"}` = 1 and `reth_network_connected_peers` = 5 immediately after restart.
+
+Minor unrelated finding: `/etc/systemd/system/BlockChain.service:50: Failed to parse Restart=never,
+ignoring: Invalid argument` — `Restart=never` isn't a valid systemd value (valid values: `no`,
+`always`, `on-success`, `on-failure`, `on-abnormal`, `on-watchdog`, `on-abort`); systemd silently
+ignores the line and falls back to its default. Should be corrected to `Restart=no` in the unit
+file (not yet fixed — user-owned system file, out of repo scope).
+
+**Trusted-peer verification:** both configured `--trusted-peers` enodes were checked structurally
+(128 hex-char secp256k1 pubkeys, valid) and live via `admin_peers` over the node's IPC socket
+(`/tmp/BSCRethArchiveNode.ipc`, raw JSON-RPC over `AF_UNIX`, since plain `curl --unix-socket`
+returns `HTTP/0.9` on this endpoint and needs a raw socket write instead): both
+`167.235.95.170:30305` and `157.180.98.155:30315` are connected with `"trusted":true`. Three
+additional peers are connected with `"trusted":false` (self-discovered via discv5), consistent with
+prior Session 16 finding that reth already rediscovers/reconnects known-good peers independently.
+
+**eth-wire protocol version clarification (informational, no code change):** opBNB peers currently
+negotiate `eth/68` (visible in `admin_peers` `caps`/`protocols`). reth already defines `Eth69`
+(current real-world latest), `Eth70` (EIP-7975, paginated `GetReceipts`/`Receipts`), `Eth71`
+(EIP-8159, `GetBlockAccessLists`/`BlockAccessLists`), and `Eth72` (`cell_mask` +
+`GetCells`/`Cells`, likely PeerDAS/blob-cell related) as enum variants in
+`crates/net/eth-wire-types/src/version.rs`, but only `EthVersion::ALL_VERSIONS = [Eth69, Eth68,
+Eth67, Eth66]` (`crates/net/eth-wire/src/hello.rs:221`) is actually offered during the `Hello`
+handshake — 70/71/72 are prepared-but-unused spec placeholders (their underlying EIPs aren't live
+on Ethereum mainnet yet). eth/68 is simply the highest version our current opBNB Geth peers
+support, hence the negotiated ceiling.
