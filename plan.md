@@ -2238,3 +2238,44 @@ hardware/parallelism-driven rather than software-architecture-driven, unlike the
 from a snapshot, not synced from genesis (confirmed by user) — not a valid genesis-sync benchmark
 and excluded. External web-search-derived Erigon sync-time claims (~3 days) are unverified/
 unofficial and were not used as a data point here.
+
+## Session 17 cont. 3: brutal CPU-core linear-scaling normalization (2026-09-05)
+
+Both our benchmark nodes (`BSCRethArchiveNode`, `BSCRethFastNode`) run in LXC/container
+units (CTs) pinned to **4 cores each**, not the host's full 16-core capacity. All prior
+throughput numbers in this doc are therefore measured on 4 cores, while the official
+benchmarks used 16 cores (opBNB) and 32 cores (BSC). Applying a naive linear per-core
+scale-up (measured ÷ 4 × target core count) to see the theoretical best case:
+
+**opBNB** (official combined rate on 16c: 43.65 MGas/s archive):
+| Scale | MGas/s | vs. official (16c) |
+|---|---|---|
+| measured, 4c (actual) | 154.35 | 3.5x |
+| linear-scaled to 16c | 617.4 | 14.1x |
+| linear-scaled to 32c | 1234.8 | 28.3x |
+
+**BSC** (official archive backfill rate on 32c: 516 MGas/s; range below = 6h/24h/whole-run):
+| Scale | MGas/s | vs. official (32c) |
+|---|---|---|
+| measured, 4c (actual) | 176 – 224 | 0.34x – 0.43x (slower) |
+| linear-scaled to 16c | 704 – 896 | 1.36x – 1.74x |
+| linear-scaled to 32c | 1408 – 1792 | 2.73x – 3.47x |
+
+**Caveat (must not be dropped or overstated):** this is a *naive linear* extrapolation
+and almost certainly overstates real-world scaling for several reasons:
+- MDBX's per-block commit (the documented bottleneck in both official benchmarks) is
+  largely **serial per block** — more cores parallelize execution within a block/across
+  independent txs, not the commit itself, so Amdahl's-law-style diminishing returns apply
+  well before 4x/8x core count.
+- More cores sharing the *same* single NVMe (per anonymized host HW) would hit I/O
+  contention long before compute is saturated — the official benchmarks paired their
+  higher core counts with dedicated/faster storage (BSC: dual 7500 NVMe RAID), not just
+  more CPU.
+- Host-level noisy-neighbor contention (~15 other node processes) is unaccounted for
+  at any scale-up.
+
+Net takeaway: even after applying this optimistic multiplier, our opBNB result stays
+strongly favorable at every scale (3.5x–28.3x), while our BSC result flips from
+"slower" to "faster than official" only once hypothetically given 16+ cores — i.e. the
+gap to the BSC benchmark is plausibly explained by core count and storage topology, not
+an inherent architectural or configuration deficiency on our side.
