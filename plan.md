@@ -2027,3 +2027,98 @@ verlangt, dessen Ausgabe bei jedem Meilenstein-/Regressions-Check in den aktuell
 Session-Eintrag zu übernehmen — das deckt die Anforderung „laufende ETA-Berechnungen bei
 Folgesessions automatisch erstellen und dokumentieren" ab, ohne einen separaten Dauer-Dienst zu
 benötigen (Sessions sind Agent-getrieben, kein Cron/Daemon im Scope dieses Workspaces).
+
+## TODO (Backlog): EIP-7702 / Type-4-Transaktionen — BEP-441 „Pascal"-Hardfork (BSC + opBNB)
+
+**Status:** noch nicht implementiert — weder upstream (`paradigmxyz/reth`) noch in diesem Fork
+(`crates/bsc/*`, `crates/optimism/chainspec` für opBNB). Reines Analyse-/Planungs-Ergebnis dieser
+Session, kein Code geschrieben.
+
+### Befund (Codebase-Analyse, Worktree `files/_wt-alteredcarbon-milestones`)
+
+- **`crates/bsc/hardforks/src/hardfork.rs`** (`BscHardfork`-Enum): letzter Eintrag ist `Bohr`
+  (Timestamp `1727317200` Mainnet). Kein `Pascal`-Variant, kein `EthereumHardfork::Prague` in
+  `bsc_mainnet()`/`bsc_testnet()`/`bsc_qa()`.
+- **`crates/optimism/hardforks/src/hardfork.rs`** (`OptimismHardfork::opbnb_mainnet()`): letzter
+  Eintrag `Fourier` (Timestamp `1767754800`). Kein `Pascal`, kein `EthereumHardfork::Prague`.
+- **Generischer Tx-Type-4-Pfad ist bereits vorhanden** (aus upstream reth geerbt, nichts
+  BSC/opBNB-Spezifisches nötig): `alloy_consensus::TxType::Eip7702` wird bereits generisch in
+  `crates/primitives-traits`, `crates/transaction-pool` (u. a. `crates/transaction-pool/src/
+  validate/eth.rs:730,732,910,1120` via `chain_spec.is_prague_active_at_timestamp(...)`) sowie in
+  `crates/bsc/evm/src/transaction.rs:116` (`Transaction::Eip7702 => RevmTxEnv::from_recovered_tx`)
+  und `crates/bsc/evm/src/execute.rs:60` durchgereicht. D. h. **die Tx-Envelope-/RLP-/RPC-Schicht
+  unterstützt Type-4 bereits** — es fehlt nur die **Hardfork-Gate** (Aktivierungsbedingung), die
+  steuert, ab wann Type-4-Txs von Pool/Consensus akzeptiert und von der EVM (`SpecId`) korrekt
+  ausgeführt werden.
+- **Präzedenzfall im selben Repo:** `crates/optimism/chainspec/src/lib.rs:216-224`
+  (`isthmus_activated()`) aktiviert `EthereumHardfork::Prague` **zusammen mit** `OpHardfork::
+  Isthmus` am selben Timestamp — Kommentar im Code: *„Prague is co-activated with Isthmus on the
+  OP Stack."* Das ist exakt das Muster, das auch für ein „Pascal" (`BEP-441`) auf BSC/opBNB
+  gebraucht wird: Type-4 hängt an `EthereumHardfork::Prague`, nicht an einem Custom-Enum-Wert –
+  Pool-Validierung/RPC/Konsens prüfen generisch nur `is_prague_active_at_timestamp(...)`.
+
+### Vorgeschlagenes Implementierungsdesign (kompatibel, reversibel, minimal-invasiv)
+
+1. **Neuer Hardfork-Variant statt direktem `Prague`-Flip:**
+   - `BscHardfork::Pascal` in `crates/bsc/hardforks/src/hardfork.rs` (analog zu `Kepler`↔Shanghai,
+     `Haber`↔Cancun — jeweils eigener BSC-Name + Co-Aktivierung des passenden Ethereum-Hardforks).
+   - Analog für opBNB: neuer `OpHardfork`- oder opBNB-spezifischer Variant `Pascal` in
+     `crates/optimism/hardforks/src/hardfork.rs::opbnb_mainnet()/opbnb_testnet()/opbnb_qa()`.
+   - **Wichtig:** *nicht* pauschal vollen `Prague` (inkl. EIP-6110/7002/7251/7685 „Requests")
+     aktivieren — BEP-441 laut BNB-Chain-Doku ist explizit auf EIP-7702 (Set-Code-Txs) beschränkt,
+     nicht das volle Ethereum-Prague-Bündel (kein Beacon-Chain-Bezug auf BSC/opBNB, keine
+     Requests-Hash im Header). Es muss also geprüft/ggf. per Fork-spezifischer Override
+     sichergestellt werden, dass `Pascal`-Aktivierung **nur** die Type-4/7702-Pfade scharf schaltet
+     und **nicht** Header-Feld-Änderungen (`requestsHash`) erzwingt, die es auf BSC/opBNB nicht
+     gibt — sonst bricht Header-/Konsens-Validierung. Ggf. reicht `EthereumHardfork::Prague` co-
+     aktivieren, sofern Header-Validierung bei BSC/opBNB `requestsHash` ohnehin nicht prüft
+     (verifizieren, bevor Code geschrieben wird — offene Frage, siehe unten).
+   - Aktivierungs-Timestamp: **noch nicht offiziell von BNB Chain terminiert** (Stand dieser
+     Session) → bis zur offiziellen Ankündigung `ForkCondition::Timestamp(u64::MAX)` /
+     `Never`-artiger Platzhalter, damit auf Mainnet/Testnet **standardmäßig inaktiv**.
+
+2. **CLI-Parameter für reversibles Ein-/Ausschalten (Test-/QA-Zwecke, NICHT für Mainnet-Abweichung
+   vom offiziellen Fork-Zeitpunkt):**
+   - Vorbild: bestehendes `--chain <name>`-Auswahlmuster (`crates/bsc/cli/src/chainspec.rs:15,38`
+     löst bereits `bsc-qa`/`bsc_qa` als eigenen ChainSpec auf; `opbnb_qa` existiert analog unter
+     `crates/optimism/chainspec/src/opbnb_qa.rs`). Kein Custom-CLI-Flag-Parsing nötig, wenn man
+     stattdessen einen **neuen Chain-Namen** einführt, z. B. `bsc-qa-pascal` / `opbnb-qa-pascal`
+     mit `Pascal`/`Prague`-Aktivierung ab Block/Timestamp 0/1 — reversibel einfach durch Wahl des
+     `--chain`-Werts, ohne neuen Flag-Typ, ohne Risiko für Mainnet/Testnet-Kompatibilität.
+   - Optional zusätzlich ein generischer Override-Mechanismus (analog zu Geths
+     `--override.cancun`/`--override.prague`, den reth aktuell **nicht** hat — wurde grep-geprüft:
+     kein `override.*timestamp`/`prague_time`-CLI-Flag im Baum gefunden): z. B.
+     `--engine.pascal-timestamp <unix_ts>`, der zur Laufzeit den `ForkCondition::Timestamp`-Wert im
+     geladenen `ChainSpec` überschreibt. **Muss explizit nur für `--chain` != `mainnet`/`testnet`
+     akzeptiert werden** (harter Guard im CLI-Parsing), sonst kann ein Operator versehentlich vom
+     Konsens der echten Chain abweichen (Hard-Fork-losgelöste Divergenz → State-Root-Mismatch →
+     Chain-Split ggü. echten Peers).
+
+3. **Kompatibilitäts-Invariante (Kernanforderung des Nutzers):** solange kein Type-4-Tx tatsächlich
+   in einem Block enthalten ist, muss die Blockverarbeitung **byte-identisch** zu einem Client ohne
+   Pascal-Support bleiben (gleicher State-Root, gleiche Header, gleiche RPC-Antworten für
+   vorhandene Tx-Typen). D. h.:
+   - Die Pascal-Gate darf **ausschließlich** Type-4-Tx-Akzeptanz/-Ausführung beeinflussen, keine
+     sonstigen EVM-Spec-Änderungen „huckepack" aktivieren (Gefahr bei blindem vollen `Prague`-Flip,
+     siehe Punkt 1).
+   - Vor Mainnet-Rollout: Diff-Test mit/ohne Flag auf identischen historischen Blöcken (vor dem
+     realen Pascal-Zeitpunkt) — State-Root muss in beiden Fällen gleich sein, solange keine Type-4-
+     Tx im Testblock vorkommt.
+   - Sobald BNB Chain den echten Pascal-Timestamp offiziell veröffentlicht: Timestamp exakt
+     übernehmen (kein eigener/früherer Wert auf Mainnet/Testnet), sonst Chain-Split-Risiko.
+
+### Offene Fragen (vor Implementierung zu klären)
+- Deckt BEP-441 auf BSC/opBNB **nur** EIP-7702, oder werden weitere Prague-EIPs mitgezogen (z. B.
+  EIP-2935 Historical Block Hashes, EIP-2537 BLS-Precompiles)? Bestimmt, ob `EthereumHardfork::
+  Prague` 1:1 co-aktiviert werden kann oder ob eine granularere eigene Gate-Logik nötig ist.
+- Offizieller Aktivierungs-Zeitpunkt/-Block für Pascal auf BSC-Mainnet/-Testnet und opBNB-
+  Mainnet/-Testnet (zum Zeitpunkt dieser Analyse nicht im Repo/den öffentlichen BNB-Chain-Docs mit
+  konkretem Datum hinterlegt gefunden — vor Implementierung erneut verifizieren).
+- Ob BSC/opBNB-Blockheader das `requestsHash`-Feld (EIP-7685) überhaupt kennen/validieren — falls
+  nein, muss die Header-/RLP-Validierung beim Prague-Co-Flip explizit ausgenommen werden.
+
+### Aufwandsschätzung (grob, ohne Ledger)
+- Hardfork-Enum + ChainSpec-Wiring (Punkt 1): ~0,5–1 Tag.
+- CLI/QA-Chain-Variante + Guard gegen Mainnet-Missbrauch (Punkt 2): ~0,5 Tag.
+- Kompatibilitäts-/Regressionstests (Punkt 3): ~1 Tag (abhängig von Testinfrastruktur-Reife).
+- **Nicht begonnen** — reine Analyse/Planung in dieser Session, kein Code, kein Test.

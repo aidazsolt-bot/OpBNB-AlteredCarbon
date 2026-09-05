@@ -474,6 +474,41 @@ figures mix activity counts with content-size token **proxies** where a billed m
 > **TODO:** After human catch-up/full sync validation on BSC/opBNB, refresh final cumulative token/time
 > figures (replace Cursor proxies with account billing export if available) and live-test outcome.
 
+### TODO (backlog): EIP-7702 / type-4 transactions — BEP-441 "Pascal" hardfork (BSC + opBNB)
+
+**Status: not implemented**, neither upstream (`paradigmxyz/reth`) nor in this fork. Analysis-only
+finding from this session, no code changed.
+
+- Neither `crates/bsc/hardforks` (`BscHardfork`, last variant `Bohr`) nor
+  `crates/optimism/hardforks` (`OptimismHardfork::opbnb_mainnet()`, last variant `Fourier`) define a
+  `Pascal` fork or co-activate `EthereumHardfork::Prague` — so EIP-7702 (type-4/set-code txs) stays
+  gated off on BSC and opBNB even though the generic tx-envelope/pool/EVM plumbing for
+  `TxType::Eip7702` already exists (inherited from upstream reth; already wired through in
+  `crates/bsc/evm/src/transaction.rs` and `crates/bsc/evm/src/execute.rs`). Only the hardfork *gate*
+  (`chain_spec.is_prague_active_at_timestamp(...)`, used by tx-pool validation and EVM spec-id
+  selection) is missing.
+- **Existing precedent in this repo**: `crates/optimism/chainspec/src/lib.rs` (`isthmus_activated()`)
+  co-activates `EthereumHardfork::Prague` together with `OpHardfork::Isthmus` at the same timestamp
+  ("Prague is co-activated with Isthmus on the OP Stack"). The same pattern should be replicated for
+  a BSC/opBNB `Pascal` variant, rather than flipping the full `Prague` set directly.
+- **Design sketch (compatibility-first, reversible)**: add a dedicated `Pascal` hardfork variant
+  (mirroring `Kepler`↔Shanghai / `Haber`↔Cancun style co-activation) instead of a blind full-`Prague`
+  flip, since BEP-441 is reportedly scoped to EIP-7702 only, not the full Ethereum Prague EIP bundle
+  (no beacon-chain requests/`requestsHash` concept applies on BSC/opBNB) — needs verification before
+  implementation. Default activation timestamp stays effectively disabled (far-future placeholder)
+  on mainnet/testnet until BNB Chain publishes an official Pascal activation timestamp. A reversible
+  on/off toggle for testing should be scoped to QA/dev chain specs only (e.g. a new `bsc-qa-pascal`
+  / `opbnb-qa-pascal` `--chain` value, following the existing `bsc-qa`/`opbnb_qa` pattern), guarded
+  so it can never be applied to mainnet/testnet chain specs — this avoids diverging from the
+  canonical chain's state root/consensus. Compatibility invariant: with the gate off (or before the
+  real activation timestamp), block processing must stay byte-identical to a non-Pascal client
+  (same state root/header/RPC responses) as long as no type-4 tx is actually included.
+- Open questions: exact EIP scope of BEP-441 on BSC/opBNB, official activation timestamp (not yet
+  found with a concrete date in this session), and whether BSC/opBNB block headers even carry an
+  EIP-7685 `requestsHash` field (if not, that part of a full-`Prague` flip must be excluded).
+- Rough effort estimate (no ledger): ~0.5–1 day hardfork/chainspec wiring, ~0.5 day QA-chain
+  variant + mainnet-misuse guard, ~1 day compatibility/regression testing. **Not started.**
+
 ### Side-evaluation: `kona-node` as an alternative to `op-node` for opBNB
 
 While blocked on the `crates/primitives` legacy-API remediation (see commit history), a live test of
