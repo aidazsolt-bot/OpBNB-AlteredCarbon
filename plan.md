@@ -2140,6 +2140,13 @@ archive / 49.9h full. Historical backfill execution rate: **~690 MGas/s**.
 Execution alone:                       133.80 MGas/s (archive) / 138.63 MGas/s (full)
 Execution + merklization + DB commit:   43.65 MGas/s (archive) /  42.69 MGas/s (full)
 ```
+**Chain-tip context at benchmark time:** the opBNB live-sync window observed was blocks
+`[30,429,919 → 30,467,068]` — i.e. the chain tip was **~30.5M blocks** when this benchmark was
+run, vs. our current target of **181M blocks (~5.9x longer chain)**. Per-block MDBX commit cost
+is not expected to shrink as the chain grows (larger account/storage tries if anything make it
+worse), so this benchmark's 43-44 MGas/s effective rate is, if anything, an optimistic upper bound
+relative to our situation — reinforcing that the architectural MDBX-commit bottleneck, not host
+resource contention, is the dominant factor in our slower Execution-stage throughput.
 Official root-cause quote: *"The main reason for the underperformance of Live sync is that mdbx is
 not a write-friendly database. The commit db at the end of block execution takes up several tens
 of milliseconds, a challenge that becomes more pronounced for fast-blocking layer 2 solutions like
