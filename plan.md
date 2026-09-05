@@ -2191,3 +2191,50 @@ availability.
 solution for BSC-scale genesis syncs, and recommended community-maintained snapshot repositories
 (e.g. `fuzzland/snapshots`) as the practical alternative to a full from-genesis archive sync given
 the multi-week timeframe involved — consistent with our own multi-week Execution-stage ETA.
+
+## Session 17 cont. 2: BSC Reth benchmark comparison, chain-height normalized (2026-09-05)
+
+**Official BSC Reth benchmark** (same blog as the opBNB one, `bnb-chain/reth v1.0` on AWS
+`im4gn.8xlarge`: 32 core / 128GB RAM, 2x 7500 NVMe, single-tenant):
+- Chain height at benchmark time: window `[~40,000,000 - 40,500,000]` blocks (~40.5M tip).
+- Full sync from genesis (all stages): **24 days**. Archive sync from genesis: **30 days**.
+- Historical backfill execution rate: **621 MGas/s (full) / 516 MGas/s (archive)**.
+
+**Our `BSCRethFastNode`** — despite the process name this is a from-genesis **archive-mode** sync
+(per user clarification), started 2026-05-31 10:31 UTC (confirmed via `up` metric gap: down ~19h
+before, then continuous `up=1` from 2026-05-31T10:31:00Z):
+- Current chain tip target (`reth_sync_checkpoint{stage="Headers"}`): **101,476,999** blocks —
+  **2.51x** the official benchmark's ~40.5M reference height.
+- Headers+Bodies+SenderRecovery (download stages, to the *full current* 101.48M tip): completed in
+  **3.56 days** (SenderRecovery target fully reached ~2026-06-03 23:55 UTC).
+- Execution stage: running since then, currently at **65,749,053 / 101,476,999 blocks (64.8%)**.
+- **Time within the Execution stage to reach the same absolute block height as the benchmark
+  (~40.5M): 58.23 days** (crossed 2026-08-01 ~05:20 UTC, found via binary search over
+  `reth_sync_checkpoint{stage="Execution"}` history).
+- Execution-stage-only average rate (entire run to date): **~8.11 blocks/s, ~224 MGas/s** (est.,
+  using recent gas/block ratio since the gas counter itself resets across process restarts).
+- Recent rates: **~186 MGas/s (24h window)**, **~176 MGas/s (6h window)** — both computed the same
+  way as the opBNB comparison, via `increase(reth_sync_execution_gas_processed_total[...])`.
+
+**Normalized comparison table:**
+
+| Metric | Official benchmark (32c/128G, dedicated) | Our node (16c shared host) |
+|---|---|---|
+| Reference/current chain height | ~40.5M | 101.48M (2.51x) |
+| Time to reach ~40.5M | 24-30 days (**entire** sync, all stages) | 58.23 days (**Execution stage only**, download already done in 3.56 days) |
+| Execution throughput | 516-621 MGas/s | ~176-224 MGas/s |
+
+**Interpretation — notably different outcome than the opBNB comparison:** for opBNB we measured
+**above** the official benchmark (154 vs 43.65 MGas/s combined, ~3.5x faster). For BSC we measure
+**below** it (~176-224 vs 516-621 MGas/s, ~2.3-3.5x slower). Most likely explanation: the BSC
+benchmark used **double the CPU cores (32 vs 16)** and a **dedicated dual-NVMe RAID (2x 7500)**,
+i.e. meaningfully more raw hardware than the opBNB benchmark (16 cores, 1 NVMe) — while our shared
+16-core host stayed roughly comparable in *relative* terms for opBNB, it falls further behind for
+BSC specifically because the reference hardware itself scaled up. The MDBX per-block-commit
+architecture is presumably an equal constraint on both chains; the gap here looks primarily
+hardware/parallelism-driven rather than software-architecture-driven, unlike the opBNB case.
+
+**Discarded as invalid comparison point:** the locally-running `BSCErigonArchiveNode` was restored
+from a snapshot, not synced from genesis (confirmed by user) — not a valid genesis-sync benchmark
+and excluded. External web-search-derived Erigon sync-time claims (~3 days) are unverified/
+unofficial and were not used as a data point here.
