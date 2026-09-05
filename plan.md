@@ -714,14 +714,121 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~14:20 CEST**) | PIPE-014 Hertz-Fix + Verify + Live Restart | Auto/Composer | (Session-12-Proxy) | (Proxy) | FLOW-X04 idx=10 `syncLightBlock`; Overlay Hertz; `re-execute` ✅; maxperf→`dist/bin`; live Bodies Catch-up | Live Exec≫`21591154`; FLOW-X05 watch |
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-16 ~08:35 CEST**) | UPnP+Bodies Tip+Exec past Fail+X02+A02; Kalender 08-12→16 **~88 h**; Interaktiv +~4 h (Abend 15 + Morgen 16) | Auto/Composer | Transcript File **~1.58 MB** → Proxy **~396 K** Tok (÷4); billed n/a | (Proxy) | jsonl **~1063** lines; Detailmetriken lokal archiviert, nicht publiziert | **P2P-002** UPnP ✅; H/B/S Tip; Exec≪Tip past Fail; **X02 ✅**; CLEANUP-A02 partial; Roadmap ETAs |
 
+| Copilot Session 13 (Storage-v2 recovery, 2026-09-02) | Journal/Mimir-Diagnose (Static-File-Underflow, fehlender Slot-Preimage-Port); zwei Source-Fixes (`fa6caf3022`, `ce0c722d9b`); 6 reaktivierte Preimage-Regressionstests + `test_pipeline`/`test_pipeline_v2`; 2× `make maxperf-op` | k.A. | k.A. | k.A. | Kein Per-Session-Token-Ledger verfügbar; keine Kostenschätzung |
+| Copilot Session 14 (Peer-Connectivity + migrate-v2-Validierung, 2026-09-03) | ForkHash-Re-Verifikation, Peer-Injection-Tool + systemd-Timer (später obsolet), isolierter `p2p body`-Reachability-Test, Dev-Host `db migrate-v2` End-zu-Ende-Test | k.A. | k.A. | k.A. | Kein Ledger; mehrere kurze Dev-Host-Rebuilds/Restarts (s. Restart-Historie Session 18) |
+| Copilot Session 15 (PORT-P2P-006/FLOW-N01 Dual-Stack Live-Verify, 2026-09-03) | Verifikation zweier bereits gemergter Commits (kein Neu-Fix); isolierter Dev-Host-Test, Journal-Belege | k.A. | k.A. | k.A. | Kein Ledger; 1 Dev-Host-Testlauf |
+| Copilot Session 16 (UPnP-Family-Folgebug Fix + Live-Deploy, 2026-09-03) | Root-Cause + Fix in `crates/net/nat/src/lib.rs` + Log-Wording in 2 weiteren Dateien; `cargo test -p reth-net-nat` (5 passed); `make maxperf-op`; User-Live-Deploy bestätigt | k.A. | k.A. | k.A. | Kein Ledger; 1 maxperf-Build + 1 Live-Redeploy (im Restart-Cluster 09-03 enthalten) |
+| Copilot Session 17 (Prometheus-Verify + Clean-Restart + Trusted-Peer-Check, 2026-09-04) | Grafana/Prometheus-Endpoint-Discovery, Sync-Rate-Vergleich, IPC-`admin_peers`-Check, sauberer Restart nach Debug-Logging-Deaktivierung | k.A. | k.A. | k.A. | Kein Ledger; 1 Restart (kein Rebuild) |
+| Copilot Session 18 (Restart-Historie + Status-Doku + `scripts/sync-eta.sh`, 2026-09-05) | Journal-Auswertung 08-10→heute (90 Restarts klassifiziert), Mimir-Range-Query für Stage-Übergang `SenderRecovery→Execution` (04-09 16:45 UTC), neues ETA-Automatisierungsskript, Rule-Update | ~20 Tool-Calls | <15 Min Wall | k.A. | Kein Ledger; reine Analyse-/Doku-Session, kein Rebuild/Deploy |
+
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
 > verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
 > bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; **Cursor Session 12** nur Proxy
-> (~72 K–388 K Tok Content-Proxy über Snapshots, **~4,5 h** früh + **~4 h** 08-15/16) — **billed** nur Account-Dashboard /
-> Abo (Context-Resend ≫ Content-Proxy). Quellen: lokale Copilot-/Cursor-Sessiondaten; die früheren
-> `files/`-Metrikartefakte sind bewusst nicht mehr Teil der öffentlichen Git-History.
+> (~72 K–388 K Tok Content-Proxy über Snapshots, **~4,5 h** früh + **~4 h** 08-15/16) — **billed** nur Account-Dashboard /
+> Abo (Context-Resend ≫ Content-Proxy). Sessions 13–18 (Copilot CLI, 2026-09-02→05): kein
+> Per-Session-Billed-Token-Ledger verfügbar (gleiche Copilot-CLI-Limitation wie Session 13); daher
+> nur Aktivitäts-/Ergebnisbeschreibung ohne Kostenschätzung — **keine** Zahl erfinden. Quellen: lokale
+> Copilot-/Cursor-Sessiondaten; die früheren `files/`-Metrikartefakte sind bewusst nicht mehr Teil der
+> öffentlichen Git-History.
+
+### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten modelliert — Stand 2026-09-05)
+
+Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
+Infrastruktur, nicht gemietete Cloud-Instanz mit Abrechnung pro Stunde). Restart-/Rebuild-Zahlen
+unten sind direkte Betriebs-Proxys; die Stromkosten-Zahl weiter unten ist eine **Modellschätzung**
+(aus CPU-Auslastung abgeleitet, kein Wattmeter) — beides ersetzt keine echte Rechnung, es wird
+aber keine Zahl frei erfunden:
+
+| Metrik | Wert | Quelle |
+| --- | --- | --- |
+| `BlockChain.service`-Restarts seit 2026-08-10 | **90** (Tagesverteilung s. Session 18) | Container-Journal (`journalctl -u BlockChain.service`) |
+| Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
+| Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
+| `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 6 vollständige Fat-LTO-Builds à ~20–23 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16) | plan.md-Sessionprotokoll |
+| Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
+
+**Stromverbrauch — reale Messung (Rack-Zähler, 05.08.2026 → 04.09.2026, 30 Tage):** **250 kWh**
+gemessen. Bei einem haushaltsüblichen Bruttoenergiepreis (~**0,231 €/kWh**, ohne Anbieternennung)
+ergibt das:
+
+| Größe | Wert |
+| --- | --- |
+| Messzeitraum | 05.08.2026 – 04.09.2026 (30 Tage) |
+| Gemessener Verbrauch | **250 kWh** (Rack-Gesamtzähler) |
+| Ø-Leistung über Zeitraum | **~347 W** |
+| Stromkosten (gesamter Zeitraum) | **~EUR 57,8** |
+| … pro Tag | **~EUR 1,93** / ~8,33 kWh |
+| … pro Monat (30 Tage) | **~EUR 57,8** |
+
+**Realer Rechnungs-Ankerpunkt (Teilbetrag/Akontozahlung, Gesamthaushalt, ohne Anbieternennung):**
+laut Stromrechnung ein quartalsweiser Teilbetrag von **EUR 206,40** (fällig 10.10.2025). Umgerechnet:
+
+| Größe | Wert |
+| --- | --- |
+| Teilbetrag pro Quartal | **EUR 206,40** |
+| … Monatsäquivalent (÷3) | **~EUR 68,80** |
+| … Tagesäquivalent (÷~91 Tage) | **~EUR 2,27** |
+| … hochgerechnet aufs Jahr (×4 Quartale) | **~EUR 825,60** |
+
+**Wichtiger Vorbehalt:** Ein Teilbetrag ist eine **Akontozahlung** auf Basis der geschätzten
+Jahresverbrauchsmenge (übliches österreichisches Abrechnungsmodell), **keine** direkte Messung des
+tatsächlichen Verbrauchs in genau diesem Quartal — die Jahresabrechnung gleicht später aus. Der
+Teilbetrag deckt zudem den **gesamten Haushalt**, nicht nur das Server-Rack, und stammt aus einem
+anderen Zeitfenster (Q4 2025) als die Rack-Messung (Aug/Sep 2026) — beide Zahlen sind daher nicht
+direkt subtrahierbar, nur grob vergleichbar. Rein größenordnungsmäßig: die reale Rack-Messung
+(~EUR 57,8/Monat) entspräche **~84 %** des monatsäquivalenten Gesamthaushalts-Teilbetrags
+(~EUR 68,80/Monat) — plausibel für einen durchlaufenden Server-Rack-Betrieb neben normalem
+Haushaltsverbrauch, aber wegen der unterschiedlichen Zeitfenster/Akonto-Charakter nur als grobe
+Plausibilitätsprüfung zu verstehen, nicht als exakte Aufteilung.
+
+**Abgleich mit CPU-Auslastungsmodell:** Die reale Rack-Messung (~347 W Ø) liegt spürbar über der
+vorherigen CPU-Auslastungs-Modellschätzung für den einzelnen `crius`-Host (~219 W Ø bei 55,2 %
+30-Tage-CPU-Auslastung, Netzteil-Typenschild 350 W, Leerlauf/Volllast-Interpolation 35 %/85 % der
+Nennleistung). Die Differenz (~128 W) ist plausibel, da der Rack-Zähler **den gesamten Rack**
+misst — Netzwerk-Equipment (Switch/Router), ggf. weitere Hosts/Storage neben `crius`, PSU-
+Wirkungsgradverluste (< 100 %) und sonstige Rack-Infrastruktur (z. B. Lüfter) —, während das
+CPU-Modell nur den einen Host über `node_exporter`-Metriken abbildet und PSU-Verlustleistung
+sowie Nicht-CPU-Verbraucher (NVMe/RAM/Netzwerkkarten unter Last) nur indirekt über die
+Leerlauf/Volllast-Bandbreite erfasst. **Die Rack-Messung (250 kWh, ~EUR 57,8/Monat) ist die
+belastbarere, reale Zahl** und ersetzt die vorherige Modellschätzung als Hauptangabe; das
+CPU-Modell bleibt als Cross-Check-Notiz erhalten (Details unten), da es den isolierten
+`crius`-Host-Anteil separat sichtbar macht, den der Rack-Zähler nicht auflöst.
+
+<details>
+<summary>CPU-Auslastungsmodell (Cross-Check, isolierter <code>crius</code>-Host, kein Wattmeter)</summary>
+
+
+Schätzung aus Grafana/`node_exporter`-CPU-Auslastung (`instance="crius:9100"`, 32 vCPU, Host trägt
+neben dem Archive-Node mehrere weitere Chain-Container) + Netzteil-Typenschild **350 W** + demselben
+Energiepreis-Proxy. Modell: linear zwischen Leerlaufannahme (35 % der Nennleistung ≈ 122,5 W) und
+Volllastannahme (85 % der Nennleistung ≈ 297,5 W), interpoliert über die gemessene CPU-Auslastung:
+
+| Fenster | CPU-Auslastung Ø | Modellierte Leistung Ø | Bemerkung |
+| --- | --- | --- | --- |
+| jetzt (5 min) | 47,2 % | ~205 W | Snapshot |
+| 24 h | 64,3 % | ~235 W | u. a. Execution-Stage-Ramp-up |
+| 7 d | 50,6 % | ~211 W | |
+| 30 d (≈ seit Host-Boot 2026-08-06) | 55,2 % | ~219 W | isolierter `crius`-Host-Anteil (nicht Rack-Gesamt) |
+
+Host-Uptime (Boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29,98 Tage; modellierte Energie
+~157,6 kWh, modellierte Kosten ~EUR 36,4 im selben Fenster — d. h. `crius` allein macht modelliert
+grob **~63 %** der real gemessenen Rack-Kosten aus, der Rest entfällt plausibel auf
+Netzwerk-Equipment/andere Rack-Geräte/PSU-Verluste.
+
+</details>
+
+
+**Vorbehalte:** (1) Leistung/Host-Anteil ist ein Modell aus CPU-Auslastung, **kein** gemessener
+Wert — NVMe/Netzwerk/RAM-Leistungsaufnahme unter Last werden nur indirekt über die
+Idle↔Volllast-Bandbreite mitabgebildet, nicht separat gemessen. (2) `crius` trägt neben dem
+opBNB-Archive-Node mehrere weitere Chain-Container (siehe `systemd`/`machinectl`-Übersicht in
+Session 18) — die Zahl ist Host-weite Gesamtkosten, nicht isoliert für den Archive-Node. (3) Der
+verwendete Energiepreis ist ein grober Haushalts-Bruttopreis-Proxy (keine reale Rechnung, kein
+Lieferant genannt); Netzentgelte/Steuern können je nach Vertrag abweichen. Rebuild-Zeit
+(~20–23 Min pro Fat-LTO-Build) und Restart-Frequenz bleiben die einzigen zusätzlichen, direkt aus
+dem Betrieb abgeleiteten Zeit-Proxies.
 
 ## Nächste Schritte (unmittelbar — Stand 2026-08-20)
 
@@ -1808,3 +1915,115 @@ Eth67, Eth66]` (`crates/net/eth-wire/src/hello.rs:221`) is actually offered duri
 handshake — 70/71/72 are prepared-but-unused spec placeholders (their underlying EIPs aren't live
 on Ethereum mainnet yet). eth/68 is simply the highest version our current opBNB Geth peers
 support, hence the negotiated ceiling.
+
+## Session 18 (2026-09-05): Sync-Versuche/Verlauf seit 2026-08-10 konsolidiert, Status seit 2026-09-02 ~18:00 im Detail, `scripts/sync-eta.sh` für automatische ETA-Snapshots
+
+**Auftrag:** Sync-Versuche/-Verläufe seit 10.8.2026 in der Doku nachziehen, Status seit
+2.9.2026 ~18:00 präzise dokumentieren, und laufende ETA-Berechnungen bei Folgesessions
+automatisch erstellen/dokumentieren (Quelle: Mimir/Prometheus + `journalctl` im
+`BSCRethArchiveNode`-Container, `/var/lib/machines/BSCRethArchiveNode/var/log/journal/`).
+
+### Restart-Historie `BlockChain.service` seit 2026-08-10 (Quelle: Container-Journal)
+
+Restarts pro Kalendertag (jeder Eintrag = ein `Started BlockChain.service`; Kill/Restart-Zyklen
+während aktiver Debug-/Portierungsarbeit, nicht nur ungeplante Abstürze):
+
+| Datum | Restarts | Kontext (siehe Session) |
+| --- | ---: | --- |
+| 2026-08-10 | 28 | Session 9 — Resume/YOLO Phase-5, Compile-Fix-Loop |
+| 2026-08-11 | 21 | Session 9 cont./10/11 — Live-Archive-Sync-Blocker, PORT-P2P-003/004/005, Dev-Miner/Genesis SF |
+| 2026-08-14 | 13 | Session 12 — Receipt-Root-Fail, Unwind, Harness-Binary |
+| 2026-08-15 | 4 | Session 12 (Forts.) |
+| 2026-08-18 | 1 | (außerhalb dokumentierter Sessions — kleiner Fix/Restart) |
+| 2026-08-25 | 2 | (außerhalb dokumentierter Sessions — kleiner Fix/Restart) |
+| 2026-09-01 | 1 | Vorlauf Session 13 |
+| 2026-09-02 | 6 | Session 13 — Storage-v2-Recovery, Repair-Target `71185159` |
+| 2026-09-03 | 13 | Sessions 14–16 — Peer-Degradation, migrate-v2-Validierung, Dual-Stack/UPnP-Fix + Live-Deploy |
+| 2026-09-04 | 1 | Session 17 — sauberer Restart nach Debug-Logging-Deaktivierung |
+| 2026-09-05 (Stand jetzt) | 0 | stabil durchgelaufen seit letztem Restart |
+
+**Summe 2026-08-10 → heute: 90 Restarts.** Die Verteilung deckt sich exakt mit den bereits in
+Sessions 9–17 dokumentierten Debug-/Fix-Zyklen — keine bislang undokumentierten Vorfälle
+gefunden; lediglich 2026-08-18 und 2026-08-25 (je 1–2 Restarts) liegen außerhalb eines
+protokollierten Sessions-Eintrags (zu klein/kein Sync-Regressions-Befund, daher damals nicht
+festgehalten).
+
+### Status seit 2026-09-02 ~18:00 (präzise, aus Container-Journal + Mimir)
+
+Restart-Zeitstempel (Journal-Lokalzeit CEST = UTC+2; Log-Payload-Zeitstempel intern UTC):
+
+| Journal (CEST) | Ereignis |
+| --- | --- |
+| 09-02 20:15:09 | Restart (Session 13/14-Vorlauf: Storage-v2-Recovery-Nacharbeit) |
+| 09-03 06:38:56 | Restart |
+| 09-03 08:49:29 → 08:49:37 | Restart (Boot-Marker im Journal — Container-Neustart, nicht nur Prozess) |
+| 09-03 08:51:37 | Restart |
+| 09-03 08:56:49 | Restart |
+| 09-03 10:07:35 | Restart |
+| 09-03 10:49:44 | Restart |
+| 09-03 11:43:47 | Restart |
+| 09-03 12:35:27 | Restart |
+| 09-03 12:38:15 | Restart |
+| 09-03 12:38:25 | Restart |
+| 09-03 13:21:23 | Restart |
+| 09-03 16:13:43 | Restart |
+| 09-03 16:56:27 | Restart |
+| 09-04 08:29:00 | Restart — **letzter Restart bisher** (Session 17: Debug-Logging deaktiviert, sauberer Shutdown/Neustart, `SenderRecovery` setzte exakt am letzten Checkpoint fort) |
+
+Die dichte Restart-Folge am 09-03 (13 Restarts) entspricht 1:1 den in Session 14–16 dokumentierten
+kurzen Isolationstests/Live-Redeploys (Peer-Injection-Tool-Iterationen, migrate-v2-Validierung auf
+Dev-Host + mehrere kurze Live-Redeploys des NAT/UPnP-Dual-Stack-Fixes). Seit dem 09-04 08:29-Restart
+läuft der Prozess **ohne weitere Restarts** durch (Stand 09-05 07:14 UTC: ≈ 24 h 45 min unterbrechungsfrei,
+`up{instance="BSCRethArchiveNode:6060"}=1`, `reth_network_connected_peers=5`).
+
+**Stage-Übergänge im Beobachtungsfenster (Mimir `reth_sync_checkpoint`, 15-min-Auflösung):**
+
+- Headers/Bodies bereits vor Fenster-Beginn auf Tip `181,023,934` (siehe Session 17).
+- `SenderRecovery` lief bis **2026-09-04 16:45:00 UTC** und erreichte dort exakt den Tip
+  (`181,023,934`) — Stage **abgeschlossen**.
+- `Execution` startete unmittelbar danach (`16:45:00 UTC` erster Nicht-Null-Wert `500,001`) und lief
+  seither ununterbrochen weiter, aktuell (09-05 07:14 UTC) bei `18,618,108` (**10.3 %** des Tips).
+  Anfangs sehr hohe 15-min-Deltas (bis ~740k Blöcke/15 min ≈ 820 Blöcke/s in den ersten Stunden,
+  vermutlich leere/frühe Blöcke + warmer Cache), seither auf ein stabileres Niveau von
+  **~45–60 Blöcke/s** abgeklungen (siehe ETA-Snapshot unten).
+- Keine Execution-/Merkle-Unwind-Stürme, keine `validation_errors`/`timeout_errors` im Fenster
+  beobachtet (Journal + Mimir-Zählerstände flach).
+
+### ETA-Snapshot (automatisiert via neues `scripts/sync-eta.sh`, Stand 2026-09-05 07:14 UTC)
+
+```
+stage                       checkpoint  % of tip
+Headers                    181,023,934    100.0%
+Bodies                     181,023,934    100.0%
+SenderRecovery             181,023,934    100.0%
+Execution                   18,618,108     10.3%
+(Merkle*/Hashing/Index*/Prune/Finish: 0 — noch nicht erreicht)
+
+Active stage: Execution · Remaining to tip: 162,405,826 blocks (Tip bewegt sich weiter)
+
+window    rate (blocks/s)   ETA (nur laufende Stage)
+15m                 50.36   37d 07h
+30m                 55.50   33d 20h
+1h                  55.06   34d 03h
+3h                  60.43   31d 02h
+6h                  81.85   22d 23h (durch Ramp-up-Anfangsphase verzerrt, zu optimistisch)
+12h                151.16   12d 10h (verzerrt)
+24h                215.51    8d 17h (verzerrt, deckt Zeit vor Execution-Start mit ab)
+```
+
+**Einschätzung:** die kurzen, weniger vom Ramp-up verzerrten Fenster (15m–3h) sind die
+belastbarsten — **Execution-Stage-ETA ≈ 31–37 Tage** ab jetzt bei aktuellem Durchsatz
+(~50–60 Blöcke/s), rein für diese Stage; Merkle/Hashing/Index/Prune folgen danach noch (bislang
+0 erreicht, keine eigene ETA möglich). Fensterlängen ≥6h überschätzen die Rate systematisch, weil
+sie die anfängliche Hochlaufphase (deutlich höherer Durchsatz kurz nach Stage-Start) mit
+einrechnen — nicht als „schneller werdend" fehlinterpretieren.
+
+### Automatisierung für Folgesessions
+
+Neues Skript **`scripts/sync-eta.sh`** (liest `reth_sync_checkpoint{instance=...}` für alle Stages,
+ermittelt die aktive Stage heuristisch, druckt Checkpoint-%/Durchsatz über mehrere Fenster + ETA).
+`.cursor/rules/opbnb-live-sync-health.mdc` Point 1 verweist jetzt zuerst auf dieses Skript und
+verlangt, dessen Ausgabe bei jedem Meilenstein-/Regressions-Check in den aktuellen `plan.md`-
+Session-Eintrag zu übernehmen — das deckt die Anforderung „laufende ETA-Berechnungen bei
+Folgesessions automatisch erstellen und dokumentieren" ab, ohne einen separaten Dauer-Dienst zu
+benötigen (Sessions sind Agent-getrieben, kein Cron/Daemon im Scope dieses Workspaces).

@@ -17,15 +17,23 @@ sync/P2P/pipeline/docs.
 
 ## Point 1 — Mimir (`http://grafana/api/v1/query`, instance `<archive-ct>:6060`)
 
-Query and report:
+Run **`scripts/sync-eta.sh`** first — it queries all `reth_sync_checkpoint{stage=...}` values,
+identifies the active stage, and prints checkpoint %, throughput over several windows (15m…24h)
+and a rough ETA. Paste its output (or a condensed version) into the current `plan.md` session
+entry on every milestone/regression check — this is the "automatisch erstellen und dokumentieren"
+ETA requirement; do not hand-recompute the same numbers ad hoc when the script covers them.
 
-- `reth_sync_checkpoint{stage="Headers"}` / `{stage="Bodies"}` / `{stage="SenderRecovery"}` / `{stage="Execution"}` (and later Merkle*)
+Additionally query and report:
+
 - `reth_downloaders_bodies_validation_errors` → must stay **0**
 - `reth_downloaders_bodies_timeout_errors` / `unexpected_errors` → **0**
 - `reth_network_invalid_messages_received` → **0**
 - `bodies_total_downloaded` ≈ `bodies_total_flushed` ≈ Bodies checkpoint (while Bodies active)
 - `reth_network_connected_peers`, eth1 RX/TX via `<archive-ct>:9100` if useful
-- Rough ETA from stage rate vs remaining to Headers tip
+
+Prefer the shorter windows (15m/30m/1h) from the script's ETA table when a stage has recently
+started ramping up from 0 — longer windows (12h/24h) average in the low-throughput ramp-up period
+and overestimate the steady-state rate.
 
 **Alert the user** if validation/timeout/unexpected errors rise, checkpoint resets,
 downloaded≪flushed gap grows, peers drop to 0 / Ban-Sturm, or Execution/Merkle unwind storms.

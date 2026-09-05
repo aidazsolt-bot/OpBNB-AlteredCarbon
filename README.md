@@ -347,6 +347,7 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | PORT-P2P-006 / FLOW-N01 dual-stack live verification (2026-09-03) | Confirmed the two already-merged commits `4bbdd60fd6`/`45db221aeb` fully resolve the long-open dual-stack bind/dial/announce item (plan status was merely stale). Isolated dev-host test (no `--addr`) showed `discv5::service: Discv5 Service started mode=DualStack`, real UDP bindings on both `0.0.0.0:9200` and `[::]:9200`, and NAT announcing both families separately (`Announced dialable enode` for IPv6, `Announced additional discv5 dual-stack NAT endpoint` for IPv4). The live archive node still runs with explicit `--addr 0.0.0.0` (single-family, unchanged); the dual-stack path was verified only in an isolated dev-host test, not on the production node. |
 | PORT-P2P-006 dual-stack UPnP-family follow-up bug fix (2026-09-03) | Live journal review revealed the archive node actually runs *without* `--addr` (dual-stack already active), which surfaced a follow-up bug: `resolve_nat_endpoint()` discarded a valid IPv4 UPnP mapping obtained while resolving the IPv6 leg (UPnP/IGD is IPv4-only; no consumer router exposes an IPv6 IGD), forcing a second, flaky SSDP gateway search for IPv4 that could time out and fall back to announcing an unmapped port. Fixed by only attempting UPnP for IPv4 targets (`crates/net/nat/src/lib.rs`); also dropped the misleading "NAT resolution"/"NAT endpoint" wording for the plain HTTP-resolved-IPv6 case (`crates/net/network/src/manager.rs`, `crates/net/discv5/src/lib.rs`) since `via_upnp` already conveys whether real NAT/UPnP occurred. Verified clean on dev host (`make maxperf-op` build) and then live-deployed by the user on the archive node: no family-mismatch warning, IPv4 leg now cleanly UPnP-mapped (`via_upnp=true`), both UDP sockets bound, 5 peers reconnected without disruption. |
 | Live sync progress + trusted-peer verification via Prometheus (2026-09-04) | Confirmed correct Prometheus HTTP API access pattern for this environment's monitoring stack: `http://grafana/api/v1/query`/`query_range` (plain HTTP, port 80, no auth) proxies straight to Prometheus — `job="reth"`, `instance="BSCRethArchiveNode:6060"`. Compared overnight vs. current `reth_sync_checkpoint{stage="Bodies"}` rate via `rate(...[8h])`/`rate(...[1h])`: **~1,038 blocks/s overnight vs. ~642 blocks/s current (~62%)**. `reth_network_eth_*_requests_received_total` all flat at 0, confirming no peers are pulling data from us (node not yet past Headers/Bodies download into a state useful to serve others). After user reduced debug logging and restarted `BlockChain.service`, confirmed via live journal + `admin_peers` over IPC that the restart was clean (peers persisted to `known-peers.json`, `SenderRecovery` resumed from its checkpoint without reset) and that both configured `--trusted-peers` enodes (`167.235.95.170:30305`, `157.180.98.155:30315`) are syntactically valid and actively connected with `"trusted":true`. Flagged a minor unrelated systemd issue: `BlockChain.service:50` has `Restart=never` which is not a valid systemd value (valid: `no`/`always`/`on-failure`/etc.) — currently silently ignored, should be corrected to `Restart=no`. |
+| Restart-history consolidation + `SenderRecovery`→`Execution` transition + `scripts/sync-eta.sh` (2026-09-05) | Consolidated all `BlockChain.service` restarts since 2026-08-10 from the container journal: **90 restarts total**, all attributable to already-documented debug/fix cycles (Sessions 9–17) except two small untracked restarts on 08-18/08-25 (below session-worthy threshold at the time). Pinpointed the exact `SenderRecovery`→`Execution` stage transition via Mimir range query: `SenderRecovery` reached tip `181,023,934` at **2026-09-04 16:45:00 UTC**; `Execution` has run uninterrupted since (10.3% of tip as of 09-05 07:14 UTC, throughput cooling from an initial ramp-up spike to a steadier ~50–60 blocks/s). Added `scripts/sync-eta.sh` (queries all `reth_sync_checkpoint{stage=...}` values, auto-detects the active stage, prints throughput over 15m–24h windows plus ETA) and updated `.cursor/rules/opbnb-live-sync-health.mdc` to require its output be pasted into the `plan.md` session entry at every health check going forward — this is the durable mechanism for "auto-generate and document running ETA calculations in follow-up sessions". |
 | Public repo hygiene | Repository was recreated from a sanitized local-only history on 2026-09-02. `main` starts at 2026-08-06, has one normalized author, no inherited upstream parents/tags, no `.github/CODEOWNERS`, only the op-reth smoke workflow under `.github/`, and no `files/` artefacts anywhere in public history. |
 | Commits | See `git log --first-parent main`; public history was rebuilt as sanitized local-only commits on 2026-09-02 and later cleaned so `files/` never appears in `main` history. |
 | Metrics snapshots | Local-only operator artefacts. `files/` is intentionally ignored and not published because it may contain session paths, local telemetry, and forensic scratch data. |
@@ -363,9 +364,105 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| Cost beyond LLM | Host CPU/NVMe/network for archive sync + rebuilds — **not** monetized here; LLM illustrative cost above is Copilot-API-equivalent only |
+| September incident/recovery follow-ups (2026-09-02 → 09-05, order of magnitude) | Storage-v2 recovery root-cause + re-sync decision (Session 13); peer-connectivity investigation + migrate-v2 validation (Session 14); dual-stack live-verify (Session 15); UPnP follow-up fix authorization + **live production redeploy** of `BlockChain.service` (Session 16, human-executed restart, not agent-executed); Prometheus/journal cross-check + debug-logging reduction + clean restart (Session 17); restart-history/ETA doc consolidation (Session 18, this update). Roughly **1–2 h** operator review per session, plus the live redeploy itself — still tens-of-hours order of magnitude in total, not a full-time role. |
+| Cost beyond LLM | Host CPU/NVMe/network for archive sync + rebuilds — **not** monetized here; LLM illustrative cost above is Copilot-API-equivalent only. See "Infra-operation cost proxies" below for the only available (non-monetary) proxies. |
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
+
+#### Infra-operation cost proxies (2026-08-10 → 2026-09-05, restart/rebuild proxies + measured power)
+
+No real hosting invoice exists for the archive node (it runs on the operator's own infrastructure,
+not a metered cloud instance). Restart/rebuild figures below are direct operational proxies; the
+electricity figure further down combines a **real rack meter reading** with a modeled per-host
+cross-check — neither is a substitute for an actual bill, and no invoice is claimed to exist:
+
+| Metric | Value | Source |
+| --- | --- | --- |
+| `BlockChain.service` restarts since 2026-08-10 | **90** total (28 on 08-10, 21 on 08-11, 13 on 08-14, 4 on 08-15, 1 on 08-18, 2 on 08-25, 1 on 09-01, 6 on 09-02, 13 on 09-03, 1 on 09-04, 0 since) | container journal (`journalctl -u BlockChain.service`) |
+| Restarts in the 2026-09-02 18:00 → now window | 14 | same source |
+| Longest uninterrupted run (as of 2026-09-05 07:14 UTC) | **~24 h 45 min** (since the 09-04 08:29 CEST restart) | same source |
+| `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥ 6 full builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`), plus several smaller dev-host rebuilds (Sessions 14–16) | `plan.md` session log |
+| Hardware spec / archive datadir size | not tracked in this document (operator-owned infrastructure) | — |
+
+**Power/electricity — real measurement (rack meter, 2026-08-05 → 2026-09-04, 30 days): 250 kWh
+measured.** At a typical gross household energy price (~**€0.231/kWh**, no supplier named):
+
+| Quantity | Value |
+| --- | --- |
+| Measurement window | 2026-08-05 – 2026-09-04 (30 days) |
+| Measured consumption | **250 kWh** (whole-rack meter) |
+| Avg power over window | **~347 W** |
+| Electricity cost (whole window) | **~€57.8** |
+| … per day | **~€1.93** / ~8.33 kWh |
+| … per month (30 days) | **~€57.8** |
+
+**Real invoice anchor point (quarterly installment/Akonto payment, whole household, no supplier
+named):** per the electricity bill, a quarterly installment ("Teilbetrag") of **€206.40** (due
+2025-10-10). Converted:
+
+| Quantity | Value |
+| --- | --- |
+| Quarterly installment | **€206.40** |
+| … monthly equivalent (÷3) | **~€68.80** |
+| … daily equivalent (÷~91 days) | **~€2.27** |
+| … annualized (×4 quarters) | **~€825.60** |
+
+**Important caveat:** a quarterly installment is an **advance payment (Akonto)** based on
+estimated annual consumption (standard Austrian billing model), **not** a direct measurement of
+actual consumption in that specific quarter — the annual final statement ("Jahresabrechnung")
+reconciles it later. The installment also covers the **whole household**, not just the server
+rack, and comes from a different time window (Q4 2025) than the rack measurement (Aug/Sep 2026) —
+so the two figures aren't directly subtractable, only roughly comparable. As an order-of-magnitude
+check: the real rack measurement (~€57.8/month) would correspond to **~84%** of the monthly-
+equivalent whole-household installment (~€68.80/month) — plausible for an always-on server rack
+running alongside normal household consumption, but given the differing time windows and
+Akonto/advance-payment nature, this should be read only as a rough plausibility check, not an
+exact cost split.
+
+**Cross-check against the CPU-utilization model:** the real rack measurement (~347 W avg) sits
+noticeably above the earlier single-host CPU-utilization model for `crius` alone (~219 W avg at
+55.2% 30-day CPU utilization, 350 W PSU rating, idle/full-load interpolation at 35%/85% of rated
+power). The ~128 W gap is plausible since the rack meter captures **the entire rack** — network
+gear (switch/router), possibly other hosts/storage besides `crius`, PSU conversion losses
+(< 100% efficiency), and other rack infrastructure (e.g. fans) — while the CPU model only covers
+the one host via `node_exporter` metrics and only indirectly captures non-CPU power draw
+(NVMe/RAM/NICs under load) through the idle/full-load band. **The rack measurement (250 kWh,
+~€57.8/month) is the more reliable, real figure** and supersedes the earlier model estimate as the
+headline number; the CPU model is kept as a cross-check below since it isolates the `crius` host's
+share, which the rack meter alone cannot resolve.
+
+<details>
+<summary>CPU-utilization model (cross-check, isolated <code>crius</code> host, no wattmeter)</summary>
+
+Estimated from Grafana/`node_exporter` CPU utilization (`instance="crius:9100"`, 32 vCPUs — this
+host also runs several other chain containers besides the archive node) combined with the PSU's
+rated 350 W and the same energy-price proxy. Model: linear interpolation between an idle
+assumption (35% of PSU rating ≈ 122.5 W) and a full-load assumption (85% of PSU rating ≈ 297.5 W),
+scaled by measured CPU utilization:
+
+| Window | Avg CPU utilization | Modeled avg power | Note |
+| --- | --- | --- | --- |
+| now (5 min) | 47.2% | ~205 W | snapshot |
+| 24h | 64.3% | ~235 W | includes Execution-stage ramp-up |
+| 7d | 50.6% | ~211 W | |
+| 30d (≈ since host boot 2026-08-06) | 55.2% | ~219 W | isolated `crius` host share (not rack total) |
+
+Host uptime (boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29.98 days; modeled energy
+~157.6 kWh, modeled cost ~€36.4 over roughly the same window — i.e. `crius` alone models out to
+roughly **~63%** of the real measured rack cost, with the remainder plausibly attributable to
+network gear/other rack equipment/PSU losses.
+
+</details>
+
+
+**Caveats:** (1) power draw is a CPU-utilization-based model, **not** a measured value — NVMe/
+network/RAM power under load are only indirectly captured via the idle↔full-load band, not
+measured separately. (2) `crius` runs several other chain containers besides the opBNB archive
+node (see the `systemd`/container overview referenced in the Session 18 plan entry) — this is a
+whole-host estimate, not isolated to the archive node. (3) the energy price used is a rough gross
+household-rate proxy (no real invoice, no supplier named); actual network fees/taxes may differ by
+contract. Rebuild time (~20–23 min per fat-LTO build) and restart frequency remain the only
+additional operationally-derived time proxies.
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference
 required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
