@@ -27,7 +27,12 @@ jobs:
           - profile: maxperf
             build_args: --manifest-path crates/optimism/bin/Cargo.toml --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global
             binary: target/maxperf/op-reth
-            rustflags: -C target-cpu=native
+            # target-cpu=native trusted the GitHub runner's reported CPUID, but the
+            # underlying hypervisor doesn't reliably back every advertised feature
+            # (e.g. AVX-512 state), causing rustc itself (proc-macro expansion runs
+            # in-process) or the built binary to crash with SIGILL. x86-64-v3 is a
+            # safe, still-modern baseline (AVX2/BMI2/FMA) that's actually guaranteed.
+            rustflags: -C target-cpu=x86-64-v3
 
     steps:
       - name: Checkout repository
