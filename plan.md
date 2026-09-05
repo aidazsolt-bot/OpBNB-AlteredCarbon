@@ -2122,3 +2122,44 @@ Session, kein Code geschrieben.
 - CLI/QA-Chain-Variante + Guard gegen Mainnet-Missbrauch (Punkt 2): ~0,5 Tag.
 - Kompatibilitäts-/Regressionstests (Punkt 3): ~1 Tag (abhängig von Testinfrastruktur-Reife).
 - **Nicht begonnen** — reine Analyse/Planung in dieser Session, kein Code, kein Test.
+
+## Session 17 cont.: sync-rate benchmark comparison + host hardware context (2026-09-05)
+
+**Official BNB Chain / Reth benchmark reference** (blog: "Diversifying BNB Smart Chain and opBNB
+Execution Clients with Reth", Reth v1.0.0, opBNB on AWS i4g.4xlarge: 16 vCPU Graviton2, 128GiB RAM,
+1x 3.75TB Nitro NVMe):
+
+Stage-sync (from genesis, opBNB chain state at time of benchmark — much shorter than today's 181M
+blocks): Headers 10min, Body 129min, Sender Recovery 246min, **Execution 2,580min (Archive)**,
+Account Hashing 1min, Storage Hashing 25min, Merkle 17min, Tx Lookup 22min — **total 53.38h**
+archive / 49.9h full. Historical backfill execution rate: **~690 MGas/s**.
+
+**Live-sync numbers are the more relevant comparison for our current phase** — measured over a
+30M-block-ish live window on opBNB:
+```
+Execution alone:                       133.80 MGas/s (archive) / 138.63 MGas/s (full)
+Execution + merklization + DB commit:   43.65 MGas/s (archive) /  42.69 MGas/s (full)
+```
+Official root-cause quote: *"The main reason for the underperformance of Live sync is that mdbx is
+not a write-friendly database. The commit db at the end of block execution takes up several tens
+of milliseconds, a challenge that becomes more pronounced for fast-blocking layer 2 solutions like
+opBNB."* — i.e. **the bottleneck is the MDBX commit path itself (architectural), not raw EVM
+execution throughput, and not host CPU/RAM capacity.** Pure execution is ~3x faster than the
+post-commit effective rate even on dedicated, unshared cloud hardware.
+
+**Implication for our host:** our `BSCRethArchiveNode` Execution stage currently runs at ~37-38
+blocks/s on a host that is heavily multi-tenant (shares CPU/RAM/NVMe bandwidth with ~15 other
+concurrently running full/archive nodes for other chains). Initially attributed the slower-than-
+benchmark rate partly to this resource contention; corrected view: since the dominant bottleneck
+in reth's Execution stage is the **per-block MDBX commit latency** (a serialized, architectural
+constraint independent of available CPU/RAM headroom), shared-host resource contention is not the
+primary driver here — the software/DB-engine design is the limiting factor, matching the official
+benchmark's own conclusion. Host hardware (anonymized): single 16-core/32-thread x86 server CPU
+class, several hundred GiB RAM, multiple consumer NVMe drives, shared across ~15 concurrently
+running blockchain node processes for other chains. Full raw hardware inventory kept out of this
+public repo (session-local notes only).
+
+**Also noted (from the same blog):** BNB Chain was working on a segmented snapshot download
+solution for BSC-scale genesis syncs, and recommended community-maintained snapshot repositories
+(e.g. `fuzzland/snapshots`) as the practical alternative to a full from-genesis archive sync given
+the multi-week timeframe involved — consistent with our own multi-week Execution-stage ETA.
