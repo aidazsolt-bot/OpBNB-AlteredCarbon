@@ -2166,6 +2166,27 @@ class, several hundred GiB RAM, multiple consumer NVMe drives, shared across ~15
 running blockchain node processes for other chains. Full raw hardware inventory kept out of this
 public repo (session-local notes only).
 
+**Update — normalized head-to-head comparison (2026-09-05, later same day):** measured our actual
+combined (execution+merklization+commit) effective rate over a live 23.4min window
+(`2026-09-05T16:25:30Z`→`16:48:54Z`) using the same methodology as the official benchmark (gas
+counter delta ÷ wall-clock time, **not** the instantaneous `reth_sync_execution_gas_per_second`
+gauge, which only measures pure per-block EVM execution duration and excludes DB-commit stalls —
+that gauge read an optimistic ~412 MGas/s average over the same window):
+```
+reth_sync_execution_gas_processed_total delta: 216,713,327,920 gas over 1,404s → 154.35 MGas/s
+reth_sync_checkpoint{stage="Execution"} delta:  63,274 blocks over 1,404s      → 45.07 blocks/s
+```
+**Our combined effective rate (154.35 MGas/s) is ~3.5x the official single-tenant AWS benchmark's
+combined rate (43.65 MGas/s archive)** — despite running on shared, multi-tenant hardware and
+against a chain ~5.9x longer than the benchmark's (larger tries generally mean slower commits, not
+faster). At the time of this measurement, our Execution checkpoint had already passed 20.19M
+blocks — roughly two-thirds of the benchmark's entire chain length — within ~24h of the
+`SenderRecovery`→`Execution` stage transition. This meaningfully strengthens (rather than
+undermines) the original point: the MDBX per-block-commit architecture is a real, documented
+ceiling, but it is not what's limiting *our* throughput today — our node is already running well
+above the reference implementation's combined rate on ostensibly weaker per-node resource
+availability.
+
 **Also noted (from the same blog):** BNB Chain was working on a segmented snapshot download
 solution for BSC-scale genesis syncs, and recommended community-maintained snapshot repositories
 (e.g. `fuzzland/snapshots`) as the practical alternative to a full from-genesis archive sync given
