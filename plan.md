@@ -2279,3 +2279,65 @@ strongly favorable at every scale (3.5x–28.3x), while our BSC result flips fro
 "slower" to "faster than official" only once hypothetically given 16+ cores — i.e. the
 gap to the BSC benchmark is plausibly explained by core count and storage topology, not
 an inherent architectural or configuration deficiency on our side.
+
+## Session 18: discv5 established_sessions stuck at 0 — root cause + fix
+
+**Symptom:** `reth_discv5_established_sessions_raw_total` / `reth_discv5_kbucket_peers_raw_total`
+on `BSCRethArchiveNode` (opBNB mainnet) had been flatlined at 0 since an abrupt counter reset on
+2026-08-25 11:06-11:07 UTC (previously: continuously growing, 205,177 max) — across ~90 restarts,
+including single-stack-IPv6-only and dual-stack variants, the routing table never recovered.
+
+**Investigation (in order):**
+1. Instant Prometheus queries showed 0 "forever" — misleading; `max_over_time(...[30d])` revealed
+   the true history (205k historical peak) and pinpointed the exact reset window via binary-search
+   `query_range`.
+2. `admin_peers` (raw IPC) confirmed 3 of 5 connected peers are non-trusted (`static:false,
+   trusted:false`) — i.e. discovery-sourced, contradicting an earlier (wrong) hypothesis that
+   discv5 finds nothing for opBNB. Turned out these 3 are simply replayed from the on-disk
+   `known-peers.json` RLPx cache, not fresh discv5 activity.
+3. Live TRACE-level `net::discv5` logs (`.cache/reth/logs/opbnb-mainnet/reth.log`, file logging
+   is enabled per current systemd unit) across two fresh restarts (single-stack IPv6, then
+   dual-stack) showed identical behavior: all 4 configured discv5 bootstrap nodes fail with
+   `err=Timeout` immediately at startup, then `connected_peers=0` forever — the IPv4/IPv6 stack
+   mode is not the cause.
+4. Standalone reachability probe (`cargo run -p reth-discv5 --example manual_discovery -- --nat
+   none --watch-secs 60`, isolated from the live node) confirmed independently, from this host:
+   - All 4 official opBNB discv5 bootstrap seeds (`bnb-chain/op-geth` `OpBNBMainnetBootnodes`,
+     decoded from ENR: `54.178.145.73:30303`, `54.227.72.206:30303`, plus two legacy community
+     nodes `52.193.218.151:30304`/`52.195.105.192:30304`) are **dead / non-discv5-responsive** —
+     100% timeout, not a local firewall/NAT/config issue (control-group OP-stack bootnode
+     `34.65.175.185:30305` responded successfully from the same process).
+   - Of our own two `--trusted-peers`, **one** (`167.235.95.170:30305`) responded with a valid
+     ENR over discv5; the other (`157.180.98.155:30315`/`:9200`) timed out.
+5. Confirmed via upstream comparison (`paradigmxyz/reth` and `bnb-chain/reth-bsc-trail`, both
+   identical on this point) that `--trusted-peers` and discv5/discv4 bootstrap seeds
+   (`--bootnodes` / `chain_spec.bootnodes()` fallback) are **architecturally separate lists** in
+   reth generally — this is not a fork bug. `--trusted-peers` alone never seeds the discv5
+   routing table.
+
+**Root cause:** the live node has no `--bootnodes` flag set, so discv5 falls back to
+`chain_spec.bootnodes()` = `OPBNB_MAINNET_BOOTNODES` (`crates/net/peers/src/optimism.rs`), all 4
+of which are now dead. Our one known-good discv5-capable peer was only listed under
+`--trusted-peers`, which reth never uses to seed discv5.
+
+**Fix (config-only, no code change needed):** added `--bootnodes` to the systemd unit, explicitly
+including the working peer plus the (currently dead, kept for forward-compat) official seeds:
+```
+--bootnodes "enode://a624fcf5276052da1f3a8151fd69e0e406903ff84d355301887d678f029160d02ab91583ed921812da04eefb12b24f4c71912c6f41603194b8c5ac8ef01ef421@167.235.95.170:30305,enode://547af4cbde12708f6d484f6182e9568da95404b0914fb4db4efa57794133427ca6968b86ca1322b29671d39e5db44e417f3be4b83a4c4d3772a708f82ff3948e@54.178.145.73:30303,enode://50849e69a823e74db2bdda011cd85f7ccbebb53a0655008d4cb31f948877b36376489ff848efb8f5c5a523024ede177ee6c944d0c487c1a57b04b51f1a3d8923@54.227.72.206:30303"
+```
+(applied only to the running systemd unit; reference copies of before/after unit files kept at
+`/tmp/BlockChain.service.current` and `/tmp/BlockChain.service.proposed` for this session).
+
+**Verified result:** within ~60s of restart with the new flag, `established_sessions_raw_total`
+314 and `kbucket_peers_raw_total` 73 (both up from 0), with the fork-ID filter correctly excluding
+irrelevant CL/opstack-mismatched peers discovered via the wider discv5 overlay network.
+
+**Lessons:**
+- Always check `max_over_time(...[30d])`/`query_range` history before concluding a Prometheus
+  counter "has always been 0" — instant queries on monotonic counters are misleading across
+  restarts.
+- `--trusted-peers` and discv5 bootstrap seeding are unrelated in reth; a working trusted peer
+  does not help discv5 bootstrap unless also passed via `--bootnodes`.
+- discv4 has zero Prometheus metrics instrumentation anywhere in the reth codebase (upstream gap,
+  confirmed on both `paradigmxyz/reth` and `bnb-chain/reth-bsc-trail`) — can't rely on metrics
+  alone to distinguish discv4- vs discv5-sourced peers; use `admin_peers` + log correlation.
