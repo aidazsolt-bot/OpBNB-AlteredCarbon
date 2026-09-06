@@ -2280,7 +2280,16 @@ strongly favorable at every scale (3.5x–28.3x), while our BSC result flips fro
 gap to the BSC benchmark is plausibly explained by core count and storage topology, not
 an inherent architectural or configuration deficiency on our side.
 
-## Session 18: discv5 established_sessions stuck at 0 — root cause + fix
+## Session 19: discv5 established_sessions stuck at 0 — root cause + fix
+
+**Scope check (important, corrects an initial overstatement):** the actual RLPx sync (Headers/
+Bodies fetch) was unaffected throughout this whole window — `reth_network_connected_peers` stayed
+steady at 4-5 the entire time (`min/max_over_time(...[30d])` = 0/17, i.e. it dipped but was never
+zero for long, and was not correlated with the discv5 reset). Those 4-5 connections come from the
+persistent `known-peers.json` RLPx cache plus the 2 `--trusted-peers`, neither of which depends on
+discv5 at all. What was actually broken is narrower: the node's ability to *discover new,
+previously-unknown* peers via the discv5 overlay network specifically — visible only through the
+`reth_discv5_*` counters, not through sync progress or connected-peer count.
 
 **Symptom:** `reth_discv5_established_sessions_raw_total` / `reth_discv5_kbucket_peers_raw_total`
 on `BSCRethArchiveNode` (opBNB mainnet) had been flatlined at 0 since an abrupt counter reset on
@@ -2331,6 +2340,12 @@ including the working peer plus the (currently dead, kept for forward-compat) of
 **Verified result:** within ~60s of restart with the new flag, `established_sessions_raw_total`
 314 and `kbucket_peers_raw_total` 73 (both up from 0), with the fork-ID filter correctly excluding
 irrelevant CL/opstack-mismatched peers discovered via the wider discv5 overlay network.
+
+**Practical impact of the ~12-day outage (not a sync blocker):** the node remained fully able to
+sync throughout, since it never actually needed discv5 for its existing 4-5 peers. The real risk
+was a discovery-resilience gap — no automatic ability to find replacement peers had several of the
+existing cached/trusted ones dropped simultaneously. The fix restores that redundancy, matching
+pre-2026-08-25 discv5 health; it does not change sync throughput or connected-peer count directly.
 
 **Lessons:**
 - Always check `max_over_time(...[30d])`/`query_range` history before concluding a Prometheus
