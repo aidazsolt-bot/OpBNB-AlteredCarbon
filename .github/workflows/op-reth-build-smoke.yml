@@ -32,7 +32,13 @@ jobs:
             # (e.g. AVX-512 state), causing rustc itself (proc-macro expansion runs
             # in-process) or the built binary to crash with SIGILL. x86-64-v3 is a
             # safe, still-modern baseline (AVX2/BMI2/FMA) that's actually guaranteed.
-            rustflags: -C target-cpu=x86-64-v3
+            # librocksdb-sys's build.rs assumes AVX implies PCLMUL (a real RocksDB
+            # upstream bug, documented in its own build.rs), but x86-64-v3's psABI
+            # level does not include PCLMUL, so crc32c.cc's CLMUL intrinics fail to
+            # compile without it. PCLMUL is present on effectively every x86_64 CPU
+            # since ~2011 (well below the x86-64-v3 baseline itself), so requesting
+            # it explicitly stays portable while working around the RocksDB bug.
+            rustflags: -C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq
 
     steps:
       - name: Checkout repository
