@@ -15,7 +15,7 @@ use clap::{
     builder::{OsStr, Resettable},
     Args,
 };
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{EthChainSpec, NamedChain};
 use reth_cli_util::{get_secret_key, load_secret_key::SecretKeyError};
 use reth_config::Config;
 use reth_discv4::{NodeRecord, DEFAULT_DISCOVERY_ADDR, DEFAULT_DISCOVERY_PORT};
@@ -45,7 +45,7 @@ use reth_network::{
     },
     HelloMessageWithProtocols, NetworkConfigBuilder, NetworkPrimitives,
 };
-use reth_network_peers::{mainnet_nodes, TrustedPeer};
+use reth_network_peers::{mainnet_nodes, OPBNB_MAINNET_STATIC_NODES, TrustedPeer};
 use reth_tasks::Runtime;
 use secp256k1::SecretKey;
 use std::str::FromStr;
@@ -592,7 +592,7 @@ impl NetworkArgs {
 
         // Configure peer connections
         let ip_filter = self.ip_filter().unwrap_or_default();
-        let peers_config = config
+        let mut peers_config = config
             .peers_config_with_basic_nodes_from_file(
                 self.persistent_peers_file(peers_file).as_deref(),
             )
@@ -600,6 +600,15 @@ impl NetworkArgs {
             .with_max_outbound_opt(self.resolved_max_outbound_peers())
             .with_ip_filter(ip_filter)
             .with_enforce_enr_fork_id(self.enforce_enr_fork_id);
+        if matches!(chain_spec.chain().named(), Some(NamedChain::OpBNBMainnet))
+            && peers_config.trusted_nodes.is_empty()
+        {
+            peers_config.trusted_nodes.extend(
+                OPBNB_MAINNET_STATIC_NODES
+                    .iter()
+                    .map(|node| node.parse().expect("valid built-in opBNB static node")),
+            );
+        }
 
         // Configure basic network stack
         NetworkConfigBuilder::<N>::new(secret_key, executor)
