@@ -2358,3 +2358,77 @@ pre-2026-08-25 discv5 health; it does not change sync throughput or connected-pe
 - discv4 has zero Prometheus metrics instrumentation anywhere in the reth codebase (upstream gap,
   confirmed on both `paradigmxyz/reth` and `bnb-chain/reth-bsc-trail`) — can't rely on metrics
   alone to distinguish discv4- vs discv5-sourced peers; use `admin_peers` + log correlation.
+
+## Session 20 (2026-09-07): opBNB default boot/static peers hardcoded, `ExecutionStage`
+fetch/execute pipelining, MerkleExecute unwind root-cause + `--debug.tip` re-validation run
+
+**Default boot/static peers (commit `c9d9e32ed0`, branch `main`).** Following on from Session 19,
+made the verified-working discv5-capable peer (`167.235.95.170:30305`) the sole entry in
+`OPBNB_MAINNET_BOOTNODES` (replacing the now-dead official `bnb-chain/op-geth` seeds and legacy
+community nodes), and added a new `OPBNB_MAINNET_STATIC_NODES` const with the two peers currently
+observed connected on the live archive node (`167.235.95.170:30305`, `157.180.98.155:30315`).
+`NetworkArgs::network_config` (`crates/node/core/src/args/network.rs`) now injects these as
+`trusted_nodes` defaults specifically for `NamedChain::OpBNBMainnet`, but **only if the user
+hasn't already configured `--trusted-peers`/persisted peers** — explicit CLI/config always wins.
+Net effect: a stock opBNB mainnet node no longer needs `--bootnodes`/`--trusted-peers` passed
+manually to reach the same peer set this fork's live node already uses. Compiled clean
+(`cargo check -p reth-network-peers -p reth-node-core`); not yet exercised on the live node since
+its systemd unit still passes explicit `--bootnodes`/no `--trusted-peers` — no behavior change
+observed there (explicit takes precedence / node already had `--bootnodes` from Session 19).
+
+**`ExecutionStage` fetch/execute pipelining (commit `b32f9e58d6`, branch
+`feat/execution-stage-fetch-pipeline`, based on `main`).** Identified `ExecutionStage::execute()`
+(`crates/stages/stages/src/stages/execution/mod.rs`) as serializing per-block fetch/decode I/O
+(`provider.recovered_block`) with EVM execution in a single loop — pure I/O and pure CPU work never
+overlap. Rewrote the loop with `std::thread::scope`: a dedicated prefetch thread reads/decodes
+blocks and sends them over a bounded `sync_channel(4)` (`EXECUTION_FETCH_PIPELINE_DEPTH`); the
+executor thread `recv()`s pre-fetched blocks instead of fetching inline. All existing
+thresholds/ExEx hooks/metrics/error handling preserved; channel backpressure caps memory at 4
+in-flight blocks; clean shutdown on early exit (dropped receiver ends the scope, next `send()`
+fails, producer exits — no explicit cancellation signal needed). Required adding a `Provider: Sync`
+bound to the stage impl (satisfied by the real provider type, confirmed via full `op-reth` binary
+compile). `cargo test -p reth-stages` is blocked by a pre-existing, unrelated compile error on
+`main` (missing `Address` import in `index_account_history.rs`, confirmed via `git stash`); only
+`cargo check` was usable for validation.
+- **Live-validated:** `make maxperf-op` build (23m39s) installed, node restarted 2026-09-07
+  11:19 UTC. Comparing wall-clock batch duration (not the logged Mgas/s throughput line, which only
+  measures pure EVM time and is now decoupled from fetch/I/O, so it under-reports the real gain)
+  across two consecutive execution-stage batches showed **~2.37x average speedup** (68.1 → 161.6
+  blocks/s). No errors/crashes since.
+
+**MerkleExecute bottleneck analysis (no code change, deferred).** `MerkleStage`/`StateRoot::calculate`
+(`crates/stages/stages/src/stages/merkle.rs`, `crates/trie/trie/src/trie.rs`) is serial by
+algorithmic design (single `TrieWalker`/`HashBuilder`), not just I/O-bound like Execution.
+Highest-value, moderate-effort fix identified: **storage roots are computed inline per-account**
+during the main trie walk, blocking it — `crates/trie/parallel/src/storage_root_targets.rs`
+already has a `StorageRootTargets`/`into_par_iter` Rayon pattern used by the live/proof-task path
+that could parallelize this in the batch `MerkleStage` too, but currently isn't. Full parallel trie
+rebuild (subtrie partition + merge) would be the higher-effort, higher-ceiling alternative. User
+deferred implementation pending live validation of the Execution-stage pipelining first.
+
+**Historical MerkleExecute unwind root-cause (investigation only, no code change).** Located the
+last `MerkleExecute`-triggered unwind via `journalctl` (file-based TRACE logs only retain ~1 day;
+journalctl retains much longer history and was the only usable source here) in the window
+2026-09-02 00:19–17:48 UTC. Two distinct, easily-conflated unwind cascades occurred hours apart,
+both unwinding to/around the same block number:
+1. `~04:27–04:58 UTC`: `ERROR Stage is missing static file data. stage=Execution bad_block=71185160
+   segment=Receipts` — a data-integrity issue in the **Execution** stage, unrelated to Merkle.
+2. `~12:54:12 UTC` (the actual answer): `ERROR Failed to verify block state root!` at
+   `stage=MerkleExecute bad_block=71185159` — got `0x0edebae1...`, expected (per header)
+   `0x68efa1b2f004b535ac102e6bd02bb78f7019c547cb63bb09bd38053378dfa732`.
+- Cross-validated block **71185160** (`0x43e3308`) independently via public RPC
+  (`https://opbnb-mainnet-rpc.bnbchain.org`, `eth_getBlockByNumber`): hash
+  `0x9b722c2eaa4e3fa6063523cbbf01a09ea1c1df636cf2a80a4dc8df21f26f27f1`, `parentHash` matches
+  block 71185159's header hash from the log exactly — confirms the local historical log data
+  matches canonical chain data, no divergence.
+- **Re-validation run started:** to replay `MerkleExecute` for block 71185159 in isolation,
+  restarted the node (11:46 UTC) with `--debug.tip
+  0x9b722c2eaa4e3fa6063523cbbf01a09ea1c1df636cf2a80a4dc8df21f26f27f1 --debug.terminate` (backfill
+  target = block 71185160; unit file staged at `/tmp/BlockChain-debugtip.service`, not yet
+  committed anywhere since it's host-local operational config, not part of this repo). As of
+  ~12:10 UTC the `Execution` stage was only at checkpoint ~25.73M of the 71.18M target (headers/
+  bodies were already synced far ahead; Execution backfill is the long pole) — ETA for Execution
+  alone to reach the target is on the order of days at current throughput (63–980 Mgas/s per
+  batch observed, highly variable); `MerkleExecute` for 71185159 will only run once Execution (and
+  the stages between it and Merkle) catch up to the target. Not yet reached/observed at time of
+  writing.
