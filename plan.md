@@ -2457,3 +2457,30 @@ Independently confirmed the live log-based ~2.37x measurement using Grafana/Mimi
   confirming it is a pure I/O/CPU-overlap gain (fetch/decode now hidden behind EVM execution
   latency) rather than any change to per-operation EVM or DB-commit speed — consistent with the
   design intent and the log-based finding from the initial live validation.
+
+**Correction: `entities_processed`/`entities_total` ratio jump at the restart is a metric-reset
+artifact, not a real 2x speed jump (2026-09-07 ~13:15 UTC).** User's Grafana panel computed
+`max by(stage)(reth_sync_entities_processed) / max by(stage)(reth_sync_entities_total)` for
+`stage="Execution"` and saw what looked like a 100%+ jump exactly at the 09:46:40 UTC restart.
+Root cause: `reth_sync_entities_total{stage="Execution"}` is the **cumulative gas** to the
+configured pipeline target (`execution_checkpoint()` in
+`crates/stages/stages/src/stages/execution/mod.rs`), not a block count. Restarting with
+`--debug.tip` changed the sync target from the chain tip (~181M) to block 71185160, so the
+denominator dropped abruptly (546.4T → 295.5T gas, −46%) at restart — inflating the ratio
+independent of any real throughput change.
+- Isolating the *actual* rate change after the target became stable (from 10:00 UTC onward, using
+  `reth_sync_entities_processed` deltas, i.e. gas/s): **153.4 Mgas/s (08:00–09:40, pre-restart) →
+  234.6 Mgas/s (09:50–13:10, post-restart) ⇒ ~1.53x**, not the ~2.0x seen via the
+  block-count-based `reth_sync_checkpoint{stage="Execution"}` rate in the prior Prometheus
+  cross-validation.
+- **Why the two metrics disagree:** blocks/s counts blocks uniformly; gas/s additionally depends
+  on average gas-per-block in whichever historical range is currently being processed (block
+  ~25.6M–26.4M here) — sparser/older blocks dilute the gas-based rate relative to the block-based
+  rate even though the per-block I/O-overlap gain is constant. Both figures are individually valid
+  measurements of different units; block-count rate (`rate(reth_sync_checkpoint{stage="Execution"}
+  [Δt])`) is the more robust metric for this comparison since it's insensitive to gas density
+  fluctuations across the range being replayed.
+- **Takeaway for future dashboards on this fork:** never diff `entities_processed/entities_total`
+  ratios across a pipeline-target change (e.g. any `--debug.tip` restart, or reaching chain tip) —
+  the denominator itself moves, which alone can produce a large apparent slope change unrelated to
+  real progress speed.
