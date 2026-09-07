@@ -2432,3 +2432,28 @@ both unwinding to/around the same block number:
   batch observed, highly variable); `MerkleExecute` for 71185159 will only run once Execution (and
   the stages between it and Merkle) catch up to the target. Not yet reached/observed at time of
   writing.
+
+**Prometheus cross-validation of the fetch/execute pipelining speedup (2026-09-07 ~12:20 UTC).**
+Independently confirmed the live log-based ~2.37x measurement using Grafana/Mimir
+(`job="reth", instance="BSCRethArchiveNode:6060"`), comparing a 34h pre-pipelining baseline
+(`2026-09-06 00:00`–`2026-09-07 10:00`, old binary) against the post-restart window
+(`--debug.tip` backfill run, new binary):
+- **`reth_sync_checkpoint{stage="Execution"}` wall-clock rate** (the only metric that reflects
+  the actual end-to-end gain, since it spans fetch+decode+execute+write): baseline Ø **36.5
+  blocks/s** → post-pipelining **73.4 blocks/s** ⇒ **~2.0x speedup**, corroborating the manual
+  log-batch measurement (slightly lower here since this window includes overhead from the other
+  12 pipeline stages, not Execution in isolation).
+- **`reth_sync_execution_gas_per_second`** (pure EVM gauge): baseline Ø 462 Mgas/s (range 151–1476)
+  vs. post-restart 314–553 Mgas/s — **no clear directional change**, exactly as expected: this
+  gauge only measures EVM execution time, which the pipelining change deliberately decoupled from
+  fetch/I/O; it was never expected to move.
+- **`reth_storage_providers_database_save_blocks_commit_mdbx`** (MDBX commit duration): baseline Ø
+  0.145s (range 0.037–0.44s) vs. post-restart 0.44s — within the pre-existing historical range, no
+  clear signal; commit timing tracks batch/write volume, not fetch pipelining.
+- Header/body download (network fetch) metrics are unaffected by design — `ExecutionStage` only
+  reads already-synced blocks from local static files/DB, never the network, so this optimization
+  has no reach into P2P/downloader metrics.
+- **Conclusion:** the speedup is visible *only* in the aggregate wall-clock stage-checkpoint rate,
+  confirming it is a pure I/O/CPU-overlap gain (fetch/decode now hidden behind EVM execution
+  latency) rather than any change to per-operation EVM or DB-commit speed — consistent with the
+  design intent and the log-based finding from the initial live validation.
