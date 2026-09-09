@@ -731,9 +731,11 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
 > bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; **Cursor Session 12** nur Proxy
 > (~72 K–388 K Tok Content-Proxy über Snapshots, **~4,5 h** früh + **~4 h** 08-15/16) — **billed** nur Account-Dashboard /
-> Abo (Context-Resend ≫ Content-Proxy). **Reale Cursor-AI-Kosten laut Betreiberangabe:
-> USD 200** für den Projekteinsatz; mangels Rechnungsaufschlüsselung werden sie nicht auf einzelne
-> Sessions oder Tokens verteilt. **Reale Copilot-Kosten laut Betreiberangabe: EUR 100 im August
+> Abo (Context-Resend ≫ Content-Proxy). **Dem opBNB-Projekt zugerechnete Cursor-AI-Kosten laut
+> Betreiberangabe: ca. EUR 70.** Der höhere Cursor-Gesamtaufwand umfasste auch andere Projekte und
+> wird hier deshalb nicht vollständig angesetzt. Mangels Rechnungsaufschlüsselung werden die
+> EUR 70 nicht auf einzelne Sessions oder Tokens verteilt. **Reale Copilot-Kosten laut
+> Betreiberangabe: EUR 100 im August
 > 2026 vollständig verbraucht plus insgesamt ~EUR 70 für die Zeit davor und danach bis zum
 > aktuellen Stand, somit ~EUR 170 kumuliert.** Sessions 13–20 (Copilot CLI, 2026-09-02→07): kein
 > Per-Session-Billed-Token-Ledger verfügbar (gleiche Copilot-CLI-Limitation wie Session 13); daher
@@ -753,14 +755,14 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 
 | Kostenart | Betrag | Einordnung |
 | --- | ---: | --- |
-| Cursor AI | **USD 200** | tatsächlich angefallen, Betreiberangabe; Projekteinsatz gesamt |
+| Cursor AI | **~EUR 70** | geschätzter opBNB-Anteil laut Betreiberangabe; übrige Cursor-Nutzung entfiel auf andere Projekte |
 | Copilot | **~EUR 170 tatsächlich** | EUR 100 im August vollständig aufgebraucht + ~EUR 70 davor/danach bis Standzeit, Betreiberangabe |
 | Copilot Session 21 | **~USD 13,59** Listenpreisverbrauch; **~USD 12,23** mit Auto-Rabatt | Verbrauchsäquivalent zur Transparenz; nicht zusätzlich zur realen Copilot-Zahl summieren |
 | Rack-Strom, 05.08.–04.09. | **~EUR 57,8** | 250 kWh real gemessen × 0,231 EUR/kWh Preisproxy |
 | Rack-Strom, 04.09.–09.09. 13:30 | **~EUR 10,71** | lineare Fortschreibung, kein neuer Zählerstand |
 | A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 339,6 aufgelaufen** seit 01.10.2025 bis 09.09.2026 13:30 (zeitanteilig) | reale wiederkehrende Betreiberangabe, gemeinsam für alle Dienste; tatsächlicher Rechnungszyklus kann abweichen |
-| **Erfasste EUR-Summe bis Standzeit** | **~EUR 578,02** | Copilot **170** + Strom **68,46** + Internet **339,56**; keine Hardwareanschaffung, Arbeitszeit oder unbekannte Stromzeiträume enthalten |
-| **Erfasste USD-Summe** | **USD 200 tatsächlich** | Cursor AI; Session-21-Copilot-Äquivalent nicht doppelt addiert |
+| **Erfasste EUR-Summe bis Standzeit** | **~EUR 648,02** | Cursor **70** + Copilot **170** + Strom **68,46** + Internet **339,56**; keine Hardwareanschaffung, Arbeitszeit oder unbekannte Stromzeiträume enthalten |
+| **USD-Verbrauchsäquivalent** | **~USD 12,23** | Session-21-Copilot-Kontrollrechnung; nicht zusätzlich zur realen Copilot-Zahl summiert |
 
 ### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-09 13:30 CEST)
 
