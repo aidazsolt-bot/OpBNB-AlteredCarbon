@@ -722,6 +722,8 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Copilot Session 16 (UPnP-Family-Folgebug Fix + Live-Deploy, 2026-09-03) | Root-Cause + Fix in `crates/net/nat/src/lib.rs` + Log-Wording in 2 weiteren Dateien; `cargo test -p reth-net-nat` (5 passed); `make maxperf-op`; User-Live-Deploy bestätigt | k.A. | k.A. | k.A. | Kein Ledger; 1 maxperf-Build + 1 Live-Redeploy (im Restart-Cluster 09-03 enthalten) |
 | Copilot Session 17 (Prometheus-Verify + Clean-Restart + Trusted-Peer-Check, 2026-09-04) | Grafana/Prometheus-Endpoint-Discovery, Sync-Rate-Vergleich, IPC-`admin_peers`-Check, sauberer Restart nach Debug-Logging-Deaktivierung | k.A. | k.A. | k.A. | Kein Ledger; 1 Restart (kein Rebuild) |
 | Copilot Session 18 (Restart-Historie + Status-Doku + `scripts/sync-eta.sh`, 2026-09-05) | Journal-Auswertung 08-10→heute (90 Restarts klassifiziert), Mimir-Range-Query für Stage-Übergang `SenderRecovery→Execution` (04-09 16:45 UTC), neues ETA-Automatisierungsskript, Rule-Update | ~20 Tool-Calls | <15 Min Wall | k.A. | Kein Ledger; reine Analyse-/Doku-Session, kein Rebuild/Deploy |
+| Copilot Session 20 (Execution fetch/execute pipeline, 2026-09-07) | Lokales Block-Fetch/Decode mit EVM-Ausführung über bounded `sync_channel(4)` überlappt; maxperf-Build **23m39s**, Live-Vergleich **~2,37x** pro Batch bzw. **~2,0x** Checkpoint-Rate; Änderung bleibt vorerst auf `feat/execution-stage-fetch-pipeline` | k.A. | k.A. | k.A. | Kein separater Billed-Token-Snapshot; 1 maxperf-Build + Live-Restart |
+| Copilot Session 21 (Wright L1FeeVault Consensus-Fix, 2026-09-09; Usage-Snapshot während Doku-Update 13:30–13:47 CEST) | Fataler Receipt-Root-Mismatch @`34367717`; öffentliche Receipt-RLP/MPT-Verifikation; op-geth-Paritätsaudit; gemeinsamer Debit/Credit-Fix + 2 Wright-Regressionstests; maxperf-Build **22m25s**; Offline-Unwind **72m35s**; isolierter Fix-Commit `29d7bfa2dd` nach `main` gepusht, Execution-Speedup nicht enthalten | **20.386.711 Input**, davon **19.270.326 Cache-Read** + **545.276 Cache-Write** | **77.366 Output** | **178 Modellaufrufe**; **~7 h Incident-Wall** | Offizielle GitHub-Tokenpreise: **~USD 13,59 / 1.358,8 AI Credits**, mit 10-%-Auto-Rabatt **~USD 12,23 / 1.222,9 Credits**; tatsächlicher Zusatzbetrag kann innerhalb des Plan-Kontingents **USD 0** sein |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
@@ -729,26 +731,50 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
 > bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; **Cursor Session 12** nur Proxy
 > (~72 K–388 K Tok Content-Proxy über Snapshots, **~4,5 h** früh + **~4 h** 08-15/16) — **billed** nur Account-Dashboard /
-> Abo (Context-Resend ≫ Content-Proxy). Sessions 13–18 (Copilot CLI, 2026-09-02→05): kein
+> Abo (Context-Resend ≫ Content-Proxy). **Reale Cursor-AI-Kosten laut Betreiberangabe:
+> USD 200** für den Projekteinsatz; mangels Rechnungsaufschlüsselung werden sie nicht auf einzelne
+> Sessions oder Tokens verteilt. Sessions 13–20 (Copilot CLI, 2026-09-02→07): kein
 > Per-Session-Billed-Token-Ledger verfügbar (gleiche Copilot-CLI-Limitation wie Session 13); daher
-> nur Aktivitäts-/Ergebnisbeschreibung ohne Kostenschätzung — **keine** Zahl erfinden. Quellen: lokale
+> nur Aktivitäts-/Ergebnisbeschreibung ohne Kostenschätzung — **keine** Zahl erfinden. Session 21
+> hat strukturierte Usage-Zähler. Nach offiziellen GitHub-Copilot-Default-Tier-Preisen
+> (GPT-5.6 Luna: Input/Cache-Read/Cache-Write/Output USD 0,20/0,02/0,25/1,20 pro 1M;
+> GPT-5.6 Sol: USD 4,00/0,40/5,00/20,00 pro 1M; kein Long-Context-Request) ergibt der Snapshot
+> **~USD 13,59 = 1.358,8 AI Credits**, beziehungsweise **~USD 12,23 = 1.222,9 Credits** mit dem
+> offiziellen 10-%-Rabatt für Auto-Auswahl auf bezahlten Plänen. Das ist der Verbrauchswert, nicht
+> zwingend eine Zusatzrechnung: innerhalb des monatlichen Plan-Kontingents ist der marginal
+> abgebuchte Betrag **USD 0**; erst darüber wird Zusatznutzung berechnet. Das Session-Store-Feld
+> `cost` ist nur ein gewichteter Usage-Zähler und wurde nicht als Währung verwendet. Quellen: lokale
 > Copilot-/Cursor-Sessiondaten; die früheren `files/`-Metrikartefakte sind bewusst nicht mehr Teil der
 > öffentlichen Git-History.
 
-### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten modelliert — Stand 2026-09-05)
+**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert):**
+
+| Kostenart | Betrag | Einordnung |
+| --- | ---: | --- |
+| Cursor AI | **USD 200** | tatsächlich angefallen, Betreiberangabe; Projekteinsatz gesamt |
+| Copilot Session 21 | **~USD 13,59** Listenpreisverbrauch; **~USD 12,23** mit Auto-Rabatt | Verbrauchsäquivalent; Zusatzrechnung kann innerhalb des Plan-Kontingents USD 0 sein |
+| Rack-Strom, 05.08.–04.09. | **~EUR 57,8** | 250 kWh real gemessen × 0,231 EUR/kWh Preisproxy |
+| Rack-Strom, 04.09.–09.09. 13:30 | **~EUR 10,71** | lineare Fortschreibung, kein neuer Zählerstand |
+| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 339,6 aufgelaufen** seit 01.10.2025 bis 09.09.2026 13:30 (zeitanteilig) | reale wiederkehrende Betreiberangabe, gemeinsam für alle Dienste; tatsächlicher Rechnungszyklus kann abweichen |
+| **Erfasste EUR-Summe bis Standzeit** | **~EUR 408,0** | Strom **68,46** + Internet **339,56**; keine Hardwareanschaffung, Arbeitszeit oder unbekannte Zeiträume enthalten |
+| **Erfasste USD-Summe / Verbrauch** | **USD 200 tatsächlich** + **~USD 12,23 Copilot-Äquivalent** | zusammen **~USD 212,23 wirtschaftlicher Verbrauch**, aber nur USD 200 als Zahlung bestätigt; Plan-/Overage-Abrechnung unbekannt |
+
+### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-09 13:30 CEST)
 
 Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
 Infrastruktur, nicht gemietete Cloud-Instanz mit Abrechnung pro Stunde). Restart-/Rebuild-Zahlen
-unten sind direkte Betriebs-Proxys; die Stromkosten-Zahl weiter unten ist eine **Modellschätzung**
-(aus CPU-Auslastung abgeleitet, kein Wattmeter) — beides ersetzt keine echte Rechnung, es wird
-aber keine Zahl frei erfunden:
+unten sind direkte Betriebs-Proxys. Der 30-Tage-Stromverbrauch ist am Rack real gemessen; nur die
+Fortschreibung danach und der verwendete kWh-Preis sind Schätzungen. Das ersetzt keine Rechnung,
+aber es wird keine Zahl frei erfunden:
 
 | Metrik | Wert | Quelle |
 | --- | --- | --- |
 | `BlockChain.service`-Restarts seit 2026-08-10 | **90** (Tagesverteilung s. Session 18) | Container-Journal (`journalctl -u BlockChain.service`) |
 | Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
 | Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
-| `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 6 vollständige Fat-LTO-Builds à ~20–23 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16) | plan.md-Sessionprotokoll |
+| `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 8 vollständige Fat-LTO-Builds à ~20–24 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16); neu: Session 20 **23m39s**, Session 21 **22m25s** | plan.md-Sessionprotokoll |
+| Wright-Recovery-Maschinenzeit (09-09) | Build **22m25s** + Offline-Unwind **72m35s**; anschließender Header-/Body-Refill und Re-Execution laufen weiter | Build-/Node-Log |
+| A1 Glasfaser Internet 250/100, unlimitiert | **~EUR 30/Monat**, **~EUR 360/Jahr**, aktiv seit Oktober 2025; gemeinsame Anbindung aller Dienste/Nodes, nicht opBNB-exklusiv | Betreiberangabe |
 | Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
 
 **Stromverbrauch — reale Messung (Rack-Zähler, 05.08.2026 → 04.09.2026, 30 Tage):** **250 kWh**
@@ -763,6 +789,28 @@ ergibt das:
 | Stromkosten (gesamter Zeitraum) | **~EUR 57,8** |
 | … pro Tag | **~EUR 1,93** / ~8,33 kWh |
 | … pro Monat (30 Tage) | **~EUR 57,8** |
+
+**Fortschreibung nach dem letzten realen Zählerstand (keine neue Messung):** Für
+04.09.2026 00:00 bis 09.09.2026 13:30 CEST (5,563 Tage) ergibt die unveränderte gemessene
+Rack-Durchschnittsrate von 8,33 kWh/Tag rechnerisch **~46,36 kWh / ~EUR 10,71** zusätzlich.
+Gemessener 30-Tage-Wert plus Fortschreibung entsprechen damit **~296,36 kWh / ~EUR 68,46** über
+35,563 Tage. Das ist ausdrücklich eine lineare Extrapolation, kein neuer Zählerstand.
+
+Für das rund siebenstündige Wright-Incident-Fenster entspricht derselbe Rack-Durchschnitt
+**~2,43 kWh / ~EUR 0,56**. Dieser Wert ist nur ein zeitanteiliger Rack-Betriebsproxy und keine
+marginale Mehrkostenmessung des Builds oder Unwinds; der Rack hätte auch ohne Incident andere
+Blockchain-Nodes betrieben.
+
+**Netzteil-/Rack-Plausibilität:** Der Node-Host verwendet ein **be quiet! SFX Power 3 450 W,
+80 PLUS Bronze**. Die Herstellerwerte bei 230 V sind 86,9 % Effizienz bei 20 %, 89,3 % bei 50 %
+und 85,9 % bei 100 % Last. Der Rack-Messwert von 250 kWh/30 d entspricht **347,2 W AC im Mittel**.
+Bei rund 86–89 % Wirkungsgrad wären das grob **299–310 W DC**, also **~66–69 %** der
+450-W-Nennleistung. Das Netzteil kann den gemessenen Mittelwert technisch vollständig liefern;
+450 W bezeichnet seine DC-Ausgangsleistung, nicht die maximale AC-Aufnahme. Daraus folgt aber
+nicht, dass der Host allein den gesamten Rack-Verbrauch verursacht: Eine A1-FRITZ!Box Fiber und
+weitere Rack-Komponenten sind ebenfalls vorhanden. Falls sie hinter demselben Zähler hängen, ist
+ihr Verbrauch bereits in den 250 kWh enthalten. Ohne exaktes FRITZ!Box-Modell oder Einzelmessung
+wird ihr Leistungsanteil nicht geschätzt.
 
 **Realer Rechnungs-Ankerpunkt (Teilbetrag/Akontozahlung, Gesamthaushalt, ohne Anbieternennung):**
 laut Stromrechnung ein quartalsweiser Teilbetrag von **EUR 206,40** (fällig 10.10.2025). Umgerechnet:
@@ -785,64 +833,25 @@ direkt subtrahierbar, nur grob vergleichbar. Rein größenordnungsmäßig: die r
 Haushaltsverbrauch, aber wegen der unterschiedlichen Zeitfenster/Akonto-Charakter nur als grobe
 Plausibilitätsprüfung zu verstehen, nicht als exakte Aufteilung.
 
-**Abgleich mit CPU-Auslastungsmodell:** Die reale Rack-Messung (~347 W Ø) liegt spürbar über der
-vorherigen CPU-Auslastungs-Modellschätzung für den einzelnen `crius`-Host (~219 W Ø bei 55,2 %
-30-Tage-CPU-Auslastung, Netzteil-Typenschild 350 W, Leerlauf/Volllast-Interpolation 35 %/85 % der
-Nennleistung). Die Differenz (~128 W) ist plausibel, da der Rack-Zähler **den gesamten Rack**
-misst — Netzwerk-Equipment (Switch/Router), ggf. weitere Hosts/Storage neben `crius`, PSU-
-Wirkungsgradverluste (< 100 %) und sonstige Rack-Infrastruktur (z. B. Lüfter) —, während das
-CPU-Modell nur den einen Host über `node_exporter`-Metriken abbildet und PSU-Verlustleistung
-sowie Nicht-CPU-Verbraucher (NVMe/RAM/Netzwerkkarten unter Last) nur indirekt über die
-Leerlauf/Volllast-Bandbreite erfasst. **Die Rack-Messung (250 kWh, ~EUR 57,8/Monat) ist die
-belastbarere, reale Zahl** und ersetzt die vorherige Modellschätzung als Hauptangabe; das
-CPU-Modell bleibt als Cross-Check-Notiz erhalten (Details unten), da es den isolierten
-`crius`-Host-Anteil separat sichtbar macht, den der Rack-Zähler nicht auflöst.
+**Verworfenes CPU-Auslastungsmodell:** Die frühere Rechnung mit einem vermeintlichen
+350-W-Netzteil (`~219 W`, `~157,6 kWh`, `~EUR 36,4`) ist ungültig: Das reale Netzteil hat 450 W,
+und CPU-Auslastung lässt sich ohne gemessene Idle-/Last-Leistungswerte nicht linear in
+Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Belastbar bleiben der
+Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
+Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-<details>
-<summary>CPU-Auslastungsmodell (Cross-Check, isolierter <code>crius</code>-Host, kein Wattmeter)</summary>
+## Nächste Schritte (unmittelbar — Stand 2026-09-09 13:47 CEST)
 
-
-Schätzung aus Grafana/`node_exporter`-CPU-Auslastung (`instance="crius:9100"`, 32 vCPU, Host trägt
-neben dem Archive-Node mehrere weitere Chain-Container) + Netzteil-Typenschild **350 W** + demselben
-Energiepreis-Proxy. Modell: linear zwischen Leerlaufannahme (35 % der Nennleistung ≈ 122,5 W) und
-Volllastannahme (85 % der Nennleistung ≈ 297,5 W), interpoliert über die gemessene CPU-Auslastung:
-
-| Fenster | CPU-Auslastung Ø | Modellierte Leistung Ø | Bemerkung |
-| --- | --- | --- | --- |
-| jetzt (5 min) | 47,2 % | ~205 W | Snapshot |
-| 24 h | 64,3 % | ~235 W | u. a. Execution-Stage-Ramp-up |
-| 7 d | 50,6 % | ~211 W | |
-| 30 d (≈ seit Host-Boot 2026-08-06) | 55,2 % | ~219 W | isolierter `crius`-Host-Anteil (nicht Rack-Gesamt) |
-
-Host-Uptime (Boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29,98 Tage; modellierte Energie
-~157,6 kWh, modellierte Kosten ~EUR 36,4 im selben Fenster — d. h. `crius` allein macht modelliert
-grob **~63 %** der real gemessenen Rack-Kosten aus, der Rest entfällt plausibel auf
-Netzwerk-Equipment/andere Rack-Geräte/PSU-Verluste.
-
-</details>
-
-
-**Vorbehalte:** (1) Leistung/Host-Anteil ist ein Modell aus CPU-Auslastung, **kein** gemessener
-Wert — NVMe/Netzwerk/RAM-Leistungsaufnahme unter Last werden nur indirekt über die
-Idle↔Volllast-Bandbreite mitabgebildet, nicht separat gemessen. (2) `crius` trägt neben dem
-opBNB-Archive-Node mehrere weitere Chain-Container (siehe `systemd`/`machinectl`-Übersicht in
-Session 18) — die Zahl ist Host-weite Gesamtkosten, nicht isoliert für den Archive-Node. (3) Der
-verwendete Energiepreis ist ein grober Haushalts-Bruttopreis-Proxy (keine reale Rechnung, kein
-Lieferant genannt); Netzentgelte/Steuern können je nach Vertrag abweichen. Rebuild-Zeit
-(~20–23 Min pro Fat-LTO-Build) und Restart-Frequenz bleiben die einzigen zusätzlichen, direkt aus
-dem Betrieb abgeleiteten Zeit-Proxies.
-
-## Nächste Schritte (unmittelbar — Stand 2026-08-20)
-
-> Historische Compile-Loop-Liste (Session `a95758da`, 2026-08-06) ist erledigt und bleibt unten
-> im Session-Protokoll. **Aktuelle Priorität = Roadmap (Exec-Fenster)** oben.
-
-1. **Live unsupervised:** Execution weiterlaufen lassen — **kein Restart**; FLOW-X05 Unwind-Watch.
-2. **Optional:** Point-4 stateRoot-Stichprobe im Wright-Fenster (Höhe bereits passiert).
-3. **diese Woche (parallel, kein Live-Restart):** CLEANUP-A02 Rest + A03/A04.
-4. **bei geplantem Restart:** P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004.
-5. **nach Tip (~1½–2½ Mo @ current rate):** Merkle/History-Gates; op-reth `download`/`snapshot-manifest`; FEAT-HIST-*.
-6. Nach Meilensteinen: `plan.md` Todo/Roadmap + README Effort-Log + Metrics-JSON nachziehen.
+1. **Kein Restart:** laufenden bounded Recovery-Run bis zum vollständigen Headers-ETL-Commit
+   weiterlaufen lassen; danach Bodies und SenderRecovery beobachten.
+2. **Consensus-Gate:** Execution muss mit dem gefixten Binary ab `32984677` neu ausführen und Block
+   `34367717` ohne Unwind mit Receipt-Root `0xc8e83d75…30c` passieren.
+3. **Branch-Trennung:** `main` enthält nur den Wright-Fix (`29d7bfa2dd`); Execution-Speedup
+   `b32f9e58d6` bleibt bis zum erfolgreichen Gate auf `feat/execution-stage-fetch-pipeline`.
+4. **Bounded-Ende:** bis Debug-Tip `71185160` weiterlaufen; `--debug.terminate` muss danach
+   kontrolliert beenden.
+5. Nach den Meilensteinen Live-Ergebnis, Endzeit, zusätzliche Strom-/Modellkosten und endgültige
+   Pipeline-Checkpoints in `plan.md` und README nachziehen.
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
 

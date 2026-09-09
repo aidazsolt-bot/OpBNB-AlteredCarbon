@@ -322,11 +322,13 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
+| Actual Cursor AI spend (operator statement) | **USD 200** for the project usage; no invoice-level allocation by session/model/token is available |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
 | Cursor Session 12 activity (EXEC-001 → UPnP / past Fail / X02 / A02) | Snapshot **08-16:** Transcript **~1.58 MB** → proxy **~396K tokens** (filesize÷4); calendar **~88 h**; interactive **~4.5 h** early + **~4 h** 08-15 evening/08-16 morning; billed **n/a** — source artefacts are local-only and not published |
 | Copilot Session 13 activity (Storage-v2 recovery, root-cause analysis and fixes, 2026-09-02) | Journal/Mimir diagnosis of the receipt-static-file unwind; Storage v2 migration/consistency changes; source-level root-cause analysis on `main` yielding two fixes (static-file block-index underflow `fa6caf3022`, slot-preimage DB port `ce0c722d9b`); six reactivated preimage regression tests plus `test_pipeline`/`test_pipeline_v2`, `cargo check --workspace` and two `make maxperf-op` builds. Per-session billed-token telemetry is unavailable; no incremental monetary estimate is claimed. |
+| Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09; usage snapshot during 13:30–13:47 CEST documentation update) | Root-caused receipt-root mismatch at block `34367717` to asymmetric Wright handling: gasless transactions skipped the sender debit but still credited L1FeeVault. Added one shared debit/credit calculation and two regression tests; built maxperf in **22m25s**, unwound offline to pre-Wright block `32984676` in **72m35s**, and pushed the isolated fix as `29d7bfa2dd` to `main`. Usage: **178 model calls, 20.39M input (19.27M cache-read + 545K cache-write), 77.4K output** and ~7 h incident wall time. Official GitHub token rates give **~USD 13.59 / 1,358.8 AI Credits**, or **~USD 12.23 / 1,222.9 credits** with the paid-plan Auto discount; actual incremental billing can be USD 0 while covered by the monthly plan allowance. |
 | Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
@@ -368,12 +370,12 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-05, order of magnitude) | Storage-v2 recovery root-cause + re-sync decision (Session 13); peer-connectivity investigation + migrate-v2 validation (Session 14); dual-stack live-verify (Session 15); UPnP follow-up fix authorization + **live production redeploy** of `BlockChain.service` (Session 16, human-executed restart, not agent-executed); Prometheus/journal cross-check + debug-logging reduction + clean restart (Session 17); restart-history/ETA doc consolidation (Session 18, this update). Roughly **1–2 h** operator review per session, plus the live redeploy itself — still tens-of-hours order of magnitude in total, not a full-time role. |
-| Cost beyond LLM | Host CPU/NVMe/network for archive sync + rebuilds — **not** monetized here; LLM illustrative cost above is Copilot-API-equivalent only. See "Infra-operation cost proxies" below for the only available (non-monetary) proxies. |
+| September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 recovery and networking work (Sessions 13–18); Execution fetch/execute pipeline and live speed measurement (Session 20); Wright receipt-root incident, consensus fix, rebuild, unwind and restart (Session 21). Session 21 alone occupied **~7 h wall**, including a **22m25s** build and **72m35s** unwind. |
+| Cost summary through 2026-09-09 13:30 CEST | Actual Cursor AI: **USD 200**. Copilot Session 21: **~USD 12.23** discounted usage equivalent, with actual overage possibly USD 0. Electricity: **~EUR 68.46** measured + extrapolated. A1 fiber since 2025-10-01: **~EUR 339.56** time-proportional. **Tracked totals: ~EUR 408.02 plus USD 200 confirmed cash spend; ~USD 212.23 economic model usage if the Copilot equivalent is included.** No FX conversion, hardware, labor, or unmeasured electricity periods included. |
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
-#### Infra-operation cost proxies (2026-08-10 → 2026-09-05, restart/rebuild proxies + measured power)
+#### Infra-operation cost proxies (2026-08-10 → 2026-09-09, restart/rebuild proxies + measured power)
 
 No real hosting invoice exists for the archive node (it runs on the operator's own infrastructure,
 not a metered cloud instance). Restart/rebuild figures below are direct operational proxies; the
@@ -385,7 +387,9 @@ cross-check — neither is a substitute for an actual bill, and no invoice is cl
 | `BlockChain.service` restarts since 2026-08-10 | **90** total (28 on 08-10, 21 on 08-11, 13 on 08-14, 4 on 08-15, 1 on 08-18, 2 on 08-25, 1 on 09-01, 6 on 09-02, 13 on 09-03, 1 on 09-04, 0 since) | container journal (`journalctl -u BlockChain.service`) |
 | Restarts in the 2026-09-02 18:00 → now window | 14 | same source |
 | Longest uninterrupted run (as of 2026-09-05 07:14 UTC) | **~24 h 45 min** (since the 09-04 08:29 CEST restart) | same source |
-| `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥ 6 full builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`), plus several smaller dev-host rebuilds (Sessions 14–16) | `plan.md` session log |
+| `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥8 full builds @ ~20–24 min each, plus smaller dev-host rebuilds; latest: execution pipeline **23m39s**, Wright fix **22m25s** | `plan.md` session log |
+| Wright recovery machine time (2026-09-09) | Build **22m25s** + offline unwind **72m35s**; header/body refill and re-execution still running | build/node logs |
+| A1 fiber Internet 250/100, unlimited | **~EUR 30/month**, **~EUR 360/year**, active since October 2025; shared by all services/nodes, not attributable solely to opBNB | operator statement |
 | Hardware spec / archive datadir size | not tracked in this document (operator-owned infrastructure) | — |
 
 **Power/electricity — real measurement (rack meter, 2026-08-05 → 2026-09-04, 30 days): 250 kWh
@@ -399,6 +403,20 @@ measured.** At a typical gross household energy price (~**€0.231/kWh**, no sup
 | Electricity cost (whole window) | **~€57.8** |
 | … per day | **~€1.93** / ~8.33 kWh |
 | … per month (30 days) | **~€57.8** |
+
+**Linear carry-forward after the last meter reading (not a new measurement):** applying the same
+measured rack average to 2026-09-04 00:00 → 2026-09-09 13:30 CEST gives **~46.36 kWh /
+~€10.71** additional, or **~296.36 kWh / ~€68.46** for the measured value plus extrapolation.
+The seven-hour Wright incident window corresponds to **~2.43 kWh / ~€0.56** at that average.
+This is whole-rack time allocation, not measured marginal incident energy.
+
+**PSU/rack plausibility:** the host uses a **be quiet! SFX Power 3 450 W, 80 PLUS Bronze**.
+Official 230 V efficiency is 86.9%/89.3%/85.9% at 20%/50%/100% load. The rack's measured
+347.2 W average AC draw corresponds to roughly **299–310 W DC (~66–69% of the 450 W rating)**,
+so this PSU can technically supply the complete measured average. That does not prove the host
+caused all of it: the rack also includes an A1 fiber FRITZ!Box and other infrastructure. If the
+router is downstream of the meter, its power is already included; its share is left unestimated
+without the exact model or a separate outlet measurement.
 
 **Real invoice anchor point (quarterly installment/Akonto payment, whole household, no supplier
 named):** per the electricity bill, a quarterly installment ("Teilbetrag") of **€206.40** (due
@@ -423,50 +441,12 @@ running alongside normal household consumption, but given the differing time win
 Akonto/advance-payment nature, this should be read only as a rough plausibility check, not an
 exact cost split.
 
-**Cross-check against the CPU-utilization model:** the real rack measurement (~347 W avg) sits
-noticeably above the earlier single-host CPU-utilization model for `crius` alone (~219 W avg at
-55.2% 30-day CPU utilization, 350 W PSU rating, idle/full-load interpolation at 35%/85% of rated
-power). The ~128 W gap is plausible since the rack meter captures **the entire rack** — network
-gear (switch/router), possibly other hosts/storage besides `crius`, PSU conversion losses
-(< 100% efficiency), and other rack infrastructure (e.g. fans) — while the CPU model only covers
-the one host via `node_exporter` metrics and only indirectly captures non-CPU power draw
-(NVMe/RAM/NICs under load) through the idle/full-load band. **The rack measurement (250 kWh,
-~€57.8/month) is the more reliable, real figure** and supersedes the earlier model estimate as the
-headline number; the CPU model is kept as a cross-check below since it isolates the `crius` host's
-share, which the rack meter alone cannot resolve.
-
-<details>
-<summary>CPU-utilization model (cross-check, isolated <code>crius</code> host, no wattmeter)</summary>
-
-Estimated from Grafana/`node_exporter` CPU utilization (`instance="crius:9100"`, 32 vCPUs — this
-host also runs several other chain containers besides the archive node) combined with the PSU's
-rated 350 W and the same energy-price proxy. Model: linear interpolation between an idle
-assumption (35% of PSU rating ≈ 122.5 W) and a full-load assumption (85% of PSU rating ≈ 297.5 W),
-scaled by measured CPU utilization:
-
-| Window | Avg CPU utilization | Modeled avg power | Note |
-| --- | --- | --- | --- |
-| now (5 min) | 47.2% | ~205 W | snapshot |
-| 24h | 64.3% | ~235 W | includes Execution-stage ramp-up |
-| 7d | 50.6% | ~211 W | |
-| 30d (≈ since host boot 2026-08-06) | 55.2% | ~219 W | isolated `crius` host share (not rack total) |
-
-Host uptime (boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29.98 days; modeled energy
-~157.6 kWh, modeled cost ~€36.4 over roughly the same window — i.e. `crius` alone models out to
-roughly **~63%** of the real measured rack cost, with the remainder plausibly attributable to
-network gear/other rack equipment/PSU losses.
-
-</details>
-
-
-**Caveats:** (1) power draw is a CPU-utilization-based model, **not** a measured value — NVMe/
-network/RAM power under load are only indirectly captured via the idle↔full-load band, not
-measured separately. (2) `crius` runs several other chain containers besides the opBNB archive
-node (see the `systemd`/container overview referenced in the Session 18 plan entry) — this is a
-whole-host estimate, not isolated to the archive node. (3) the energy price used is a rough gross
-household-rate proxy (no real invoice, no supplier named); actual network fees/taxes may differ by
-contract. Rebuild time (~20–23 min per fat-LTO build) and restart frequency remain the only
-additional operationally-derived time proxies.
+**Discarded CPU-utilization model:** the earlier estimate based on an assumed 350 W PSU
+(~219 W, ~157.6 kWh, ~€36.4) is invalid: the installed PSU is 450 W, and CPU utilization cannot
+be linearly converted to whole-system power without measured idle/load draw. Those figures are
+not rescaled. The rack meter and electrical plausibility bound above remain the reliable basis.
+The €0.231/kWh rate remains a household-price proxy; per-device and per-node shares require
+separate outlet measurements.
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference
 required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
@@ -475,8 +455,10 @@ cost of AI-assisted maintenance at this scale, not as a benchmark claim — no r
 optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
 figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
-> **TODO:** After human catch-up/full sync validation on BSC/opBNB, refresh final cumulative token/time
-> figures (replace Cursor proxies with account billing export if available) and live-test outcome.
+> **Current validation gate:** allow the bounded opBNB recovery run to finish Headers → Bodies →
+> SenderRecovery, then verify fixed Execution crosses block `34367717` with canonical receipt root
+> `0xc8e83d75…30c`. Keep the Execution-stage speedup on its feature branch until that consensus gate
+> passes. Replace cost proxies with billing/meter exports when available.
 
 ### TODO (backlog): EIP-7702 / type-4 transactions — BEP-441 "Pascal" hardfork (BSC + opBNB)
 
