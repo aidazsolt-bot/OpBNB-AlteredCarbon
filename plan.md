@@ -160,10 +160,10 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-B04 | Bodies↔Headers Kopplung | Bodies startet erst nach Headers-Checkpoint; kein stilles Warten ohne Metrik | PIPE-005 | ✅ Headers→Bodies ~18:58 CEST (08-11) |
 | PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA (Feld im Deposit-TX, kein `ecrecover`); Fehlerpfad ≠ Peer-Ban | PIPE-006 | ✅ **live OK** Tip-Lauf; Catch-up 08-15: Sender wartet auf Bodies-Yield (@ Fail-Höhe) |
 | PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | ✅ **Fermat live** · PIPE-014/X04 Hertz ✅ · ⏳ Haber live ab `1718872200` |
-| PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth setzt `skip_l1_data_fee=true` ab Wright. Das vendorte Workspace-`crates/optimism/op-revm` gated die L1-Datenkosten ebenfalls mit `gas_price==0` und erhält das Flag beim L1-Info-Reload; Isthmus-Operatorgebühren bleiben erhalten. | PIPE-009 | ✅ Code + Unit `wright_gasless_transactions_skip_only_l1_data_fee` und Reload-Test · 🔬 portabler Gesamtbuild / Live-Stichprobe ab ~**32984677** |
+| PORT-FLOW-X02 | Wright L1-Fee | op-geth: Bei Wright + `gasPrice==0` müssen sowohl Sender-Debit als auch `L1FeeVault`-Credit `0` sein. Der erste Port guardete nur `tx_cost_with_tx` (Debit); `reward_beneficiary` berechnete und creditierte die L1-Fee trotzdem und mintete dadurch Vault-Balance. Beide Pfade nutzen nun `l1_data_fee_with_tx`; Isthmus-Operatorgebühren bleiben erhalten. | PIPE-009 | 🐛 **09-09 Root Cause gefixt** · Units für Debit + Credit ✅ · bestehender DB-State seit Wright potentiell divergent; vor Wright (`32984676`) unwind/re-execute, sofern der erste gasless Non-Deposit-Tx nicht enger belegt wird |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
 | PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | ✅ **closed** · idx=10 `syncLightBlock`/`0x67` · Hertz-Overlay · `re-execute 54..55` ✅ (08-15 ~14:13 CEST, kein Dump) |
-| PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 **3×** live (2× Receipt @`21591154` + **08-14 ~13:43** Merkle @`21579110`→unwind_to=0); Tip gerettet per Kill vor Headers-Commit; **Ops:** Process-Stop ≫ `max-block` als Park |
+| PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 live: frühere Receipt/Merkle-Fälle plus **09-09 Receipt-Root @`34367717`** (`local=1aa049…`, canonical=`c8e83d…`) → automatischer unwind auf `34366337`; Prozess beendete sich selbst am unerwarteten Consensus-Fehler, leeres `MAINPID` im Stop war nur Folge. **Ops:** nicht vom bereits divergenten State weiterlaufen; Wright-Recovery gemäß X02 |
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
 | PORT-FLOW-S03 | Metrics/Healing | Alle `StaticFileSegment`s in Metrics registriert (STOR-009-Klasse) | STOR-009 | ✅ |
@@ -489,7 +489,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery (`OpTransactionSigned::recover_signer` → Deposit.`from`) | **R01 ✅** | ✅ umgesetzt · ✅ **live OK** Tip @15:54 CEST (s. Live Sync Progress) |
 | PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 ✅ Fermat** | ✅ umgesetzt · ✅ **live** Exec≫Fermat; IPC stateRoot MATCH an `9397477`± (s. Live Sync Progress) |
 | PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 Haber ✅** | ✅ umgesetzt · ✅ **live** Haber Point-4 MATCH (08-17) |
-| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | `factory.rs` setzt `skip_l1_data_fee=true` ab Wright. Das vendorte Workspace-`op-revm` überspringt L1-Kosten nur bei Flag **∧** `gas_price==0`, bewahrt das Flag über `try_fetch` und berechnet post-Isthmus weiterhin die Operatorfee — ≡ op-geth `core/state_transition.go::buyGas`. Frühere Plan-Lesart „skip für alle Txs“ war falsch. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`). | **X02 ✅** | ✅ fokussierte Units · 🔬 portabler `op-reth`-Build und Live stateRoot @ Wright-Fenster |
+| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | `factory.rs` setzt `skip_l1_data_fee=true` ab Wright. Der frühere Port setzte den Skip nur beim Sender-Debit um, nicht beim Credit an `L1_FEE_RECIPIENT`; dadurch wurde für gasless Wright-Txs Wert erzeugt. `tx_cost_with_tx` und `reward_beneficiary` verwenden jetzt dieselbe `l1_data_fee_with_tx`-Semantik. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`). | **X02 🐛→✅** | ✅ Debit-/Credit-Units · 🔬 Re-Execution ab sicherem Pre-Wright-State und Root-Abgleich @ `34367717` |
 | PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ Snow erzeugt den Median-L1-Gaspreis im op-node und schreibt ihn in die L1-Info-Deposit-Tx. Volta/Fourier erzeugen Millisekundenzeit plus Fourier-Intervallzähler in `prevRandao[0..4]`; der OP-Engine-Pfad übernimmt diesen unverändert als Header-`mix_hash`, während EL nur monotonen Millisekundenfortschritt prüft. Kadenz-/Span-Batch-Regeln sind op-node-Consensus. | — | ➖ n/a zusätzliche EL-Logik · 📝 CL liefert L1-Info und `prevRandao` |
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
 | PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008) | S01–S02 | ✅ umgesetzt · ⏳ live ungetestet (Archive-Last / SF-Unwind) |
@@ -2484,3 +2484,51 @@ independent of any real throughput change.
   ratios across a pipeline-target change (e.g. any `--debug.tip` restart, or reaching chain tip) —
   the denominator itself moves, which alone can produce a large apparent slope change unrelated to
   real progress speed.
+
+## Session 21 (2026-09-09): Wright L1FeeVault consensus fix and archive recovery
+
+**Incident.** The live opBNB archive stopped during Execution at block **34367717** with a
+receipt-root mismatch: local `0x1aa04913b61c582e2a8bd0466f410757863bdda50c4fc3fd6a087386cc5ddcad`
+versus canonical
+`0xc8e83d75c3ff61370a8ab87a44a02e79e7540390ce31250cad8f247d7c09830c`.
+Public RPC confirmed the local header/block hash was canonical. An independent RLP/MPT
+recalculation over all 176 public receipts reproduced the header root, ruling out peer/header
+corruption. Receipt mutation tests also excluded a simple deposit receipt-version/nonce or typed
+encoding error. The final transaction calls `L1FeeVault.withdraw()`; its amount-dependent logs
+made an accumulated state divergence observable for the first time.
+
+**Root cause.** The earlier Wright port only implemented half of op-geth's
+`gasPrice == 0 && IsWright` rule:
+- `L1BlockInfo::tx_cost_with_tx` correctly skipped the sender's L1 data-fee debit.
+- `OpHandler::reward_beneficiary` bypassed that predicate and unconditionally called
+  `calculate_tx_l1_cost`, crediting the same fee to `L1_FEE_RECIPIENT`.
+
+Every affected gasless non-deposit transaction therefore minted value into the L1FeeVault. The
+existing test covered only sender deduction and gave false confidence; op-geth applies the zero-fee
+rule to both debit and recipient credit.
+
+**Fix.** Added `L1BlockInfo::l1_data_fee_with_tx` as the single source of Wright waiver semantics.
+Both `tx_cost_with_tx` and `reward_beneficiary` now use it, while the post-Isthmus operator fee
+remains independent. Added a handler-level regression test proving that Wright + `gasPrice=0`
+credits zero to L1FeeVault and a priced transaction still credits its calculated L1 fee. Targeted
+validation: `cargo test -p op-revm wright --lib` — 2 passed. `make maxperf-op` completed in
+**22m25s** and installed the fixed `dist/bin/op-reth-bnb`
+(`sha256 c2f0397b93b6900511f8f6555dd53e7df4a1bf4be7334aefb5547d6c8d44ada1`).
+
+**Recovery.** The automatic failure unwind to `34366337` could not remove corruption accumulated
+since Wright. A conservative offline unwind retained block `32984676` and removed Execution plus
+dependent state/Merkle/history data through `34366337`; Headers, Bodies and SenderRecovery were
+kept. Execution unwind ran from **09:39:54 to 10:52:29 CEST (~72m35s)** in three batches
+(`34366337→33866336→33366335→32984676`) and completed successfully. `BlockChain.service` restarted
+at 10:56 CEST with the fixed maxperf binary. Final live closure remains the successful execution of
+block `34367717` with canonical receipt root `0xc8e83d75…30c`.
+
+**Aufwand.** End-to-end incident handling occupied roughly **7 hours wall clock** from the first
+fatal log at 06:05 CEST through diagnosis, public-chain/root verification, op-geth parity audit,
+implementation/tests, optimized rebuild, offline recovery and restart. The long-running operations
+inside that window were the 22m25s build and 72m35s unwind; the remainder was root-cause analysis
+and validation. A broad public-RPC L1-fee summation attempt was discarded because timeouts and
+incorrect hex parsing yielded zero usable rows. The `re-execute` diagnostic also cannot validate
+this historical range in the current storage-v2 mid-pipeline state: its historical parent provider
+returned an empty account (`nonce 0` instead of 37). Repair therefore correctly used persistent
+offline unwind followed by normal sequential pipeline execution.
