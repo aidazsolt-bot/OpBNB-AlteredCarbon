@@ -344,7 +344,9 @@ where
             return Err(OpTransactionError::MissingEnvelopedTx.into());
         };
 
-        let l1_cost = l1_block_info.calculate_tx_l1_cost(enveloped_tx, spec);
+        let l1_cost = l1_block_info
+            .l1_data_fee_with_tx(&*tx, spec)
+            .ok_or(OpTransactionError::MissingEnvelopedTx)?;
         // Exclude reservoir gas (EIP-8037) from used gas — reservoir is unused and reimbursed.
         let effective_used =
             frame_result.gas().used().saturating_sub(frame_result.gas().reservoir());
@@ -833,6 +835,53 @@ mod tests {
         // Check the account balance is updated.
         let account = evm.ctx().journal_mut().load_account(caller).unwrap();
         assert_eq!(account.info.balance, U256::from(10)); // 1058 - 1048 = 10
+    }
+
+    #[test]
+    fn test_wright_gasless_transaction_does_not_credit_l1_fee_vault() {
+        for gas_price in [0, 1] {
+            let chain = L1BlockInfo {
+                l1_base_fee: U256::from(1_000),
+                l1_base_fee_scalar: U256::from(1_000),
+                l1_blob_base_fee: Some(U256::from(1_000)),
+                l1_blob_base_fee_scalar: Some(U256::from(1_000)),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                skip_l1_data_fee: true,
+                ..Default::default()
+            };
+            let mut expected_chain = chain.clone();
+            let expected_credit = if gas_price == 0 {
+                U256::ZERO
+            } else {
+                expected_chain.calculate_tx_l1_cost(&bytes!("01"), OpSpecId::ISTHMUS)
+            };
+            let ctx = Context::op()
+                .with_chain(chain)
+                .with_cfg(CfgEnv::new_with_spec(OpSpecId::ISTHMUS))
+                .with_tx(
+                    OpTransaction::builder()
+                        .base(TxEnv::builder().gas_limit(1_000).gas_price(gas_price))
+                        .enveloped_tx(Some(bytes!("01")))
+                        .build_fill(),
+                );
+            let mut evm = ctx.build_op();
+            let handler =
+                OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+            let mut exec_result = FrameResult::Call(CallOutcome::new(
+                InterpreterResult {
+                    result: InstructionResult::Return,
+                    output: Bytes::new(),
+                    gas: Gas::new(1_000),
+                },
+                0..0,
+            ));
+
+            handler.reward_beneficiary(&mut evm, &mut exec_result).unwrap();
+
+            let vault = evm.ctx().journal_mut().load_account(L1_FEE_RECIPIENT).unwrap();
+            assert_eq!(vault.info.balance, expected_credit);
+        }
     }
 
     #[test]

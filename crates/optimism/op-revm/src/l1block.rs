@@ -263,19 +263,25 @@ impl L1BlockInfo {
     /// Internally calls [`L1BlockInfo::tx_cost`].
     pub fn tx_cost_with_tx(&mut self, tx: impl OpTxTr, spec: OpSpecId) -> Option<U256> {
         // account for additional cost of l1 fee and operator fee
-        let enveloped_tx = tx.enveloped_tx()?;
         let gas_limit = U256::from(tx.gas_limit());
-        let l1_data_fee = if self.skip_l1_data_fee && tx.gas_price() == 0 {
-            U256::ZERO
-        } else {
-            self.calculate_tx_l1_cost(enveloped_tx, spec)
-        };
+        let l1_data_fee = self.l1_data_fee_with_tx(&tx, spec)?;
+        let enveloped_tx = tx.enveloped_tx()?;
         let operator_fee = spec
             .is_enabled_in(OpSpecId::ISTHMUS)
             .then(|| self.operator_fee_charge(enveloped_tx, gas_limit, spec))
             .unwrap_or_default();
 
         Some(l1_data_fee.saturating_add(operator_fee))
+    }
+
+    /// Calculate the L1 data fee for a transaction, including chain-specific fee waivers.
+    pub fn l1_data_fee_with_tx(&mut self, tx: impl OpTxTr, spec: OpSpecId) -> Option<U256> {
+        let enveloped_tx = tx.enveloped_tx()?;
+        Some(if self.skip_l1_data_fee && tx.gas_price() == 0 {
+            U256::ZERO
+        } else {
+            self.calculate_tx_l1_cost(enveloped_tx, spec)
+        })
     }
 
     /// Calculate additional transaction cost.
@@ -706,6 +712,11 @@ mod tests {
         let mut priced = info();
         let operator_fee = gasless.operator_fee_charge(&bytes!("01"), U256::from(1_000), OpSpecId::ISTHMUS);
 
+        assert_eq!(gasless.l1_data_fee_with_tx(tx(0), OpSpecId::ISTHMUS), Some(U256::ZERO));
+        assert!(
+            priced.l1_data_fee_with_tx(tx(1), OpSpecId::ISTHMUS).unwrap() > U256::ZERO,
+            "Wright must retain the credited L1 data fee for priced transactions"
+        );
         assert_eq!(gasless.tx_cost_with_tx(tx(0), OpSpecId::ISTHMUS), Some(operator_fee));
         assert!(
             priced.tx_cost_with_tx(tx(1), OpSpecId::ISTHMUS).unwrap() > operator_fee,
