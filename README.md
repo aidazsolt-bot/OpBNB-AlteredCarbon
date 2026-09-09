@@ -312,24 +312,27 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Main rebase/live-sync effort: **2026-08-06 → 2026-08-17**. Multiple sessions over this window (Copilot: ~2026-08-06 09:50 UTC start; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: calendar **~88 h** 08-12→16, interactive clusters **~4.5 h** early + **~4 h** 08-15 evening / 08-16 morning). Later 2026-09-01/02 work was follow-up diagnosis/recovery hardening, not the original project start window. |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Main rebase/live-sync effort: **2026-08-06 → 2026-08-17**. Multiple sessions over this window (Copilot: ~2026-08-06 09:50 UTC start; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: early calendar **~88 h** 08-12→16; **re-measured 09-09** full-chat Gap>90 min span **~24.1 h** / 17 clusters). Plus Aug-23 BSC chat `7bb73584…` **~8.5 h** interactive. Later Sep work = follow-up/recovery, not the original start window. |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
 | LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); ~250 tool_use in resume transcript |
 | LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **P2P-003/004/005** + **Migrations-Gate PIPE+FLOW** |
-| LLM models used (Cursor Session 12, chat `ea987bef…`) | Parent Auto/Composer (+ occasional Task); **84** user / **367** assistant; **567** tool_use |
+| LLM models used (Cursor Session 12, chat `ea987bef…`) | Parent Auto/Composer; **re-measured 09-09:** **~311** user / **~2155** assistant; **~4041** tool_use (full chat life) |
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
-| Cursor AI cost allocated to opBNB (operator statement) | **~EUR 70**. The larger Cursor account spend also covered other projects and is therefore not charged fully to this project; no session/model/token allocation is available. |
-| Actual Copilot spend (operator statement) | **~EUR 170 cumulative**: EUR 100 paid and fully consumed in August 2026, plus ~EUR 70 across the periods before and after August through this update |
+| Cursor AI cost allocated to opBNB (operator statement) | **~EUR 70** (unchanged 2026-09-09 evening). Larger Cursor account spend also covered other projects; **no** new invoice for late-August / Session-22 clusters — hours corrected below, EUR allocation not invented upward. |
+| Actual Copilot spend (operator statement) | **~EUR 170 cumulative**: EUR 100 paid/consumed in August 2026 + ~EUR 70 before/after through this update |
+| Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-09 ~23:15 CEST) | Chat lived **2026-08-12 → 09-09**. File **~4.4 MB** → proxy **~1.1M tokens** (÷4); **~311** user / **~2155** assistant; **~4041** tool_use. Interactive Gap>90 min span sum **~24.1 h** (17 clusters). Early Session-12 estimate (~8.5 h to 08-16) **undercounted** (~12.6 h for C1–C8 alone). |
+| Cursor Aug-23 BSC focus (`7bb73584…`) | **~8.5 h** interactive span; **56** user / **838** assistant; **1619** tools; ~1.0 MB → ~255K tok proxy |
+| Cursor Session 22 (2026-09-09 ~23:06–23:15 CEST, same `ea987bef` C17) | **~0.15 h** interactive; sync/status + session-memory + cost correction; no new consensus code |
+| Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09) | Receipt-root @`34367717`; shared debit/credit fix; maxperf **22m25s**; offline unwind **72m35s**; push `29d7bfa2dd` to `main`. Usage: **178 calls, 20.39M in / 77.4K out**; list **~USD 13.59**, Auto **~USD 12.23** (not added again to EUR 170). |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
-| Cursor Session 12 activity (EXEC-001 → UPnP / past Fail / X02 / A02) | Snapshot **08-16:** Transcript **~1.58 MB** → proxy **~396K tokens** (filesize÷4); calendar **~88 h**; interactive **~4.5 h** early + **~4 h** 08-15 evening/08-16 morning; billed **n/a** — source artefacts are local-only and not published |
-| Copilot Session 13 activity (Storage-v2 recovery, root-cause analysis and fixes, 2026-09-02) | Journal/Mimir diagnosis of the receipt-static-file unwind; Storage v2 migration/consistency changes; source-level root-cause analysis on `main` yielding two fixes (static-file block-index underflow `fa6caf3022`, slot-preimage DB port `ce0c722d9b`); six reactivated preimage regression tests plus `test_pipeline`/`test_pipeline_v2`, `cargo check --workspace` and two `make maxperf-op` builds. Per-session billed-token telemetry is unavailable; no incremental monetary estimate is claimed. |
-| Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09; usage snapshot during 13:30–13:47 CEST documentation update) | Root-caused receipt-root mismatch at block `34367717` to asymmetric Wright handling: gasless transactions skipped the sender debit but still credited L1FeeVault. Added one shared debit/credit calculation and two regression tests; built maxperf in **22m25s**, unwound offline to pre-Wright block `32984676` in **72m35s**, and pushed the isolated fix as `29d7bfa2dd` to `main`. Usage: **178 model calls, 20.39M input (19.27M cache-read + 545K cache-write), 77.4K output** and ~7 h incident wall time. Official GitHub token rates give **~USD 13.59 / 1,358.8 AI Credits**, or **~USD 12.23 / 1,222.9 credits** with the paid-plan Auto discount; actual incremental billing can be USD 0 while covered by the monthly plan allowance. |
+| Cursor Session 12 early snapshot (08-16, superseded by re-measure above) | Then **~1.58 MB** / ~396K tok proxy; interactive estimate ~8.5 h — **undercount** vs later cluster sum |
+| Copilot Session 13 activity (Storage-v2 recovery, 2026-09-02) | Journal/Mimir diagnosis; fixes `fa6caf3022` / `ce0c722d9b`; 6 preimage tests + pipelines; 2× `make maxperf-op`. No per-session billed ledger. |
 | Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
@@ -371,29 +374,30 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 recovery and networking work (Sessions 13–18); Execution fetch/execute pipeline and live speed measurement (Session 20); Wright receipt-root incident, consensus fix, rebuild, unwind and restart (Session 21). Session 21 alone occupied **~7 h wall**, including a **22m25s** build and **72m35s** unwind. |
-| Cost summary through 2026-09-09 13:30 CEST | AI allocated to opBNB: **~EUR 170 Copilot + ~EUR 70 Cursor**. Electricity: **~EUR 68.46** measured + extrapolated. A1 fiber since 2025-10-01: **~EUR 339.56** time-proportional. **Tracked opBNB total: ~EUR 648.02.** Session 21's discounted token-rate equivalent (~USD 12.23) is informational and not added again. Hardware, labor, and unmeasured electricity periods are excluded. |
+| September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 / networking (Sessions 13–18); Execution pipelining (Session 20); Wright incident + fix (Session 21, **~7 h** wall, build **22m25s**, unwind **72m35s**); Cursor Session 22 evening status/docs (~0.15 h). Late-Aug Cursor BSC-cut hours (`7bb73584` + `ea987bef` C15–C16) belong to scope cleanup, measured in effort log. |
+| Cost summary through 2026-09-09 **23:15** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR Cursor **not** raised despite hour correction). Electricity: **~EUR 69.4**. A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 649.** Session 21 token-rate ~USD 12.23 informational only. Hardware/labor excluded. |
 
 #### Human operations and senior-development effort
 
 The AI work required continuous senior supervision: the initial unaided experiment did not
 produce a usable end-to-end node, so reference comparison, PIPE+FLOW methodology, reviews,
 datadir/unwind risk decisions, deployments and live validation remained human-owned. Documented
-interactive session clusters imply approximately **49–55 h senior development**, including
-**29–33 h operations/DevOps**. Unattended sync, build and unwind wall time is excluded.
+interactive session clusters imply approximately **62–72 h senior development**, including
+**40–48 h operations/DevOps** (Cursor interactive re-measured ~**47 h** + Copilot windows ~**27–33 h**,
+with role overlap counted fully). Unattended sync, build and unwind wall time is excluded.
 
 Mixed incident/deployment sessions are counted fully in both roles, as requested. This produces
 role-hours and replacement value, not deduplicated human elapsed time or an invoice.
 
 | Role | Session-derived effort | 2026 Austria/DACH freelance band (net, excl. VAT) | Replacement value |
 | --- | ---: | ---: | ---: |
-| Senior operations / DevOps | **~29–33 h** | **EUR 80–120/h** | **~EUR 2,320–3,960** |
-| Senior Reth/blockchain developer | **~49–55 h** | **EUR 100–150/h** | **~EUR 4,900–8,250** |
-| **Labor total, overlaps fully counted** | **~78–88 role-hours** | — | **~EUR 7,220–12,210** |
-| **Planning midpoint** | Ops 31 h @100 + developer 52 h @125 | — | **~EUR 9,600** |
+| Senior operations / DevOps | **~40–48 h** | **EUR 80–120/h** | **~EUR 3,200–5,760** |
+| Senior Reth/blockchain developer | **~62–72 h** | **EUR 100–150/h** | **~EUR 6,200–10,800** |
+| **Labor total, overlaps fully counted** | **~102–120 role-hours** | — | **~EUR 9,400–16,560** |
+| **Planning midpoint** | Ops 44 h @100 + developer 67 h @125 | — | **~EUR 12,775** |
 
-Adding the tracked **~EUR 648.02** AI/electricity/connectivity costs gives a documented project
-value of **~EUR 7,868–12,858**, with a planning midpoint of **~EUR 10,248**. These are market-rate
+Adding the tracked **~EUR 649** AI/electricity/connectivity costs gives a documented project
+value of **~EUR 10,049–17,209**, with a planning midpoint of **~EUR 13,424**. These are market-rate
 replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
 undocumented supervision are excluded.
 
