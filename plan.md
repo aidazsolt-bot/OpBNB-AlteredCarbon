@@ -35,6 +35,19 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
+## Aktueller Stand (Session-Memory — 2026-09-09 ~23:11 CEST)
+
+> Agent-Kurzlage. Details: *Live Sync Progress*, Session 20/21, *Nächste Schritte*.
+
+| Thema | Lage |
+| --- | --- |
+| **Kette / Binary** | opBNB **204** · Live `op-reth-bnb` (maxperf, Wright-Fix) · Workspace: **kein BSC** |
+| **Git** | `alteredcarbon/main` = Konsens-Fix **`29d7bfa2dd`** (Wright L1FeeVault Debit+Credit). Feature-Branch **`feat/execution-stage-fetch-pipeline`**: derselbe Fix (`b7c39029fa`) **plus** Execution-Speedup **`b32f9e58d6`** (fetch/decode-Overlap, Live ~2×) + Docs — Speedup **nicht** auf `main`. |
+| **Incident 09-09** | Receipt-Root @ **`34367717`** → Unwind. Ursache: Wright `gasPrice==0` nur Debit, Vault-Credit mintete weiter (PIPE-009 / FLOW-X02). Offline-Unwind auf **`32984676`** (Wright−1), Restart mit Fix-Binary. |
+| **Live Recovery** | Tip-Ziel **`--debug.tip` `71 185 160`**. Headers ✅ Tip. **Bodies aktiv** ~**38.69 M** (~54 %, ~170–185 blk/s → ~2 d Bodies-ETA). Sender ~34.37 M. **Execution geparkt `32 984 676`**. Merkle/History 0. Peers **2**; bodies validation/timeout/invalid **0**. |
+| **Offenes Gate** | Exec ab Wright neu; Block **`34367717`** mit Receipt-Root `0xc8e83d75…30c` ohne Unwind. Danach Point-4 erneut; Speedup-Merge nach Gate. |
+| **Nicht verwechseln** | Session-20 MerkleExecute-Unwind @`71185159` ≠ Session-21 Wright-Vault-Bug. |
+
 ## Ziel & Kontext
 
 Ziel des Projekts: Evaluierung, wie weit aktuelle KI-Coding-Assistenten (GitHub Copilot CLI) eine
@@ -370,25 +383,30 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-01 ~18:52 CEST:** H+Bodies+Sender Tip ✅ `174 027 661`. Exec **`65 828 907`** (~38 %, ~19–33 blk/s cooled). Haber Point-4 ✅; **past Wright**. **ETA Tip ~1¼–2¼ Mo** (current bands). X02/PIPE-009 ✅. P2P-002 ✅; P2P-006 offen. Live-Node: **kein Restart**.
+- **Stand 2026-09-09 ~23:11 CEST (Wright-Recovery):** Headers ✅ `71 185 160` (`--debug.tip`). Bodies 🔄 **~38.69 M** (~54 %, ~170–185 blk/s). Sender ~34.37 M. Exec **geparkt `32 984 676`** (Wright−1) nach Offline-Unwind. PIPE-009/X02 Code ✅ auf `main` (`29d7bfa2dd`); Live-Gate `34367717` ⏳. Execution-Speedup nur Feature-Branch (`b32f9e58d6`). Peers 2; downloader errors 0. Historisch vor Incident: Haber Point-4 ✅ (08-17).
 
 ## Roadmap (aktuell — Exec-Fenster)
 
 | Fenster | Ziel | Aufwand (Schätzung) | Status |
 | --- | --- | --- | --- |
-| **≤48 h** | Point-4 stateRoot @ Haber (~27.1 M) dann Wright (~33.0 M) vs public RPC | ~0.5 h Agent/Stichprobe je Gate | ✅ Haber MATCH (08-17); Wright height **passed** — optional Point-4 sample still open |
-| **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 laufend |
+| **jetzt** | Wright-Recovery: Bodies→Sender→Exec ab `32984677`; Gate Receipt-Root @`34367717` | unsupervised + Spot-Check | 🔄 Bodies ~38.7 M / tip 71.2 M; Exec park Wright−1 |
+| **≤48 h nach Exec past Wright** | Point-4 stateRoot @ Haber + Wright (+ Stichprobe `34367717`) vs public RPC | ~0.5 h Agent/Stichprobe | ✅ Haber MATCH (08-17, pre-Incident); ⏳ nach Re-Exec wiederholen |
+| **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 Bodies errors 0; peers 2 |
+| **nach Gate `34367717`** | Feature-Branch Speedup `b32f9e58d6` → `main` (oder bewusst zurückhalten) | Review + merge | 📋 Speedup live gemessen ~2×, noch nicht auf `main` |
 | **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
-| **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt bis Restart |
-| **aktuell: Re-Sync ab Genesis** | Headers → Bodies → Execution neu aufbauen; Gates Haber/Wright Point-4 erneut ziehen | unsupervised + Spot-Checks | 🔄 **Neustart 09-02 17:53** mit `333ba71`, Datadir verworfen (Static Files 2861 → 21). `storage_v2: true` **ab Genesis** statt via Migration; Headers laden rückwärts ab `179 239 838`. Vorheriger Repair-Versuch aufgegeben — Ursache forensisch geklärt (**PORT-STOR-011**), Teilrettung wegen gekürzter AccountChangeSets unmöglich. CL-Head ~`180.99M` |
-| **nach Repair-Backfill** | Execution Tip → Merkle/History/Finish | unsupervised + Spot-Checks | ⏳ erneut zu berechnen, sobald die Header- und Execution-Rate nach dem Wiederanlauf messbar ist |
+| **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt |
+| **Kontext 09-02 Re-Sync** | Genesis-Rebuild `storage_v2`; später `--debug.tip` `71185160` nach Merkle-Unwind-Forensik | — | Historie Session 13/18/20; aktueller Lauf = Recovery nach Wright-Incident |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
 | **erledigt 09-02** | **V2-State-Integrität — drei gekoppelte Guards.** (a) **PORT-STOR-011**: `remove_state_above` kehrt still zurück, wenn Static Files bereits gekürzt sind → State-Revert entfällt, Checkpoint wird trotzdem gesetzt. (b) **PORT-STAGE-006**: `AccountHashing`/`StorageHashing` sind unter `use_hashed_state()` im Forward reine No-ops; nach abgebrochenem Unwind bleibt die Differenz ungehasht. (c) **PORT-STAGE-007**: Hashing-`unwind()` hat keinen Table-Clear-Pfad, „Unwind auf 0“ leert den Hashed State nicht. Zusammen erzeugen sie **stillen, nicht reparierbaren State-Verlust** | ~1–2 d Code + Regressionstests | ✅ lokal gehärtet: Storage-V2-aware `stage drop Execution`, `remove_state_above`-Abort bei Execution>Blockdaten, Startup-Consistency-Guard bei Execution==Header-Tip aber Hashing darunter, Hashing-Unwind-to-0 clear. Upstream-Issue/PR später prüfen bzw. melden |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
-**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1¼–2¼ Mo) · FLOW-X05 watch.
+**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · **X02/PIPE-009 Code ✅ (`main` `29d7bfa2dd`)** · Live Re-Exec past Wright + `34367717` ⏳ · Haber Point-4 historisch ✅ (nach Recovery erneut) · Tip/`--debug.tip` 71.2 M 🔄 · FLOW-X05 watch · Speedup nur Feature-Branch.
 
-### BSC Mainnet Port (parallel, opBNB unverändert) — Stand 2026-08-23
+### BSC Mainnet Port — ARCHIV (Workspace opBNB-only seit 2026-08-24)
+
+> `crates/bsc` entfernt. Tabelle unten = historische PORT-BSC-Arbeit vor Scope-Schnitt; **kein aktiver Scope**.
+
+### BSC Mainnet Port (historisch, Stand 2026-08-23)
 
 Referenz: `github.com/bnb-chain/reth-bsc` main (live Tip); Workspace bleibt **reth v2.4.1** Monorepo.
 
@@ -873,18 +891,15 @@ Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Bela
 Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
 Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-## Nächste Schritte (unmittelbar — Stand 2026-09-09 13:47 CEST)
+## Nächste Schritte (unmittelbar — Stand 2026-09-09 ~23:11 CEST)
 
-1. **Kein Restart:** laufenden bounded Recovery-Run bis zum vollständigen Headers-ETL-Commit
-   weiterlaufen lassen; danach Bodies und SenderRecovery beobachten.
-2. **Consensus-Gate:** Execution muss mit dem gefixten Binary ab `32984677` neu ausführen und Block
-   `34367717` ohne Unwind mit Receipt-Root `0xc8e83d75…30c` passieren.
-3. **Branch-Trennung:** `main` enthält nur den Wright-Fix (`29d7bfa2dd`); Execution-Speedup
-   `b32f9e58d6` bleibt bis zum erfolgreichen Gate auf `feat/execution-stage-fetch-pipeline`.
-4. **Bounded-Ende:** bis Debug-Tip `71185160` weiterlaufen; `--debug.terminate` muss danach
-   kontrolliert beenden.
-5. Nach den Meilensteinen Live-Ergebnis, Endzeit, zusätzliche Strom-/Modellkosten und endgültige
-   Pipeline-Checkpoints in `plan.md` und README nachziehen.
+1. **Kein Restart:** Bodies-Catch-up (~38.7 M → `71 185 160`) weiterlaufen lassen; dann Sender, dann Exec.
+2. **Consensus-Gate:** Execution ab `32984677` mit Fix-Binary; Block `34367717` ohne Unwind,
+   Receipt-Root `0xc8e83d75…30c`.
+3. **Branch-Trennung beibehalten bis Gate:** `main` = nur Wright-Fix (`29d7bfa2dd`); Execution-Speedup
+   `b32f9e58d6` bleibt auf `feat/execution-stage-fetch-pipeline` (bereits live gemessen ~2×).
+4. **Bounded-Ende:** bis Debug-Tip `71185160`; `--debug.terminate` danach kontrolliert.
+5. Nach Meilenstein: Point-4 Stichproben, Checkpoints, Kosten/Ende in `plan.md`/README nachziehen.
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
 
@@ -1623,20 +1638,23 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-20 **~10:28 CEST** · Execution past Haber/Wright · chain **204** · peers **16**
+**Stichprobe (aktuell):** 2026-09-09 **~23:11 CEST** · chain **204** · Wright-Recovery · peers **2** ·
+`--debug.tip` **`71 185 160`** · Binary Fix-Build 09-09 · `scripts/sync-eta.sh`
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
-| Headers | **174 027 661** | ✅ Tip (parked; public ~**176.4 M**) |
-| Bodies | **174 027 661** | ✅ Tip; validation_errors **0** |
-| SenderRecovery | **174 027 661** | ✅ Tip |
-| Execution | **`65 828 907`** / Tip **174 M** (~38 %) | 🔄 past Fail/Haber/Wright; ~19–33 blk/s cooled; **ETA Tip ~1¼–2¼ Mo** |
-| MerkleExecute | **0** | ⏳ nach Exec Tip |
-| History / Finish | — | ⏳ |
-| P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`; Serve-RX 0 |
-| P2P Dual-Stack | FLOW-N01 / P2P-006 | 📋 Default Dual-Stack noch offen |
+| Headers | **71 185 160** | ✅ Tip (= debug.tip) |
+| Bodies | **~38 691 337** / 71.2 M (~54 %) | 🔄 aktiv ~170–185 blk/s (1–3 h Fenster); ETA Bodies ~**2 d**; validation/timeout **0** |
+| SenderRecovery | **34 366 337** | ⏳ wartet auf Bodies-Yield |
+| Execution | **`32 984 676`** (Wright−1) | ⏸ geparkt nach Offline-Unwind; Re-Exec ab Wright nach Bodies/Sender |
+| MerkleExecute / Hashing / History / Finish | **0** | ⏳ nach Exec |
+| P2P | connected_peers **2** | invalid_messages **0**; discv5-Defaults Session 19/20 |
+| Konsens | PIPE-009 / FLOW-X02 | ✅ Code auf `main`; Live-Gate `34367717` ⏳ |
 
-Metrics: `files/opbnb-archive-sync-snapshot-20260820.json`.
+**Branch-Lage:** `main` = Wright-Fix only. Feature-Branch = Fix + **Execution fetch/decode pipelining**
+(`b32f9e58d6`, Session 20, ~2×). Nicht mit MerkleExecute-Unwind @`71185159` (Session 20 Forensik) vermengen.
+
+Historische Stichprobe 2026-08-20 (~Exec 65.8 M / Tip 174 M, peers 16): `files/opbnb-archive-sync-snapshot-20260820.json`.
 
 #### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
 
@@ -2574,3 +2592,13 @@ incorrect hex parsing yielded zero usable rows. The `re-execute` diagnostic also
 this historical range in the current storage-v2 mid-pipeline state: its historical parent provider
 returned an empty account (`nonce 0` instead of 37). Repair therefore correctly used persistent
 offline unwind followed by normal sequential pipeline execution.
+
+**Branch split (bewusst).** Consensus fix landed alone on `alteredcarbon/main` as `29d7bfa2dd`
+(same `op-revm` tree as branch `b7c39029fa`). Execution fetch/decode pipelining `b32f9e58d6` stays on
+`feat/execution-stage-fetch-pipeline` until the `34367717` live gate passes — so a consensus regression
+cannot be blamed on the stage speedup.
+
+**Evening status (~23:11 CEST).** Recovery still in Bodies refill toward `71185160` (~38.7 M / 54 %);
+Execution remains at `32984676`. No new unwind/state-root noise in file log; peers=2; downloader
+errors=0. Next observable milestone: Execution advancing past Wright, then receipt-root match at
+`34367717`.

@@ -29,6 +29,18 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
+## Session-Memory / Status (Stand 2026-09-09 ~23:11 CEST)
+
+Vor Analyse immer `plan.md` → **Aktueller Stand** + *Live Sync Progress* lesen.
+
+| | |
+| --- | --- |
+| Live | Wright-Recovery: Bodies ~38.7 M → tip `71.185.160`; Exec park **Wright−1** (`32.984.676`) |
+| `main` | nur Konsens-Fix `29d7bfa2dd` (L1FeeVault Debit+Credit) |
+| Feature-Branch | Fix + **Execution-Speedup** `b32f9e58d6` (fetch∥EVM, ~2×) — noch nicht gemerged |
+| Gate | Re-Exec @`34367717` Receipt-Root `0xc8e83d…` ohne Unwind |
+| Scope | opBNB only; BSC-Crates entfernt |
+
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
 Dieser Fork ist ein **Methodik-/Prozess-Experiment** (README *Project Notice* / *About This Fork*):
