@@ -374,6 +374,29 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 recovery and networking work (Sessions 13–18); Execution fetch/execute pipeline and live speed measurement (Session 20); Wright receipt-root incident, consensus fix, rebuild, unwind and restart (Session 21). Session 21 alone occupied **~7 h wall**, including a **22m25s** build and **72m35s** unwind. |
 | Cost summary through 2026-09-09 13:30 CEST | AI allocated to opBNB: **~EUR 170 Copilot + ~EUR 70 Cursor**. Electricity: **~EUR 68.46** measured + extrapolated. A1 fiber since 2025-10-01: **~EUR 339.56** time-proportional. **Tracked opBNB total: ~EUR 648.02.** Session 21's discounted token-rate equivalent (~USD 12.23) is informational and not added again. Hardware, labor, and unmeasured electricity periods are excluded. |
 
+#### Human operations and senior-development effort
+
+The AI work required continuous senior supervision: the initial unaided experiment did not
+produce a usable end-to-end node, so reference comparison, PIPE+FLOW methodology, reviews,
+datadir/unwind risk decisions, deployments and live validation remained human-owned. Documented
+interactive session clusters imply approximately **49–55 h senior development**, including
+**29–33 h operations/DevOps**. Unattended sync, build and unwind wall time is excluded.
+
+Mixed incident/deployment sessions are counted fully in both roles, as requested. This produces
+role-hours and replacement value, not deduplicated human elapsed time or an invoice.
+
+| Role | Session-derived effort | 2026 Austria/DACH freelance band (net, excl. VAT) | Replacement value |
+| --- | ---: | ---: | ---: |
+| Senior operations / DevOps | **~29–33 h** | **EUR 80–120/h** | **~EUR 2,320–3,960** |
+| Senior Reth/blockchain developer | **~49–55 h** | **EUR 100–150/h** | **~EUR 4,900–8,250** |
+| **Labor total, overlaps fully counted** | **~78–88 role-hours** | — | **~EUR 7,220–12,210** |
+| **Planning midpoint** | Ops 31 h @100 + developer 52 h @125 | — | **~EUR 9,600** |
+
+Adding the tracked **~EUR 648.02** AI/electricity/connectivity costs gives a documented project
+value of **~EUR 7,868–12,858**, with a planning midpoint of **~EUR 10,248**. These are market-rate
+replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
+undocumented supervision are excluded.
+
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
 #### Infra-operation cost proxies (2026-08-10 → 2026-09-09, restart/rebuild proxies + measured power)

@@ -764,6 +764,34 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | **Erfasste EUR-Summe bis Standzeit** | **~EUR 648,02** | Cursor **70** + Copilot **170** + Strom **68,46** + Internet **339,56**; keine Hardwareanschaffung, Arbeitszeit oder unbekannte Stromzeiträume enthalten |
 | **USD-Verbrauchsäquivalent** | **~USD 12,23** | Session-21-Copilot-Kontrollrechnung; nicht zusätzlich zur realen Copilot-Zahl summiert |
 
+**Menschlicher Ops-/Senior-Developer-Aufwand (Session-basierter Marktwert, keine Rechnung):**
+
+Die Schätzung zählt nur dokumentierte interaktive Cluster, nicht unbeaufsichtigte Header-/Body-/
+Execution-Laufzeit. Basis: Copilot `a95758da` ~8,1 h Modell-/Interaktionsfenster; Cursor Sessions
+6/8/9/10/12 zusammen ~22,5 h aktive Chat-/Commit-Cluster; Sessions 13–18 zusammen ~6–12 h;
+Session 19 ~0,8 h; Session 20 ~4,7 h Commit-/Live-Validierungsfenster; Session 21 ~7 h
+Incident-Wall; der kurze 09-08-Statuscheck ~0,1 h. Wegen paralleler Agent-/Maschinenarbeit und
+Lücken werden keine Kalenderdauern als Vollzeit angesetzt.
+
+Das anfängliche Experiment lieferte ohne laufende Senior-Betreuung keine brauchbare
+End-to-End-Lösung. Referenzabgleich, PIPE+FLOW-Methodik, Review, Stop/Go-Entscheidungen,
+Datadir-/Unwind-Risiko und Live-Deployments waren daher menschlich geführt. Gemäß Betreiberwahl
+werden gemischte Stunden **voll in beiden Rollen** gezählt; die Rollensumme ist damit ein
+Wiederbeschaffungswert und keine deduplizierte Personenzeit.
+
+| Rolle | Erfasster Aufwand | Marktband (netto, exkl. USt) | Arbeitswert |
+| --- | ---: | ---: | ---: |
+| Senior Ops / DevOps | **~29–33 h** | **EUR 80–120/h** | **~EUR 2.320–3.960** |
+| Senior Reth-/Blockchain-Developer | **~49–55 h** | **EUR 100–150/h** | **~EUR 4.900–8.250** |
+| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~78–88 Rollenstunden** | — | **~EUR 7.220–12.210** |
+| **Mittelpunkt für Budgetplanung** | Ops 31 h @100 + Dev 52 h @125 | — | **~EUR 9.600** |
+
+Die Stundensatzbänder sind Marktansätze für österreichische/DACH-Freelancer 2026, keine
+tatsächlich gestellte Rechnung und kein persönlicher Lohnnachweis. Zuzüglich der bislang
+erfassten Sach-/AI-Kosten von **~EUR 648,02** ergibt sich ein dokumentierter Projektwert von
+**~EUR 7.868–12.858**, mit Budget-Mittelpunkt **~EUR 10.248**. Hardwareanschaffung, USt,
+Opportunitätskosten und nicht dokumentierte Betreuung bleiben ausgeschlossen.
+
 ### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-09 13:30 CEST)
 
 Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
