@@ -323,6 +323,7 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
 | Actual Cursor AI spend (operator statement) | **USD 200** for the project usage; no invoice-level allocation by session/model/token is available |
+| Actual Copilot spend (operator statement) | **~EUR 170 cumulative**: EUR 100 paid and fully consumed in August 2026, plus ~EUR 70 across the periods before and after August through this update |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -371,7 +372,7 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
 | September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 recovery and networking work (Sessions 13–18); Execution fetch/execute pipeline and live speed measurement (Session 20); Wright receipt-root incident, consensus fix, rebuild, unwind and restart (Session 21). Session 21 alone occupied **~7 h wall**, including a **22m25s** build and **72m35s** unwind. |
-| Cost summary through 2026-09-09 13:30 CEST | Actual Cursor AI: **USD 200**. Copilot Session 21: **~USD 12.23** discounted usage equivalent, with actual overage possibly USD 0. Electricity: **~EUR 68.46** measured + extrapolated. A1 fiber since 2025-10-01: **~EUR 339.56** time-proportional. **Tracked totals: ~EUR 408.02 plus USD 200 confirmed cash spend; ~USD 212.23 economic model usage if the Copilot equivalent is included.** No FX conversion, hardware, labor, or unmeasured electricity periods included. |
+| Cost summary through 2026-09-09 13:30 CEST | Actual AI spend: **~EUR 170 Copilot + USD 200 Cursor**. Electricity: **~EUR 68.46** measured + extrapolated. A1 fiber since 2025-10-01: **~EUR 339.56** time-proportional. **Tracked total: ~EUR 578.02 + USD 200.** Session 21's discounted token-rate equivalent (~USD 12.23) is informational and not added again. No FX conversion, hardware, labor, or unmeasured electricity periods included. |
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
