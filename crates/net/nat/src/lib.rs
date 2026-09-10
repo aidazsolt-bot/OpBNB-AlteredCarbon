@@ -17,7 +17,8 @@ pub mod upnp;
 
 pub use net_if::{NetInterfaceError, DEFAULT_NET_IF_NAME};
 pub use upnp::{
-    map_ports, map_udp_port, spawn_mapping_refresh, MappedGateway, UpnpMapError, DEFAULT_LEASE_SECS,
+    map_ports, map_udp_port, spawn_mapping_refresh, MappedGateway, UpnpMapError, UpnpMappingGuard,
+    DEFAULT_LEASE_SECS,
 };
 
 use std::{
@@ -365,6 +366,9 @@ pub async fn external_addr_with(resolver: NatResolver) -> Option<IpAddr> {
 /// * [`NatResolver::PublicIp`] / `NetIf` / `External*`: IP resolution without mapping.
 /// * [`NatResolver::None`]: `None`.
 ///
+/// When UPnP succeeds, the second tuple element is an [`UpnpMappingGuard`] that must be retained
+/// until network shutdown so leases stay refreshed and `DeletePortMapping` runs on stop.
+///
 /// `listen_ip` is the RLPx bind address (`--addr`), or an unspecified per-family placeholder when
 /// called once per family in dual-stack mode. Per FLOW-N01 / P2P-006, the announced IP must be
 /// the **same family** as `listen_ip` — not a global HTTP preference for IPv4.
@@ -381,7 +385,7 @@ pub async fn resolve_nat_endpoint(
     listen_tcp_port: u16,
     listen_udp_port: u16,
     listen_ip: IpAddr,
-) -> Option<NatEndpoint> {
+) -> Option<(NatEndpoint, Option<UpnpMappingGuard>)> {
     let preferred = listen_tcp_port;
     let want_ipv4 = listen_ip.is_ipv4();
 
@@ -396,9 +400,10 @@ pub async fn resolve_nat_endpoint(
             Ok((endpoint, mapped)) => {
                 // Family is guaranteed to match here since UPnP/IGD only ever maps IPv4.
                 debug_assert!(endpoint.ip.is_ipv4());
-                // Refresh leases before they expire (geth uses ~8 min with 10 min lease).
-                spawn_mapping_refresh(mapped, Duration::from_secs(8 * 60));
-                return Some(endpoint);
+                // Refresh leases before they expire (geth uses ~8 min with 10 min lease);
+                // guard deletes mappings on network shutdown (geth Map defer).
+                let guard = spawn_mapping_refresh(mapped, Duration::from_secs(8 * 60));
+                return Some((endpoint, Some(guard)));
             }
             Err(err) => {
                 if matches!(resolver, NatResolver::Upnp) {
@@ -427,7 +432,7 @@ pub async fn resolve_nat_endpoint(
                 listen_udp_port,
                 "Resolved public IP via HTTP (no UPnP port mapping)"
             );
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::ExternalIp(ip) => {
             if ip.is_ipv4() != want_ipv4 {
@@ -439,14 +444,14 @@ pub async fn resolve_nat_endpoint(
                 );
                 return None;
             }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::ExternalAddr(domain) => {
             let ip = tokio::net::lookup_host(format!("{domain}:0"))
                 .await
                 .ok()
                 .and_then(|addrs| addrs.map(|a| a.ip()).find(|ip| ip.is_ipv4() == want_ipv4))?;
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::NetIf => {
             let ip = resolve_net_if_ip(DEFAULT_NET_IF_NAME).ok()?;
@@ -459,7 +464,7 @@ pub async fn resolve_nat_endpoint(
                 );
                 return None;
             }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
     }
 }

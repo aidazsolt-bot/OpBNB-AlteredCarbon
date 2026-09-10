@@ -46,7 +46,7 @@ use reth_discv5::{Discv5, IpMode};
 use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, NetworkPrimitives};
 use reth_fs_util::{self as fs, FsPathError};
 use reth_metrics::common::mpsc::MemoryBoundedSender;
-use reth_net_nat::{map_udp_port, resolve_nat_endpoint, NatEndpoint};
+use reth_net_nat::{map_udp_port, resolve_nat_endpoint, NatEndpoint, UpnpMappingGuard};
 use reth_network_api::{
     events::{PeerEvent, SessionInfo},
     test_utils::PeersHandle,
@@ -150,6 +150,8 @@ pub struct NetworkManager<N: NetworkPrimitives = EthNetworkPrimitives> {
     pending_session_failure_metrics: PendingSessionFailureMetrics,
     /// Backed off peers metrics, split by reason.
     backed_off_peers_metrics: BackedOffPeersMetrics,
+    /// UPnP lease guards: keep mappings refreshed and `DeletePortMapping` on network shutdown.
+    upnp_mapping_guards: Vec<UpnpMappingGuard>,
 }
 
 /// Resolves the UDP port to announce for discv5 in a NAT endpoint.
@@ -160,18 +162,20 @@ pub struct NetworkManager<N: NetworkPrimitives = EthNetworkPrimitives> {
 /// UPnP, this attempts a dedicated UPnP mapping for discv5's own UDP port; on any failure (or when
 /// NAT resolution didn't go through UPnP at all) this falls back to announcing discv5's raw listen
 /// port, since it can't be verified externally without a mapping.
+///
+/// Extra UPnP mappings are returned as guards that must be retained until network shutdown.
 async fn resolve_discv5_udp_announce_port(
     discv5: &Discv5,
     listen_udp_port: u16,
     endpoint: &NatEndpoint,
-) -> u16 {
+) -> (u16, Option<UpnpMappingGuard>) {
     let v5_udp_listen = discv5.local_port();
     if v5_udp_listen == listen_udp_port {
-        return endpoint.udp_port;
+        return (endpoint.udp_port, None);
     }
     if endpoint.via_upnp {
         return match map_udp_port(v5_udp_listen, v5_udp_listen).await {
-            Ok((ip, port)) => {
+            Ok((ip, port, guard)) => {
                 if ip != endpoint.ip {
                     warn!(
                         target: "net",
@@ -180,7 +184,7 @@ async fn resolve_discv5_udp_announce_port(
                         "discv5 UPnP external IP differs from resolved NAT endpoint; using endpoint IP for ENR TCP"
                     );
                 }
-                port
+                (port, Some(guard))
             }
             Err(err) => {
                 warn!(
@@ -189,11 +193,11 @@ async fn resolve_discv5_udp_announce_port(
                     v5_udp_listen,
                     "Failed to UPnP-map discv5 UDP; announcing listen port"
                 );
-                v5_udp_listen
+                (v5_udp_listen, None)
             }
         };
     }
-    v5_udp_listen
+    (v5_udp_listen, None)
 }
 
 impl NetworkManager {
@@ -356,8 +360,9 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             discv4.as_ref().map(|d| d.node_record().udp_port).unwrap_or(listen_tcp_port);
 
         let advertised_nat: Arc<Mutex<Option<NatEndpoint>>> = Arc::new(Mutex::new(None));
+        let mut upnp_mapping_guards = Vec::new();
         if let Some(resolver) = nat.clone() {
-            if let Some(endpoint) = resolve_nat_endpoint(
+            if let Some((endpoint, guard)) = resolve_nat_endpoint(
                 resolver.clone(),
                 listen_tcp_port,
                 listen_udp_port,
@@ -365,12 +370,18 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             )
             .await
             {
+                if let Some(guard) = guard {
+                    upnp_mapping_guards.push(guard);
+                }
                 if let Some(discv4) = discv4.as_ref() {
                     discv4.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, endpoint.udp_port);
                 }
                 if let Some(discv5) = discv5.as_ref() {
-                    let v5_udp_ext =
+                    let (v5_udp_ext, v5_guard) =
                         resolve_discv5_udp_announce_port(discv5, listen_udp_port, &endpoint).await;
+                    if let Some(guard) = v5_guard {
+                        upnp_mapping_guards.push(guard);
+                    }
                     discv5.apply_nat_endpoint(endpoint.ip, endpoint.tcp_port, v5_udp_ext);
                 }
                 *advertised_nat.lock() = Some(endpoint);
@@ -402,7 +413,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                 } else {
                     IpAddr::V4(Ipv4Addr::UNSPECIFIED)
                 };
-                if let Some(other_endpoint) = resolve_nat_endpoint(
+                if let Some((other_endpoint, guard)) = resolve_nat_endpoint(
                     resolver,
                     listen_tcp_port,
                     listen_udp_port,
@@ -410,13 +421,19 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
                 )
                 .await
                 {
+                    if let Some(guard) = guard {
+                        upnp_mapping_guards.push(guard);
+                    }
                     if let Some(discv5) = discv5.as_ref() {
-                        let v5_udp_ext = resolve_discv5_udp_announce_port(
+                        let (v5_udp_ext, v5_guard) = resolve_discv5_udp_announce_port(
                             discv5,
                             listen_udp_port,
                             &other_endpoint,
                         )
                         .await;
+                        if let Some(guard) = v5_guard {
+                            upnp_mapping_guards.push(guard);
+                        }
                         discv5.apply_nat_endpoint(
                             other_endpoint.ip,
                             other_endpoint.tcp_port,
@@ -500,6 +517,7 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             closed_sessions_metrics: Default::default(),
             pending_session_failure_metrics: Default::default(),
             backed_off_peers_metrics: Default::default(),
+            upnp_mapping_guards,
         })
     }
 
@@ -889,7 +907,9 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             }
 
             NetworkHandleMessage::Shutdown(tx) => {
-                self.perform_network_shutdown();
+                // Sync path: Drop guards → refresh tasks DeletePortMapping (best-effort).
+                self.release_upnp_mappings();
+                self.disconnect_on_shutdown();
                 let _ = tx.send(());
             }
             NetworkHandleMessage::ReputationChange(peer_id, kind) => {
@@ -1239,15 +1259,18 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             },
         }
 
-        self.perform_network_shutdown();
+        self.perform_network_shutdown().await;
         let res = shutdown_hook(self);
         drop(graceful_guard);
         res
     }
 
-    /// Performs a graceful network shutdown by stopping new connections from being accepted while
-    /// draining current and pending connections.
-    fn perform_network_shutdown(&mut self) {
+    /// Drop UPnP guards so refresh tasks issue `DeletePortMapping` (fire-and-forget).
+    fn release_upnp_mappings(&mut self) {
+        self.upnp_mapping_guards.clear();
+    }
+
+    fn disconnect_on_shutdown(&mut self) {
         // Set connection status to `Shutdown`. Stops node from accepting
         // new incoming connections as well as sending connection requests to newly
         // discovered nodes.
@@ -1256,6 +1279,16 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
         self.swarm.sessions_mut().disconnect_all(Some(DisconnectReason::ClientQuitting));
         // drop pending connections
         self.swarm.sessions_mut().disconnect_all_pending();
+    }
+
+    /// Performs a graceful network shutdown by deleting UPnP IGD port mappings, then stopping new
+    /// connections and draining current/pending sessions.
+    async fn perform_network_shutdown(&mut self) {
+        // Await DeletePortMapping while the runtime is still alive (geth Map defer semantics).
+        // Parallel so multiple guards (TCP+UDP + discv5 UDP) do not stack their timeouts.
+        let guards = std::mem::take(&mut self.upnp_mapping_guards);
+        futures::future::join_all(guards.into_iter().map(|g| g.shutdown())).await;
+        self.disconnect_on_shutdown();
     }
 }
 
