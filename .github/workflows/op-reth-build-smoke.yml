@@ -15,9 +15,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # opBNB mainnet block 2000000
-  OPBNB_SMOKE_TIP: "0x50aefd80c3985d81ccc9a200d90efe3ef4f5d7f20b47a76cb71fccd488e50ba4"
-  OPBNB_SMOKE_TIP_BLOCK: "2000000"
+  # opBNB mainnet block 20000
+  OPBNB_SMOKE_TIP: "0x6eb90fbf2063a1d99c3890878d8894dbe469ad764c8abad68729adc40446710f"
+  OPBNB_SMOKE_TIP_BLOCK: "20000"
 
 jobs:
   build-and-smoke:
