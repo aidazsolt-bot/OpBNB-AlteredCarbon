@@ -64,9 +64,7 @@ jobs:
           lscpu || true
           echo
           echo "===== /proc/cpuinfo (model lines) ====="
-          awk -F: '/^model name|^vendor_id|^cpu MHz|^cache size|^flags/ {
-            gsub(/^[ \t]+/, "", $2); print $1 ": " $2
-          }' /proc/cpuinfo | awk 'NR<=40'
+          grep -E '^(model name|vendor_id|cpu MHz|cache size|flags)' /proc/cpuinfo | head -n 40
           echo
           echo "===== memory ====="
           free -h
@@ -85,17 +83,11 @@ jobs:
             echo "$f=$(cat "$f" 2>/dev/null || true)"
           done
           echo
-          echo "===== Azure IMDS (best-effort SKU) ====="
+          echo "===== Azure IMDS (best-effort SKU, raw JSON) ====="
           # GitHub-hosted Linux runners are Azure VMs; IMDS often exposes vmSize.
-          curl -s -H Metadata:true --noproxy '*' \
-            'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01' \
-            | python3 -c 'import sys,json
-try:
-  d=json.load(sys.stdin)
-  for k in ("vmSize","sku","location","zone","name","offer","publisher","version","vmId"):
-    if k in d: print(f"{k}={d[k]}")
-except Exception as e:
-  print(f"imds_unavailable err={e}")' || echo "imds_unavailable"
+          curl -sS -H Metadata:true --noproxy "*" \
+            "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01" \
+            || echo "imds_unavailable"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -113,7 +105,7 @@ except Exception as e:
         shell: bash
         run: |
           echo "rust-cache cache-hit=${{ steps.rust-cache.outputs.cache-hit }}"
-          echo "Cold maxperf Fat-LTO is typically ~20–25m; a cache hit can drop wall time to ~10–15m."
+          echo "Cold maxperf Fat-LTO is typically ~20-25m; a cache hit can drop wall time to ~10-15m."
 
       - name: Build op-reth (${{ matrix.profile }})
         shell: bash
