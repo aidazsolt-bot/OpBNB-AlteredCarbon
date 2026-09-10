@@ -2200,8 +2200,8 @@ Session, kein Code geschrieben.
 
 ## Session 17 cont.: sync-rate benchmark comparison + host hardware context (2026-09-05)
 
-**Official BNB Chain / Reth benchmark reference** (blog: "Diversifying BNB Smart Chain and opBNB
-Execution Clients with Reth", Reth v1.0.0, opBNB on AWS i4g.4xlarge: 16 vCPU Graviton2, 128GiB RAM,
+**Official BNB Chain / Reth benchmark reference** ([blog](https://www.bnbchain.org/en/blog/diversifying-bnb-smart-chain-and-opbnb-execution-clients-with-reth):
+"Diversifying BNB Smart Chain and opBNB Execution Clients with Reth", Reth v1.0.0, opBNB on AWS i4g.4xlarge: 16 vCPU Graviton2, 128GiB RAM,
 1x 3.75TB Nitro NVMe):
 
 Stage-sync (from genesis, opBNB chain state at time of benchmark — much shorter than today's 181M

@@ -316,9 +316,12 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 
 ### Effort log (approximate, based on available session telemetry)
 
+Official reference for the throughput comparisons below: [Diversifying BNB Smart Chain and opBNB Execution Clients with Reth](https://www.bnbchain.org/en/blog/diversifying-bnb-smart-chain-and-opbnb-execution-clients-with-reth) (BNB Chain blog — Reth v1.0.0 benchmarks for **opBNB** and **BSC**).
+
+#### Compact metrics
+
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Main rebase/live-sync effort: **2026-08-06 → 2026-08-17**. Multiple sessions over this window (Copilot: ~2026-08-06 09:50 UTC start; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: early calendar **~88 h** 08-12→16; **re-measured 09-10** full-chat Gap>90 min span **~25.1 h** / 18 clusters). Plus Aug-23 BSC chat `7bb73584…` **~8.5 h** interactive. Sep follow-ups = recovery/docs/discoverability (not the original start window). |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
@@ -328,48 +331,190 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
-| Cursor AI cost allocated to opBNB (operator statement) | **~EUR 70** (unchanged through 2026-09-10 morning). Larger Cursor account spend also covered other projects; **no** new invoice for late-August / Session-22/23 clusters — hours corrected below, EUR allocation not invented upward. |
 | Actual Copilot spend (operator statement) | **~EUR 170 cumulative**: EUR 100 paid/consumed in August 2026 + ~EUR 70 before/after through this update |
-| Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST) | Chat lived **2026-08-12 → 09-10**. File **~4.45 MB** → proxy **~1.1M tokens** (÷4); **~327** user / **~2211** assistant; **~4120** tool_use. Interactive Gap>90 min span sum **~25.1 h** (18 clusters). Early Session-12 estimate (~8.5 h to 08-16) **undercounted** (~12.6 h for C1–C8 alone). |
 | Cursor Aug-23 BSC focus (`7bb73584…`) | **~8.5 h** interactive span; **56** user / **838** assistant; **1619** tools; ~1.0 MB → ~255K tok proxy |
 | Cursor Session 22 (2026-09-09 ~23:06–23:32 CEST, `ea987bef` C17) | **~0.43 h** interactive; sync/status + session-memory + cost-hour correction; no new consensus code |
 | Cursor Session 23 (2026-09-10 ~09:51–10:35 CEST, `ea987bef` C18) | **~0.73 h** interactive; Wright-Gate tip correction to `34367717`, live status/docs, GitHub About+topics, README hero dashboard logo; no consensus code |
-| Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09) | Receipt-root @`34367717`; shared debit/credit fix; maxperf **22m25s**; offline unwind **72m35s**; push `29d7bfa2dd` to `main`. Usage: **178 calls, 20.39M in / 77.4K out**; list **~USD 13.59**, Auto **~USD 12.23** (not added again to EUR 170). |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
 | Cursor Session 12 early snapshot (08-16, superseded by re-measure above) | Then **~1.58 MB** / ~396K tok proxy; interactive estimate ~8.5 h — **undercount** vs later cluster sum |
 | Copilot Session 13 activity (Storage-v2 recovery, 2026-09-02) | Journal/Mimir diagnosis; fixes `fa6caf3022` / `ce0c722d9b`; 6 preimage tests + pipelines; 2× `make maxperf-op`. No per-session billed ledger. |
 | Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
-| Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
-| Live sync milestone (2026-08-11, Session 10) | **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003/004/005** (reachable tip + Cap idempotent + Falling-Prime — Downloader-Dataflow, not live follow-ups): Falling from peer head ~173.37M @ ~22k hdr/s. Checkpoint 0 until ETL write (Upstream TempDir). |
-| Live sync progress (2026-08-12 ~17:03 CEST) | Headers+Bodies+**Sender** = Tip **173 369 140**. **Execution ~10 M (~5.8 %)**, Fermat **`9397477` Point4 MATCH** (IPC). Block-ETA ~**24–25 h** (entities-lag → 2–4 d). CL Tip ~173.7 M (op-node Tip-Feed; L1-re-org warns = Dataseed noise). Next: Haber / FLOW-X02. Details: `plan.md` § Live Sync Progress. |
-| Live sync + Session 12 (2026-08-13 ~16:00 CEST, chat `ea987bef…`) | **PORT-EXEC-001** receipt-root @ **`21591154`** → Unwind FLOW-X05 → Headers Tip **~174.0 M** again; Bodies rebuild. Harness + `re-execute --dump-receipts-on-fail`; maxperf rebuild-only `target/maxperf/op-reth` (~22 min). **Ops:** Exec ≤`21591153` then offline FLOW-X04. Upstream: stay on **2.4.1** (bnb/op not on 2.5). |
 | Live sync Session 12 cont. (2026-08-14 ~13:35 CEST) | **2. Fail** same `21591154` (~5 min Exec). Cap: **`--debug.max-block`** (+`terminate`); `skip-fcu`≠block stop. Journal via container-host journal. MerkleExecute @ `21579110`. |
-| Live sync Session 12 cont. (2026-08-14 ~18:01 CEST) | Dirty Cap → Merkle fail @`21579110` → unwind_to=0; Kill rettet Headers Tip **174 M**. Reload/Stop Panic `SelectNextSome` (ENGINE-004 parked). Bodies clean **0→21579110**. **Ops:** Process-Stop ≫ max-block; Cap only if checkpoints ≤ H (OPS-001). |
 | Live sync Session 12 cont. (2026-08-14 ~21:26 CEST) | Bodies+Sender Cap ✅; Exec ~**6.5 M**→`21579110`. Point4 via IPC `/tmp/<archive-ct>.ipc` MATCH (no HTTP without `--http`). PORT-OPS-001/ENGINE-004 in `plan.md`. |
-| Live sync Session 12 cont. (2026-08-15 ~10:54 CEST) | Offline X04 + SF-Gap + **Effort-Metriken**: Bodies/Sender→`21591154`; SF tip `20365614`≠Cap; Exec→`21591153`; CLI half-open `54..55`. Agent: **~4.5–6 h** interactive / proxy **~72K–216K** tok; source artefacts local-only. |
 | Live sync Session 12 cont. (2026-08-15 ~11:47 CEST) | Docs: op-geth `ValidateState` (receipt+state eager) vs Reth Execution+MerkleExecute staged; `21591154` = receipt content (PIPE-014), not state-root formula. |
-| Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics source artefacts local-only. |
 | Live sync (2026-08-17 ~16:05 CEST) | Exec **~31.5 M↑** (~18 % Headers tip); **Haber Point-4 MATCH** (`27118477` + Fermat/Fail/mid); validation_errors **0**; Wright ETA ~7–11 h @ then-current rate. |
-| Live sync (2026-09-01 ~18:52 CEST) | Headers/Bodies/SenderRecovery **174 027 661**; Exec **`65 828 907`** (~38 % Headers tip); **past Wright**; rate cooled ~**19–33 blk/s** (24 h ~22); ETA Headers tip **~1¼–2¼ Mo** (current bands). Peers 16; validation **0**. Snapshot source artefact local-only. |
-| Live sync Wright-Gate (2026-09-10 ~10:35 CEST) | Tip **`34367717`** (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) + `--debug.terminate`. Bodies 43.5 M skip; Sender tip; **Execution ~33.44 M** (~43 blk/s 1 h; ETA Gate **~6 h**). Peers 4; validation **0**; Point-4 MATCH. Await receipt root `0xc8e83d75…30c`. Grafana hero screenshot → `assets/logo.png`. Details: `plan.md` § Live Sync Progress. |
-| Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST) | The archive datadir has been running **continuously with `storage_v2=true` since at least 2026-08-14**; no manual layout change occurred. Root-cause analysis on `main` found two porting defects: (1) `StaticFileProvider::update_index` encoded the block index under `segment_max_block` instead of under the end of the range, causing `find_fixed_range_with_block_index` to trigger a u64 underflow — in the release build a **silent wrap** that reported existing static-file data as missing (`segment=Receipts` @ `71 185 160`, triggering the unwind `174 027 661 → 71 185 159`); fixed in `fa6caf3022`. (2) The slot-preimage DB from upstream #22379 had never been ported, only its tests had been disabled via `#[ignore]` — as a result, V2 wipe-changesets remained incomplete; backported in `ce0c722d9b`, 6/6 tests green. The subsequent datadir autopsy revealed a mixed state (`HashedAccounts` actually at `71 242 925`, `HashedStorages` actually at `70 885 156`, static files at `71 185 159`); repair was no longer possible locally due to truncated AccountChangeSets, hence a re-sync from genesis. Additional local guards: storage-V2-aware `stage drop Execution`, a loud `remove_state_above` abort when execution is ahead of block data, startup abort when execution equals the header tip but hashing lags behind, and a hashed-state clear on hashing unwind to genesis (`3906c694f8`). |
-| `migrate-v2` clean-run validation (2026-09-03) | Dev-host isolated test: V1-synced datadir (0→300 via `--storage.v2 false` + `--debug.tip`/`--debug.terminate`) → `db migrate-v2` → rebuild restart. No errors; `storage_v2: true` persisted; all 13 stage-checkpoints consistent @300 after rebuild (`MerkleExecute` 100%). Does not exercise crash-resume (mid-migration interruption), which remains untested. |
-| opBNB peer-connectivity investigation (2026-09-03) | Live archive node degraded from historical 8–17 to constant 5 connected peers. Confirmed real opBNB EIP-2124 ForkHash is `45eac6aa` (ENR key `"eth"`), not our own transient pre-Canyon `"opel"` self-tag `716d4a3a`. No official static opBNB peer list exists (`bnb-chain/opbnb#105`/`#310`, unaddressed since 2024). Verified via isolated `p2p body` reachability test that 6 candidate peers fail at the ECIES layer from this dev host while a known-connected peer succeeds immediately — failure is host-specific (capacity/reputation), not a local network/tooling issue. A dev-host systemd timer periodically retrying `admin_addTrustedPeer` for the capacity-limited candidates was tried and then removed again: reth already rediscovers such peers via discv5 and retries them itself with backoff, and trusted peers are exempt from the backoff-count removal guard, making a separate injection timer largely redundant. `.cursor/local/opbnb-peer-inject.py` (gitignored) is kept for ad-hoc manual injection. |
-| PORT-P2P-006 / FLOW-N01 dual-stack live verification (2026-09-03) | Confirmed the two already-merged commits `4bbdd60fd6`/`45db221aeb` fully resolve the long-open dual-stack bind/dial/announce item (plan status was merely stale). Isolated dev-host test (no `--addr`) showed `discv5::service: Discv5 Service started mode=DualStack`, real UDP bindings on both `0.0.0.0:9200` and `[::]:9200`, and NAT announcing both families separately (`Announced dialable enode` for IPv6, `Announced additional discv5 dual-stack NAT endpoint` for IPv4). The live archive node still runs with explicit `--addr 0.0.0.0` (single-family, unchanged); the dual-stack path was verified only in an isolated dev-host test, not on the production node. |
-| PORT-P2P-006 dual-stack UPnP-family follow-up bug fix (2026-09-03) | Live journal review revealed the archive node actually runs *without* `--addr` (dual-stack already active), which surfaced a follow-up bug: `resolve_nat_endpoint()` discarded a valid IPv4 UPnP mapping obtained while resolving the IPv6 leg (UPnP/IGD is IPv4-only; no consumer router exposes an IPv6 IGD), forcing a second, flaky SSDP gateway search for IPv4 that could time out and fall back to announcing an unmapped port. Fixed by only attempting UPnP for IPv4 targets (`crates/net/nat/src/lib.rs`); also dropped the misleading "NAT resolution"/"NAT endpoint" wording for the plain HTTP-resolved-IPv6 case (`crates/net/network/src/manager.rs`, `crates/net/discv5/src/lib.rs`) since `via_upnp` already conveys whether real NAT/UPnP occurred. Verified clean on dev host (`make maxperf-op` build) and then live-deployed by the user on the archive node: no family-mismatch warning, IPv4 leg now cleanly UPnP-mapped (`via_upnp=true`), both UDP sockets bound, 5 peers reconnected without disruption. |
-| Live sync progress + trusted-peer verification via Prometheus (2026-09-04) | Confirmed correct Prometheus HTTP API access pattern for this environment's monitoring stack: `http://grafana/api/v1/query`/`query_range` (plain HTTP, port 80, no auth) proxies straight to Prometheus — `job="reth"`, `instance="BSCRethArchiveNode:6060"`. Compared overnight vs. current `reth_sync_checkpoint{stage="Bodies"}` rate via `rate(...[8h])`/`rate(...[1h])`: **~1,038 blocks/s overnight vs. ~642 blocks/s current (~62%)**. `reth_network_eth_*_requests_received_total` all flat at 0, confirming no peers are pulling data from us (node not yet past Headers/Bodies download into a state useful to serve others). After user reduced debug logging and restarted `BlockChain.service`, confirmed via live journal + `admin_peers` over IPC that the restart was clean (peers persisted to `known-peers.json`, `SenderRecovery` resumed from its checkpoint without reset) and that both configured `--trusted-peers` enodes (`167.235.95.170:30305`, `157.180.98.155:30315`) are syntactically valid and actively connected with `"trusted":true`. Flagged a minor unrelated systemd issue: `BlockChain.service:50` has `Restart=never` which is not a valid systemd value (valid: `no`/`always`/`on-failure`/etc.) — currently silently ignored, should be corrected to `Restart=no`. |
-| Restart-history consolidation + `SenderRecovery`→`Execution` transition + `scripts/sync-eta.sh` (2026-09-05) | Consolidated all `BlockChain.service` restarts since 2026-08-10 from the container journal: **90 restarts total**, all attributable to already-documented debug/fix cycles (Sessions 9–17) except two small untracked restarts on 08-18/08-25 (below session-worthy threshold at the time). Pinpointed the exact `SenderRecovery`→`Execution` stage transition via Mimir range query: `SenderRecovery` reached tip `181,023,934` at **2026-09-04 16:45:00 UTC**; `Execution` has run uninterrupted since (10.3% of tip as of 09-05 07:14 UTC, throughput cooling from an initial ramp-up spike to a steadier ~50–60 blocks/s). Added `scripts/sync-eta.sh` (queries all `reth_sync_checkpoint{stage=...}` values, auto-detects the active stage, prints throughput over 15m–24h windows plus ETA) and updated `.cursor/rules/opbnb-live-sync-health.mdc` to require its output be pasted into the `plan.md` session entry at every health check going forward — this is the durable mechanism for "auto-generate and document running ETA calculations in follow-up sessions". |
-| opBNB Reth benchmark comparison + Execution-stage bottleneck root cause (2026-09-05) | Compared our Execution-stage rate against the official BNB Chain Reth v1.0 benchmark (opBNB, AWS i4g.4xlarge: 16 vCPU/128GiB, single-tenant). Benchmark's live-sync combined (execution+merklization+MDBX-commit) rate was **43.65 MGas/s** (archive) at chain tip ~30.5M blocks; official post attributes the drop from pure-execution (~134-139 MGas/s) to this combined figure directly to *"mdbx is not a write-friendly database... a challenge that becomes more pronounced for fast-blocking layer 2 solutions like opBNB"*. **Normalized head-to-head measurement on our node**, using the identical methodology (gas counter delta ÷ wall-clock time) over a live 23.4min window (2026-09-05 16:25:30→16:48:54 UTC): `reth_sync_execution_gas_processed_total` delta 216.7B gas / 1,404s = **154.35 MGas/s combined**, with 63,274 blocks processed (45.07 blocks/s) — **~3.5x the official benchmark's combined rate**, despite running on shared multi-tenant hardware and against a chain ~5.9x longer (181M vs. 30.5M blocks) where larger tries would be expected to slow commits further, not speed them up. (The instantaneous `reth_sync_execution_gas_per_second` gauge reads an optimistic ~412 MGas/s over the same window since it only captures pure per-block EVM execution time and excludes DB-commit stalls — not used for this comparison.) Conclusion: the per-block MDBX commit latency is a real, documented architectural ceiling in reth, but it is not the limiting factor for our current throughput — our node already runs well above the reference single-tenant benchmark's combined rate. Anonymized host class: single 16-core/32-thread x86 server, several hundred GiB RAM, multiple consumer NVMe drives, multi-tenant. |
-| BSC Reth benchmark comparison, chain-height normalized — contrasting outcome vs. opBNB (2026-09-05) | Compared our from-genesis archive-mode `BSCRethFastNode` sync against the official BSC Reth v1.0 benchmark (AWS `im4gn.8xlarge`: 32 core/128GB, dual 7500 NVMe, single-tenant), which measured 621/516 MGas/s (full/archive) historical backfill at chain height ~40.5M and 24/30 days total from-genesis sync time. Our node (started 2026-05-31, target 101.48M blocks — 2.51x the benchmark's chain height) completed downloads (Headers+Bodies+SenderRecovery) to the full current tip in just 3.56 days, but took **58.23 days within the Execution stage alone** to reach the same absolute block height (~40.5M) the benchmark used for its entire sync; current Execution throughput is **~176-224 MGas/s**, i.e. **~2.3-3.5x slower** than the official 516-621 MGas/s. This is the **opposite outcome** from the same-day opBNB comparison (where we ran ~3.5x *faster* than that benchmark) — most likely because the BSC benchmark used double the CPU cores (32 vs. 16) and a dedicated dual-NVMe RAID vs. the opBNB benchmark's single 16-core/single-NVMe instance, meaning the reference hardware itself scaled up specifically for BSC. Discarded the locally-running `BSCErigonArchiveNode` as a comparison point since it was restored from a snapshot, not genesis-synced. |
-| Brutal CPU-core linear-scaling normalization for both benchmark comparisons (2026-09-05) | Both benchmark nodes actually run in 4-core LXC containers, not on the host's full 16 cores — a factor omitted from the two comparisons above. Applying a naive linear per-core scale-up (measured ÷ 4 × target cores): **opBNB** goes from 3.5x the official 16-core rate (measured, 4c) to a hypothetical **14.1x at 16c** / **28.3x at 32c**. **BSC** goes from 0.34-0.43x (slower) at measured 4c to a hypothetical **1.36-1.74x faster at 16c** / **2.73-3.47x faster at 32c** vs. the official 32-core rate. **Caveat, not to be overstated:** linear scaling is optimistic and ignores that MDBX's per-block commit is largely serial (Amdahl's-law diminishing returns), that more cores sharing one NVMe would hit I/O contention before compute saturates (the official BSC benchmark paired its extra cores with a dedicated dual-NVMe RAID, not just CPU), and host noisy-neighbor contention from ~15 co-located node processes. Net read: the BSC shortfall is plausibly explained by core count/storage topology rather than an architectural deficiency on our side. |
-| discv5 `established_sessions`/`kbucket_peers` stuck at 0 since 2026-08-25 restart — root cause + config fix (2026-09-06) | **Scope check first:** the actual RLPx sync (Headers/Bodies fetch, `reth_network_connected_peers` steady at 4-5) was unaffected throughout — those connections come from the persistent `known-peers.json` RLPx cache plus the 2 `--trusted-peers`, neither of which depends on discv5. What was actually broken, visible only via `reth_discv5_established_sessions_raw_total`/`kbucket_peers_raw_total`: the node's ability to *discover new, previously-unknown* peers via the discv5 overlay network — these counters had silently flatlined at 0 (`max_over_time(...[30d])` peaked at 205,177/188 before an abrupt reset window 2026-08-25 11:06-11:07 UTC) despite ~90 subsequent restarts, in both single-stack-IPv6 and dual-stack modes. Root cause, confirmed via TRACE-level `net::discv5` logs across live restarts plus an isolated standalone reachability probe (`cargo run -p reth-discv5 --example manual_discovery`): all 4 official opBNB discv5 bootstrap seeds (`bnb-chain/op-geth`'s `OpBNBMainnetBootnodes`, decoded from ENR) are dead/non-discv5-responsive from this host, while a known-good OP-stack control bootnode responded fine (ruling out local firewall/NAT). Of our two `--trusted-peers`, one (`167.235.95.170:30305`) is itself discv5-capable and answered with a valid ENR — but reth (confirmed identical on both `paradigmxyz/reth` and `bnb-chain/reth-bsc-trail` upstream) never uses `--trusted-peers` to seed discv5's routing table; that requires a separate `--bootnodes` flag, which the live unit did not set (falling back to the dead chain-spec default). **Config-only fix** (no code change): added `--bootnodes` to the systemd unit, including the working trusted peer plus the (currently-dead, kept for forward-compat) official seeds. Verified: within ~60s of restart, `established_sessions_raw_total` 314 and `kbucket_peers_raw_total` 73 (both from 0), fork-ID filter correctly excluding unrelated CL/opstack-mismatched discv5-overlay peers. **Practical impact of the ~12-day outage:** not a sync blocker, but a discovery-resilience gap — the node was fully dependent on its existing 4-5 cached/trusted peers staying online, with no automatic ability to find replacements if several had dropped simultaneously; the fix restores that redundancy, matching pre-2026-08-25 discv5 health. Also reconfirmed discv4 has zero Prometheus metrics instrumentation anywhere in reth (upstream gap on both remotes) — `admin_peers` + log correlation is required to distinguish discv4- vs discv5-sourced peers, instant-query-only Prometheus checks on monotonic counters are misleading across restarts. |
-| Public repo hygiene | Repository was recreated from a sanitized local-only history on 2026-09-02. `main` starts at 2026-08-06, has one normalized author, no inherited upstream parents/tags, no `.github/CODEOWNERS`, only the op-reth smoke workflow under `.github/`, and no `files/` artefacts anywhere in public history. |
 | Commits | See `git log --first-parent main`; public history was rebuilt as sanitized local-only commits on 2026-09-02 and later cleaned so `files/` never appears in `main` history. |
 | Metrics snapshots | Local-only operator artefacts. `files/` is intentionally ignored and not published because it may contain session paths, local telemetry, and forensic scratch data. |
 | Maxperf binary (local, **not committed**) | `make maxperf-op` → `target/maxperf/op-reth` + install under `dist/bin/` with a dedicated binary name (avoids clobbering a generic `op-reth` on PATH); default CLI chain `opbnb` |
+
+#### Timeline, sessions, and investigations
+
+Longer notes are listed below (not jammed into a single table cell). Bullet points preserve the same facts as the previous Value column.
+
+##### Elapsed wall-clock time (this rebase effort, across sessions)
+
+- Main rebase/live-sync window: **2026-08-06 → 2026-08-17** (Copilot start ~2026-08-06 09:50 UTC).
+- Cursor Session 6: **2026-08-09**, ~5.34 h · Session 8: **~2026-08-09**, ~2.1 h · Session 9: **~2026-08-10**, ~1.9 h.
+- Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** wall.
+- Session 12 (`ea987bef…`): early calendar span **~88 h** (08-12→16); **re-measured 09-10** Gap>90 min interactive sum **~25.1 h** / 18 clusters.
+- Aug-23 BSC chat `7bb73584…`: **~8.5 h** interactive. Sep follow-ups = recovery/docs/discoverability (not the original start window).
+
+##### Cursor AI cost allocated to opBNB (operator statement)
+
+- **~EUR 70** (unchanged through 2026-09-10 morning).
+- Larger Cursor account spend also covered other projects; **no** new invoice for late-August / Session-22/23 clusters.
+- Hours corrected below; EUR allocation not invented upward.
+
+##### Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST)
+
+- Chat lived **2026-08-12 → 09-10**. File **~4.45 MB** → proxy **~1.1M tokens** (÷4); **~327** user / **~2211** assistant; **~4120** tool_use.
+- Interactive Gap>90 min span sum **~25.1 h** (18 clusters). Early Session-12 estimate (~8.5 h to 08-16) **undercounted** (~12.6 h for C1–C8 alone).
+
+##### Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09)
+
+- Receipt-root @`34367717`; shared debit/credit fix; maxperf **22m25s**; offline unwind **72m35s**; push `29d7bfa2dd` to `main`.
+- Usage: **178 calls, 20.39M in / 77.4K out**; list **~USD 13.59**, Auto **~USD 12.23** (not added again to EUR 170).
+
+##### Illustrative API-equivalent cost (Copilot only, **not an invoice**)
+
+- Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount.
+- Cursor billed usage is **not** available on disk — use the Cursor account dashboard.
+- Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API.
+
+##### Live sync milestone (2026-08-11, Session 10)
+
+- **PORT-CONS-001**; **PORT-ENGINE-001/003**; **PORT-P2P-003/004/005** (reachable tip + Cap idempotent + Falling-Prime — Downloader-Dataflow, not live follow-ups): Falling from peer head ~173.37M @ ~22k hdr/s.
+- Checkpoint 0 until ETL write (Upstream TempDir).
+
+##### Live sync progress (2026-08-12 ~17:03 CEST)
+
+- Headers+Bodies+**Sender** = Tip **173 369 140**. **Execution ~10 M (~5.8 %)**, Fermat **`9397477` Point4 MATCH** (IPC).
+- Block-ETA ~**24–25 h** (entities-lag → 2–4 d). CL Tip ~173.7 M (op-node Tip-Feed; L1-re-org warns = Dataseed noise).
+- Next: Haber / FLOW-X02. Details: `plan.md` § Live Sync Progress.
+
+##### Live sync + Session 12 (2026-08-13 ~16:00 CEST, chat `ea987bef…`)
+
+- **PORT-EXEC-001** receipt-root @ **`21591154`** → Unwind FLOW-X05 → Headers Tip **~174.0 M** again; Bodies rebuild.
+- Harness + `re-execute --dump-receipts-on-fail`; maxperf rebuild-only `target/maxperf/op-reth` (~22 min).
+- **Ops:** Exec ≤`21591153` then offline FLOW-X04. Upstream: stay on **2.4.1** (bnb/op not on 2.5).
+
+##### Live sync Session 12 cont. (2026-08-14 ~18:01 CEST)
+
+- Dirty Cap → Merkle fail @`21579110` → unwind_to=0; Kill rettet Headers Tip **174 M**.
+- Reload/Stop Panic `SelectNextSome` (ENGINE-004 parked). Bodies clean **0→21579110**.
+- **Ops:** Process-Stop ≫ max-block; Cap only if checkpoints ≤ H (OPS-001).
+
+##### Live sync Session 12 cont. (2026-08-15 ~10:54 CEST)
+
+- Offline X04 + SF-Gap + **Effort-Metriken**: Bodies/Sender→`21591154`; SF tip `20365614`≠Cap; Exec→`21591153`; CLI half-open `54..55`.
+- Agent: **~4.5–6 h** interactive / proxy **~72K–216K** tok; source artefacts local-only.
+
+##### Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST)
+
+- **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial.
+- ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics source artefacts local-only.
+
+##### Live sync (2026-09-01 ~18:52 CEST)
+
+- Headers/Bodies/SenderRecovery **174 027 661**; Exec **`65 828 907`** (~38 % Headers tip); **past Wright**; rate cooled ~**19–33 blk/s** (24 h ~22); ETA Headers tip **~1¼–2¼ Mo** (current bands).
+- Peers 16; validation **0**. Snapshot source artefact local-only.
+
+##### Live sync Wright-Gate (2026-09-10 ~10:35 CEST)
+
+- Tip **`34367717`** (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) + `--debug.terminate`.
+- Bodies 43.5 M skip; Sender tip; **Execution ~33.44 M** (~43 blk/s 1 h; ETA Gate **~6 h**).
+- Peers 4; validation **0**; Point-4 MATCH. Await receipt root `0xc8e83d75…30c`. Grafana hero screenshot → `assets/logo.png`.
+- Details: `plan.md` § Live Sync Progress.
+
+##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
+
+- Archive datadir had been running **continuously with `storage_v2=true` since at least 2026-08-14**; no manual layout change.
+- Defect (1): `StaticFileProvider::update_index` encoded the block index under `segment_max_block` instead of range end → u64 underflow; release build **silent wrap** reported Receipts missing @ `71 185 160` (unwind `174 027 661 → 71 185 159`). Fixed in `fa6caf3022`.
+- Defect (2): slot-preimage DB from upstream #22379 never ported (tests only `#[ignore]`) → incomplete V2 wipe-changesets. Backported in `ce0c722d9b` (6/6 tests green).
+- Datadir autopsy: mixed hashed/SF tips; repair impossible (truncated AccountChangeSets) → re-sync from genesis.
+- Extra local guards: V2-aware `stage drop Execution`, loud `remove_state_above` abort, startup abort when Exec==Header tip but hashing lags, hashed-state clear on hashing unwind-to-0 (`3906c694f8`).
+
+##### `migrate-v2` clean-run validation (2026-09-03)
+
+- Dev-host isolated test: V1-synced datadir (0→300 via `--storage.v2 false` + `--debug.tip`/`--debug.terminate`) → `db migrate-v2` → rebuild restart.
+- No errors; `storage_v2: true` persisted; all 13 stage-checkpoints consistent @300 after rebuild (`MerkleExecute` 100%).
+- Does not exercise crash-resume (mid-migration interruption), which remains untested.
+
+##### opBNB peer-connectivity investigation (2026-09-03)
+
+- Live archive node degraded from historical 8–17 to constant 5 connected peers. Confirmed real opBNB EIP-2124 ForkHash is `45eac6aa` (ENR key `"eth"`), not our own transient pre-Canyon `"opel"` self-tag `716d4a3a`.
+- No official static opBNB peer list exists (`bnb-chain/opbnb#105`/`#310`, unaddressed since 2024).
+- Verified via isolated `p2p body` reachability test that 6 candidate peers fail at the ECIES layer from this dev host while a known-connected peer succeeds immediately — failure is host-specific (capacity/reputation), not a local network/tooling issue.
+- A dev-host systemd timer periodically retrying `admin_addTrustedPeer` for the capacity-limited candidates was tried and then removed again: reth already rediscovers such peers via discv5 and retries them itself with backoff, and trusted peers are exempt from the backoff-count removal guard, making a separate injection timer largely redundant.
+- `.cursor/local/opbnb-peer-inject.py` (gitignored) is kept for ad-hoc manual injection.
+
+##### PORT-P2P-006 / FLOW-N01 dual-stack live verification (2026-09-03)
+
+- Confirmed the two already-merged commits `4bbdd60fd6`/`45db221aeb` fully resolve the long-open dual-stack bind/dial/announce item (plan status was merely stale).
+- Isolated dev-host test (no `--addr`) showed `discv5::service: Discv5 Service started mode=DualStack`, real UDP bindings on both `0.0.0.0:9200` and `[::]:9200`, and NAT announcing both families separately (`Announced dialable enode` for IPv6, `Announced additional discv5 dual-stack NAT endpoint` for IPv4).
+- The live archive node still runs with explicit `--addr 0.0.0.0` (single-family, unchanged); the dual-stack path was verified only in an isolated dev-host test, not on the production node.
+
+##### PORT-P2P-006 dual-stack UPnP-family follow-up bug fix (2026-09-03)
+
+- Live journal: archive runs *without* `--addr` (dual-stack already active).
+- Bug: `resolve_nat_endpoint()` discarded a valid IPv4 UPnP mapping while resolving the IPv6 leg (UPnP/IGD is IPv4-only; no consumer IPv6 IGD) → second flaky SSDP search could time out and announce an unmapped port.
+- Fix: only attempt UPnP for IPv4 targets (`crates/net/nat/src/lib.rs`); drop misleading "NAT resolution"/"NAT endpoint" wording for plain HTTP-resolved IPv6 (`manager.rs`, `discv5`) — `via_upnp` already says whether real UPnP happened.
+- Verified on dev host + live archive: no family-mismatch warning, IPv4 `via_upnp=true`, both UDP sockets bound, 5 peers reconnected.
+
+##### Live sync progress + trusted-peer verification via Prometheus (2026-09-04)
+
+- Confirmed correct Prometheus HTTP API access pattern for this environment's monitoring stack: `http://grafana/api/v1/query`/`query_range` (plain HTTP, port 80, no auth) proxies straight to Prometheus — `job="reth"`, `instance="BSCRethArchiveNode:6060"`.
+- Compared overnight vs. current `reth_sync_checkpoint{stage="Bodies"}` rate via `rate(...[8h])`/`rate(...[1h])`: **~1,038 blocks/s overnight vs. ~642 blocks/s current (~62%)**.
+- `reth_network_eth_*_requests_received_total` all flat at 0, confirming no peers are pulling data from us (node not yet past Headers/Bodies download into a state useful to serve others).
+- After user reduced debug logging and restarted `BlockChain.service`, confirmed via live journal + `admin_peers` over IPC that the restart was clean (peers persisted to `known-peers.json`, `SenderRecovery` resumed from its checkpoint without reset) and that both configured `--trusted-peers` enodes (`167.235.95.170:30305`, `157.180.98.155:30315`) are syntactically valid and actively connected with `"trusted":true`.
+- Flagged a minor unrelated systemd issue: `BlockChain.service:50` has `Restart=never` which is not a valid systemd value (valid: `no`/`always`/`on-failure`/etc.) — currently silently ignored, should be corrected to `Restart=no`.
+
+##### Restart-history consolidation + `SenderRecovery`→`Execution` transition + `scripts/sync-eta.sh` (2026-09-05)
+
+- Consolidated all `BlockChain.service` restarts since 2026-08-10 from the container journal: **90 restarts total**, all attributable to already-documented debug/fix cycles (Sessions 9–17) except two small untracked restarts on 08-18/08-25 (below session-worthy threshold at the time).
+- Pinpointed `SenderRecovery`→`Execution` via Mimir: Sender reached tip `181,023,934` at **2026-09-04 16:45:00 UTC**; Execution uninterrupted since (10.3% of tip as of 09-05 07:14 UTC; cooled to ~50–60 blk/s).
+- Added `scripts/sync-eta.sh` + updated `.cursor/rules/opbnb-live-sync-health.mdc` to paste ETA into `plan.md` at every health check.
+
+##### opBNB Reth benchmark comparison + Execution-stage bottleneck root cause (2026-09-05)
+
+- Reference: [official BNB Chain Reth v1.0 benchmark](https://www.bnbchain.org/en/blog/diversifying-bnb-smart-chain-and-opbnb-execution-clients-with-reth) (opBNB on AWS i4g.4xlarge: 16 vCPU/128 GiB, single-tenant).
+- Official live-sync **combined** rate (execution + merklization + MDBX commit): **43.65 MGas/s** archive @ tip ~30.5 M; pure execution ~134–139 MGas/s.
+- Blog root cause: *"mdbx is not a write-friendly database… a challenge that becomes more pronounced for fast-blocking layer 2 solutions like opBNB"*.
+- Our normalized head-to-head (same method: gas Δ ÷ wall clock), 2026-09-05 16:25:30→16:48:54 UTC (23.4 min): `reth_sync_execution_gas_processed_total` Δ 216.7 B / 1 404 s = **154.35 MGas/s combined** (63 274 blocks, 45.07 blk/s) → **~3.5×** the official combined rate on shared multi-tenant HW and a ~5.9× longer chain (181 M vs 30.5 M).
+- Gauge `reth_sync_execution_gas_per_second` ~412 MGas/s over that window is pure EVM only (excludes DB commit) — **not** used for the comparison.
+- Conclusion: per-block MDBX commit is a real architectural ceiling, but **not** our current limiter (we already beat the single-tenant reference combined rate). Host class (anonymized): 16c/32t x86, hundreds of GiB RAM, multi consumer NVMe, multi-tenant.
+
+##### BSC Reth benchmark comparison, chain-height normalized — contrasting outcome vs. opBNB (2026-09-05)
+
+- Same blog: [official BSC Reth v1.0 benchmark](https://www.bnbchain.org/en/blog/diversifying-bnb-smart-chain-and-opbnb-execution-clients-with-reth) (AWS `im4gn.8xlarge`: 32c/128 GB, dual 7500 NVMe) — historical backfill 621/516 MGas/s (full/archive) @ ~40.5 M; from-genesis ~24/30 days.
+- Our `BSCRethFastNode` (from genesis 2026-05-31, tip target 101.48 M = 2.51× benchmark height): downloads to tip in 3.56 d, but **58.23 d in Execution alone** to reach the same absolute ~40.5 M height.
+- Our Exec throughput **~176–224 MGas/s** → **~2.3–3.5× slower** than official 516–621 MGas/s — **opposite** of the same-day opBNB result (~3.5× faster there).
+- Likely HW: BSC reference used 32 cores + dual-NVMe RAID vs opBNB’s 16c/single NVMe. `BSCErigonArchiveNode` discarded (snapshot restore, not genesis-sync).
+
+##### Brutal CPU-core linear-scaling normalization for both benchmark comparisons (2026-09-05)
+
+- Both benchmark nodes actually run in 4-core LXC containers, not on the host's full 16 cores — a factor omitted from the two comparisons above.
+- Applying a naive linear per-core scale-up (measured ÷ 4 × target cores): **opBNB** goes from 3.5x the official 16-core rate (measured, 4c) to a hypothetical **14.1x at 16c** / **28.3x at 32c**.
+- **BSC** goes from 0.34-0.43x (slower) at measured 4c to a hypothetical **1.36-1.74x faster at 16c** / **2.73-3.47x faster at 32c** vs. the official 32-core rate.
+- **Caveat, not to be overstated:** linear scaling is optimistic and ignores that MDBX's per-block commit is largely serial (Amdahl's-law diminishing returns), that more cores sharing one NVMe would hit I/O contention before compute saturates (the official BSC benchmark paired its extra cores with a dedicated dual-NVMe RAID, not just CPU), and host noisy-neighbor contention from ~15 co-located node processes.
+- Net read: the BSC shortfall is plausibly explained by core count/storage topology rather than an architectural deficiency on our side.
+
+##### discv5 `established_sessions`/`kbucket_peers` stuck at 0 since 2026-08-25 restart — root cause + config fix (2026-09-06)
+
+- **Scope check first:** the actual RLPx sync (Headers/Bodies fetch, `reth_network_connected_peers` steady at 4-5) was unaffected throughout — those connections come from the persistent `known-peers.json` RLPx cache plus the 2 `--trusted-peers`, neither of which depends on discv5.
+- What was actually broken, visible only via `reth_discv5_established_sessions_raw_total`/`kbucket_peers_raw_total`: the node's ability to *discover new, previously-unknown* peers via the discv5 overlay network — these counters had silently flatlined at 0 (`max_over_time(...[30d])` peaked at 205,177/188 before an abrupt reset window 2026-08-25 11:06-11:07 UTC) despite ~90 subsequent restarts, in both single-stack-IPv6 and dual-stack modes.
+- Root cause, confirmed via TRACE-level `net::discv5` logs across live restarts plus an isolated standalone reachability probe (`cargo run -p reth-discv5 --example manual_discovery`): all 4 official opBNB discv5 bootstrap seeds (`bnb-chain/op-geth`'s `OpBNBMainnetBootnodes`, decoded from ENR) are dead/non-discv5-responsive from this host, while a known-good OP-stack control bootnode responded fine (ruling out local firewall/NAT).
+- One `--trusted-peers` (`167.235.95.170:30305`) is discv5-capable and answered with a valid ENR, but reth (same on `paradigmxyz/reth` and `bnb-chain/reth-bsc-trail`) never seeds discv5 from `--trusted-peers` — that needs `--bootnodes` (live unit lacked it → dead chain-spec defaults).
+- **Config-only fix:** add `--bootnodes` (working trusted peer + official seeds for forward-compat). Within ~60 s: `established_sessions_raw_total` 314, `kbucket_peers_raw_total` 73; fork-ID filter OK.
+- Impact of ~12‑day outage: not a sync blocker, but discovery resilience gap (dependent on 4–5 cached/trusted peers). Fix restores pre-2026-08-25 discv5 health.
+- Note: discv4 has **no** Prometheus metrics in reth (upstream gap) — use `admin_peers` + logs; monotonic-counter spot checks mislead across restarts.
+
+##### Public repo hygiene
+
+Repository was recreated from a sanitized local-only history on 2026-09-02. `main` starts at 2026-08-06, has one normalized author, no inherited upstream parents/tags, no `.github/CODEOWNERS`, only the op-reth smoke workflow under `.github/`, and no `files/` artefacts anywhere in public history.
 
 #### Operator / senior admin–dev effort (human-owned)
 
