@@ -58,9 +58,13 @@ commercial use and are therefore **not** used for this additional restriction.
 
 # opBNB-AlteredCarbon (reth-bsc-trail workspace)
 
-This is an experimental, community/hobbyist fork of a blockchain client based on
-[Reth](https://github.com/paradigmxyz/reth/) for **[opBNB](https://github.com/bnb-chain/op-geth) only**
-(chain ID **204**, binary **`op-reth`** / `make build-op`). See the project notice above for status and intent.
+Experimental **opBNB** (chain **204**) **Reth** / **`op-reth`** execution client: AI-assisted
+revival of an archived BNB Reth trail on modern [paradigmxyz/reth](https://github.com/paradigmxyz/reth),
+with live archive-node sync and protocol ports from [bnb-chain/op-geth](https://github.com/bnb-chain/op-geth)
+(OP Stack L2 / BNB Chain ecosystem — **unofficial**, not affiliated with Binance).
+
+This is a community/hobbyist fork for **opBNB only** (binary **`op-reth`** / `make build-op`). See the
+project notice above for status, personal-use limits, and liability.
 
 > **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
 > this tree. Do not reintroduce BSC mainnet (chain 56) work here — use a **separate repository** if you need
@@ -312,21 +316,27 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 
 | Metric | Value |
 | --- | --- |
-| Elapsed wall-clock time (this rebase effort, across sessions) | Main rebase/live-sync effort: **2026-08-06 → 2026-08-17**. Multiple sessions over this window (Copilot: ~2026-08-06 09:50 UTC start; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: calendar **~88 h** 08-12→16, interactive clusters **~4.5 h** early + **~4 h** 08-15 evening / 08-16 morning). Later 2026-09-01/02 work was follow-up diagnosis/recovery hardening, not the original project start window. |
+| Elapsed wall-clock time (this rebase effort, across sessions) | Main rebase/live-sync effort: **2026-08-06 → 2026-08-17**. Multiple sessions over this window (Copilot: ~2026-08-06 09:50 UTC start; Cursor Session 6: **2026-08-09**, ~5.34 h; Session 8: **~2026-08-09**, ~2.1 h; Session 9: **~2026-08-10**, ~1.9 h; Session 10 live sync: **2026-08-11**, chat `84eb0b61…`, **~4.8 h** Wall; **Session 12** chat `ea987bef…`: early calendar **~88 h** 08-12→16; **re-measured 09-09** full-chat Gap>90 min span **~24.1 h** / 17 clusters). Plus Aug-23 BSC chat `7bb73584…` **~8.5 h** interactive. Later Sep work = follow-up/recovery, not the original start window. |
 | LLM models used (Copilot session `a95758da`) | Claude Sonnet 5 (primary), GPT-5.4, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-5.4-mini |
 | LLM models used (Cursor Session 6, chat `42f88fe7…`) | **composer-2.5-fast** + **cursor-grok-4.5-high-fast**; parent `default` |
 | LLM models used (Cursor Session 8, chat `d6ebb428…`) | Parent Auto/Composer router; ~816 tool calls in agent transcript |
 | LLM models used (Cursor Session 9, chat `6a6455c9…`) | Parent Auto/Composer router + Task subagents (inherit); ~250 tool_use in resume transcript |
 | LLM models used (Cursor Session 10, chat `84eb0b61…`) | Parent Auto/Composer; live opBNB archive sync — CONS/ENGINE + **P2P-003/004/005** + **Migrations-Gate PIPE+FLOW** |
-| LLM models used (Cursor Session 12, chat `ea987bef…`) | Parent Auto/Composer (+ occasional Task); **84** user / **367** assistant; **567** tool_use |
+| LLM models used (Cursor Session 12, chat `ea987bef…`) | Parent Auto/Composer; **re-measured 09-09:** **~311** user / **~2155** assistant; **~4041** tool_use (full chat life) |
 | Approx. input tokens (Copilot `a95758da`) | **~650.1M** (+ ~636.2M cache-read) |
 | Approx. output tokens (Copilot `a95758da`) | **~1.861M** |
 | Approx. model wall time (Copilot `a95758da`) | ~8.1 hours / 5,803 usage events / 32 turns |
+| Cursor AI cost allocated to opBNB (operator statement) | **~EUR 70** (unchanged 2026-09-09 evening). Larger Cursor account spend also covered other projects; **no** new invoice for late-August / Session-22 clusters — hours corrected below, EUR allocation not invented upward. |
+| Actual Copilot spend (operator statement) | **~EUR 170 cumulative**: EUR 100 paid/consumed in August 2026 + ~EUR 70 before/after through this update |
+| Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-09 ~23:15 CEST) | Chat lived **2026-08-12 → 09-09**. File **~4.4 MB** → proxy **~1.1M tokens** (÷4); **~311** user / **~2155** assistant; **~4041** tool_use. Interactive Gap>90 min span sum **~24.1 h** (17 clusters). Early Session-12 estimate (~8.5 h to 08-16) **undercounted** (~12.6 h for C1–C8 alone). |
+| Cursor Aug-23 BSC focus (`7bb73584…`) | **~8.5 h** interactive span; **56** user / **838** assistant; **1619** tools; ~1.0 MB → ~255K tok proxy |
+| Cursor Session 22 (2026-09-09 ~23:06–23:15 CEST, same `ea987bef` C17) | **~0.15 h** interactive; sync/status + session-memory + cost correction; no new consensus code |
+| Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09) | Receipt-root @`34367717`; shared debit/credit fix; maxperf **22m25s**; offline unwind **72m35s**; push `29d7bfa2dd` to `main`. Usage: **178 calls, 20.39M in / 77.4K out**; list **~USD 13.59**, Auto **~USD 12.23** (not added again to EUR 170). |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
-| Cursor Session 12 activity (EXEC-001 → UPnP / past Fail / X02 / A02) | Snapshot **08-16:** Transcript **~1.58 MB** → proxy **~396K tokens** (filesize÷4); calendar **~88 h**; interactive **~4.5 h** early + **~4 h** 08-15 evening/08-16 morning; billed **n/a** — source artefacts are local-only and not published |
-| Copilot Session 13 activity (Storage-v2 recovery, root-cause analysis and fixes, 2026-09-02) | Journal/Mimir diagnosis of the receipt-static-file unwind; Storage v2 migration/consistency changes; source-level root-cause analysis on `main` yielding two fixes (static-file block-index underflow `fa6caf3022`, slot-preimage DB port `ce0c722d9b`); six reactivated preimage regression tests plus `test_pipeline`/`test_pipeline_v2`, `cargo check --workspace` and two `make maxperf-op` builds. Per-session billed-token telemetry is unavailable; no incremental monetary estimate is claimed. |
+| Cursor Session 12 early snapshot (08-16, superseded by re-measure above) | Then **~1.58 MB** / ~396K tok proxy; interactive estimate ~8.5 h — **undercount** vs later cluster sum |
+| Copilot Session 13 activity (Storage-v2 recovery, 2026-09-02) | Journal/Mimir diagnosis; fixes `fa6caf3022` / `ce0c722d9b`; 6 preimage tests + pipelines; 2× `make maxperf-op`. No per-session billed ledger. |
 | Session 10 maxperf rebuilds (test/deploy cost) | 3 successful fat-LTO builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`); plus failed tipresolve SIGKILL; unit tests fetch 43 + reverse_headers 11 |
 | Illustrative API-equivalent cost (Copilot only, **not an invoice**) | Order-of-magnitude **~USD 1.5–2k** if the ~650M in / ~1.9M out were billed at public Sonnet/GPT list bands without cache discount. Cursor billed usage is **not** available on disk — use the Cursor account dashboard. Session 12 content proxy undercounts context resend; subscription pricing ≠ raw API. |
 | Compile / runnable milestone (2026-08-10, Session 9) | StorageChangeSets SF (**PORT-STOR-006**); stages nextest **106/106**; EF **v17.0** → **62/62**. Catch-up/full sync = **human-owned** (see `plan.md`). |
@@ -341,6 +351,7 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics source artefacts local-only. |
 | Live sync (2026-08-17 ~16:05 CEST) | Exec **~31.5 M↑** (~18 % Headers tip); **Haber Point-4 MATCH** (`27118477` + Fermat/Fail/mid); validation_errors **0**; Wright ETA ~7–11 h @ then-current rate. |
 | Live sync (2026-09-01 ~18:52 CEST) | Headers/Bodies/SenderRecovery **174 027 661**; Exec **`65 828 907`** (~38 % Headers tip); **past Wright**; rate cooled ~**19–33 blk/s** (24 h ~22); ETA Headers tip **~1¼–2¼ Mo** (current bands). Peers 16; validation **0**. Snapshot source artefact local-only. |
+| Live sync Wright-Gate (2026-09-10 ~09:59 CEST) | Tip **`34367717`** (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) + `--debug.terminate`. Bodies 43.5 M skip; Sender tip; **Execution ~33.32 M** (~37–40 blk/s, ETA Gate ~6–9 h). Peers 4; validation **0**; Point-4 MATCH. Await receipt root `0xc8e83d75…30c`. Details: `plan.md` § Live Sync Progress. |
 | Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST) | The archive datadir has been running **continuously with `storage_v2=true` since at least 2026-08-14**; no manual layout change occurred. Root-cause analysis on `main` found two porting defects: (1) `StaticFileProvider::update_index` encoded the block index under `segment_max_block` instead of under the end of the range, causing `find_fixed_range_with_block_index` to trigger a u64 underflow — in the release build a **silent wrap** that reported existing static-file data as missing (`segment=Receipts` @ `71 185 160`, triggering the unwind `174 027 661 → 71 185 159`); fixed in `fa6caf3022`. (2) The slot-preimage DB from upstream #22379 had never been ported, only its tests had been disabled via `#[ignore]` — as a result, V2 wipe-changesets remained incomplete; backported in `ce0c722d9b`, 6/6 tests green. The subsequent datadir autopsy revealed a mixed state (`HashedAccounts` actually at `71 242 925`, `HashedStorages` actually at `70 885 156`, static files at `71 185 159`); repair was no longer possible locally due to truncated AccountChangeSets, hence a re-sync from genesis. Additional local guards: storage-V2-aware `stage drop Execution`, a loud `remove_state_above` abort when execution is ahead of block data, startup abort when execution equals the header tip but hashing lags behind, and a hashed-state clear on hashing unwind to genesis (`3906c694f8`). |
 | `migrate-v2` clean-run validation (2026-09-03) | Dev-host isolated test: V1-synced datadir (0→300 via `--storage.v2 false` + `--debug.tip`/`--debug.terminate`) → `db migrate-v2` → rebuild restart. No errors; `storage_v2: true` persisted; all 13 stage-checkpoints consistent @300 after rebuild (`MerkleExecute` 100%). Does not exercise crash-resume (mid-migration interruption), which remains untested. |
 | opBNB peer-connectivity investigation (2026-09-03) | Live archive node degraded from historical 8–17 to constant 5 connected peers. Confirmed real opBNB EIP-2124 ForkHash is `45eac6aa` (ENR key `"eth"`), not our own transient pre-Canyon `"opel"` self-tag `716d4a3a`. No official static opBNB peer list exists (`bnb-chain/opbnb#105`/`#310`, unaddressed since 2024). Verified via isolated `p2p body` reachability test that 6 candidate peers fail at the ECIES layer from this dev host while a known-connected peer succeeds immediately — failure is host-specific (capacity/reputation), not a local network/tooling issue. A dev-host systemd timer periodically retrying `admin_addTrustedPeer` for the capacity-limited candidates was tried and then removed again: reth already rediscovers such peers via discv5 and retries them itself with backoff, and trusted peers are exempt from the backoff-count removal guard, making a separate injection timer largely redundant. `.cursor/local/opbnb-peer-inject.py` (gitignored) is kept for ad-hoc manual injection. |
@@ -368,12 +379,36 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-05, order of magnitude) | Storage-v2 recovery root-cause + re-sync decision (Session 13); peer-connectivity investigation + migrate-v2 validation (Session 14); dual-stack live-verify (Session 15); UPnP follow-up fix authorization + **live production redeploy** of `BlockChain.service` (Session 16, human-executed restart, not agent-executed); Prometheus/journal cross-check + debug-logging reduction + clean restart (Session 17); restart-history/ETA doc consolidation (Session 18, this update). Roughly **1–2 h** operator review per session, plus the live redeploy itself — still tens-of-hours order of magnitude in total, not a full-time role. |
-| Cost beyond LLM | Host CPU/NVMe/network for archive sync + rebuilds — **not** monetized here; LLM illustrative cost above is Copilot-API-equivalent only. See "Infra-operation cost proxies" below for the only available (non-monetary) proxies. |
+| September incident/recovery follow-ups (2026-09-02 → 09-09, order of magnitude) | Storage-v2 / networking (Sessions 13–18); Execution pipelining (Session 20); Wright incident + fix (Session 21, **~7 h** wall, build **22m25s**, unwind **72m35s**); Cursor Session 22 evening status/docs (~0.15 h). Late-Aug Cursor BSC-cut hours (`7bb73584` + `ea987bef` C15–C16) belong to scope cleanup, measured in effort log. |
+| Cost summary through 2026-09-09 **23:15** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR Cursor **not** raised despite hour correction). Electricity: **~EUR 69.4**. A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 649.** Session 21 token-rate ~USD 12.23 informational only. Hardware/labor excluded. |
+
+#### Human operations and senior-development effort
+
+The AI work required continuous senior supervision: the initial unaided experiment did not
+produce a usable end-to-end node, so reference comparison, PIPE+FLOW methodology, reviews,
+datadir/unwind risk decisions, deployments and live validation remained human-owned. Documented
+interactive session clusters imply approximately **62–72 h senior development**, including
+**40–48 h operations/DevOps** (Cursor interactive re-measured ~**47 h** + Copilot windows ~**27–33 h**,
+with role overlap counted fully). Unattended sync, build and unwind wall time is excluded.
+
+Mixed incident/deployment sessions are counted fully in both roles, as requested. This produces
+role-hours and replacement value, not deduplicated human elapsed time or an invoice.
+
+| Role | Session-derived effort | 2026 Austria/DACH freelance band (net, excl. VAT) | Replacement value |
+| --- | ---: | ---: | ---: |
+| Senior operations / DevOps | **~40–48 h** | **EUR 80–120/h** | **~EUR 3,200–5,760** |
+| Senior Reth/blockchain developer | **~62–72 h** | **EUR 100–150/h** | **~EUR 6,200–10,800** |
+| **Labor total, overlaps fully counted** | **~102–120 role-hours** | — | **~EUR 9,400–16,560** |
+| **Planning midpoint** | Ops 44 h @100 + developer 67 h @125 | — | **~EUR 12,775** |
+
+Adding the tracked **~EUR 649** AI/electricity/connectivity costs gives a documented project
+value of **~EUR 10,049–17,209**, with a planning midpoint of **~EUR 13,424**. These are market-rate
+replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
+undocumented supervision are excluded.
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
-#### Infra-operation cost proxies (2026-08-10 → 2026-09-05, restart/rebuild proxies + measured power)
+#### Infra-operation cost proxies (2026-08-10 → 2026-09-09, restart/rebuild proxies + measured power)
 
 No real hosting invoice exists for the archive node (it runs on the operator's own infrastructure,
 not a metered cloud instance). Restart/rebuild figures below are direct operational proxies; the
@@ -385,7 +420,9 @@ cross-check — neither is a substitute for an actual bill, and no invoice is cl
 | `BlockChain.service` restarts since 2026-08-10 | **90** total (28 on 08-10, 21 on 08-11, 13 on 08-14, 4 on 08-15, 1 on 08-18, 2 on 08-25, 1 on 09-01, 6 on 09-02, 13 on 09-03, 1 on 09-04, 0 since) | container journal (`journalctl -u BlockChain.service`) |
 | Restarts in the 2026-09-02 18:00 → now window | 14 | same source |
 | Longest uninterrupted run (as of 2026-09-05 07:14 UTC) | **~24 h 45 min** (since the 09-04 08:29 CEST restart) | same source |
-| `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥ 6 full builds @ ~20–23 min each (`CARGO_BUILD_JOBS=1`), plus several smaller dev-host rebuilds (Sessions 14–16) | `plan.md` session log |
+| `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥8 full builds @ ~20–24 min each, plus smaller dev-host rebuilds; latest: execution pipeline **23m39s**, Wright fix **22m25s** | `plan.md` session log |
+| Wright recovery machine time (2026-09-09) | Build **22m25s** + offline unwind **72m35s**; header/body refill and re-execution still running | build/node logs |
+| A1 fiber Internet 250/100, unlimited | **~EUR 30/month**, **~EUR 360/year**, active since October 2025; shared by all services/nodes, not attributable solely to opBNB | operator statement |
 | Hardware spec / archive datadir size | not tracked in this document (operator-owned infrastructure) | — |
 
 **Power/electricity — real measurement (rack meter, 2026-08-05 → 2026-09-04, 30 days): 250 kWh
@@ -399,6 +436,20 @@ measured.** At a typical gross household energy price (~**€0.231/kWh**, no sup
 | Electricity cost (whole window) | **~€57.8** |
 | … per day | **~€1.93** / ~8.33 kWh |
 | … per month (30 days) | **~€57.8** |
+
+**Linear carry-forward after the last meter reading (not a new measurement):** applying the same
+measured rack average to 2026-09-04 00:00 → 2026-09-09 13:30 CEST gives **~46.36 kWh /
+~€10.71** additional, or **~296.36 kWh / ~€68.46** for the measured value plus extrapolation.
+The seven-hour Wright incident window corresponds to **~2.43 kWh / ~€0.56** at that average.
+This is whole-rack time allocation, not measured marginal incident energy.
+
+**PSU/rack plausibility:** the host uses a **be quiet! SFX Power 3 450 W, 80 PLUS Bronze**.
+Official 230 V efficiency is 86.9%/89.3%/85.9% at 20%/50%/100% load. The rack's measured
+347.2 W average AC draw corresponds to roughly **299–310 W DC (~66–69% of the 450 W rating)**,
+so this PSU can technically supply the complete measured average. That does not prove the host
+caused all of it: the rack also includes an A1 fiber FRITZ!Box and other infrastructure. If the
+router is downstream of the meter, its power is already included; its share is left unestimated
+without the exact model or a separate outlet measurement.
 
 **Real invoice anchor point (quarterly installment/Akonto payment, whole household, no supplier
 named):** per the electricity bill, a quarterly installment ("Teilbetrag") of **€206.40** (due
@@ -423,50 +474,12 @@ running alongside normal household consumption, but given the differing time win
 Akonto/advance-payment nature, this should be read only as a rough plausibility check, not an
 exact cost split.
 
-**Cross-check against the CPU-utilization model:** the real rack measurement (~347 W avg) sits
-noticeably above the earlier single-host CPU-utilization model for `crius` alone (~219 W avg at
-55.2% 30-day CPU utilization, 350 W PSU rating, idle/full-load interpolation at 35%/85% of rated
-power). The ~128 W gap is plausible since the rack meter captures **the entire rack** — network
-gear (switch/router), possibly other hosts/storage besides `crius`, PSU conversion losses
-(< 100% efficiency), and other rack infrastructure (e.g. fans) — while the CPU model only covers
-the one host via `node_exporter` metrics and only indirectly captures non-CPU power draw
-(NVMe/RAM/NICs under load) through the idle/full-load band. **The rack measurement (250 kWh,
-~€57.8/month) is the more reliable, real figure** and supersedes the earlier model estimate as the
-headline number; the CPU model is kept as a cross-check below since it isolates the `crius` host's
-share, which the rack meter alone cannot resolve.
-
-<details>
-<summary>CPU-utilization model (cross-check, isolated <code>crius</code> host, no wattmeter)</summary>
-
-Estimated from Grafana/`node_exporter` CPU utilization (`instance="crius:9100"`, 32 vCPUs — this
-host also runs several other chain containers besides the archive node) combined with the PSU's
-rated 350 W and the same energy-price proxy. Model: linear interpolation between an idle
-assumption (35% of PSU rating ≈ 122.5 W) and a full-load assumption (85% of PSU rating ≈ 297.5 W),
-scaled by measured CPU utilization:
-
-| Window | Avg CPU utilization | Modeled avg power | Note |
-| --- | --- | --- | --- |
-| now (5 min) | 47.2% | ~205 W | snapshot |
-| 24h | 64.3% | ~235 W | includes Execution-stage ramp-up |
-| 7d | 50.6% | ~211 W | |
-| 30d (≈ since host boot 2026-08-06) | 55.2% | ~219 W | isolated `crius` host share (not rack total) |
-
-Host uptime (boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29.98 days; modeled energy
-~157.6 kWh, modeled cost ~€36.4 over roughly the same window — i.e. `crius` alone models out to
-roughly **~63%** of the real measured rack cost, with the remainder plausibly attributable to
-network gear/other rack equipment/PSU losses.
-
-</details>
-
-
-**Caveats:** (1) power draw is a CPU-utilization-based model, **not** a measured value — NVMe/
-network/RAM power under load are only indirectly captured via the idle↔full-load band, not
-measured separately. (2) `crius` runs several other chain containers besides the opBNB archive
-node (see the `systemd`/container overview referenced in the Session 18 plan entry) — this is a
-whole-host estimate, not isolated to the archive node. (3) the energy price used is a rough gross
-household-rate proxy (no real invoice, no supplier named); actual network fees/taxes may differ by
-contract. Rebuild time (~20–23 min per fat-LTO build) and restart frequency remain the only
-additional operationally-derived time proxies.
+**Discarded CPU-utilization model:** the earlier estimate based on an assumed 350 W PSU
+(~219 W, ~157.6 kWh, ~€36.4) is invalid: the installed PSU is 450 W, and CPU utilization cannot
+be linearly converted to whole-system power without measured idle/load draw. Those figures are
+not rescaled. The rack meter and electrical plausibility bound above remain the reliable basis.
+The €0.231/kWh rate remains a household-price proxy; per-device and per-node shares require
+separate outlet measurements.
 
 These figures are session telemetry snapshots and are illustrative of the scale of context/inference
 required for this kind of large structural migration; earlier pre-`a95758da` sessions add further
@@ -475,8 +488,11 @@ cost of AI-assisted maintenance at this scale, not as a benchmark claim — no r
 optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
 figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
-> **TODO:** After human catch-up/full sync validation on BSC/opBNB, refresh final cumulative token/time
-> figures (replace Cursor proxies with account billing export if available) and live-test outcome.
+> **Current validation gate:** Execution is replaying toward Tip **`34367717`**
+> (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) with `--debug.terminate`.
+> Pass = canonical receipt root `0xc8e83d75…30c` without unwind. Keep the Execution-stage speedup on
+> its feature branch until that consensus gate passes. Replace cost proxies with billing/meter
+> exports when available.
 
 ### TODO (backlog): EIP-7702 / type-4 transactions — BEP-441 "Pascal" hardfork (BSC + opBNB)
 
