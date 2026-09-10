@@ -58,9 +58,13 @@ commercial use and are therefore **not** used for this additional restriction.
 
 # opBNB-AlteredCarbon (reth-bsc-trail workspace)
 
-This is an experimental, community/hobbyist fork of a blockchain client based on
-[Reth](https://github.com/paradigmxyz/reth/) for **[opBNB](https://github.com/bnb-chain/op-geth) only**
-(chain ID **204**, binary **`op-reth`** / `make build-op`). See the project notice above for status and intent.
+Experimental **opBNB** (chain **204**) **Reth** / **`op-reth`** execution client: AI-assisted
+revival of an archived BNB Reth trail on modern [paradigmxyz/reth](https://github.com/paradigmxyz/reth),
+with live archive-node sync and protocol ports from [bnb-chain/op-geth](https://github.com/bnb-chain/op-geth)
+(OP Stack L2 / BNB Chain ecosystem — **unofficial**, not affiliated with Binance).
+
+This is a community/hobbyist fork for **opBNB only** (binary **`op-reth`** / `make build-op`). See the
+project notice above for status, personal-use limits, and liability.
 
 > **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
 > this tree. Do not reintroduce BSC mainnet (chain 56) work here — use a **separate repository** if you need
@@ -347,6 +351,7 @@ and follow `plan.md` (**`PORT-PIPE-*` and `PORT-FLOW-*`**, DoD before live) inst
 | Live sync Session 12 cont. (2026-08-15 evening → 08-16 ~08:30 CEST) | **P2P-002** UPnP live; Bodies+Sender Tip **174 M**; Exec past **`21591154`** (~22.7 M↑); **X02/PIPE-009** ≡ op-geth (Unit); CLEANUP-A02 partial. ETA Haber ~16–19 h / Wright ~1.5–2 d / Tip ~3–4 Wo. Metrics source artefacts local-only. |
 | Live sync (2026-08-17 ~16:05 CEST) | Exec **~31.5 M↑** (~18 % Headers tip); **Haber Point-4 MATCH** (`27118477` + Fermat/Fail/mid); validation_errors **0**; Wright ETA ~7–11 h @ then-current rate. |
 | Live sync (2026-09-01 ~18:52 CEST) | Headers/Bodies/SenderRecovery **174 027 661**; Exec **`65 828 907`** (~38 % Headers tip); **past Wright**; rate cooled ~**19–33 blk/s** (24 h ~22); ETA Headers tip **~1¼–2¼ Mo** (current bands). Peers 16; validation **0**. Snapshot source artefact local-only. |
+| Live sync Wright-Gate (2026-09-10 ~09:59 CEST) | Tip **`34367717`** (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) + `--debug.terminate`. Bodies 43.5 M skip; Sender tip; **Execution ~33.32 M** (~37–40 blk/s, ETA Gate ~6–9 h). Peers 4; validation **0**; Point-4 MATCH. Await receipt root `0xc8e83d75…30c`. Details: `plan.md` § Live Sync Progress. |
 | Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST) | The archive datadir has been running **continuously with `storage_v2=true` since at least 2026-08-14**; no manual layout change occurred. Root-cause analysis on `main` found two porting defects: (1) `StaticFileProvider::update_index` encoded the block index under `segment_max_block` instead of under the end of the range, causing `find_fixed_range_with_block_index` to trigger a u64 underflow — in the release build a **silent wrap** that reported existing static-file data as missing (`segment=Receipts` @ `71 185 160`, triggering the unwind `174 027 661 → 71 185 159`); fixed in `fa6caf3022`. (2) The slot-preimage DB from upstream #22379 had never been ported, only its tests had been disabled via `#[ignore]` — as a result, V2 wipe-changesets remained incomplete; backported in `ce0c722d9b`, 6/6 tests green. The subsequent datadir autopsy revealed a mixed state (`HashedAccounts` actually at `71 242 925`, `HashedStorages` actually at `70 885 156`, static files at `71 185 159`); repair was no longer possible locally due to truncated AccountChangeSets, hence a re-sync from genesis. Additional local guards: storage-V2-aware `stage drop Execution`, a loud `remove_state_above` abort when execution is ahead of block data, startup abort when execution equals the header tip but hashing lags behind, and a hashed-state clear on hashing unwind to genesis (`3906c694f8`). |
 | `migrate-v2` clean-run validation (2026-09-03) | Dev-host isolated test: V1-synced datadir (0→300 via `--storage.v2 false` + `--debug.tip`/`--debug.terminate`) → `db migrate-v2` → rebuild restart. No errors; `storage_v2: true` persisted; all 13 stage-checkpoints consistent @300 after rebuild (`MerkleExecute` 100%). Does not exercise crash-resume (mid-migration interruption), which remains untested. |
 | opBNB peer-connectivity investigation (2026-09-03) | Live archive node degraded from historical 8–17 to constant 5 connected peers. Confirmed real opBNB EIP-2124 ForkHash is `45eac6aa` (ENR key `"eth"`), not our own transient pre-Canyon `"opel"` self-tag `716d4a3a`. No official static opBNB peer list exists (`bnb-chain/opbnb#105`/`#310`, unaddressed since 2024). Verified via isolated `p2p body` reachability test that 6 candidate peers fail at the ECIES layer from this dev host while a known-connected peer succeeds immediately — failure is host-specific (capacity/reputation), not a local network/tooling issue. A dev-host systemd timer periodically retrying `admin_addTrustedPeer` for the capacity-limited candidates was tried and then removed again: reth already rediscovers such peers via discv5 and retries them itself with backoff, and trusted peers are exempt from the backoff-count removal guard, making a separate injection timer largely redundant. `.cursor/local/opbnb-peer-inject.py` (gitignored) is kept for ad-hoc manual injection. |
@@ -483,10 +488,11 @@ cost of AI-assisted maintenance at this scale, not as a benchmark claim — no r
 optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
 figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
-> **Current validation gate:** allow the bounded opBNB recovery run to finish Headers → Bodies →
-> SenderRecovery, then verify fixed Execution crosses block `34367717` with canonical receipt root
-> `0xc8e83d75…30c`. Keep the Execution-stage speedup on its feature branch until that consensus gate
-> passes. Replace cost proxies with billing/meter exports when available.
+> **Current validation gate:** Execution is replaying toward Tip **`34367717`**
+> (`0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`) with `--debug.terminate`.
+> Pass = canonical receipt root `0xc8e83d75…30c` without unwind. Keep the Execution-stage speedup on
+> its feature branch until that consensus gate passes. Replace cost proxies with billing/meter
+> exports when available.
 
 ### TODO (backlog): EIP-7702 / type-4 transactions — BEP-441 "Pascal" hardfork (BSC + opBNB)
 

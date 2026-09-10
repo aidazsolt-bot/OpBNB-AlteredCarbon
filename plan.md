@@ -35,7 +35,7 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-09 ~23:11 CEST)
+## Aktueller Stand (Session-Memory — 2026-09-10 ~09:59 CEST)
 
 > Agent-Kurzlage. Details: *Live Sync Progress*, Session 20/21, *Nächste Schritte*.
 
@@ -44,9 +44,9 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | **Kette / Binary** | opBNB **204** · Live `op-reth-bnb` (maxperf, Wright-Fix) · Workspace: **kein BSC** |
 | **Git** | `alteredcarbon/main` = Konsens-Fix **`29d7bfa2dd`** (Wright L1FeeVault Debit+Credit). Feature-Branch **`feat/execution-stage-fetch-pipeline`**: derselbe Fix (`b7c39029fa`) **plus** Execution-Speedup **`b32f9e58d6`** (fetch/decode-Overlap, Live ~2×) + Docs — Speedup **nicht** auf `main`. |
 | **Incident 09-09** | Receipt-Root @ **`34367717`** → Unwind. Ursache: Wright `gasPrice==0` nur Debit, Vault-Credit mintete weiter (PIPE-009 / FLOW-X02). Offline-Unwind auf **`32984676`** (Wright−1), Restart mit Fix-Binary. |
-| **Live Recovery** | Tip-Ziel **`--debug.tip` `71 185 160`**. Headers ✅ Tip. **Bodies aktiv** ~**38.69 M** (~54 %, ~170–185 blk/s → ~2 d Bodies-ETA). Sender ~34.37 M. **Execution geparkt `32 984 676`**. Merkle/History 0. Peers **2**; bodies validation/timeout/invalid **0**. |
-| **Offenes Gate** | Exec ab Wright neu; Block **`34367717`** mit Receipt-Root `0xc8e83d75…30c` ohne Unwind. Danach Point-4 erneut; Speedup-Merge nach Gate. |
-| **Kosten/Zeiten** | Cursor-Interaktiv neu gemessen **~47 h** (EUR-Allokation **70** unverändert); Copilot **~EUR 170**; Projekt-Sachkosten ~**EUR 649** (23:15). Session 22 = Status/Docs. |
+| **Live Recovery** | Tip **`--debug.tip` `0xd6094500…4669` = Block `34 367 717`** + `--debug.terminate`. Headers Rest **71.2 M** (älterer höherer Tip). Bodies **43.5 M** (skip, schon > Tip). Sender ✅ **`34 367 717`**. **Execution aktiv ~`33 324 k`** → Tip (~94 %, ~37–40 blk/s / ~150–380 Mgas/s; ETA Gate **~6–9 h**). Peers **4**; bodies validation/timeout/invalid **0**. Point-4 Stichprobe 09-10 MATCH (Fermat/Haber/Exec−1k). |
+| **Offenes Gate** | Block **`34367717`** Receipt-Root `0xc8e83d75…30c` ohne Unwind; danach `--debug.terminate`. Früherer Tip `34 366 337` (`0xbacde854…`) lag **1 380** Blöcke darunter — **nicht** das Gate. |
+| **Kosten/Zeiten** | Cursor ~**47 h** Interaktiv; EUR Cursor **70** / Copilot **170**; Sachkosten ~**EUR 649** (Stand 09-09). |
 | **Nicht verwechseln** | Session-20 MerkleExecute-Unwind @`71185159` ≠ Session-21 Wright-Vault-Bug. |
 
 ## Ziel & Kontext
@@ -384,13 +384,13 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-09 ~23:11 CEST (Wright-Recovery):** Headers ✅ `71 185 160` (`--debug.tip`). Bodies 🔄 **~38.69 M** (~54 %, ~170–185 blk/s). Sender ~34.37 M. Exec **geparkt `32 984 676`** (Wright−1) nach Offline-Unwind. PIPE-009/X02 Code ✅ auf `main` (`29d7bfa2dd`); Live-Gate `34367717` ⏳. Execution-Speedup nur Feature-Branch (`b32f9e58d6`). Peers 2; downloader errors 0. Historisch vor Incident: Haber Point-4 ✅ (08-17).
+- **Stand 2026-09-10 ~09:59 CEST (Wright-Gate-Lauf):** Tip-Hash `0xd6094500…` = **`34 367 717`** + terminate. Bodies skip (43.5 M > Tip); Sender ✅ Tip; **Execution ~33.32 M → Tip** (~37–40 blk/s, ETA ~6–9 h). Peers 4; errors 0; Point-4 MATCH. PIPE-009/X02 Code ✅ `main` (`29d7bfa2dd`); Speedup nur Feature-Branch. (09-09 Abend: Bodies-Refill Richtung 71.2 M / Exec park Wright−1 — überholt.)
 
 ## Roadmap (aktuell — Exec-Fenster)
 
 | Fenster | Ziel | Aufwand (Schätzung) | Status |
 | --- | --- | --- | --- |
-| **jetzt** | Wright-Recovery: Bodies→Sender→Exec ab `32984677`; Gate Receipt-Root @`34367717` | unsupervised + Spot-Check | 🔄 Bodies ~38.7 M / tip 71.2 M; Exec park Wright−1 |
+| **jetzt** | Wright-Gate: Exec → `34367717` (`0xd6094500…`) + terminate; Receipt-Root Match | unsupervised + Spot-Check | 🔄 Exec ~33.32 M / tip 34.37 M; ETA ~6–9 h |
 | **≤48 h nach Exec past Wright** | Point-4 stateRoot @ Haber + Wright (+ Stichprobe `34367717`) vs public RPC | ~0.5 h Agent/Stichprobe | ✅ Haber MATCH (08-17, pre-Incident); ⏳ nach Re-Exec wiederholen |
 | **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 Bodies errors 0; peers 2 |
 | **nach Gate `34367717`** | Feature-Branch Speedup `b32f9e58d6` → `main` (oder bewusst zurückhalten) | Review + merge | 📋 Speedup live gemessen ~2×, noch nicht auf `main` |
@@ -882,15 +882,15 @@ Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Bela
 Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
 Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-## Nächste Schritte (unmittelbar — Stand 2026-09-09 ~23:11 CEST)
+## Nächste Schritte (unmittelbar — Stand 2026-09-10 ~09:59 CEST)
 
-1. **Kein Restart:** Bodies-Catch-up (~38.7 M → `71 185 160`) weiterlaufen lassen; dann Sender, dann Exec.
-2. **Consensus-Gate:** Execution ab `32984677` mit Fix-Binary; Block `34367717` ohne Unwind,
-   Receipt-Root `0xc8e83d75…30c`.
-3. **Branch-Trennung beibehalten bis Gate:** `main` = nur Wright-Fix (`29d7bfa2dd`); Execution-Speedup
-   `b32f9e58d6` bleibt auf `feat/execution-stage-fetch-pipeline` (bereits live gemessen ~2×).
-4. **Bounded-Ende:** bis Debug-Tip `71185160`; `--debug.terminate` danach kontrolliert.
-5. Nach Meilenstein: Point-4 Stichproben, Checkpoints, Kosten/Ende in `plan.md`/README nachziehen.
+1. **Kein Eingriff:** Execution bis Tip **`34 367 717`** / `--debug.terminate` laufen lassen (~6–9 h).
+2. **Consensus-Gate beobachten:** Block `34367717` ohne Unwind, Receipt-Root `0xc8e83d75…30c`
+   (Hash `0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`).
+3. **Branch-Trennung bis Gate:** `main` = nur Wright-Fix (`29d7bfa2dd`); Speedup `b32f9e58d6` bleibt
+   auf `feat/execution-stage-fetch-pipeline`.
+4. Nach Pass: Point-4 nahe Tip, optional höheren Tip / Catch-up; Speedup-Merge entscheiden.
+5. Bei Fail: Logs/Receipt-Diff; nicht vom divergenten State weiterfahren.
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
 
@@ -1629,18 +1629,21 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-09 **~23:11 CEST** · chain **204** · Wright-Recovery · peers **2** ·
-`--debug.tip` **`71 185 160`** · Binary Fix-Build 09-09 · `scripts/sync-eta.sh`
+**Stichprobe (aktuell):** 2026-09-10 **~09:59 CEST** · chain **204** · Wright-Gate-Lauf · peers **4** ·
+`--debug.tip` **`0xd6094500…` = `34 367 717`** + `--debug.terminate` · Fix-Binary ·
+`scripts/sync-eta.sh` (Hinweis: ETA-Skript nutzt Headers **71.2 M** als „Tip“ — irreführend; echter
+Stage-Target ist **34 367 717**)
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
-| Headers | **71 185 160** | ✅ Tip (= debug.tip) |
-| Bodies | **~38 691 337** / 71.2 M (~54 %) | 🔄 aktiv ~170–185 blk/s (1–3 h Fenster); ETA Bodies ~**2 d**; validation/timeout **0** |
-| SenderRecovery | **34 366 337** | ⏳ wartet auf Bodies-Yield |
-| Execution | **`32 984 676`** (Wright−1) | ⏸ geparkt nach Offline-Unwind; Re-Exec ab Wright nach Bodies/Sender |
-| MerkleExecute / Hashing / History / Finish | **0** | ⏳ nach Exec |
-| P2P | connected_peers **2** | invalid_messages **0**; discv5-Defaults Session 19/20 |
-| Konsens | PIPE-009 / FLOW-X02 | ✅ Code auf `main`; Live-Gate `34367717` ⏳ |
+| Headers | **71 185 160** | Rest von früherem höherem Tip; Pipeline-Target jetzt 34.37 M |
+| Bodies | **43 519 337** | ✅ skip (`max_block=34367717`, prev > Tip); validation/timeout **0** |
+| SenderRecovery | **34 367 717** | ✅ Tip |
+| Execution | **~33 323 956** / **34 367 717** (~94 %) | 🔄 aktiv ~**37–40 blk/s** (1 h); Live ~150–380 Mgas/s; ETA Gate **~6–9 h** |
+| MerkleExecute / Hashing / History / Finish | **0** | ⏳ nach Exec (bzw. terminate am Tip) |
+| P2P | connected_peers **4** | invalid_messages **0** |
+| Konsens | PIPE-009 / FLOW-X02 | ✅ Code auf `main`; Live-Gate `34367717` ⏳ in diesem Lauf |
+| Point-4 (09-10) | 1000 / 100k / Fermat / Haber / Exec−1k | ✅ hash/txRoot/stateRoot MATCH vs public RPC |
 
 **Branch-Lage:** `main` = Wright-Fix only. Feature-Branch = Fix + **Execution fetch/decode pipelining**
 (`b32f9e58d6`, Session 20, ~2×). Nicht mit MerkleExecute-Unwind @`71185159` (Session 20 Forensik) vermengen.
@@ -2593,3 +2596,10 @@ cannot be blamed on the stage speedup.
 Execution remains at `32984676`. No new unwind/state-root noise in file log; peers=2; downloader
 errors=0. Next observable milestone: Execution advancing past Wright, then receipt-root match at
 `34367717`.
+
+**Morning status (2026-09-10 ~09:59 CEST).** Bodies refill past Gate-height done (Bodies 43.5 M). Tip
+raised to Gate block hash `0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`
+(= **`34367717`**) with `--debug.terminate` (prior tip `0xbacde854…` = `34366337` was 1380 blocks
+short). Sender at tip; Execution ~**33.32 M** → Gate at ~37–40 blk/s (comparable to mid-Aug Haber
+band at same height). Peers=4; validation/timeout/invalid=0; Point-4 MATCH. Await receipt-root
+`0xc8e83d75…30c` at Gate or unwind.
