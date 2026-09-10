@@ -1,4 +1,4 @@
-name: op-reth build and smoke
+name: op-reth build and tip-sync smoke
 
 on:
   workflow_dispatch:
@@ -15,6 +15,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # opBNB mainnet block 20000
+  OPBNB_SMOKE_TIP: "0x6eb90fbf2063a1d99c3890878d8894dbe469ad764c8abad68729adc40446710f"
 
 jobs:
   build-and-smoke:
@@ -64,7 +66,7 @@ jobs:
           fi
           cargo build ${{ matrix.build_args }}
 
-      - name: Smoke op-reth on opbnb-mainnet (${{ matrix.profile }})
+      - name: Sync op-reth to debug.tip block 20000 (${{ matrix.profile }})
         shell: bash
         run: |
           set -euo pipefail
@@ -72,16 +74,22 @@ jobs:
           BIN="${{ matrix.binary }}"
           JWT_SECRET="$RUNNER_TEMP/jwt-${{ matrix.profile }}.hex"
           DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${{ matrix.profile }}"
+          LOG_DIR="$RUNNER_TEMP/opbnb-logs-${{ matrix.profile }}"
+          IPC_PATH="$RUNNER_TEMP/opbnb-${{ matrix.profile }}.ipc"
 
-          mkdir -p "$DATA_DIR"
+          mkdir -p "$DATA_DIR" "$LOG_DIR"
           openssl rand -hex 32 > "$JWT_SECRET"
 
+          echo "Syncing until --debug.tip ${OPBNB_SMOKE_TIP} (opBNB mainnet block 20000), then --debug.terminate."
+          # Discovery left enabled so chain-spec opBNB boot/static peers can supply
+          # headers/bodies. Outer timeout is a safety net; job timeout is 120m.
           set +e
-          timeout 5m "$BIN" node \
+          timeout 90m "$BIN" node \
             --chain opbnb-mainnet \
             --datadir "$DATA_DIR" \
-            --disable-discovery \
+            --ipcpath "$IPC_PATH" \
             --port 0 \
+            --discovery.port 0 \
             --rollup.sequencer-http https://opbnb-mainnet-rpc.bnbchain.org \
             --http \
             --http.addr 127.0.0.1 \
@@ -90,13 +98,20 @@ jobs:
             --authrpc.addr 127.0.0.1 \
             --authrpc.port 8551 \
             --authrpc.jwtsecret "$JWT_SECRET" \
-            --metrics 127.0.0.1:6060
+            --metrics 127.0.0.1:6060 \
+            --log.file.directory "$LOG_DIR" \
+            --debug.tip "$OPBNB_SMOKE_TIP" \
+            --debug.terminate
           status=$?
           set -e
 
+          if [ "$status" -eq 0 ]; then
+            echo "Reached debug.tip ${OPBNB_SMOKE_TIP} and terminated cleanly."
+            exit 0
+          fi
           if [ "$status" -eq 124 ]; then
-            echo "Smoke test ran for 5 minutes."
-          else
-            echo "Smoke test exited early with status $status."
+            echo "Timed out after 90m before reaching tip ${OPBNB_SMOKE_TIP}."
             exit 1
           fi
+          echo "Node exited early with status $status before tip."
+          exit "$status"

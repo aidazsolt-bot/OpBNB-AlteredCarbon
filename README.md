@@ -75,9 +75,11 @@ project notice above for status, personal-use limits, and liability.
 > monorepos as **unsafe for agent-driven port work** unless the active chain is unambiguous in path, docs, and
 > session start (this repo: **opBNB only**).
 
-**CI:** The repository includes an `op-reth` maxperf build/smoke workflow. It uses
-`actions/checkout@v5` and the current `--metrics <host:port>` CLI form. Local `cargo` /
-`cargo nextest` checks remain the primary validation path; see `docs/repo/ci.md`.
+**CI:** The repository includes an `op-reth` maxperf build + tip-sync smoke workflow
+(`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to `--debug.tip` block
+**20000** (`0x6eb90fbf…710f`) then `--debug.terminate`. It uses `actions/checkout@v5` and the
+current `--metrics <host:port>` CLI form. Local `cargo` / `cargo nextest` checks remain useful;
+see `docs/repo/ci.md`.
 
 ## Build from Source
 
