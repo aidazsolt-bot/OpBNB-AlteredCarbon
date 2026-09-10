@@ -46,7 +46,7 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | **Incident 09-09** | Receipt-Root @ **`34367717`** → Unwind. Ursache: Wright `gasPrice==0` nur Debit, Vault-Credit mintete weiter (PIPE-009 / FLOW-X02). Offline-Unwind auf **`32984676`** (Wright−1), Restart mit Fix-Binary. |
 | **Live Recovery** | Tip **`--debug.tip` `0xd6094500…4669` = Block `34 367 717`** + `--debug.terminate`. Headers Rest **71.2 M** (älterer höherer Tip). Bodies **43.5 M** (skip, schon > Tip). Sender ✅ **`34 367 717`**. **Execution aktiv ~`33 324 k`** → Tip (~94 %, ~37–40 blk/s / ~150–380 Mgas/s; ETA Gate **~6–9 h**). Peers **4**; bodies validation/timeout/invalid **0**. Point-4 Stichprobe 09-10 MATCH (Fermat/Haber/Exec−1k). |
 | **Offenes Gate** | Block **`34367717`** Receipt-Root `0xc8e83d75…30c` ohne Unwind; danach `--debug.terminate`. Früherer Tip `34 366 337` (`0xbacde854…`) lag **1 380** Blöcke darunter — **nicht** das Gate. |
-| **Kosten/Zeiten** | Cursor ~**47 h** Interaktiv; EUR Cursor **70** / Copilot **170**; Sachkosten ~**EUR 649** (Stand 09-09). |
+| **Kosten/Zeiten** | Cursor ~**48 h** Interaktiv (Re-Messung 09-10); EUR Cursor **70** / Copilot **170**; Sachkosten ~**EUR 650** (10:35). Session 23 = Gate-Tip/Docs/About/Logo. |
 | **Nicht verwechseln** | Session-20 MerkleExecute-Unwind @`71185159` ≠ Session-21 Wright-Vault-Bug. |
 
 ## Ziel & Kontext
@@ -734,10 +734,11 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~11:47 CEST**) | op-geth↔Reth Root-Pipeline-Doku | Auto/Composer | (Session-12-Proxy) | (Proxy) | ValidateState eager vs Exec+Merkle staged; alloy-op-evm Path-Dep; PIPE-014 bleibt Content | FLOW-X04 Dump; Merkle später |
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~14:20 CEST**) | PIPE-014 Hertz-Fix + Verify + Live Restart | Auto/Composer | (Session-12-Proxy) | (Proxy) | FLOW-X04 idx=10 `syncLightBlock`; Overlay Hertz; `re-execute` ✅; maxperf→`dist/bin`; live Bodies Catch-up | Live Exec≫`21591154`; FLOW-X05 watch |
 | Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-16 ~08:35 CEST**, damals) | Kalender 08-12→16 **~88 h**; Interaktiv früh+Abend damals mit Gap>90 min grob **~8,5 h** geschätzt | Auto/Composer | File damals **~1,58 MB** → Proxy **~396 K** Tok | (Proxy) | jsonl damals ~1063 lines | **P2P-002**; H/B/S Tip; Exec past Fail; **X02 ✅**; CLEANUP-A02 partial |
-| Cursor Session 12 **Vollstand** (Chat `ea987bef…`, Re-Messung **2026-09-09 ~23:15 CEST**) | **17** Interaktiv-Cluster 08-12→09-09; Gap>90 min-Span-Summe **~24,1 h** (C1–C17). Davon C1–C8 (08-12→16) **~12,6 h** — frühere ~8,5 h-Schätzung **unterzählt**. C9–C14 (16.–20.08) **~3,2 h**; C15 (23.08 Abend) **~2,4 h**; C16 (24.08 BSC-Remove) **~5,7 h**; C17 (09.09 Abend) **~0,15 h** | Auto/Composer | File **~4,4 MB** → Proxy **~1,1 M** Tok (÷4); billed n/a | (Proxy) | **~311** user / **~2155** asst; **~4041** tool_use (Timestamp-Tags im Transcript) | Gesamte Chat-Lebensdauer Session-12-Thread inkl. späterem BSC-Cut + Status 09-09; **kein** separates Cursor-Invoice |
+| Cursor Session 12 **Vollstand** (Chat `ea987bef…`, Re-Messung **2026-09-10 ~10:35 CEST**) | **18** Interaktiv-Cluster 08-12→09-10; Gap>90 min-Span-Summe **~25,1 h** (C1–C18). Davon C1–C8 (08-12→16) **~12,6 h** — frühere ~8,5 h-Schätzung **unterzählt**. C9–C14 (16.–20.08) **~3,2 h**; C15 (23.08 Abend) **~2,4 h**; C16 (24.08 BSC-Remove) **~5,7 h**; C17 (09.09 Abend) **~0,43 h**; C18 (10.09 Morgen) **~0,73 h** | Auto/Composer | File **~4,45 MB** → Proxy **~1,1 M** Tok (÷4); billed n/a | (Proxy) | **~327** user / **~2211** asst; **~4120** tool_use | Gesamte Chat-Lebensdauer Session-12-Thread inkl. BSC-Cut + Status/Docs 09-09/10; **kein** separates Cursor-Invoice |
 | Cursor Session Aug-23 BSC-Fokus (Chat `7bb73584…`) | 08:54–18:55 CEST; **2** Cluster Span-Summe **~8,5 h** (Kalender ~10 h) | Auto/Composer | File **~1,0 MB** → Proxy **~255 K** Tok | (Proxy) | **56** user / **838** asst; **1619** tool_use | „wie schaut es mit reth-bsc aus?“ — Parlia/Engine-Analyse vor Scope-Schnitt; **nicht** in älterer Cursor-EUR-Allokation einzeln ausgewiesen |
 | Cursor Session Aug-24 opBNB-only Cut (in `ea987bef` C16 + Nebenchat `065d5aa7…`) | C16 **~5,7 h** Span (09:42–15:24); Nebenchat kurz (~32 KB) | Auto/Composer | in ea987bef-Vollstand enthalten | (Proxy) | BSC-Crates entfernt, `main`-Force-Push AlteredCarbon, Doku Anti-Pattern Dual-Chain | Workspace **opBNB-only**; siehe Commit-Serie `chore(opbnb): remove BSC…` |
-| Cursor Session 22 (Chat `ea987bef…` C17, **2026-09-09 ~23:06–23:15 CEST**) | Interaktiv **~0,15 h** Span (6 User-Msgs); Wall inkl. Tools **~0,2 h** | Auto/Composer | Delta im laufenden 4,2 MB-Transcript; kein separater billed Meter | (Proxy) | Sync-ETA/Health, Wright-Recovery-Abgleich Branch/`main`, Session-Memory-Update, Docs-Commit `c92df6766a`, diese Kostenkorrektur | Kein neuer Code-Fix; Konsens-Fix bleibt Copilot Session 21 / `29d7bfa2dd` |
+| Cursor Session 22 (Chat `ea987bef…` C17, **2026-09-09 ~23:06–23:32 CEST**) | Interaktiv **~0,43 h** | Auto/Composer | Delta im laufenden Transcript; kein separater billed Meter | (Proxy) | Sync-ETA/Health, Session-Memory, Kostenkorrektur | Kein neuer Code-Fix; Konsens-Fix bleibt `29d7bfa2dd` |
+| Cursor Session 23 (Chat `ea987bef…` C18, **2026-09-10 ~09:51–10:35 CEST**) | Interaktiv **~0,73 h** | Auto/Composer | Delta im laufenden Transcript | (Proxy) | Tip→`34367717`, Live-Status/Docs, GitHub About+Topics, README Hero-Logo | Gate-Lauf aktiv; kein Konsens-Code |
 
 | Copilot Session 13 (Storage-v2 recovery, 2026-09-02) | Journal/Mimir-Diagnose (Static-File-Underflow, fehlender Slot-Preimage-Port); zwei Source-Fixes (`fa6caf3022`, `ce0c722d9b`); 6 reaktivierte Preimage-Regressionstests + `test_pipeline`/`test_pipeline_v2`; 2× `make maxperf-op` | k.A. | k.A. | k.A. | Kein Per-Session-Token-Ledger verfügbar; keine Kostenschätzung |
 | Copilot Session 14 (Peer-Connectivity + migrate-v2-Validierung, 2026-09-03) | ForkHash-Re-Verifikation, Peer-Injection-Tool + systemd-Timer (später obsolet), isolierter `p2p body`-Reachability-Test, Dev-Host `db migrate-v2` End-zu-Ende-Test | k.A. | k.A. | k.A. | Kein Ledger; mehrere kurze Dev-Host-Rebuilds/Restarts (s. Restart-Historie Session 18) |
@@ -756,8 +757,8 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 > Context-Resend; **billed** nur Account-Dashboard / Abo. **Dem opBNB-Projekt zugerechnete Cursor-AI-Kosten
 > laut Betreiberangabe weiterhin ca. EUR 70** (Stand 09-09; kein neuer Rechnungsbeleg für den Abend-Cluster).
 > Der höhere Cursor-Gesamtaufwand umfasste auch andere Projekte und wird hier deshalb nicht vollständig
-> angesetzt. **Zeitkorrektur 09-09 23:15:** Chat `ea987bef` + Aug-23-Chat `7bb73584` liefern messbare
-> Interaktiv-Spans (**~24 h** bzw. **~8,5 h**) weit über der alten Session-12-Schätzung (~8,5 h nur bis 16.08) —
+> angesetzt. **Zeitkorrektur 09-10 10:35:** Chat `ea987bef` + Aug-23-Chat `7bb73584` liefern messbare
+> Interaktiv-Spans (**~25,1 h** bzw. **~8,5 h**) weit über der alten Session-12-Schätzung (~8,5 h nur bis 16.08) —
 > das korrigiert **Arbeitsstunden**, nicht die EUR-70-Allokation. **Reale Copilot-Kosten laut
 > Betreiberangabe: ~EUR 170 kumuliert** (EUR 100 August + ~EUR 70 davor/danach). Sessions 13–20 (Copilot CLI):
 > kein Per-Session-Billed-Token-Ledger — **keine** Zahl erfinden. Session 21: strukturierte Usage-Zähler,
@@ -765,24 +766,24 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 > EUR 170 summieren; marginal oft USD 0 im Plan-Kontingent). Quellen: lokale Transcripts unter
 > `agent-transcripts/` (Cluster Gap>90 min), Copilot-Usage-Snapshot Session 21; `files/`-Metriken lokal-only.
 
-**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert; Stand 2026-09-09 ~23:15 CEST):**
+**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert; Stand 2026-09-10 ~10:35 CEST):**
 
 | Kostenart | Betrag | Einordnung |
 | --- | ---: | --- |
-| Cursor AI | **~EUR 70** | opBNB-Anteil laut Betreiberangabe; **unverändert** trotz nachgezählter Cursor-Stunden (s. Zeitkorrektur) |
+| Cursor AI | **~EUR 70** | opBNB-Anteil laut Betreiberangabe; **unverändert** trotz nachgezählter Cursor-Stunden (~**48 h**) |
 | Copilot | **~EUR 170 tatsächlich** | EUR 100 August + ~EUR 70 davor/danach, Betreiberangabe |
 | Copilot Session 21 | **~USD 13,59** Listenpreis / **~USD 12,23** Auto-Rabatt | Verbrauchsäquivalent; nicht zusätzlich zur EUR-Copilot-Zahl |
 | Rack-Strom, 05.08.–04.09. | **~EUR 57,8** | 250 kWh gemessen × 0,231 EUR/kWh |
-| Rack-Strom, 04.09.–09.09. **23:15** | **~EUR 11,6** | Fortschreibung der ~EUR 2,14/Tag-Rate von 13:30-Stand (+~0,4 d); kein neuer Zähler |
-| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 340** aufgelaufen seit 01.10.2025 bis 09.09.2026 **23:15** | zeitanteilig; gemeinsame Anbindung |
-| **Erfasste EUR-Summe** | **~EUR 649,4** | Cursor 70 + Copilot 170 + Strom **~69,4** + Internet **~340**; ohne Hardware/Arbeitszeit |
+| Rack-Strom, 04.09.–10.09. **10:35** | **~EUR 12,6** | Fortschreibung ~EUR 2,14/Tag; kein neuer Zähler |
+| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 340** aufgelaufen seit 01.10.2025 bis 10.09.2026 **10:35** | zeitanteilig; gemeinsame Anbindung |
+| **Erfasste EUR-Summe** | **~EUR 650** | Cursor 70 + Copilot 170 + Strom **~70,4** + Internet **~340**; ohne Hardware/Arbeitszeit |
 | **USD-Verbrauchsäquivalent** | **~USD 12,23** | Session-21-Kontrollrechnung; nicht in EUR-Summe |
 
 **Menschlicher Ops-/Senior-Developer-Aufwand (Session-basierter Marktwert, keine Rechnung):**
 
 Nur dokumentierte Interaktiv-Cluster (Gap>90 min-Span), keine unbeaufsichtigte Sync-Laufzeit.
-**Cursor (korrigiert 09-09):** Sessions 6+8+9+10 (**~14,7 h**) + `ea987bef` Vollstand C1–C17 (**~24,1 h**) +
-`7bb73584` Aug-23 (**~8,5 h**) ≈ **~47 h** Cursor-Interaktiv (früher ~22,5 h — Unterzählung Session-12-Fortsetzung
+**Cursor (korrigiert 09-10):** Sessions 6+8+9+10 (**~14,7 h**) + `ea987bef` Vollstand C1–C18 (**~25,1 h**) +
+`7bb73584` Aug-23 (**~8,5 h**) ≈ **~48 h** Cursor-Interaktiv (früher ~22,5 h — Unterzählung Session-12-Fortsetzung
 und BSC-Cut). **Copilot:** `a95758da` ~8,1 h; Sessions 13–18 ~6–12 h; Session 19 ~0,8 h; Session 20 ~4,7 h;
 Session 21 ~7 h Incident-Wall; 09-08-Status ~0,1 h ≈ **~27–33 h** Copilot-Fenster. Parallelität Agent/Maschine
 → keine Kalenderdauer als Vollzeit.
@@ -791,17 +792,17 @@ Gemäß Betreiberwahl: gemischte Stunden **voll in beiden Rollen**; Rollensumme 
 
 | Rolle | Erfasster Aufwand | Marktband (netto, exkl. USt) | Arbeitswert |
 | --- | ---: | ---: | ---: |
-| Senior Ops / DevOps | **~40–48 h** | **EUR 80–120/h** | **~EUR 3.200–5.760** |
-| Senior Reth-/Blockchain-Developer | **~62–72 h** | **EUR 100–150/h** | **~EUR 6.200–10.800** |
-| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~102–120 Rollenstunden** | — | **~EUR 9.400–16.560** |
-| **Mittelpunkt für Budgetplanung** | Ops 44 h @100 + Dev 67 h @125 | — | **~EUR 12.775** |
+| Senior Ops / DevOps | **~41–49 h** | **EUR 80–120/h** | **~EUR 3.280–5.880** |
+| Senior Reth-/Blockchain-Developer | **~63–73 h** | **EUR 100–150/h** | **~EUR 6.300–10.950** |
+| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~104–122 Rollenstunden** | — | **~EUR 9.580–16.830** |
+| **Mittelpunkt für Budgetplanung** | Ops 45 h @100 + Dev 68 h @125 | — | **~EUR 13.000** |
 
 Die Stundensatzbänder sind Marktansätze für österreichische/DACH-Freelancer 2026, keine
-tatsächlich gestellte Rechnung. Zuzüglich erfasster Sach-/AI-Kosten von **~EUR 649** ergibt sich ein
-dokumentierter Projektwert von **~EUR 10.049–17.209**, mit Budget-Mittelpunkt **~EUR 13.424**.
+tatsächlich gestellte Rechnung. Zuzüglich erfasster Sach-/AI-Kosten von **~EUR 650** ergibt sich ein
+dokumentierter Projektwert von **~EUR 10.230–17.480**, mit Budget-Mittelpunkt **~EUR 13.650**.
 Hardware, USt, Opportunitätskosten und undokumentierte Betreuung bleiben ausgeschlossen.
 
-### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-09 **23:15** CEST)
+### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-10 **10:35** CEST)
 
 Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
 Infrastruktur, nicht gemietete Cloud-Instanz mit Abrechnung pro Stunde). Restart-/Rebuild-Zahlen

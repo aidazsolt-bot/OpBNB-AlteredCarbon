@@ -40,7 +40,7 @@ Vor Analyse immer `plan.md` → **Aktueller Stand** + *Live Sync Progress* lesen
 | Feature-Branch | Fix + **Execution-Speedup** `b32f9e58d6` (fetch∥EVM, ~2×) — noch nicht gemerged |
 | Gate | Exec @`34367717` Receipt-Root `0xc8e83d…` ohne Unwind + terminate |
 | Scope | opBNB only; BSC-Crates entfernt |
-| Kosten/Zeiten (09-09) | Cursor ~47 h Interaktiv; EUR Cursor **70** / Copilot **170**; Summe ~**EUR 649** |
+| Kosten/Zeiten (09-10 10:35) | Cursor ~**48 h** Interaktiv; EUR Cursor **70** / Copilot **170**; Summe ~**EUR 650** |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
