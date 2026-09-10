@@ -10,7 +10,7 @@ use reth_db_api::DatabaseError;
 use reth_evm::{execute::Executor, metrics::ExecutorMetrics, ConfigureEvm};
 use reth_execution_types::Chain;
 use reth_exex::{ExExManagerHandle, ExExNotification, ExExNotificationSource};
-use reth_primitives_traits::{format_gas_throughput, BlockBody, NodePrimitives};
+use reth_primitives_traits::{format_gas_throughput, BlockBody, NodePrimitives, RecoveredBlock};
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileWriter},
     BlockHashReader, BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HeaderProvider,
@@ -24,6 +24,7 @@ use reth_stages_api::{
     UnwindInput, UnwindOutput,
 };
 use reth_static_file_types::StaticFileSegment;
+use reth_storage_errors::provider::ProviderResult;
 use reth_trie_common::{HashedPostState, KeccakKeyHasher};
 use rust_eth_triedb::{get_global_triedb, triedb_manager::is_triedb_active};
 use std::{
@@ -39,6 +40,11 @@ use tracing::*;
 use super::missing_static_data_error;
 
 mod slot_preimages;
+
+/// Maximum number of blocks the fetch/decode prefetch thread is allowed to run ahead of the
+/// executing thread in [`ExecutionStage::execute`]. Bounds memory usage of the pipeline while
+/// still overlapping disk I/O with EVM execution.
+const EXECUTION_FETCH_PIPELINE_DEPTH: usize = 4;
 
 /// The execution stage executes all transactions and
 /// update history indexes.
@@ -275,7 +281,10 @@ where
         + StateWriter<Receipt = <E::Primitives as NodePrimitives>::Receipt>
         + StorageSettingsCache
         + StoragePath
-        + ChainSpecProvider<ChainSpec: EthereumHardforks>,
+        + ChainSpecProvider<ChainSpec: EthereumHardforks>
+        // Required so a dedicated prefetch thread can read blocks (I/O + decode) ahead of
+        // the executing thread while sharing the same read-only provider/transaction.
+        + Sync,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -333,78 +342,114 @@ where
 
         let mut blocks = Vec::new();
         let mut results = Vec::new();
-        for block_number in start_block..=max_block {
-            // Fetch the block
-            let fetch_block_start = Instant::now();
 
-            // we need the block's transactions but we don't need the transaction hashes
-            let block = provider
-                .recovered_block(block_number.into(), TransactionVariant::NoHash)?
-                .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
+        // Fetch/execute pipeline: fetching a block from disk (block body, transactions,
+        // sender recovery) is pure I/O + decode work that doesn't touch the account/storage
+        // state tables the executor reads and writes. We therefore fetch blocks ahead of the
+        // block currently being executed on a dedicated thread, so disk I/O for block N+1..N+k
+        // overlaps with EVM execution of block N instead of happening serially before it.
+        //
+        // The channel is bounded so the prefetch thread can only run a fixed number of blocks
+        // ahead of the executor (backpressure), keeping memory bounded. If the executor stops
+        // early (batch threshold reached or an error), the receiver is dropped when the scope
+        // ends, the prefetch thread's next `send` fails, and it exits promptly.
+        let prefetch_result: Result<(), StageError> = std::thread::scope(|scope| {
+            let (block_tx, block_rx) = std::sync::mpsc::sync_channel::<
+                ProviderResult<Option<RecoveredBlock<<E::Primitives as NodePrimitives>::Block>>>,
+            >(EXECUTION_FETCH_PIPELINE_DEPTH);
 
-            fetch_block_duration += fetch_block_start.elapsed();
+            scope.spawn(move || {
+                for block_number in start_block..=max_block {
+                    let result =
+                        provider.recovered_block(block_number.into(), TransactionVariant::NoHash);
+                    if block_tx.send(result).is_err() {
+                        // Executor stopped consuming (batch threshold/error) - stop fetching.
+                        break
+                    }
+                }
+            });
 
-            cumulative_gas += block.header().gas_used();
+            for block_number in start_block..=max_block {
+                // Fetch the block (comes from the prefetch thread above)
+                let fetch_block_start = Instant::now();
 
-            // Configure the executor to use the current state.
-            trace!(target: "sync::stages::execution", number = block_number, txs = block.body().transactions().len(), "Executing block");
+                // we need the block's transactions but we don't need the transaction hashes
+                let block = block_rx
+                    .recv()
+                    .map_err(|_| {
+                        StageError::Fatal(Box::new(std::io::Error::other(
+                            "execution fetch pipeline thread terminated unexpectedly",
+                        )))
+                    })??
+                    .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
 
-            // Execute the block
-            let execute_start = Instant::now();
+                fetch_block_duration += fetch_block_start.elapsed();
 
-            let result = self.metrics.metered_one(&block, |input| {
-                executor.execute_one(input).map_err(|error| StageError::Block {
-                    block: Box::new(block.block_with_parent()),
-                    error: BlockErrorKind::Execution(error),
-                })
-            })?;
+                cumulative_gas += block.header().gas_used();
 
-            if let Err(err) =
-                self.consensus.validate_block_post_execution(&block, &result, None, None)
-            {
-                return Err(StageError::Block {
-                    block: Box::new(block.block_with_parent()),
-                    error: BlockErrorKind::Validation(err),
-                })
+                // Configure the executor to use the current state.
+                trace!(target: "sync::stages::execution", number = block_number, txs = block.body().transactions().len(), "Executing block");
+
+                // Execute the block
+                let execute_start = Instant::now();
+
+                let result = self.metrics.metered_one(&block, |input| {
+                    executor.execute_one(input).map_err(|error| StageError::Block {
+                        block: Box::new(block.block_with_parent()),
+                        error: BlockErrorKind::Execution(error),
+                    })
+                })?;
+
+                if let Err(err) =
+                    self.consensus.validate_block_post_execution(&block, &result, None, None)
+                {
+                    return Err(StageError::Block {
+                        block: Box::new(block.block_with_parent()),
+                        error: BlockErrorKind::Validation(err),
+                    })
+                }
+                results.push(result);
+
+                execution_duration += execute_start.elapsed();
+
+                // Log execution throughput
+                if last_log_instant.elapsed() >= log_duration {
+                    info!(
+                        target: "sync::stages::execution",
+                        start = last_block,
+                        end = block_number,
+                        throughput = format_gas_throughput(cumulative_gas - last_cumulative_gas, execution_duration - last_execution_duration),
+                        "Executed block range"
+                    );
+
+                    last_block = block_number + 1;
+                    last_execution_duration = execution_duration;
+                    last_cumulative_gas = cumulative_gas;
+                    last_log_instant = Instant::now();
+                }
+
+                stage_progress = block_number;
+                stage_checkpoint.progress.processed += block.header().gas_used();
+
+                // If we have ExExes we need to save the block in memory for later
+                if self.exex_manager_handle.has_exexs() {
+                    blocks.push(block);
+                }
+
+                // Check if we should commit now
+                if self.thresholds.is_end_of_batch(
+                    block_number - start_block,
+                    executor.size_hint() as u64,
+                    cumulative_gas,
+                    batch_start.elapsed(),
+                ) {
+                    break
+                }
             }
-            results.push(result);
 
-            execution_duration += execute_start.elapsed();
-
-            // Log execution throughput
-            if last_log_instant.elapsed() >= log_duration {
-                info!(
-                    target: "sync::stages::execution",
-                    start = last_block,
-                    end = block_number,
-                    throughput = format_gas_throughput(cumulative_gas - last_cumulative_gas, execution_duration - last_execution_duration),
-                    "Executed block range"
-                );
-
-                last_block = block_number + 1;
-                last_execution_duration = execution_duration;
-                last_cumulative_gas = cumulative_gas;
-                last_log_instant = Instant::now();
-            }
-
-            stage_progress = block_number;
-            stage_checkpoint.progress.processed += block.header().gas_used();
-
-            // If we have ExExes we need to save the block in memory for later
-            if self.exex_manager_handle.has_exexs() {
-                blocks.push(block);
-            }
-
-            // Check if we should commit now
-            if self.thresholds.is_end_of_batch(
-                block_number - start_block,
-                executor.size_hint() as u64,
-                cumulative_gas,
-                batch_start.elapsed(),
-            ) {
-                break
-            }
-        }
+            Ok(())
+        });
+        prefetch_result?;
 
         // prepare execution output for writing
         let time = Instant::now();

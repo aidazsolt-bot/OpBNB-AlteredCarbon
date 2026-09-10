@@ -35,6 +35,20 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
+## Aktueller Stand (Session-Memory — 2026-09-10 ~09:59 CEST)
+
+> Agent-Kurzlage. Details: *Live Sync Progress*, Session 20/21, *Nächste Schritte*.
+
+| Thema | Lage |
+| --- | --- |
+| **Kette / Binary** | opBNB **204** · Live `op-reth-bnb` (maxperf, Wright-Fix) · Workspace: **kein BSC** |
+| **Git** | `alteredcarbon/main` = Konsens-Fix **`29d7bfa2dd`** (Wright L1FeeVault Debit+Credit). Feature-Branch **`feat/execution-stage-fetch-pipeline`**: derselbe Fix (`b7c39029fa`) **plus** Execution-Speedup **`b32f9e58d6`** (fetch/decode-Overlap, Live ~2×) + Docs — Speedup **nicht** auf `main`. |
+| **Incident 09-09** | Receipt-Root @ **`34367717`** → Unwind. Ursache: Wright `gasPrice==0` nur Debit, Vault-Credit mintete weiter (PIPE-009 / FLOW-X02). Offline-Unwind auf **`32984676`** (Wright−1), Restart mit Fix-Binary. |
+| **Live Recovery** | Tip **`--debug.tip` `0xd6094500…4669` = Block `34 367 717`** + `--debug.terminate`. Headers Rest **71.2 M** (älterer höherer Tip). Bodies **43.5 M** (skip, schon > Tip). Sender ✅ **`34 367 717`**. **Execution aktiv ~`33 324 k`** → Tip (~94 %, ~37–40 blk/s / ~150–380 Mgas/s; ETA Gate **~6–9 h**). Peers **4**; bodies validation/timeout/invalid **0**. Point-4 Stichprobe 09-10 MATCH (Fermat/Haber/Exec−1k). |
+| **Offenes Gate** | Block **`34367717`** Receipt-Root `0xc8e83d75…30c` ohne Unwind; danach `--debug.terminate`. Früherer Tip `34 366 337` (`0xbacde854…`) lag **1 380** Blöcke darunter — **nicht** das Gate. |
+| **Kosten/Zeiten** | Cursor ~**48 h** Interaktiv (Re-Messung 09-10); EUR Cursor **70** / Copilot **170**; Sachkosten ~**EUR 650** (10:35). Session 23 = Gate-Tip/Docs/About/Logo. |
+| **Nicht verwechseln** | Session-20 MerkleExecute-Unwind @`71185159` ≠ Session-21 Wright-Vault-Bug. |
+
 ## Ziel & Kontext
 
 Ziel des Projekts: Evaluierung, wie weit aktuelle KI-Coding-Assistenten (GitHub Copilot CLI) eine
@@ -160,10 +174,10 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-B04 | Bodies↔Headers Kopplung | Bodies startet erst nach Headers-Checkpoint; kein stilles Warten ohne Metrik | PIPE-005 | ✅ Headers→Bodies ~18:58 CEST (08-11) |
 | PORT-FLOW-R01 | Deposit Sender | Deposit `from` ohne ECDSA (Feld im Deposit-TX, kein `ecrecover`); Fehlerpfad ≠ Peer-Ban | PIPE-006 | ✅ **live OK** Tip-Lauf; Catch-up 08-15: Sender wartet auf Bodies-Yield (@ Fail-Höhe) |
 | PORT-FLOW-X01 | Historische Overlays | Precompiles/Flags am **Blockzeitpunkt** (Fermat/Haber-Fenster), nicht nur Tip-Fork | PIPE-007/008 | ✅ **Fermat live** · PIPE-014/X04 Hertz ✅ · ⏳ Haber live ab `1718872200` |
-| PORT-FLOW-X02 | Wright L1-Fee | op-geth: L1-Fee-Skip nur `gasPrice==0`; Reth setzt `skip_l1_data_fee=true` ab Wright. Das vendorte Workspace-`crates/optimism/op-revm` gated die L1-Datenkosten ebenfalls mit `gas_price==0` und erhält das Flag beim L1-Info-Reload; Isthmus-Operatorgebühren bleiben erhalten. | PIPE-009 | ✅ Code + Unit `wright_gasless_transactions_skip_only_l1_data_fee` und Reload-Test · 🔬 portabler Gesamtbuild / Live-Stichprobe ab ~**32984677** |
+| PORT-FLOW-X02 | Wright L1-Fee | op-geth: Bei Wright + `gasPrice==0` müssen sowohl Sender-Debit als auch `L1FeeVault`-Credit `0` sein. Der erste Port guardete nur `tx_cost_with_tx` (Debit); `reward_beneficiary` berechnete und creditierte die L1-Fee trotzdem und mintete dadurch Vault-Balance. Beide Pfade nutzen nun `l1_data_fee_with_tx`; Isthmus-Operatorgebühren bleiben erhalten. | PIPE-009 | 🐛 **09-09 Root Cause gefixt** · Units für Debit + Credit ✅ · bestehender DB-State seit Wright potentiell divergent; vor Wright (`32984676`) unwind/re-execute, sofern der erste gasless Non-Deposit-Tx nicht enger belegt wird |
 | PORT-FLOW-X03 | Exec Persistenz | Commit/Unwind-Pfad storage.v2 (SF changesets, hashed readers) konsistent mit PIPE-012 | STOR-007/008 | 📋 Code · 🔬 Archive-Last |
 | PORT-FLOW-X04 | Einzelblock Receipt-Diff | Bei Receipt-/State-Root-Mismatch: Single-block exec → Dump `(idx,status,gasUsed,cumGas,logs)` → Diff vs public `eth_getBlockReceipts` → **erster** divergenter Index vor Fix | PIPE-014 | ✅ **closed** · idx=10 `syncLightBlock`/`0x67` · Hertz-Overlay · `re-execute 54..55` ✅ (08-15 ~14:13 CEST, kein Dump) |
-| PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 **3×** live (2× Receipt @`21591154` + **08-14 ~13:43** Merkle @`21579110`→unwind_to=0); Tip gerettet per Kill vor Headers-Commit; **Ops:** Process-Stop ≫ `max-block` als Park |
+| PORT-FLOW-X05 | Pipeline Unwind-Sturm | Exec-/Merkle-Validation-Fail darf **nicht** stillschweigend ~10⁸ Headers via O(N) `HeaderNumbers`-Loop vernichten; Status `checkpoint=tip` bis `UnwindOutput` ≠ Idle; Headers loggt **kein** batch-`Stage unwound done=false` (Observability-Inkonsistenz vs Sender/Hashing) | PIPE-014, EXEC-001 | 🐛 live: frühere Receipt/Merkle-Fälle plus **09-09 Receipt-Root @`34367717`** (`local=1aa049…`, canonical=`c8e83d…`) → automatischer unwind auf `34366337`; Prozess beendete sich selbst am unerwarteten Consensus-Fehler, leeres `MAINPID` im Stop war nur Folge. **Ops:** nicht vom bereits divergenten State weiterlaufen; Wright-Recovery gemäß X02 |
 | PORT-FLOW-S01 | SF Segment-Routing | Jedes Segment eigene Datei/Mask; kein Headers-Reuse (STOR-001-Klasse) | STOR-004…006 | ✅ |
 | PORT-FLOW-S02 | Prune/History v2 | EitherWriter/RocksDB unwind verdrahtet; tote Helper ≠ stiller No-Op ohne FLOW-Notiz | STOR-008, PIPE-U10/11 | 📋 |
 | PORT-FLOW-S03 | Metrics/Healing | Alle `StaticFileSegment`s in Metrics registriert (STOR-009-Klasse) | STOR-009 | ✅ |
@@ -370,25 +384,30 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-01 ~18:52 CEST:** H+Bodies+Sender Tip ✅ `174 027 661`. Exec **`65 828 907`** (~38 %, ~19–33 blk/s cooled). Haber Point-4 ✅; **past Wright**. **ETA Tip ~1¼–2¼ Mo** (current bands). X02/PIPE-009 ✅. P2P-002 ✅; P2P-006 offen. Live-Node: **kein Restart**.
+- **Stand 2026-09-10 ~09:59 CEST (Wright-Gate-Lauf):** Tip-Hash `0xd6094500…` = **`34 367 717`** + terminate. Bodies skip (43.5 M > Tip); Sender ✅ Tip; **Execution ~33.32 M → Tip** (~37–40 blk/s, ETA ~6–9 h). Peers 4; errors 0; Point-4 MATCH. PIPE-009/X02 Code ✅ `main` (`29d7bfa2dd`); Speedup nur Feature-Branch. (09-09 Abend: Bodies-Refill Richtung 71.2 M / Exec park Wright−1 — überholt.)
 
 ## Roadmap (aktuell — Exec-Fenster)
 
 | Fenster | Ziel | Aufwand (Schätzung) | Status |
 | --- | --- | --- | --- |
-| **≤48 h** | Point-4 stateRoot @ Haber (~27.1 M) dann Wright (~33.0 M) vs public RPC | ~0.5 h Agent/Stichprobe je Gate | ✅ Haber MATCH (08-17); Wright height **passed** — optional Point-4 sample still open |
-| **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 laufend |
+| **jetzt** | Wright-Gate: Exec → `34367717` (`0xd6094500…`) + terminate; Receipt-Root Match | unsupervised + Spot-Check | 🔄 Exec ~33.32 M / tip 34.37 M; ETA ~6–9 h |
+| **≤48 h nach Exec past Wright** | Point-4 stateRoot @ Haber + Wright (+ Stichprobe `34367717`) vs public RPC | ~0.5 h Agent/Stichprobe | ✅ Haber MATCH (08-17, pre-Incident); ⏳ nach Re-Exec wiederholen |
+| **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 Bodies errors 0; peers 2 |
+| **nach Gate `34367717`** | Feature-Branch Speedup `b32f9e58d6` → `main` (oder bewusst zurückhalten) | Review + merge | 📋 Speedup live gemessen ~2×, noch nicht auf `main` |
 | **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
-| **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt bis Restart |
-| **aktuell: Re-Sync ab Genesis** | Headers → Bodies → Execution neu aufbauen; Gates Haber/Wright Point-4 erneut ziehen | unsupervised + Spot-Checks | 🔄 **Neustart 09-02 17:53** mit `333ba71`, Datadir verworfen (Static Files 2861 → 21). `storage_v2: true` **ab Genesis** statt via Migration; Headers laden rückwärts ab `179 239 838`. Vorheriger Repair-Versuch aufgegeben — Ursache forensisch geklärt (**PORT-STOR-011**), Teilrettung wegen gekürzter AccountChangeSets unmöglich. CL-Head ~`180.99M` |
-| **nach Repair-Backfill** | Execution Tip → Merkle/History/Finish | unsupervised + Spot-Checks | ⏳ erneut zu berechnen, sobald die Header- und Execution-Rate nach dem Wiederanlauf messbar ist |
+| **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt |
+| **Kontext 09-02 Re-Sync** | Genesis-Rebuild `storage_v2`; später `--debug.tip` `71185160` nach Merkle-Unwind-Forensik | — | Historie Session 13/18/20; aktueller Lauf = Recovery nach Wright-Incident |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
 | **erledigt 09-02** | **V2-State-Integrität — drei gekoppelte Guards.** (a) **PORT-STOR-011**: `remove_state_above` kehrt still zurück, wenn Static Files bereits gekürzt sind → State-Revert entfällt, Checkpoint wird trotzdem gesetzt. (b) **PORT-STAGE-006**: `AccountHashing`/`StorageHashing` sind unter `use_hashed_state()` im Forward reine No-ops; nach abgebrochenem Unwind bleibt die Differenz ungehasht. (c) **PORT-STAGE-007**: Hashing-`unwind()` hat keinen Table-Clear-Pfad, „Unwind auf 0“ leert den Hashed State nicht. Zusammen erzeugen sie **stillen, nicht reparierbaren State-Verlust** | ~1–2 d Code + Regressionstests | ✅ lokal gehärtet: Storage-V2-aware `stage drop Execution`, `remove_state_above`-Abort bei Execution>Blockdaten, Startup-Consistency-Guard bei Execution==Header-Tip aber Hashing darunter, Hashing-Unwind-to-0 clear. Upstream-Issue/PR später prüfen bzw. melden |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
-**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · X02 Unit ✅ · Haber Point-4 ✅ · Wright height passed (optional Point-4 sample) · Tip ⏳ (~1¼–2¼ Mo) · FLOW-X05 watch.
+**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · **X02/PIPE-009 Code ✅ (`main` `29d7bfa2dd`)** · Live Re-Exec past Wright + `34367717` ⏳ · Haber Point-4 historisch ✅ (nach Recovery erneut) · Tip/`--debug.tip` 71.2 M 🔄 · FLOW-X05 watch · Speedup nur Feature-Branch.
 
-### BSC Mainnet Port (parallel, opBNB unverändert) — Stand 2026-08-23
+### BSC Mainnet Port — ARCHIV (Workspace opBNB-only seit 2026-08-24)
+
+> `crates/bsc` entfernt. Tabelle unten = historische PORT-BSC-Arbeit vor Scope-Schnitt; **kein aktiver Scope**.
+
+### BSC Mainnet Port (historisch, Stand 2026-08-23)
 
 Referenz: `github.com/bnb-chain/reth-bsc` main (live Tip); Workspace bleibt **reth v2.4.1** Monorepo.
 
@@ -489,7 +508,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-006 | SenderRecovery | Deposit `from` ohne ECDSA | ✅ OP Deposit-Primitives / Recovery (`OpTransactionSigned::recover_signer` → Deposit.`from`) | **R01 ✅** | ✅ umgesetzt · ✅ **live OK** Tip @15:54 CEST (s. Live Sync Progress) |
 | PORT-PIPE-007 | Execution @ Fermat `9397477` | Precompiles `0x66`/`0x67` | ✅ `opbnb_precompiles` Overlay + Flag-Tests | **X01 ✅ Fermat** | ✅ umgesetzt · ✅ **live** Exec≫Fermat; IPC stateRoot MATCH an `9397477`± (s. Live Sync Progress) |
 | PORT-PIPE-008 | Execution Haber→Fjord | Early `p256` @ `0x100` nur vor Fjord | ✅ `haber_p256` Flags in `evm/src/config.rs` + Overlay-Tests | **X01 Haber ✅** | ✅ umgesetzt · ✅ **live** Haber Point-4 MATCH (08-17) |
-| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | `factory.rs` setzt `skip_l1_data_fee=true` ab Wright. Das vendorte Workspace-`op-revm` überspringt L1-Kosten nur bei Flag **∧** `gas_price==0`, bewahrt das Flag über `try_fetch` und berechnet post-Isthmus weiterhin die Operatorfee — ≡ op-geth `core/state_transition.go::buyGas`. Frühere Plan-Lesart „skip für alle Txs“ war falsch. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`). | **X02 ✅** | ✅ fokussierte Units · 🔬 portabler `op-reth`-Build und Live stateRoot @ Wright-Fenster |
+| PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | `factory.rs` setzt `skip_l1_data_fee=true` ab Wright. Der frühere Port setzte den Skip nur beim Sender-Debit um, nicht beim Credit an `L1_FEE_RECIPIENT`; dadurch wurde für gasless Wright-Txs Wert erzeugt. `tx_cost_with_tx` und `reward_beneficiary` verwenden jetzt dieselbe `l1_data_fee_with_tx`-Semantik. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`). | **X02 🐛→✅** | ✅ Debit-/Credit-Units · 🔬 Re-Execution ab sicherem Pre-Wright-State und Root-Abgleich @ `34367717` |
 | PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ Snow erzeugt den Median-L1-Gaspreis im op-node und schreibt ihn in die L1-Info-Deposit-Tx. Volta/Fourier erzeugen Millisekundenzeit plus Fourier-Intervallzähler in `prevRandao[0..4]`; der OP-Engine-Pfad übernimmt diesen unverändert als Header-`mix_hash`, während EL nur monotonen Millisekundenfortschritt prüft. Kadenz-/Span-Batch-Regeln sind op-node-Consensus. | — | ➖ n/a zusätzliche EL-Logik · 📝 CL liefert L1-Info und `prevRandao` |
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
 | PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008) | S01–S02 | ✅ umgesetzt · ⏳ live ungetestet (Archive-Last / SF-Unwind) |
@@ -714,7 +733,12 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 12 cont. (Teil-Snapshots 08-13…08-15) | s. Cluster in Metrics-JSON | Auto/Composer | (in kumulierter Zeile) | (Proxy) | Fail#1–3; Tip-Rettung; Cap; offline X04/SF-Heal; CLI inkl. vs half-open | Dump `re-execute 54..55` nach Exec-fertig |
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~11:47 CEST**) | op-geth↔Reth Root-Pipeline-Doku | Auto/Composer | (Session-12-Proxy) | (Proxy) | ValidateState eager vs Exec+Merkle staged; alloy-op-evm Path-Dep; PIPE-014 bleibt Content | FLOW-X04 Dump; Merkle später |
 | Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-15 ~14:20 CEST**) | PIPE-014 Hertz-Fix + Verify + Live Restart | Auto/Composer | (Session-12-Proxy) | (Proxy) | FLOW-X04 idx=10 `syncLightBlock`; Overlay Hertz; `re-execute` ✅; maxperf→`dist/bin`; live Bodies Catch-up | Live Exec≫`21591154`; FLOW-X05 watch |
-| Cursor Session 12 cont. (Chat `ea987bef…`, Snapshot **2026-08-16 ~08:35 CEST**) | UPnP+Bodies Tip+Exec past Fail+X02+A02; Kalender 08-12→16 **~88 h**; Interaktiv +~4 h (Abend 15 + Morgen 16) | Auto/Composer | Transcript File **~1.58 MB** → Proxy **~396 K** Tok (÷4); billed n/a | (Proxy) | jsonl **~1063** lines; Detailmetriken lokal archiviert, nicht publiziert | **P2P-002** UPnP ✅; H/B/S Tip; Exec≪Tip past Fail; **X02 ✅**; CLEANUP-A02 partial; Roadmap ETAs |
+| Cursor Session 12 (Chat `ea987bef…`, Snapshot **2026-08-16 ~08:35 CEST**, damals) | Kalender 08-12→16 **~88 h**; Interaktiv früh+Abend damals mit Gap>90 min grob **~8,5 h** geschätzt | Auto/Composer | File damals **~1,58 MB** → Proxy **~396 K** Tok | (Proxy) | jsonl damals ~1063 lines | **P2P-002**; H/B/S Tip; Exec past Fail; **X02 ✅**; CLEANUP-A02 partial |
+| Cursor Session 12 **Vollstand** (Chat `ea987bef…`, Re-Messung **2026-09-10 ~10:35 CEST**) | **18** Interaktiv-Cluster 08-12→09-10; Gap>90 min-Span-Summe **~25,1 h** (C1–C18). Davon C1–C8 (08-12→16) **~12,6 h** — frühere ~8,5 h-Schätzung **unterzählt**. C9–C14 (16.–20.08) **~3,2 h**; C15 (23.08 Abend) **~2,4 h**; C16 (24.08 BSC-Remove) **~5,7 h**; C17 (09.09 Abend) **~0,43 h**; C18 (10.09 Morgen) **~0,73 h** | Auto/Composer | File **~4,45 MB** → Proxy **~1,1 M** Tok (÷4); billed n/a | (Proxy) | **~327** user / **~2211** asst; **~4120** tool_use | Gesamte Chat-Lebensdauer Session-12-Thread inkl. BSC-Cut + Status/Docs 09-09/10; **kein** separates Cursor-Invoice |
+| Cursor Session Aug-23 BSC-Fokus (Chat `7bb73584…`) | 08:54–18:55 CEST; **2** Cluster Span-Summe **~8,5 h** (Kalender ~10 h) | Auto/Composer | File **~1,0 MB** → Proxy **~255 K** Tok | (Proxy) | **56** user / **838** asst; **1619** tool_use | „wie schaut es mit reth-bsc aus?“ — Parlia/Engine-Analyse vor Scope-Schnitt; **nicht** in älterer Cursor-EUR-Allokation einzeln ausgewiesen |
+| Cursor Session Aug-24 opBNB-only Cut (in `ea987bef` C16 + Nebenchat `065d5aa7…`) | C16 **~5,7 h** Span (09:42–15:24); Nebenchat kurz (~32 KB) | Auto/Composer | in ea987bef-Vollstand enthalten | (Proxy) | BSC-Crates entfernt, `main`-Force-Push AlteredCarbon, Doku Anti-Pattern Dual-Chain | Workspace **opBNB-only**; siehe Commit-Serie `chore(opbnb): remove BSC…` |
+| Cursor Session 22 (Chat `ea987bef…` C17, **2026-09-09 ~23:06–23:32 CEST**) | Interaktiv **~0,43 h** | Auto/Composer | Delta im laufenden Transcript; kein separater billed Meter | (Proxy) | Sync-ETA/Health, Session-Memory, Kostenkorrektur | Kein neuer Code-Fix; Konsens-Fix bleibt `29d7bfa2dd` |
+| Cursor Session 23 (Chat `ea987bef…` C18, **2026-09-10 ~09:51–10:35 CEST**) | Interaktiv **~0,73 h** | Auto/Composer | Delta im laufenden Transcript | (Proxy) | Tip→`34367717`, Live-Status/Docs, GitHub About+Topics, README Hero-Logo | Gate-Lauf aktiv; kein Konsens-Code |
 
 | Copilot Session 13 (Storage-v2 recovery, 2026-09-02) | Journal/Mimir-Diagnose (Static-File-Underflow, fehlender Slot-Preimage-Port); zwei Source-Fixes (`fa6caf3022`, `ce0c722d9b`); 6 reaktivierte Preimage-Regressionstests + `test_pipeline`/`test_pipeline_v2`; 2× `make maxperf-op` | k.A. | k.A. | k.A. | Kein Per-Session-Token-Ledger verfügbar; keine Kostenschätzung |
 | Copilot Session 14 (Peer-Connectivity + migrate-v2-Validierung, 2026-09-03) | ForkHash-Re-Verifikation, Peer-Injection-Tool + systemd-Timer (später obsolet), isolierter `p2p body`-Reachability-Test, Dev-Host `db migrate-v2` End-zu-Ende-Test | k.A. | k.A. | k.A. | Kein Ledger; mehrere kurze Dev-Host-Rebuilds/Restarts (s. Restart-Historie Session 18) |
@@ -722,33 +746,78 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Copilot Session 16 (UPnP-Family-Folgebug Fix + Live-Deploy, 2026-09-03) | Root-Cause + Fix in `crates/net/nat/src/lib.rs` + Log-Wording in 2 weiteren Dateien; `cargo test -p reth-net-nat` (5 passed); `make maxperf-op`; User-Live-Deploy bestätigt | k.A. | k.A. | k.A. | Kein Ledger; 1 maxperf-Build + 1 Live-Redeploy (im Restart-Cluster 09-03 enthalten) |
 | Copilot Session 17 (Prometheus-Verify + Clean-Restart + Trusted-Peer-Check, 2026-09-04) | Grafana/Prometheus-Endpoint-Discovery, Sync-Rate-Vergleich, IPC-`admin_peers`-Check, sauberer Restart nach Debug-Logging-Deaktivierung | k.A. | k.A. | k.A. | Kein Ledger; 1 Restart (kein Rebuild) |
 | Copilot Session 18 (Restart-Historie + Status-Doku + `scripts/sync-eta.sh`, 2026-09-05) | Journal-Auswertung 08-10→heute (90 Restarts klassifiziert), Mimir-Range-Query für Stage-Übergang `SenderRecovery→Execution` (04-09 16:45 UTC), neues ETA-Automatisierungsskript, Rule-Update | ~20 Tool-Calls | <15 Min Wall | k.A. | Kein Ledger; reine Analyse-/Doku-Session, kein Rebuild/Deploy |
+| Copilot Session 20 (Execution fetch/execute pipeline, 2026-09-07) | Lokales Block-Fetch/Decode mit EVM-Ausführung über bounded `sync_channel(4)` überlappt; maxperf-Build **23m39s**, Live-Vergleich **~2,37x** pro Batch bzw. **~2,0x** Checkpoint-Rate; Änderung bleibt vorerst auf `feat/execution-stage-fetch-pipeline` | k.A. | k.A. | k.A. | Kein separater Billed-Token-Snapshot; 1 maxperf-Build + Live-Restart |
+| Copilot Session 21 (Wright L1FeeVault Consensus-Fix, 2026-09-09; Usage-Snapshot während Doku-Update 13:30–13:47 CEST) | Fataler Receipt-Root-Mismatch @`34367717`; öffentliche Receipt-RLP/MPT-Verifikation; op-geth-Paritätsaudit; gemeinsamer Debit/Credit-Fix + 2 Wright-Regressionstests; maxperf-Build **22m25s**; Offline-Unwind **72m35s**; isolierter Fix-Commit `29d7bfa2dd` nach `main` gepusht, Execution-Speedup nicht enthalten | **20.386.711 Input**, davon **19.270.326 Cache-Read** + **545.276 Cache-Write** | **77.366 Output** | **178 Modellaufrufe**; **~7 h Incident-Wall** | Offizielle GitHub-Tokenpreise: **~USD 13,59 / 1.358,8 AI Credits**, mit 10-%-Auto-Rabatt **~USD 12,23 / 1.222,9 Credits**; tatsächlicher Zusatzbetrag kann innerhalb des Plan-Kontingents **USD 0** sein |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
 > verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
-> bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt; **Cursor Session 12** nur Proxy
-> (~72 K–388 K Tok Content-Proxy über Snapshots, **~4,5 h** früh + **~4 h** 08-15/16) — **billed** nur Account-Dashboard /
-> Abo (Context-Resend ≫ Content-Proxy). Sessions 13–18 (Copilot CLI, 2026-09-02→05): kein
-> Per-Session-Billed-Token-Ledger verfügbar (gleiche Copilot-CLI-Limitation wie Session 13); daher
-> nur Aktivitäts-/Ergebnisbeschreibung ohne Kostenschätzung — **keine** Zahl erfinden. Quellen: lokale
-> Copilot-/Cursor-Sessiondaten; die früheren `files/`-Metrikartefakte sind bewusst nicht mehr Teil der
-> öffentlichen Git-History.
+> bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt. Cursor: Content-Proxy unterzählt
+> Context-Resend; **billed** nur Account-Dashboard / Abo. **Dem opBNB-Projekt zugerechnete Cursor-AI-Kosten
+> laut Betreiberangabe weiterhin ca. EUR 70** (Stand 09-09; kein neuer Rechnungsbeleg für den Abend-Cluster).
+> Der höhere Cursor-Gesamtaufwand umfasste auch andere Projekte und wird hier deshalb nicht vollständig
+> angesetzt. **Zeitkorrektur 09-10 10:35:** Chat `ea987bef` + Aug-23-Chat `7bb73584` liefern messbare
+> Interaktiv-Spans (**~25,1 h** bzw. **~8,5 h**) weit über der alten Session-12-Schätzung (~8,5 h nur bis 16.08) —
+> das korrigiert **Arbeitsstunden**, nicht die EUR-70-Allokation. **Reale Copilot-Kosten laut
+> Betreiberangabe: ~EUR 170 kumuliert** (EUR 100 August + ~EUR 70 davor/danach). Sessions 13–20 (Copilot CLI):
+> kein Per-Session-Billed-Token-Ledger — **keine** Zahl erfinden. Session 21: strukturierte Usage-Zähler,
+> Listenpreis **~USD 13,59** / mit Auto-Rabatt **~USD 12,23** (Verbrauchsäquivalent, nicht zusätzlich zu
+> EUR 170 summieren; marginal oft USD 0 im Plan-Kontingent). Quellen: lokale Transcripts unter
+> `agent-transcripts/` (Cluster Gap>90 min), Copilot-Usage-Snapshot Session 21; `files/`-Metriken lokal-only.
 
-### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten modelliert — Stand 2026-09-05)
+**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert; Stand 2026-09-10 ~10:35 CEST):**
+
+| Kostenart | Betrag | Einordnung |
+| --- | ---: | --- |
+| Cursor AI | **~EUR 70** | opBNB-Anteil laut Betreiberangabe; **unverändert** trotz nachgezählter Cursor-Stunden (~**48 h**) |
+| Copilot | **~EUR 170 tatsächlich** | EUR 100 August + ~EUR 70 davor/danach, Betreiberangabe |
+| Copilot Session 21 | **~USD 13,59** Listenpreis / **~USD 12,23** Auto-Rabatt | Verbrauchsäquivalent; nicht zusätzlich zur EUR-Copilot-Zahl |
+| Rack-Strom, 05.08.–04.09. | **~EUR 57,8** | 250 kWh gemessen × 0,231 EUR/kWh |
+| Rack-Strom, 04.09.–10.09. **10:35** | **~EUR 12,6** | Fortschreibung ~EUR 2,14/Tag; kein neuer Zähler |
+| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 340** aufgelaufen seit 01.10.2025 bis 10.09.2026 **10:35** | zeitanteilig; gemeinsame Anbindung |
+| **Erfasste EUR-Summe** | **~EUR 650** | Cursor 70 + Copilot 170 + Strom **~70,4** + Internet **~340**; ohne Hardware/Arbeitszeit |
+| **USD-Verbrauchsäquivalent** | **~USD 12,23** | Session-21-Kontrollrechnung; nicht in EUR-Summe |
+
+**Menschlicher Ops-/Senior-Developer-Aufwand (Session-basierter Marktwert, keine Rechnung):**
+
+Nur dokumentierte Interaktiv-Cluster (Gap>90 min-Span), keine unbeaufsichtigte Sync-Laufzeit.
+**Cursor (korrigiert 09-10):** Sessions 6+8+9+10 (**~14,7 h**) + `ea987bef` Vollstand C1–C18 (**~25,1 h**) +
+`7bb73584` Aug-23 (**~8,5 h**) ≈ **~48 h** Cursor-Interaktiv (früher ~22,5 h — Unterzählung Session-12-Fortsetzung
+und BSC-Cut). **Copilot:** `a95758da` ~8,1 h; Sessions 13–18 ~6–12 h; Session 19 ~0,8 h; Session 20 ~4,7 h;
+Session 21 ~7 h Incident-Wall; 09-08-Status ~0,1 h ≈ **~27–33 h** Copilot-Fenster. Parallelität Agent/Maschine
+→ keine Kalenderdauer als Vollzeit.
+
+Gemäß Betreiberwahl: gemischte Stunden **voll in beiden Rollen**; Rollensumme = Wiederbeschaffungswert.
+
+| Rolle | Erfasster Aufwand | Marktband (netto, exkl. USt) | Arbeitswert |
+| --- | ---: | ---: | ---: |
+| Senior Ops / DevOps | **~41–49 h** | **EUR 80–120/h** | **~EUR 3.280–5.880** |
+| Senior Reth-/Blockchain-Developer | **~63–73 h** | **EUR 100–150/h** | **~EUR 6.300–10.950** |
+| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~104–122 Rollenstunden** | — | **~EUR 9.580–16.830** |
+| **Mittelpunkt für Budgetplanung** | Ops 45 h @100 + Dev 68 h @125 | — | **~EUR 13.000** |
+
+Die Stundensatzbänder sind Marktansätze für österreichische/DACH-Freelancer 2026, keine
+tatsächlich gestellte Rechnung. Zuzüglich erfasster Sach-/AI-Kosten von **~EUR 650** ergibt sich ein
+dokumentierter Projektwert von **~EUR 10.230–17.480**, mit Budget-Mittelpunkt **~EUR 13.650**.
+Hardware, USt, Opportunitätskosten und undokumentierte Betreuung bleiben ausgeschlossen.
+
+### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-10 **10:35** CEST)
 
 Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
 Infrastruktur, nicht gemietete Cloud-Instanz mit Abrechnung pro Stunde). Restart-/Rebuild-Zahlen
-unten sind direkte Betriebs-Proxys; die Stromkosten-Zahl weiter unten ist eine **Modellschätzung**
-(aus CPU-Auslastung abgeleitet, kein Wattmeter) — beides ersetzt keine echte Rechnung, es wird
-aber keine Zahl frei erfunden:
+unten sind direkte Betriebs-Proxys. Der 30-Tage-Stromverbrauch ist am Rack real gemessen; nur die
+Fortschreibung danach und der verwendete kWh-Preis sind Schätzungen. Das ersetzt keine Rechnung,
+aber es wird keine Zahl frei erfunden:
 
 | Metrik | Wert | Quelle |
 | --- | --- | --- |
 | `BlockChain.service`-Restarts seit 2026-08-10 | **90** (Tagesverteilung s. Session 18) | Container-Journal (`journalctl -u BlockChain.service`) |
 | Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
 | Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
-| `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 6 vollständige Fat-LTO-Builds à ~20–23 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16) | plan.md-Sessionprotokoll |
+| `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 8 vollständige Fat-LTO-Builds à ~20–24 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16); neu: Session 20 **23m39s**, Session 21 **22m25s** | plan.md-Sessionprotokoll |
+| Wright-Recovery-Maschinenzeit (09-09) | Build **22m25s** + Offline-Unwind **72m35s**; anschließender Header-/Body-Refill und Re-Execution laufen weiter | Build-/Node-Log |
+| A1 Glasfaser Internet 250/100, unlimitiert | **~EUR 30/Monat**, **~EUR 360/Jahr**, aktiv seit Oktober 2025; gemeinsame Anbindung aller Dienste/Nodes, nicht opBNB-exklusiv | Betreiberangabe |
 | Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
 
 **Stromverbrauch — reale Messung (Rack-Zähler, 05.08.2026 → 04.09.2026, 30 Tage):** **250 kWh**
@@ -763,6 +832,28 @@ ergibt das:
 | Stromkosten (gesamter Zeitraum) | **~EUR 57,8** |
 | … pro Tag | **~EUR 1,93** / ~8,33 kWh |
 | … pro Monat (30 Tage) | **~EUR 57,8** |
+
+**Fortschreibung nach dem letzten realen Zählerstand (keine neue Messung):** Für
+04.09.2026 00:00 bis 09.09.2026 13:30 CEST (5,563 Tage) ergibt die unveränderte gemessene
+Rack-Durchschnittsrate von 8,33 kWh/Tag rechnerisch **~46,36 kWh / ~EUR 10,71** zusätzlich.
+Gemessener 30-Tage-Wert plus Fortschreibung entsprechen damit **~296,36 kWh / ~EUR 68,46** über
+35,563 Tage. Das ist ausdrücklich eine lineare Extrapolation, kein neuer Zählerstand.
+
+Für das rund siebenstündige Wright-Incident-Fenster entspricht derselbe Rack-Durchschnitt
+**~2,43 kWh / ~EUR 0,56**. Dieser Wert ist nur ein zeitanteiliger Rack-Betriebsproxy und keine
+marginale Mehrkostenmessung des Builds oder Unwinds; der Rack hätte auch ohne Incident andere
+Blockchain-Nodes betrieben.
+
+**Netzteil-/Rack-Plausibilität:** Der Node-Host verwendet ein **be quiet! SFX Power 3 450 W,
+80 PLUS Bronze**. Die Herstellerwerte bei 230 V sind 86,9 % Effizienz bei 20 %, 89,3 % bei 50 %
+und 85,9 % bei 100 % Last. Der Rack-Messwert von 250 kWh/30 d entspricht **347,2 W AC im Mittel**.
+Bei rund 86–89 % Wirkungsgrad wären das grob **299–310 W DC**, also **~66–69 %** der
+450-W-Nennleistung. Das Netzteil kann den gemessenen Mittelwert technisch vollständig liefern;
+450 W bezeichnet seine DC-Ausgangsleistung, nicht die maximale AC-Aufnahme. Daraus folgt aber
+nicht, dass der Host allein den gesamten Rack-Verbrauch verursacht: Eine A1-FRITZ!Box Fiber und
+weitere Rack-Komponenten sind ebenfalls vorhanden. Falls sie hinter demselben Zähler hängen, ist
+ihr Verbrauch bereits in den 250 kWh enthalten. Ohne exaktes FRITZ!Box-Modell oder Einzelmessung
+wird ihr Leistungsanteil nicht geschätzt.
 
 **Realer Rechnungs-Ankerpunkt (Teilbetrag/Akontozahlung, Gesamthaushalt, ohne Anbieternennung):**
 laut Stromrechnung ein quartalsweiser Teilbetrag von **EUR 206,40** (fällig 10.10.2025). Umgerechnet:
@@ -785,64 +876,22 @@ direkt subtrahierbar, nur grob vergleichbar. Rein größenordnungsmäßig: die r
 Haushaltsverbrauch, aber wegen der unterschiedlichen Zeitfenster/Akonto-Charakter nur als grobe
 Plausibilitätsprüfung zu verstehen, nicht als exakte Aufteilung.
 
-**Abgleich mit CPU-Auslastungsmodell:** Die reale Rack-Messung (~347 W Ø) liegt spürbar über der
-vorherigen CPU-Auslastungs-Modellschätzung für den einzelnen `crius`-Host (~219 W Ø bei 55,2 %
-30-Tage-CPU-Auslastung, Netzteil-Typenschild 350 W, Leerlauf/Volllast-Interpolation 35 %/85 % der
-Nennleistung). Die Differenz (~128 W) ist plausibel, da der Rack-Zähler **den gesamten Rack**
-misst — Netzwerk-Equipment (Switch/Router), ggf. weitere Hosts/Storage neben `crius`, PSU-
-Wirkungsgradverluste (< 100 %) und sonstige Rack-Infrastruktur (z. B. Lüfter) —, während das
-CPU-Modell nur den einen Host über `node_exporter`-Metriken abbildet und PSU-Verlustleistung
-sowie Nicht-CPU-Verbraucher (NVMe/RAM/Netzwerkkarten unter Last) nur indirekt über die
-Leerlauf/Volllast-Bandbreite erfasst. **Die Rack-Messung (250 kWh, ~EUR 57,8/Monat) ist die
-belastbarere, reale Zahl** und ersetzt die vorherige Modellschätzung als Hauptangabe; das
-CPU-Modell bleibt als Cross-Check-Notiz erhalten (Details unten), da es den isolierten
-`crius`-Host-Anteil separat sichtbar macht, den der Rack-Zähler nicht auflöst.
+**Verworfenes CPU-Auslastungsmodell:** Die frühere Rechnung mit einem vermeintlichen
+350-W-Netzteil (`~219 W`, `~157,6 kWh`, `~EUR 36,4`) ist ungültig: Das reale Netzteil hat 450 W,
+und CPU-Auslastung lässt sich ohne gemessene Idle-/Last-Leistungswerte nicht linear in
+Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Belastbar bleiben der
+Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
+Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-<details>
-<summary>CPU-Auslastungsmodell (Cross-Check, isolierter <code>crius</code>-Host, kein Wattmeter)</summary>
+## Nächste Schritte (unmittelbar — Stand 2026-09-10 ~09:59 CEST)
 
-
-Schätzung aus Grafana/`node_exporter`-CPU-Auslastung (`instance="crius:9100"`, 32 vCPU, Host trägt
-neben dem Archive-Node mehrere weitere Chain-Container) + Netzteil-Typenschild **350 W** + demselben
-Energiepreis-Proxy. Modell: linear zwischen Leerlaufannahme (35 % der Nennleistung ≈ 122,5 W) und
-Volllastannahme (85 % der Nennleistung ≈ 297,5 W), interpoliert über die gemessene CPU-Auslastung:
-
-| Fenster | CPU-Auslastung Ø | Modellierte Leistung Ø | Bemerkung |
-| --- | --- | --- | --- |
-| jetzt (5 min) | 47,2 % | ~205 W | Snapshot |
-| 24 h | 64,3 % | ~235 W | u. a. Execution-Stage-Ramp-up |
-| 7 d | 50,6 % | ~211 W | |
-| 30 d (≈ seit Host-Boot 2026-08-06) | 55,2 % | ~219 W | isolierter `crius`-Host-Anteil (nicht Rack-Gesamt) |
-
-Host-Uptime (Boot 2026-08-06 07:59 UTC → 2026-09-05 07:27 UTC): ~29,98 Tage; modellierte Energie
-~157,6 kWh, modellierte Kosten ~EUR 36,4 im selben Fenster — d. h. `crius` allein macht modelliert
-grob **~63 %** der real gemessenen Rack-Kosten aus, der Rest entfällt plausibel auf
-Netzwerk-Equipment/andere Rack-Geräte/PSU-Verluste.
-
-</details>
-
-
-**Vorbehalte:** (1) Leistung/Host-Anteil ist ein Modell aus CPU-Auslastung, **kein** gemessener
-Wert — NVMe/Netzwerk/RAM-Leistungsaufnahme unter Last werden nur indirekt über die
-Idle↔Volllast-Bandbreite mitabgebildet, nicht separat gemessen. (2) `crius` trägt neben dem
-opBNB-Archive-Node mehrere weitere Chain-Container (siehe `systemd`/`machinectl`-Übersicht in
-Session 18) — die Zahl ist Host-weite Gesamtkosten, nicht isoliert für den Archive-Node. (3) Der
-verwendete Energiepreis ist ein grober Haushalts-Bruttopreis-Proxy (keine reale Rechnung, kein
-Lieferant genannt); Netzentgelte/Steuern können je nach Vertrag abweichen. Rebuild-Zeit
-(~20–23 Min pro Fat-LTO-Build) und Restart-Frequenz bleiben die einzigen zusätzlichen, direkt aus
-dem Betrieb abgeleiteten Zeit-Proxies.
-
-## Nächste Schritte (unmittelbar — Stand 2026-08-20)
-
-> Historische Compile-Loop-Liste (Session `a95758da`, 2026-08-06) ist erledigt und bleibt unten
-> im Session-Protokoll. **Aktuelle Priorität = Roadmap (Exec-Fenster)** oben.
-
-1. **Live unsupervised:** Execution weiterlaufen lassen — **kein Restart**; FLOW-X05 Unwind-Watch.
-2. **Optional:** Point-4 stateRoot-Stichprobe im Wright-Fenster (Höhe bereits passiert).
-3. **diese Woche (parallel, kein Live-Restart):** CLEANUP-A02 Rest + A03/A04.
-4. **bei geplantem Restart:** P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004.
-5. **nach Tip (~1½–2½ Mo @ current rate):** Merkle/History-Gates; op-reth `download`/`snapshot-manifest`; FEAT-HIST-*.
-6. Nach Meilensteinen: `plan.md` Todo/Roadmap + README Effort-Log + Metrics-JSON nachziehen.
+1. **Kein Eingriff:** Execution bis Tip **`34 367 717`** / `--debug.terminate` laufen lassen (~6–9 h).
+2. **Consensus-Gate beobachten:** Block `34367717` ohne Unwind, Receipt-Root `0xc8e83d75…30c`
+   (Hash `0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`).
+3. **Branch-Trennung bis Gate:** `main` = nur Wright-Fix (`29d7bfa2dd`); Speedup `b32f9e58d6` bleibt
+   auf `feat/execution-stage-fetch-pipeline`.
+4. Nach Pass: Point-4 nahe Tip, optional höheren Tip / Catch-up; Speedup-Merge entscheiden.
+5. Bei Fail: Logs/Receipt-Diff; nicht vom divergenten State weiterfahren.
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
 
@@ -1581,20 +1630,26 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe:** 2026-08-20 **~10:28 CEST** · Execution past Haber/Wright · chain **204** · peers **16**
+**Stichprobe (aktuell):** 2026-09-10 **~09:59 CEST** · chain **204** · Wright-Gate-Lauf · peers **4** ·
+`--debug.tip` **`0xd6094500…` = `34 367 717`** + `--debug.terminate` · Fix-Binary ·
+`scripts/sync-eta.sh` (Hinweis: ETA-Skript nutzt Headers **71.2 M** als „Tip“ — irreführend; echter
+Stage-Target ist **34 367 717**)
 
 | Stage | Checkpoint / Target | Status |
 | --- | ---: | --- |
-| Headers | **174 027 661** | ✅ Tip (parked; public ~**176.4 M**) |
-| Bodies | **174 027 661** | ✅ Tip; validation_errors **0** |
-| SenderRecovery | **174 027 661** | ✅ Tip |
-| Execution | **`65 828 907`** / Tip **174 M** (~38 %) | 🔄 past Fail/Haber/Wright; ~19–33 blk/s cooled; **ETA Tip ~1¼–2¼ Mo** |
-| MerkleExecute | **0** | ⏳ nach Exec Tip |
-| History / Finish | — | ⏳ |
-| P2P NAT/UPnP | FLOW-N02 / P2P-002 | ✅ Alt-Ports, `via_upnp=true`; Serve-RX 0 |
-| P2P Dual-Stack | FLOW-N01 / P2P-006 | 📋 Default Dual-Stack noch offen |
+| Headers | **71 185 160** | Rest von früherem höherem Tip; Pipeline-Target jetzt 34.37 M |
+| Bodies | **43 519 337** | ✅ skip (`max_block=34367717`, prev > Tip); validation/timeout **0** |
+| SenderRecovery | **34 367 717** | ✅ Tip |
+| Execution | **~33 323 956** / **34 367 717** (~94 %) | 🔄 aktiv ~**37–40 blk/s** (1 h); Live ~150–380 Mgas/s; ETA Gate **~6–9 h** |
+| MerkleExecute / Hashing / History / Finish | **0** | ⏳ nach Exec (bzw. terminate am Tip) |
+| P2P | connected_peers **4** | invalid_messages **0** |
+| Konsens | PIPE-009 / FLOW-X02 | ✅ Code auf `main`; Live-Gate `34367717` ⏳ in diesem Lauf |
+| Point-4 (09-10) | 1000 / 100k / Fermat / Haber / Exec−1k | ✅ hash/txRoot/stateRoot MATCH vs public RPC |
 
-Metrics: `files/opbnb-archive-sync-snapshot-20260820.json`.
+**Branch-Lage:** `main` = Wright-Fix only. Feature-Branch = Fix + **Execution fetch/decode pipelining**
+(`b32f9e58d6`, Session 20, ~2×). Nicht mit MerkleExecute-Unwind @`71185159` (Session 20 Forensik) vermengen.
+
+Historische Stichprobe 2026-08-20 (~Exec 65.8 M / Tip 174 M, peers 16): `files/opbnb-archive-sync-snapshot-20260820.json`.
 
 #### ALERT — ChangeSets SF ≠ Bodies Cap (08-15)
 
@@ -2358,3 +2413,194 @@ pre-2026-08-25 discv5 health; it does not change sync throughput or connected-pe
 - discv4 has zero Prometheus metrics instrumentation anywhere in the reth codebase (upstream gap,
   confirmed on both `paradigmxyz/reth` and `bnb-chain/reth-bsc-trail`) — can't rely on metrics
   alone to distinguish discv4- vs discv5-sourced peers; use `admin_peers` + log correlation.
+
+## Session 20 (2026-09-07): opBNB default boot/static peers hardcoded, `ExecutionStage`
+fetch/execute pipelining, MerkleExecute unwind root-cause + `--debug.tip` re-validation run
+
+**Default boot/static peers (commit `c9d9e32ed0`, branch `main`).** Following on from Session 19,
+made the verified-working discv5-capable peer (`167.235.95.170:30305`) the sole entry in
+`OPBNB_MAINNET_BOOTNODES` (replacing the now-dead official `bnb-chain/op-geth` seeds and legacy
+community nodes), and added a new `OPBNB_MAINNET_STATIC_NODES` const with the two peers currently
+observed connected on the live archive node (`167.235.95.170:30305`, `157.180.98.155:30315`).
+`NetworkArgs::network_config` (`crates/node/core/src/args/network.rs`) now injects these as
+`trusted_nodes` defaults specifically for `NamedChain::OpBNBMainnet`, but **only if the user
+hasn't already configured `--trusted-peers`/persisted peers** — explicit CLI/config always wins.
+Net effect: a stock opBNB mainnet node no longer needs `--bootnodes`/`--trusted-peers` passed
+manually to reach the same peer set this fork's live node already uses. Compiled clean
+(`cargo check -p reth-network-peers -p reth-node-core`); not yet exercised on the live node since
+its systemd unit still passes explicit `--bootnodes`/no `--trusted-peers` — no behavior change
+observed there (explicit takes precedence / node already had `--bootnodes` from Session 19).
+
+**`ExecutionStage` fetch/execute pipelining (commit `b32f9e58d6`, branch
+`feat/execution-stage-fetch-pipeline`, based on `main`).** Identified `ExecutionStage::execute()`
+(`crates/stages/stages/src/stages/execution/mod.rs`) as serializing per-block fetch/decode I/O
+(`provider.recovered_block`) with EVM execution in a single loop — pure I/O and pure CPU work never
+overlap. Rewrote the loop with `std::thread::scope`: a dedicated prefetch thread reads/decodes
+blocks and sends them over a bounded `sync_channel(4)` (`EXECUTION_FETCH_PIPELINE_DEPTH`); the
+executor thread `recv()`s pre-fetched blocks instead of fetching inline. All existing
+thresholds/ExEx hooks/metrics/error handling preserved; channel backpressure caps memory at 4
+in-flight blocks; clean shutdown on early exit (dropped receiver ends the scope, next `send()`
+fails, producer exits — no explicit cancellation signal needed). Required adding a `Provider: Sync`
+bound to the stage impl (satisfied by the real provider type, confirmed via full `op-reth` binary
+compile). `cargo test -p reth-stages` is blocked by a pre-existing, unrelated compile error on
+`main` (missing `Address` import in `index_account_history.rs`, confirmed via `git stash`); only
+`cargo check` was usable for validation.
+- **Live-validated:** `make maxperf-op` build (23m39s) installed, node restarted 2026-09-07
+  11:19 UTC. Comparing wall-clock batch duration (not the logged Mgas/s throughput line, which only
+  measures pure EVM time and is now decoupled from fetch/I/O, so it under-reports the real gain)
+  across two consecutive execution-stage batches showed **~2.37x average speedup** (68.1 → 161.6
+  blocks/s). No errors/crashes since.
+
+**MerkleExecute bottleneck analysis (no code change, deferred).** `MerkleStage`/`StateRoot::calculate`
+(`crates/stages/stages/src/stages/merkle.rs`, `crates/trie/trie/src/trie.rs`) is serial by
+algorithmic design (single `TrieWalker`/`HashBuilder`), not just I/O-bound like Execution.
+Highest-value, moderate-effort fix identified: **storage roots are computed inline per-account**
+during the main trie walk, blocking it — `crates/trie/parallel/src/storage_root_targets.rs`
+already has a `StorageRootTargets`/`into_par_iter` Rayon pattern used by the live/proof-task path
+that could parallelize this in the batch `MerkleStage` too, but currently isn't. Full parallel trie
+rebuild (subtrie partition + merge) would be the higher-effort, higher-ceiling alternative. User
+deferred implementation pending live validation of the Execution-stage pipelining first.
+
+**Historical MerkleExecute unwind root-cause (investigation only, no code change).** Located the
+last `MerkleExecute`-triggered unwind via `journalctl` (file-based TRACE logs only retain ~1 day;
+journalctl retains much longer history and was the only usable source here) in the window
+2026-09-02 00:19–17:48 UTC. Two distinct, easily-conflated unwind cascades occurred hours apart,
+both unwinding to/around the same block number:
+1. `~04:27–04:58 UTC`: `ERROR Stage is missing static file data. stage=Execution bad_block=71185160
+   segment=Receipts` — a data-integrity issue in the **Execution** stage, unrelated to Merkle.
+2. `~12:54:12 UTC` (the actual answer): `ERROR Failed to verify block state root!` at
+   `stage=MerkleExecute bad_block=71185159` — got `0x0edebae1...`, expected (per header)
+   `0x68efa1b2f004b535ac102e6bd02bb78f7019c547cb63bb09bd38053378dfa732`.
+- Cross-validated block **71185160** (`0x43e3308`) independently via public RPC
+  (`https://opbnb-mainnet-rpc.bnbchain.org`, `eth_getBlockByNumber`): hash
+  `0x9b722c2eaa4e3fa6063523cbbf01a09ea1c1df636cf2a80a4dc8df21f26f27f1`, `parentHash` matches
+  block 71185159's header hash from the log exactly — confirms the local historical log data
+  matches canonical chain data, no divergence.
+- **Re-validation run started:** to replay `MerkleExecute` for block 71185159 in isolation,
+  restarted the node (11:46 UTC) with `--debug.tip
+  0x9b722c2eaa4e3fa6063523cbbf01a09ea1c1df636cf2a80a4dc8df21f26f27f1 --debug.terminate` (backfill
+  target = block 71185160; unit file staged at `/tmp/BlockChain-debugtip.service`, not yet
+  committed anywhere since it's host-local operational config, not part of this repo). As of
+  ~12:10 UTC the `Execution` stage was only at checkpoint ~25.73M of the 71.18M target (headers/
+  bodies were already synced far ahead; Execution backfill is the long pole) — ETA for Execution
+  alone to reach the target is on the order of days at current throughput (63–980 Mgas/s per
+  batch observed, highly variable); `MerkleExecute` for 71185159 will only run once Execution (and
+  the stages between it and Merkle) catch up to the target. Not yet reached/observed at time of
+  writing.
+
+**Prometheus cross-validation of the fetch/execute pipelining speedup (2026-09-07 ~12:20 UTC).**
+Independently confirmed the live log-based ~2.37x measurement using Grafana/Mimir
+(`job="reth", instance="BSCRethArchiveNode:6060"`), comparing a 34h pre-pipelining baseline
+(`2026-09-06 00:00`–`2026-09-07 10:00`, old binary) against the post-restart window
+(`--debug.tip` backfill run, new binary):
+- **`reth_sync_checkpoint{stage="Execution"}` wall-clock rate** (the only metric that reflects
+  the actual end-to-end gain, since it spans fetch+decode+execute+write): baseline Ø **36.5
+  blocks/s** → post-pipelining **73.4 blocks/s** ⇒ **~2.0x speedup**, corroborating the manual
+  log-batch measurement (slightly lower here since this window includes overhead from the other
+  12 pipeline stages, not Execution in isolation).
+- **`reth_sync_execution_gas_per_second`** (pure EVM gauge): baseline Ø 462 Mgas/s (range 151–1476)
+  vs. post-restart 314–553 Mgas/s — **no clear directional change**, exactly as expected: this
+  gauge only measures EVM execution time, which the pipelining change deliberately decoupled from
+  fetch/I/O; it was never expected to move.
+- **`reth_storage_providers_database_save_blocks_commit_mdbx`** (MDBX commit duration): baseline Ø
+  0.145s (range 0.037–0.44s) vs. post-restart 0.44s — within the pre-existing historical range, no
+  clear signal; commit timing tracks batch/write volume, not fetch pipelining.
+- Header/body download (network fetch) metrics are unaffected by design — `ExecutionStage` only
+  reads already-synced blocks from local static files/DB, never the network, so this optimization
+  has no reach into P2P/downloader metrics.
+- **Conclusion:** the speedup is visible *only* in the aggregate wall-clock stage-checkpoint rate,
+  confirming it is a pure I/O/CPU-overlap gain (fetch/decode now hidden behind EVM execution
+  latency) rather than any change to per-operation EVM or DB-commit speed — consistent with the
+  design intent and the log-based finding from the initial live validation.
+
+**Correction: `entities_processed`/`entities_total` ratio jump at the restart is a metric-reset
+artifact, not a real 2x speed jump (2026-09-07 ~13:15 UTC).** User's Grafana panel computed
+`max by(stage)(reth_sync_entities_processed) / max by(stage)(reth_sync_entities_total)` for
+`stage="Execution"` and saw what looked like a 100%+ jump exactly at the 09:46:40 UTC restart.
+Root cause: `reth_sync_entities_total{stage="Execution"}` is the **cumulative gas** to the
+configured pipeline target (`execution_checkpoint()` in
+`crates/stages/stages/src/stages/execution/mod.rs`), not a block count. Restarting with
+`--debug.tip` changed the sync target from the chain tip (~181M) to block 71185160, so the
+denominator dropped abruptly (546.4T → 295.5T gas, −46%) at restart — inflating the ratio
+independent of any real throughput change.
+- Isolating the *actual* rate change after the target became stable (from 10:00 UTC onward, using
+  `reth_sync_entities_processed` deltas, i.e. gas/s): **153.4 Mgas/s (08:00–09:40, pre-restart) →
+  234.6 Mgas/s (09:50–13:10, post-restart) ⇒ ~1.53x**, not the ~2.0x seen via the
+  block-count-based `reth_sync_checkpoint{stage="Execution"}` rate in the prior Prometheus
+  cross-validation.
+- **Why the two metrics disagree:** blocks/s counts blocks uniformly; gas/s additionally depends
+  on average gas-per-block in whichever historical range is currently being processed (block
+  ~25.6M–26.4M here) — sparser/older blocks dilute the gas-based rate relative to the block-based
+  rate even though the per-block I/O-overlap gain is constant. Both figures are individually valid
+  measurements of different units; block-count rate (`rate(reth_sync_checkpoint{stage="Execution"}
+  [Δt])`) is the more robust metric for this comparison since it's insensitive to gas density
+  fluctuations across the range being replayed.
+- **Takeaway for future dashboards on this fork:** never diff `entities_processed/entities_total`
+  ratios across a pipeline-target change (e.g. any `--debug.tip` restart, or reaching chain tip) —
+  the denominator itself moves, which alone can produce a large apparent slope change unrelated to
+  real progress speed.
+
+## Session 21 (2026-09-09): Wright L1FeeVault consensus fix and archive recovery
+
+**Incident.** The live opBNB archive stopped during Execution at block **34367717** with a
+receipt-root mismatch: local `0x1aa04913b61c582e2a8bd0466f410757863bdda50c4fc3fd6a087386cc5ddcad`
+versus canonical
+`0xc8e83d75c3ff61370a8ab87a44a02e79e7540390ce31250cad8f247d7c09830c`.
+Public RPC confirmed the local header/block hash was canonical. An independent RLP/MPT
+recalculation over all 176 public receipts reproduced the header root, ruling out peer/header
+corruption. Receipt mutation tests also excluded a simple deposit receipt-version/nonce or typed
+encoding error. The final transaction calls `L1FeeVault.withdraw()`; its amount-dependent logs
+made an accumulated state divergence observable for the first time.
+
+**Root cause.** The earlier Wright port only implemented half of op-geth's
+`gasPrice == 0 && IsWright` rule:
+- `L1BlockInfo::tx_cost_with_tx` correctly skipped the sender's L1 data-fee debit.
+- `OpHandler::reward_beneficiary` bypassed that predicate and unconditionally called
+  `calculate_tx_l1_cost`, crediting the same fee to `L1_FEE_RECIPIENT`.
+
+Every affected gasless non-deposit transaction therefore minted value into the L1FeeVault. The
+existing test covered only sender deduction and gave false confidence; op-geth applies the zero-fee
+rule to both debit and recipient credit.
+
+**Fix.** Added `L1BlockInfo::l1_data_fee_with_tx` as the single source of Wright waiver semantics.
+Both `tx_cost_with_tx` and `reward_beneficiary` now use it, while the post-Isthmus operator fee
+remains independent. Added a handler-level regression test proving that Wright + `gasPrice=0`
+credits zero to L1FeeVault and a priced transaction still credits its calculated L1 fee. Targeted
+validation: `cargo test -p op-revm wright --lib` — 2 passed. `make maxperf-op` completed in
+**22m25s** and installed the fixed `dist/bin/op-reth-bnb`
+(`sha256 c2f0397b93b6900511f8f6555dd53e7df4a1bf4be7334aefb5547d6c8d44ada1`).
+
+**Recovery.** The automatic failure unwind to `34366337` could not remove corruption accumulated
+since Wright. A conservative offline unwind retained block `32984676` and removed Execution plus
+dependent state/Merkle/history data through `34366337`; Headers, Bodies and SenderRecovery were
+kept. Execution unwind ran from **09:39:54 to 10:52:29 CEST (~72m35s)** in three batches
+(`34366337→33866336→33366335→32984676`) and completed successfully. `BlockChain.service` restarted
+at 10:56 CEST with the fixed maxperf binary. Final live closure remains the successful execution of
+block `34367717` with canonical receipt root `0xc8e83d75…30c`.
+
+**Aufwand.** End-to-end incident handling occupied roughly **7 hours wall clock** from the first
+fatal log at 06:05 CEST through diagnosis, public-chain/root verification, op-geth parity audit,
+implementation/tests, optimized rebuild, offline recovery and restart. The long-running operations
+inside that window were the 22m25s build and 72m35s unwind; the remainder was root-cause analysis
+and validation. A broad public-RPC L1-fee summation attempt was discarded because timeouts and
+incorrect hex parsing yielded zero usable rows. The `re-execute` diagnostic also cannot validate
+this historical range in the current storage-v2 mid-pipeline state: its historical parent provider
+returned an empty account (`nonce 0` instead of 37). Repair therefore correctly used persistent
+offline unwind followed by normal sequential pipeline execution.
+
+**Branch split (bewusst).** Consensus fix landed alone on `alteredcarbon/main` as `29d7bfa2dd`
+(same `op-revm` tree as branch `b7c39029fa`). Execution fetch/decode pipelining `b32f9e58d6` stays on
+`feat/execution-stage-fetch-pipeline` until the `34367717` live gate passes — so a consensus regression
+cannot be blamed on the stage speedup.
+
+**Evening status (~23:11 CEST).** Recovery still in Bodies refill toward `71185160` (~38.7 M / 54 %);
+Execution remains at `32984676`. No new unwind/state-root noise in file log; peers=2; downloader
+errors=0. Next observable milestone: Execution advancing past Wright, then receipt-root match at
+`34367717`.
+
+**Morning status (2026-09-10 ~09:59 CEST).** Bodies refill past Gate-height done (Bodies 43.5 M). Tip
+raised to Gate block hash `0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabbf82ffa7c54669`
+(= **`34367717`**) with `--debug.terminate` (prior tip `0xbacde854…` = `34366337` was 1380 blocks
+short). Sender at tip; Execution ~**33.32 M** → Gate at ~37–40 blk/s (comparable to mid-Aug Haber
+band at same height). Peers=4; validation/timeout/invalid=0; Point-4 MATCH. Await receipt-root
+`0xc8e83d75…30c` at Gate or unwind.
