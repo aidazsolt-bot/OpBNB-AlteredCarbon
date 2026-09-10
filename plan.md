@@ -2622,3 +2622,14 @@ raised to Gate block hash `0xd6094500ea487ffedf220363ed1152fc16f15c1840c78f4aabb
 short). Sender at tip; Execution ~**33.32 M** → Gate at ~37–40 blk/s (comparable to mid-Aug Haber
 band at same height). Peers=4; validation/timeout/invalid=0; Point-4 MATCH. Await receipt-root
 `0xc8e83d75…30c` at Gate or unwind.
+
+## Session 22 cont. (2026-09-10 evening): informal smoke benches + anonymized HW
+
+Operator dump (dmidecode / nvme / ipc / process list) **not** committed — serials, mount hostnames,
+role names, and cmdlines stay local. Anonymized class + tip-2 M local-vs-GHA stage table live in
+[`docs/repo/ci.md`](docs/repo/ci.md) (*Informal smoke timings*).
+
+**Evening live (~20:16–20:20 CEST):** Execution commit `33376849` → continuing toward Gate
+`34367717`; Status often lags between commits; archive `connected_peers=2`; host still multi-tenant
+(O(15–20) EL/CL). Pure EVM log band ~290–450 Mgas/s under that load. `sync-eta.sh` may mis-label
+active stage as Bodies while pipeline is Execution catch-up to Gate tip.
