@@ -3,13 +3,15 @@
 Public CI for this fork is the GitHub Actions workflow
 [`.github/workflows/op-reth-build-smoke.yml`](../../.github/workflows/op-reth-build-smoke.yml):
 
-1. **Build** `op-reth` (`maxperf`, jemalloc + asm-keccak + keccak-cache-global).
-2. **Smoke sync** on `opbnb-mainnet` until
-   `--debug.tip 0x35282b2d53248f10bf873ac84c5807dfc819c8d81793404ea2d02f15ac7d5108`
-   (block **500000**), then exit via `--debug.terminate`.
+1. **Log runner hardware** (`lscpu`, memory, `lsblk`/`df`, Azure IMDS `vmSize` when available).
+2. **Build** `op-reth` (`maxperf`, jemalloc + asm-keccak + keccak-cache-global). Cache hits via
+   `Swatinem/rust-cache` often cut wall time from ~20–25 m (cold Fat-LTO) to ~10–15 m.
+3. **Smoke sync** on `opbnb-mainnet` until
+   `--debug.tip 0x50aefd80c3985d81ccc9a200d90efe3ef4f5d7f20b47a76cb71fccd488e50ba4`
+   (block **2000000**), then exit via `--debug.terminate`.
 
 Success is a clean process exit (`0`) after the tip is reached — not a fixed wall-clock
-timeout. A 90-minute `timeout` wrapper is only a hang safety net (job budget: 120 minutes).
+timeout. A 150-minute `timeout` wrapper is only a hang safety net (job budget: 180 minutes).
 
 Triggers: `workflow_dispatch`, and `push` to `main` when `Cargo.toml` / `Cargo.lock` /
 `Makefile` / `crates/**` / the workflow file change.

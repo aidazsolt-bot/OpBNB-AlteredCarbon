@@ -15,13 +15,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # opBNB mainnet block 500000
-  OPBNB_SMOKE_TIP: "0x35282b2d53248f10bf873ac84c5807dfc819c8d81793404ea2d02f15ac7d5108"
+  # opBNB mainnet block 2000000
+  OPBNB_SMOKE_TIP: "0x50aefd80c3985d81ccc9a200d90efe3ef4f5d7f20b47a76cb71fccd488e50ba4"
+  OPBNB_SMOKE_TIP_BLOCK: "2000000"
 
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Build (~10–25m with cache) + sync to 2M can be Bodies-bound; keep headroom.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -46,16 +48,72 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Log runner hardware specs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== runner identity ====="
+          echo "runs-on=ubuntu-latest"
+          echo "RUNNER_NAME=${RUNNER_NAME:-}"
+          echo "RUNNER_OS=${RUNNER_OS:-} RUNNER_ARCH=${RUNNER_ARCH:-}"
+          echo "ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          uname -a
+          echo
+          echo "===== CPU ====="
+          nproc
+          lscpu || true
+          echo
+          echo "===== /proc/cpuinfo (model lines) ====="
+          awk -F: '/^model name|^vendor_id|^cpu MHz|^cache size|^flags/ {
+            gsub(/^[ \t]+/, "", $2); print $1 ": " $2
+          }' /proc/cpuinfo | awk 'NR<=40'
+          echo
+          echo "===== memory ====="
+          free -h
+          echo
+          echo "===== block devices / mounts ====="
+          lsblk -o NAME,SIZE,TYPE,ROTA,TRAN,MODEL,FSTYPE,MOUNTPOINTS || lsblk
+          echo
+          df -hT
+          echo
+          echo "===== disk topology (nvme/virtio hints) ====="
+          if command -v lsblk >/dev/null; then
+            lsblk -d -o NAME,SIZE,ROTA,TRAN,TYPE,MODEL,DISC-GRAN,SCHED || true
+          fi
+          for f in /sys/block/*/queue/rotational /sys/block/*/device/model; do
+            [ -e "$f" ] || continue
+            echo "$f=$(cat "$f" 2>/dev/null || true)"
+          done
+          echo
+          echo "===== Azure IMDS (best-effort SKU) ====="
+          # GitHub-hosted Linux runners are Azure VMs; IMDS often exposes vmSize.
+          curl -s -H Metadata:true --noproxy '*' \
+            'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01' \
+            | python3 -c 'import sys,json
+try:
+  d=json.load(sys.stdin)
+  for k in ("vmSize","sku","location","zone","name","offer","publisher","version","vmId"):
+    if k in d: print(f"{k}={d[k]}")
+except Exception as e:
+  print(f"imds_unavailable err={e}")' || echo "imds_unavailable"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.96.0
 
       - name: Cache cargo artifacts
+        id: rust-cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             .
+
+      - name: Note cargo cache status
+        shell: bash
+        run: |
+          echo "rust-cache cache-hit=${{ steps.rust-cache.outputs.cache-hit }}"
+          echo "Cold maxperf Fat-LTO is typically ~20–25m; a cache hit can drop wall time to ~10–15m."
 
       - name: Build op-reth (${{ matrix.profile }})
         shell: bash
@@ -64,9 +122,13 @@ jobs:
           if [ -n "${{ matrix.rustflags }}" ]; then
             export RUSTFLAGS="${{ matrix.rustflags }}"
           fi
+          echo "RUSTFLAGS=${RUSTFLAGS:-}"
+          start=$(date +%s)
           cargo build ${{ matrix.build_args }}
+          end=$(date +%s)
+          echo "cargo_wall_sec=$((end - start))"
 
-      - name: Sync op-reth to debug.tip block 500000 (${{ matrix.profile }})
+      - name: Sync op-reth to debug.tip block ${{ env.OPBNB_SMOKE_TIP_BLOCK }} (${{ matrix.profile }})
         shell: bash
         run: |
           set -euo pipefail
@@ -80,11 +142,11 @@ jobs:
           mkdir -p "$DATA_DIR" "$LOG_DIR"
           openssl rand -hex 32 > "$JWT_SECRET"
 
-          echo "Syncing until --debug.tip ${OPBNB_SMOKE_TIP} (opBNB mainnet block 500000), then --debug.terminate."
+          echo "Syncing until --debug.tip ${OPBNB_SMOKE_TIP} (opBNB mainnet block ${OPBNB_SMOKE_TIP_BLOCK}), then --debug.terminate."
           # Discovery left enabled so chain-spec opBNB boot/static peers can supply
-          # headers/bodies. Outer timeout is a safety net; job timeout is 120m.
+          # headers/bodies. Outer timeout is a safety net; job timeout is 180m.
           set +e
-          timeout 90m "$BIN" node \
+          timeout 150m "$BIN" node \
             --chain opbnb-mainnet \
             --datadir "$DATA_DIR" \
             --ipcpath "$IPC_PATH" \
@@ -110,7 +172,7 @@ jobs:
             exit 0
           fi
           if [ "$status" -eq 124 ]; then
-            echo "Timed out after 90m before reaching tip ${OPBNB_SMOKE_TIP}."
+            echo "Timed out after 150m before reaching tip ${OPBNB_SMOKE_TIP}."
             exit 1
           fi
           echo "Node exited early with status $status before tip."

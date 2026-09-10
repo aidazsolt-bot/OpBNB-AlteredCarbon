@@ -77,9 +77,9 @@ project notice above for status, personal-use limits, and liability.
 
 **CI:** The repository includes an `op-reth` maxperf build + tip-sync smoke workflow
 (`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to `--debug.tip` block
-**500000** (`0x35282b2d…5108`) then `--debug.terminate`. It uses `actions/checkout@v5` and the
-current `--metrics <host:port>` CLI form. Local `cargo` / `cargo nextest` checks remain useful;
-see `docs/repo/ci.md`.
+**2000000** (`0x50aefd80…0ba4`) then `--debug.terminate`, after logging runner CPU/disk/IMDS
+specs. It uses `actions/checkout@v5` and the current `--metrics <host:port>` CLI form. Local
+`cargo` / `cargo nextest` checks remain useful; see `docs/repo/ci.md`.
 
 ## Build from Source
 
