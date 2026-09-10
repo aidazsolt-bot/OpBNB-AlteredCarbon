@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.jpg" alt="reth-bsc-trail live sync overview" width="720">
+  <img src="assets/logo.png" alt="opBNB AlteredCarbon Reth archive node — Grafana sync dashboard (storage, peers, stage checkpoints)" width="900">
 </p>
 
 # ‼️ Project Notice — Read Before Use ‼️
