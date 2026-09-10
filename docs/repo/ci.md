@@ -5,8 +5,8 @@ Public CI for this fork is the GitHub Actions workflow
 
 1. **Build** `op-reth` (`maxperf`, jemalloc + asm-keccak + keccak-cache-global).
 2. **Smoke sync** on `opbnb-mainnet` until
-   `--debug.tip 0x6eb90fbf2063a1d99c3890878d8894dbe469ad764c8abad68729adc40446710f`
-   (block **20000**), then exit via `--debug.terminate`.
+   `--debug.tip 0x35282b2d53248f10bf873ac84c5807dfc819c8d81793404ea2d02f15ac7d5108`
+   (block **500000**), then exit via `--debug.terminate`.
 
 Success is a clean process exit (`0`) after the tip is reached — not a fixed wall-clock
 timeout. A 90-minute `timeout` wrapper is only a hang safety net (job budget: 120 minutes).

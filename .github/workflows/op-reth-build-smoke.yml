@@ -15,8 +15,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # opBNB mainnet block 20000
-  OPBNB_SMOKE_TIP: "0x6eb90fbf2063a1d99c3890878d8894dbe469ad764c8abad68729adc40446710f"
+  # opBNB mainnet block 500000
+  OPBNB_SMOKE_TIP: "0x35282b2d53248f10bf873ac84c5807dfc819c8d81793404ea2d02f15ac7d5108"
 
 jobs:
   build-and-smoke:
@@ -66,7 +66,7 @@ jobs:
           fi
           cargo build ${{ matrix.build_args }}
 
-      - name: Sync op-reth to debug.tip block 20000 (${{ matrix.profile }})
+      - name: Sync op-reth to debug.tip block 500000 (${{ matrix.profile }})
         shell: bash
         run: |
           set -euo pipefail
@@ -80,7 +80,7 @@ jobs:
           mkdir -p "$DATA_DIR" "$LOG_DIR"
           openssl rand -hex 32 > "$JWT_SECRET"
 
-          echo "Syncing until --debug.tip ${OPBNB_SMOKE_TIP} (opBNB mainnet block 20000), then --debug.terminate."
+          echo "Syncing until --debug.tip ${OPBNB_SMOKE_TIP} (opBNB mainnet block 500000), then --debug.terminate."
           # Discovery left enabled so chain-spec opBNB boot/static peers can supply
           # headers/bodies. Outer timeout is a safety net; job timeout is 120m.
           set +e
