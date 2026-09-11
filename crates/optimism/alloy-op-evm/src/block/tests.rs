@@ -1,22 +1,21 @@
 use alloc::{string::ToString, vec};
-use alloy_consensus::{Sealable, Sealed, SignableTransaction, TxLegacy, transaction::Recovered};
+use alloy_consensus::{transaction::Recovered, Sealable, Sealed, SignableTransaction, TxLegacy};
 use alloy_eips::eip2718::WithEncoded;
 use alloy_evm::{EvmEnv, ToTxEnv};
 use alloy_hardforks::ForkCondition;
 use alloy_op_hardforks::{OpHardfork, OpHardforks};
-use alloy_primitives::{Address, B256, Bytes, Signature, TxKind, U256, address, keccak256, uint};
+use alloy_primitives::{address, keccak256, uint, Address, Bytes, Signature, TxKind, B256, U256};
 use op_alloy::consensus::{
-    OpTxEnvelope, PostExecPayload, SDMGasEntry, TxDeposit, build_post_exec_tx,
+    build_post_exec_tx, OpTxEnvelope, PostExecPayload, SDMGasEntry, TxDeposit,
 };
 use op_revm::{
-    L1BlockInfo, OpBuilder, OpSpecId, OpTransaction,
     constants::{
         BASE_FEE_SCALAR_OFFSET, ECOTONE_L1_BLOB_BASE_FEE_SLOT, ECOTONE_L1_FEE_SCALARS_SLOT,
         L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, L1_FEE_RECIPIENT, OPERATOR_FEE_SCALARS_SLOT,
     },
+    L1BlockInfo, OpBuilder, OpSpecId, OpTransaction,
 };
 use revm::{
-    Context, MainContext,
     context::{BlockEnv, CfgEnv},
     context_interface::ContextTr,
     database::{CacheDB, EmptyDB, InMemoryDB, State},
@@ -24,11 +23,12 @@ use revm::{
     interpreter::{CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter},
     primitives::HashMap,
     state::{Account, AccountInfo, Bytecode, EvmState},
+    Context, MainContext,
 };
 
 use crate::{
-    OpEvm,
     post_exec::{PostExecExecutedTx, PostExecRefundInspector, PostExecTxContext},
+    OpEvm,
 };
 
 use super::*;

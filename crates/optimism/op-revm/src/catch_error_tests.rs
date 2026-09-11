@@ -6,16 +6,16 @@
 //! original error. These tests pin that matrix.
 
 use crate::{
-    DefaultOp, OpBuilder, OpHaltReason, OpTransaction,
     handler::OpHandler,
-    transaction::{OpTransactionError, deposit::DEPOSIT_TRANSACTION_TYPE},
+    transaction::{deposit::DEPOSIT_TRANSACTION_TYPE, OpTransactionError},
+    DefaultOp, OpBuilder, OpHaltReason, OpTransaction,
 };
 use op_alloy_consensus::OpTxType;
 use revm::{
     context::{Context, TxEnv},
     context_interface::{
-        ContextTr, JournalTr,
         result::{EVMError, ExecutionResult, InvalidHeader, InvalidTransaction},
+        ContextTr, JournalTr,
     },
     database::InMemoryDB,
     handler::{EthFrame, EvmTr, Handler},

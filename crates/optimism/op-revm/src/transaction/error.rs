@@ -15,8 +15,8 @@ pub enum OpTransactionError {
     ///
     /// Before the Regolith hardfork, there was a special field in the `Deposit` transaction
     /// type that differentiated between `system` and `user` deposit transactions. This field
-    /// was deprecated in the Regolith hardfork, and this error is thrown if a `Deposit` transaction
-    /// is found with this field set to `true` after the hardfork activation.
+    /// was deprecated in the Regolith hardfork, and this error is thrown if a `Deposit`
+    /// transaction is found with this field set to `true` after the hardfork activation.
     ///
     /// In addition, this error is internal, and bubbles up into an
     /// [`OpHaltReason::FailedDeposit`][crate::OpHaltReason::FailedDeposit] error in the `revm`

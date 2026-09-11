@@ -6,12 +6,12 @@ use alloc::{
 };
 #[cfg(feature = "serde")]
 use alloy_consensus::Sealed;
-use alloy_consensus::{Sealable, Transaction, Typed2718, transaction::RlpEcdsaEncodableTx};
+use alloy_consensus::{transaction::RlpEcdsaEncodableTx, Sealable, Transaction, Typed2718};
 use alloy_eips::{
     eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718},
     eip2930::AccessList,
 };
-use alloy_primitives::{Address, B256, Bytes, ChainId, TxHash, TxKind, U256, keccak256};
+use alloy_primitives::{keccak256, Address, Bytes, ChainId, TxHash, TxKind, B256, U256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header, RlpDecodable, RlpEncodable};
 
 use crate::OpTransaction;

@@ -2,7 +2,7 @@
 //! [`super::OpBlockExecutor`].
 
 use alloy_consensus::{Eip658Value, TransactionEnvelope, TxReceipt};
-use alloy_evm::{Evm, eth::receipt_builder::ReceiptBuilderCtx};
+use alloy_evm::{eth::receipt_builder::ReceiptBuilderCtx, Evm};
 use alloy_primitives::Log;
 use core::fmt::Debug;
 use op_alloy::consensus::{OpDepositReceipt, OpReceiptEnvelope, OpTxEnvelope, OpTxType};

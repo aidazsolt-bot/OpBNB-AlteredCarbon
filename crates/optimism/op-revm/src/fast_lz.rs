@@ -59,7 +59,11 @@ pub(crate) fn flz_compress_len(input: &[u8]) -> u32 {
 const fn literals(r: u32, size: u32) -> u32 {
     let size = size + 0x21 * (r / 0x20);
     let r = r % 0x20;
-    if r != 0 { size + r + 1 } else { size }
+    if r != 0 {
+        size + r + 1
+    } else {
+        size
+    }
 }
 
 fn cmp(input: &[u8], p: u32, q: u32, r: u32) -> u32 {
@@ -77,7 +81,11 @@ fn cmp(input: &[u8], p: u32, q: u32, r: u32) -> u32 {
 const fn flz_match(l: u32, size: u32) -> u32 {
     let l = l - 1;
     let size = size + (3 * (l / 262));
-    if l % 262 >= 6 { size + 3 } else { size + 2 }
+    if l % 262 >= 6 {
+        size + 3
+    } else {
+        size + 2
+    }
 }
 
 fn set_next_hash(htab: &mut [u32; 8192], input: &[u8], idx: u32) -> u32 {
@@ -100,12 +108,12 @@ fn u24(input: &[u8], idx: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::api::{builder::OpBuilder, default_ctx::DefaultOp};
-    use alloy_sol_types::{SolCall, sol};
+    use alloy_sol_types::{sol, SolCall};
     use revm::{
-        Context, ExecuteEvm,
         bytecode::Bytecode,
         database::{BenchmarkDB, EEADDRESS, FFADDRESS},
-        primitives::{Bytes, TxKind, U256, bytes},
+        primitives::{bytes, Bytes, TxKind, U256},
+        Context, ExecuteEvm,
     };
     use rstest::rstest;
     use std::vec::Vec;

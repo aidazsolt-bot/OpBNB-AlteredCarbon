@@ -473,7 +473,7 @@ mod tests {
     use reth_execution_types::{
         AccountRevertInit, BundleStateInit, Chain, ExecutionOutcome, RevertsInit,
     };
-    use reth_optimism_chainspec::{OPBNB_TESTNET, OpChainSpec, OpChainSpecBuilder, OP_MAINNET};
+    use reth_optimism_chainspec::{OpChainSpec, OpChainSpecBuilder, OPBNB_TESTNET, OP_MAINNET};
     use reth_optimism_primitives::{OpBlock, OpPrimitives, OpReceipt, OpTransactionSigned};
     use reth_primitives_traits::{Account, RecoveredBlock, SealedBlock};
     use revm::{
@@ -558,7 +558,8 @@ mod tests {
     fn pre_contract_transition_is_only_flagged_at_activation_block() {
         let evm_config = OpEvmConfig::optimism(OPBNB_TESTNET.clone());
 
-        for (block_number, expected) in [(5_805_493, false), (5_805_494, true), (5_805_495, false)] {
+        for (block_number, expected) in [(5_805_493, false), (5_805_494, true), (5_805_495, false)]
+        {
             let ctx = evm_config
                 .context_for_block(&empty_block(block_number))
                 .expect("empty block context is valid");

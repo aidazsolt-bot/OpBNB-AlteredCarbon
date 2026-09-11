@@ -1,48 +1,47 @@
 //! Block executor for Optimism.
 
-use crate::{OpEvmFactory, spec_by_timestamp_after_bedrock};
+use crate::{spec_by_timestamp_after_bedrock, OpEvmFactory};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec::Vec};
 use alloy_consensus::{Eip658Value, Header, Transaction, TransactionEnvelope, TxReceipt};
-use alloy_eips::{Encodable2718, Typed2718, eip7685::Requests};
+use alloy_eips::{eip7685::Requests, Encodable2718, Typed2718};
 use alloy_evm::{
-    Database, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, IntoTxEnv, RecoveredTx,
     block::{
-        BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockValidationError, CommitChanges, ExecutableTx, GasOutput, StateDB, SystemCaller,
-        TxResult, state_changes::post_block_balance_increments,
+        state_changes::post_block_balance_increments, BlockExecutionError, BlockExecutionResult,
+        BlockExecutor, BlockExecutorFactory, BlockValidationError, CommitChanges, ExecutableTx,
+        GasOutput, StateDB, SystemCaller, TxResult,
     },
-    eth::{EthTxResult, receipt_builder::ReceiptBuilderCtx},
+    eth::{receipt_builder::ReceiptBuilderCtx, EthTxResult},
+    Database, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, IntoTxEnv, RecoveredTx,
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
-use alloy_primitives::{Address, B256, Bytes, U256};
+use alloy_primitives::{Address, Bytes, B256, U256};
 use canyon::ensure_create2_deployer;
 use op_alloy::consensus::{
-    OpDepositReceipt, OpTransaction as OpConsensusTransaction, POST_EXEC_TX_TYPE_ID,
-    PostExecPayload, SDMGasEntry,
+    OpDepositReceipt, OpTransaction as OpConsensusTransaction, PostExecPayload, SDMGasEntry,
+    POST_EXEC_TX_TYPE_ID,
 };
 use op_revm::{
-    L1BlockInfo, OpTransaction,
     constants::{BASE_FEE_RECIPIENT, L1_BLOCK_CONTRACT, OPERATOR_FEE_RECIPIENT},
     encoded_tx_da_footprint,
     transaction::deposit::DEPOSIT_TRANSACTION_TYPE,
-    tx_da_footprint,
+    tx_da_footprint, L1BlockInfo, OpTransaction,
 };
 pub use receipt_builder::OpAlloyReceiptBuilder;
 use receipt_builder::OpReceiptBuilder;
 use revm::{
-    Database as _, DatabaseCommit, Inspector,
     context::{
-        Block, TxEnv,
         result::{ExecutionResult, ResultAndState},
+        Block, TxEnv,
     },
     database::DatabaseCommitExt,
     state::{Account, AccountStatus, EvmState},
+    Database as _, DatabaseCommit, Inspector,
 };
 
 use crate::post_exec::{
-    PostExecEvm, PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks, PostExecExecutedTx,
-    PostExecRefundEvent, PostExecRefundInspector, PostExecTxContext, PostExecTxKind,
-    noop_post_exec_result,
+    noop_post_exec_result, PostExecEvm, PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks,
+    PostExecExecutedTx, PostExecRefundEvent, PostExecRefundInspector, PostExecTxContext,
+    PostExecTxKind,
 };
 
 mod canyon;
@@ -82,7 +81,11 @@ pub enum PostExecMode {
 impl From<bool> for PostExecMode {
     /// `true` opts into local post-exec production; `false` disables it.
     fn from(produce: bool) -> Self {
-        if produce { Self::Produce } else { Self::Disabled }
+        if produce {
+            Self::Produce
+        } else {
+            Self::Disabled
+        }
     }
 }
 
@@ -501,13 +504,13 @@ pub enum OpBlockExecutionError {
 impl<E, R, Spec> OpBlockExecutor<E, R, Spec>
 where
     E: Evm<
-            DB: Database + DatabaseCommit + StateDB,
-            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
-        >,
+        DB: Database + DatabaseCommit + StateDB,
+        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
+    >,
     R: OpReceiptBuilder<
-            Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
-            Receipt: TxReceipt,
-        >,
+        Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
+        Receipt: TxReceipt,
+    >,
     Spec: OpHardforks,
 {
     fn jovian_da_footprint_estimation(
@@ -788,14 +791,14 @@ fn validate_block_gas(
 impl<E, R, Spec> BlockExecutor for OpBlockExecutor<E, R, Spec>
 where
     E: PostExecEvm<
-            DB: Database + DatabaseCommit + StateDB,
-            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
-            HaltReason: Send + 'static,
-        >,
+        DB: Database + DatabaseCommit + StateDB,
+        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
+        HaltReason: Send + 'static,
+    >,
     R: OpReceiptBuilder<
-            Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
-            Receipt: TxReceipt,
-        >,
+        Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
+        Receipt: TxReceipt,
+    >,
     Spec: OpHardforks,
 {
     type Transaction = R::Transaction;

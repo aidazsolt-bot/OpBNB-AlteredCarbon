@@ -147,15 +147,7 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         evm_config: EvmConfig,
         consensus: Consensus,
     ) -> Self {
-        Self {
-            provider,
-            pool,
-            network,
-            executor,
-            evm_config,
-            consensus,
-            _primitives: PhantomData,
-        }
+        Self { provider, pool, network, executor, evm_config, consensus, _primitives: PhantomData }
     }
 
     /// Configure the provider instance.
@@ -163,24 +155,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         provider: P,
     ) -> RpcModuleBuilder<N, P, Pool, Network, EvmConfig, Consensus> {
-        let Self {
-            pool,
-            network,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
-        RpcModuleBuilder {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { pool, network, executor, evm_config, consensus, _primitives, .. } = self;
+        RpcModuleBuilder { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure the transaction pool instance.
@@ -188,24 +164,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         pool: P,
     ) -> RpcModuleBuilder<N, Provider, P, Network, EvmConfig, Consensus> {
-        let Self {
-            provider,
-            network,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
-        RpcModuleBuilder {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { provider, network, executor, evm_config, consensus, _primitives, .. } = self;
+        RpcModuleBuilder { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure a [`NoopTransactionPool`] instance.
@@ -216,15 +176,7 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     pub fn with_noop_pool(
         self,
     ) -> RpcModuleBuilder<N, Provider, NoopTransactionPool, Network, EvmConfig, Consensus> {
-        let Self {
-            provider,
-            executor,
-            network,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
+        let Self { provider, executor, network, evm_config, consensus, _primitives, .. } = self;
         RpcModuleBuilder {
             provider,
             executor,
@@ -241,24 +193,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         network: Net,
     ) -> RpcModuleBuilder<N, Provider, Pool, Net, EvmConfig, Consensus> {
-        let Self {
-            provider,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
-        RpcModuleBuilder {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { provider, pool, executor, evm_config, consensus, _primitives, .. } = self;
+        RpcModuleBuilder { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure a [`NoopNetwork`] instance.
@@ -269,15 +205,7 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     pub fn with_noop_network(
         self,
     ) -> RpcModuleBuilder<N, Provider, Pool, NoopNetwork, EvmConfig, Consensus> {
-        let Self {
-            provider,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
+        let Self { provider, pool, executor, evm_config, consensus, _primitives, .. } = self;
         RpcModuleBuilder {
             provider,
             pool,
@@ -291,24 +219,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
 
     /// Configure the task executor to use for additional tasks.
     pub fn with_executor(self, executor: Box<dyn TaskSpawner + 'static>) -> Self {
-        let Self {
-            pool,
-            network,
-            provider,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
-        Self {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { pool, network, provider, evm_config, consensus, _primitives, .. } = self;
+        Self { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure [`TokioTaskExecutor`] as the task executor to use for additional tasks.
@@ -316,15 +228,7 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
     /// This will spawn additional tasks directly via `tokio::task::spawn`, See
     /// [`TokioTaskExecutor`].
     pub fn with_tokio_executor(self) -> Self {
-        let Self {
-            pool,
-            network,
-            provider,
-            evm_config,
-            consensus,
-            _primitives,
-            ..
-        } = self;
+        let Self { pool, network, provider, evm_config, consensus, _primitives, .. } = self;
         Self {
             provider,
             network,
@@ -341,24 +245,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         evm_config: E,
     ) -> RpcModuleBuilder<N, Provider, Pool, Network, E, Consensus> {
-        let Self {
-            provider,
-            pool,
-            executor,
-            network,
-            consensus,
-            _primitives,
-            ..
-        } = self;
-        RpcModuleBuilder {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { provider, pool, executor, network, consensus, _primitives, .. } = self;
+        RpcModuleBuilder { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure the consensus implementation.
@@ -366,24 +254,8 @@ impl<N, Provider, Pool, Network, EvmConfig, Consensus>
         self,
         consensus: C,
     ) -> RpcModuleBuilder<N, Provider, Pool, Network, EvmConfig, C> {
-        let Self {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            _primitives,
-            ..
-        } = self;
-        RpcModuleBuilder {
-            provider,
-            network,
-            pool,
-            executor,
-            evm_config,
-            consensus,
-            _primitives,
-        }
+        let Self { provider, network, pool, executor, evm_config, _primitives, .. } = self;
+        RpcModuleBuilder { provider, network, pool, executor, evm_config, consensus, _primitives }
     }
 
     /// Configure the BSC trace helper used during debug/trace execution.

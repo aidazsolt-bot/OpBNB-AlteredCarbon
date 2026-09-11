@@ -25,14 +25,14 @@ pub use receipts::{
 
 pub mod transaction;
 pub use transaction::{
-    DEPOSIT_TX_TYPE_ID, DepositTransaction, OpPooledTransaction, OpTransaction, OpTxEnvelope,
-    OpTxType, OpTypedTransaction, TxDeposit,
+    DepositTransaction, OpPooledTransaction, OpTransaction, OpTxEnvelope, OpTxType,
+    OpTypedTransaction, TxDeposit, DEPOSIT_TX_TYPE_ID,
 };
 
 pub mod eip1559;
 pub use eip1559::{
-    EIP1559ParamError, decode_eip_1559_params, decode_holocene_extra_data,
-    decode_jovian_extra_data, encode_holocene_extra_data, encode_jovian_extra_data,
+    decode_eip_1559_params, decode_holocene_extra_data, decode_jovian_extra_data,
+    encode_holocene_extra_data, encode_jovian_extra_data, EIP1559ParamError,
 };
 
 pub mod post_exec;

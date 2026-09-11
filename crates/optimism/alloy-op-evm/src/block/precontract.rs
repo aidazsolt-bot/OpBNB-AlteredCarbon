@@ -5,11 +5,11 @@
 //! fork block, before transactions (same timing as op-geth `StateProcessor`).
 
 use alloy_evm::Database;
-use alloy_primitives::{Address, U256, address, uint};
+use alloy_primitives::{address, uint, Address, U256};
 use revm::{
-    DatabaseCommit,
     primitives::HashMap,
     state::{Account, EvmStorageSlot, TransactionId},
+    DatabaseCommit,
 };
 
 /// WBNB predeploy (`0x4200…0006`).
@@ -56,8 +56,8 @@ where
 mod tests {
     use super::*;
     use revm::{
-        Database,
         database::{CacheDB, EmptyDB},
+        Database,
     };
 
     #[test]

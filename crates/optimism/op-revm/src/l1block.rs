@@ -1,19 +1,19 @@
 //! Contains the `[L1BlockInfo]` type and its implementation.
 use crate::{
-    OpSpecId,
     constants::{
         BASE_FEE_SCALAR_OFFSET, BLOB_BASE_FEE_SCALAR_OFFSET, DA_FOOTPRINT_GAS_SCALAR_OFFSET,
         DA_FOOTPRINT_GAS_SCALAR_SLOT, ECOTONE_L1_BLOB_BASE_FEE_SLOT, ECOTONE_L1_FEE_SCALARS_SLOT,
         EMPTY_SCALARS, L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, L1_OVERHEAD_SLOT, L1_SCALAR_SLOT,
         NON_ZERO_BYTE_COST, OPERATOR_FEE_CONSTANT_OFFSET, OPERATOR_FEE_JOVIAN_MULTIPLIER,
-        OPERATOR_FEE_SCALAR_DECIMAL, OPERATOR_FEE_SCALAR_OFFSET, OPERATOR_FEE_SCALARS_SLOT,
+        OPERATOR_FEE_SCALARS_SLOT, OPERATOR_FEE_SCALAR_DECIMAL, OPERATOR_FEE_SCALAR_OFFSET,
     },
-    transaction::{OpTxTr, estimate_tx_compressed_size},
+    transaction::{estimate_tx_compressed_size, OpTxTr},
+    OpSpecId,
 };
 use revm::{
     context_interface::cfg::gas::{NON_ZERO_BYTE_MULTIPLIER_ISTANBUL, STANDARD_TOKEN_COST},
     database_interface::Database,
-    interpreter::{Gas, gas::get_tokens_in_calldata_istanbul},
+    interpreter::{gas::get_tokens_in_calldata_istanbul, Gas},
     primitives::U256,
 };
 
@@ -710,7 +710,8 @@ mod tests {
 
         let mut gasless = info();
         let mut priced = info();
-        let operator_fee = gasless.operator_fee_charge(&bytes!("01"), U256::from(1_000), OpSpecId::ISTHMUS);
+        let operator_fee =
+            gasless.operator_fee_charge(&bytes!("01"), U256::from(1_000), OpSpecId::ISTHMUS);
 
         assert_eq!(gasless.l1_data_fee_with_tx(tx(0), OpSpecId::ISTHMUS), Some(U256::ZERO));
         assert!(

@@ -1,6 +1,6 @@
 //! Flashblock base execution payload types.
 
-use alloy_primitives::{Address, B256, Bytes, U256};
+use alloy_primitives::{Address, Bytes, B256, U256};
 
 /// Immutable block properties shared across all flashblocks in a sequence.
 ///

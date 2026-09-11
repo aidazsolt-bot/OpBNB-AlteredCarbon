@@ -24,10 +24,10 @@ pub use sidecar::OpExecutionPayloadSidecar;
 
 pub mod payload;
 pub use payload::{
-    OpExecutionPayload,
     error::OpPayloadError,
     v3::OpExecutionPayloadEnvelopeV3,
     v4::{OpExecutionPayloadEnvelopeV4, OpExecutionPayloadV4},
+    OpExecutionPayload,
 };
 
 pub mod flashblock;

@@ -45,7 +45,7 @@ use reth_network::{
     },
     HelloMessageWithProtocols, NetworkConfigBuilder, NetworkPrimitives,
 };
-use reth_network_peers::{mainnet_nodes, OPBNB_MAINNET_STATIC_NODES, TrustedPeer};
+use reth_network_peers::{mainnet_nodes, TrustedPeer, OPBNB_MAINNET_STATIC_NODES};
 use reth_tasks::Runtime;
 use secp256k1::SecretKey;
 use std::str::FromStr;
@@ -600,8 +600,8 @@ impl NetworkArgs {
             .with_max_outbound_opt(self.resolved_max_outbound_peers())
             .with_ip_filter(ip_filter)
             .with_enforce_enr_fork_id(self.enforce_enr_fork_id);
-        if matches!(chain_spec.chain().named(), Some(NamedChain::OpBNBMainnet))
-            && peers_config.trusted_nodes.is_empty()
+        if matches!(chain_spec.chain().named(), Some(NamedChain::OpBNBMainnet)) &&
+            peers_config.trusted_nodes.is_empty()
         {
             peers_config.trusted_nodes.extend(
                 OPBNB_MAINNET_STATIC_NODES

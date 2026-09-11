@@ -1380,10 +1380,7 @@ where
         T::Provider: reth_provider::CanonChainTracker,
     {
         let chain = self.chain_spec();
-        if self.node_config().debug.tip.is_none() &&
-            !self.is_dev() &&
-            !chain.is_bsc()
-        {
+        if self.node_config().debug.tip.is_none() && !self.is_dev() && !chain.is_bsc() {
             Either::Left(
                 ConsensusLayerHealthEvents::new(Box::new(self.blockchain_db().clone()))
                     .map(Into::into),

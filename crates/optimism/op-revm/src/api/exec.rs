@@ -1,45 +1,45 @@
 //! Implementation of the [`ExecuteEvm`] trait for the [`OpEvm`].
 use crate::{
-    L1BlockInfo, OpHaltReason, OpSpecId, OpTransactionError, evm::OpEvm, handler::OpHandler,
-    transaction::OpTxTr,
+    evm::OpEvm, handler::OpHandler, transaction::OpTxTr, L1BlockInfo, OpHaltReason, OpSpecId,
+    OpTransactionError,
 };
 use revm::{
-    DatabaseCommit, ExecuteCommitEvm, ExecuteEvm,
-    context::{ContextSetters, result::ExecResultAndState},
+    context::{result::ExecResultAndState, ContextSetters},
     context_interface::{
-        Cfg, ContextTr, Database, JournalTr,
         result::{EVMError, ExecutionResult},
+        Cfg, ContextTr, Database, JournalTr,
     },
     handler::{
-        EthFrame, Handler, PrecompileProvider, SystemCallTx, instructions::EthInstructions,
-        system_call::SystemCallEvm,
+        instructions::EthInstructions, system_call::SystemCallEvm, EthFrame, Handler,
+        PrecompileProvider, SystemCallTx,
     },
     inspector::{
         InspectCommitEvm, InspectEvm, InspectSystemCallEvm, Inspector, InspectorHandler, JournalExt,
     },
-    interpreter::{InterpreterResult, interpreter::EthInterpreter},
+    interpreter::{interpreter::EthInterpreter, InterpreterResult},
     primitives::{Address, Bytes},
     state::EvmState,
+    DatabaseCommit, ExecuteCommitEvm, ExecuteEvm,
 };
 
 /// Type alias for Optimism context
 pub trait OpContextTr:
     ContextTr<
-        Journal: JournalTr<State = EvmState>,
-        Tx: OpTxTr,
-        Cfg: Cfg<Spec = OpSpecId>,
-        Chain = L1BlockInfo,
-    >
+    Journal: JournalTr<State = EvmState>,
+    Tx: OpTxTr,
+    Cfg: Cfg<Spec = OpSpecId>,
+    Chain = L1BlockInfo,
+>
 {
 }
 
 impl<T> OpContextTr for T where
     T: ContextTr<
-            Journal: JournalTr<State = EvmState>,
-            Tx: OpTxTr,
-            Cfg: Cfg<Spec = OpSpecId>,
-            Chain = L1BlockInfo,
-        >
+        Journal: JournalTr<State = EvmState>,
+        Tx: OpTxTr,
+        Cfg: Cfg<Spec = OpSpecId>,
+        Chain = L1BlockInfo,
+    >
 {
 }
 

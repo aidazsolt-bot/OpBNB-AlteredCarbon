@@ -278,8 +278,8 @@ pub(crate) mod serde_bincode_compat {
     ///
     /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
     /// ```rust
-    /// use op_alloy_consensus::{OpDepositReceipt, serde_bincode_compat};
-    /// use serde::{Deserialize, Serialize, de::DeserializeOwned};
+    /// use op_alloy_consensus::{serde_bincode_compat, OpDepositReceipt};
+    /// use serde::{de::DeserializeOwned, Deserialize, Serialize};
     /// use serde_with::serde_as;
     ///
     /// #[serde_as]
@@ -350,11 +350,11 @@ pub(crate) mod serde_bincode_compat {
 
     #[cfg(test)]
     mod tests {
-        use super::super::{OpDepositReceipt, serde_bincode_compat};
+        use super::super::{serde_bincode_compat, OpDepositReceipt};
         use alloy_primitives::Log;
         use arbitrary::Arbitrary;
         use rand::Rng;
-        use serde::{Deserialize, Serialize, de::DeserializeOwned};
+        use serde::{de::DeserializeOwned, Deserialize, Serialize};
         use serde_with::serde_as;
 
         #[test]
@@ -390,7 +390,7 @@ pub(crate) mod serde_bincode_compat {
 mod tests {
     use super::*;
     use alloy_consensus::Receipt;
-    use alloy_primitives::{Bytes, Log, LogData, address, b256, bytes, hex};
+    use alloy_primitives::{address, b256, bytes, hex, Bytes, Log, LogData};
     use alloy_rlp::{Decodable, Encodable};
 
     #[cfg(not(feature = "std"))]

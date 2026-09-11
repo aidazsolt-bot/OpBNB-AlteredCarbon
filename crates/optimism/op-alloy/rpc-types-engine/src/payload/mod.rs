@@ -8,7 +8,7 @@ use crate::{OpExecutionPayloadSidecar, OpExecutionPayloadV4};
 use alloc::vec::Vec;
 use alloy_consensus::{Block, BlockHeader, HeaderInfo, Transaction};
 use alloy_eips::{Decodable2718, Encodable2718};
-use alloy_primitives::{Address, B256, Bytes, Sealable, U256};
+use alloy_primitives::{Address, Bytes, Sealable, B256, U256};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadInputV2, ExecutionPayloadV1, ExecutionPayloadV2,
     ExecutionPayloadV3,
@@ -56,7 +56,7 @@ impl<'de> serde::Deserialize<'de> for OpExecutionPayload {
                 A: serde::de::MapAccess<'de>,
             {
                 use alloc::string::String;
-                use alloy_primitives::{U64, map::HashMap};
+                use alloy_primitives::{map::HashMap, U64};
                 use alloy_rpc_types_engine::ExecutionPayloadV1;
 
                 enum Fields {

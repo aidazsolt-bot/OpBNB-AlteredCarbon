@@ -5,11 +5,11 @@ use crate::{
 use alloc::vec::Vec;
 use alloy_consensus::{Block, BlockHeader, Sealable, Transaction};
 use alloy_eips::{
-    Decodable2718, Encodable2718, Typed2718,
     eip4895::Withdrawal,
-    eip7685::{EMPTY_REQUESTS_HASH, Requests},
+    eip7685::{Requests, EMPTY_REQUESTS_HASH},
+    Decodable2718, Encodable2718, Typed2718,
 };
-use alloy_primitives::{B256, Bytes};
+use alloy_primitives::{Bytes, B256};
 use alloy_rpc_types_engine::{
     ExecutionPayloadV1, ExecutionPayloadV2, ExecutionPayloadV3, PayloadError,
 };

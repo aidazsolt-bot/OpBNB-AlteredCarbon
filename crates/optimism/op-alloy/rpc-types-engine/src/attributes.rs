@@ -2,16 +2,16 @@
 
 use alloc::vec::Vec;
 use alloy_eips::{
-    Decodable2718,
     eip1559::BaseFeeParams,
     eip2718::{Eip2718Result, WithEncoded},
+    Decodable2718,
 };
-use alloy_primitives::{B64, B256, Bytes, keccak256};
+use alloy_primitives::{keccak256, Bytes, B256, B64};
 use alloy_rlp::{Encodable, Result};
 use alloy_rpc_types_engine::{PayloadAttributes, PayloadId};
 use op_alloy_consensus::{
-    EIP1559ParamError, OpTxEnvelope, decode_eip_1559_params, encode_holocene_extra_data,
-    encode_jovian_extra_data,
+    decode_eip_1559_params, encode_holocene_extra_data, encode_jovian_extra_data,
+    EIP1559ParamError, OpTxEnvelope,
 };
 use sha2::Digest;
 
@@ -222,7 +222,7 @@ impl OpPayloadAttributes {
 mod test {
     use super::*;
     use alloc::vec;
-    use alloy_primitives::{Address, B256, FixedBytes, address, b64, b256, bytes};
+    use alloy_primitives::{address, b256, b64, bytes, Address, FixedBytes, B256};
     use alloy_rpc_types_engine::PayloadAttributes;
     use core::str::FromStr;
 

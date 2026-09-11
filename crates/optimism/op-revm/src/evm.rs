@@ -1,16 +1,16 @@
 //! Contains the `[OpEvm]` type and its implementation of the execution EVM traits.
-use crate::{OpSpecId, precompiles::OpPrecompiles};
+use crate::{precompiles::OpPrecompiles, OpSpecId};
 use revm::{
-    Database, Inspector,
     context::{Cfg, ContextError, ContextSetters, Evm, FrameStack},
     context_interface::ContextTr,
     handler::{
-        EthFrame, EvmTr, FrameInitOrResult, ItemOrResult, PrecompileProvider,
         evm::FrameTr,
         instructions::{EthInstructions, InstructionProvider},
+        EthFrame, EvmTr, FrameInitOrResult, ItemOrResult, PrecompileProvider,
     },
     inspector::{InspectorEvmTr, JournalExt},
-    interpreter::{InterpreterResult, interpreter::EthInterpreter},
+    interpreter::{interpreter::EthInterpreter, InterpreterResult},
+    Database, Inspector,
 };
 
 /// Optimism EVM extends the [`Evm`] type with Optimism specific types and logic.

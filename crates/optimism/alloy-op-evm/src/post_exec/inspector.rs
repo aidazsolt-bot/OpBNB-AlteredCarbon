@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
 use alloy_primitives::{Address, B256};
 use revm::{
-    Inspector,
     context_interface::ContextTr,
     inspector::JournalExt,
     interpreter::{CallInputs, CreateInputs, Interpreter},
+    Inspector,
 };
 
 /// Refund categories a policy can attribute a rebate to.

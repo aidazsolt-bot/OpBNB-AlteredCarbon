@@ -7,7 +7,7 @@ use alloy_eips::{
     eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718},
     eip2930::AccessList,
 };
-use alloy_primitives::{Address, B256, Bytes, ChainId, Signature, TxHash, TxKind, U256, keccak256};
+use alloy_primitives::{keccak256, Address, Bytes, ChainId, Signature, TxHash, TxKind, B256, U256};
 use alloy_rlp::{BufMut, Decodable, Encodable, Header};
 use core::mem;
 
@@ -617,7 +617,7 @@ mod tests {
 #[cfg(all(feature = "serde", feature = "serde-bincode-compat"))]
 pub(super) mod serde_bincode_compat {
     use alloc::borrow::Cow;
-    use alloy_primitives::{Address, B256, Bytes, TxKind, U256};
+    use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_with::{DeserializeAs, SerializeAs};
 
@@ -625,7 +625,7 @@ pub(super) mod serde_bincode_compat {
     ///
     /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
     /// ```rust
-    /// use op_alloy_consensus::{TxDeposit, serde_bincode_compat};
+    /// use op_alloy_consensus::{serde_bincode_compat, TxDeposit};
     /// use serde::{Deserialize, Serialize};
     /// use serde_with::serde_as;
     ///
@@ -705,7 +705,7 @@ pub(super) mod serde_bincode_compat {
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
 
-        use super::super::{TxDeposit, serde_bincode_compat};
+        use super::super::{serde_bincode_compat, TxDeposit};
 
         #[test]
         fn test_tx_deposit_bincode_roundtrip() {

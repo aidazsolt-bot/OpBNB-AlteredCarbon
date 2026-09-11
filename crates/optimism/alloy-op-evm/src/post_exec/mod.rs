@@ -16,13 +16,13 @@ use core::{
 };
 use op_alloy::consensus::post_exec::SDMGasEntry;
 use revm::{
-    Inspector,
     context::{
-        DBErrorMarker,
         result::{ExecutionResult, Output, ResultAndState, ResultGas, SuccessReason},
+        DBErrorMarker,
     },
     inspector::NoOpInspector,
     state::EvmState,
+    Inspector,
 };
 
 pub use inspector::{
@@ -30,7 +30,7 @@ pub use inspector::{
     PostExecTxContext, PostExecTxKind,
 };
 
-use crate::block::{OpBlockExecutor, receipt_builder::OpReceiptBuilder};
+use crate::block::{receipt_builder::OpReceiptBuilder, OpBlockExecutor};
 
 /// The execution result consensus assigns to a post-exec transaction.
 ///

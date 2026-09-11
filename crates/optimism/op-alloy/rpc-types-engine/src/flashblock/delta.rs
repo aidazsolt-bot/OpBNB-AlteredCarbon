@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 use alloy_eips::eip4895::Withdrawal;
-use alloy_primitives::{B256, Bloom, Bytes};
+use alloy_primitives::{Bloom, Bytes, B256};
 
 /// Represents the modified portions of an execution payload within a flashblock.
 /// This structure contains only the fields that can be updated during block construction,

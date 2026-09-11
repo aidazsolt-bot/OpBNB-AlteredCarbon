@@ -4,12 +4,12 @@ use crate::block::OpTxEnv;
 use alloy_consensus::{
     Signed, Transaction, TxEip1559, TxEip2930, TxEip4844, TxEip4844Variant, TxEip7702, TxLegacy,
 };
-use alloy_eips::{Encodable2718, Typed2718, eip7594::Encodable7594};
+use alloy_eips::{eip7594::Encodable7594, Encodable2718, Typed2718};
 use alloy_evm::{FromRecoveredTx, FromTxWithEncoded, IntoTxEnv, TransactionEnvMut};
-use alloy_primitives::{Address, B256, Bytes, TxKind, U256};
+use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
 use core::ops::{Deref, DerefMut};
 use op_alloy::consensus::{OpTxEnvelope, TxDeposit, TxPostExec};
-use op_revm::{OpTransaction, transaction::deposit::DepositTransactionParts};
+use op_revm::{transaction::deposit::DepositTransactionParts, OpTransaction};
 use revm::context::TxEnv;
 
 /// Helper to convert a deposit transaction into a [`TxEnv`].
@@ -297,8 +297,8 @@ mod tests {
     use super::*;
     use alloc::vec;
     use op_alloy::consensus::{
+        post_exec::{build_post_exec_tx, SDMGasEntry},
         POST_EXEC_TX_TYPE_ID,
-        post_exec::{SDMGasEntry, build_post_exec_tx},
     };
 
     #[test]

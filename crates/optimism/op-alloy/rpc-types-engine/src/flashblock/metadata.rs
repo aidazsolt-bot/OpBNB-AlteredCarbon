@@ -74,7 +74,7 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
     use alloy_consensus::{Eip658Value, Receipt};
-    use alloy_primitives::{Log, address};
+    use alloy_primitives::{address, Log};
 
     fn sample_metadata() -> OpFlashblockPayloadMetadata {
         let mut balances = BTreeMap::new();
@@ -155,11 +155,9 @@ mod tests {
 
         // Should be serialized as an object with hex string keys
         assert!(receipts_obj.is_object());
-        assert!(
-            receipts_obj
-                .get("0x0000000000000000000000000000000000000000000000000000000000000000")
-                .is_some()
-        );
+        assert!(receipts_obj
+            .get("0x0000000000000000000000000000000000000000000000000000000000000000")
+            .is_some());
     }
 
     #[test]

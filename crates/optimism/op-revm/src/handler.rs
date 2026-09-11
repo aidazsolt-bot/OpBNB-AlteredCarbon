@@ -1,34 +1,34 @@
 //!Handler related to Optimism chain
 use crate::{
-    L1BlockInfo, OpHaltReason, OpSpecId,
     api::exec::OpContextTr,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{OpTransactionError, OpTxTr, deposit::DEPOSIT_TRANSACTION_TYPE},
+    transaction::{deposit::DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
+    L1BlockInfo, OpHaltReason, OpSpecId,
 };
 use op_alloy_consensus::OpTxType;
 use revm::{
     context::{
-        LocalContextTr,
-        journaled_state::{JournalCheckpoint, account::JournaledAccountTr},
+        journaled_state::{account::JournaledAccountTr, JournalCheckpoint},
         result::InvalidTransaction,
+        LocalContextTr,
     },
     context_interface::{
-        Block, Cfg, ContextTr, JournalTr, Transaction,
         context::take_error,
         result::{EVMError, ExecutionResult, FromStringError, ResultGas},
+        Block, Cfg, ContextTr, JournalTr, Transaction,
     },
     handler::{
-        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
         evm::FrameTr,
         handler::EvmTrError,
         post_execution::{self, reimburse_caller},
         pre_execution::{calculate_caller_fee, validate_account_nonce_and_code_with_components},
+        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     interpreter::{
-        Gas, InitialAndFloorGas, interpreter::EthInterpreter, interpreter_action::FrameInit,
+        interpreter::EthInterpreter, interpreter_action::FrameInit, Gas, InitialAndFloorGas,
     },
-    primitives::{U256, hardfork::SpecId},
+    primitives::{hardfork::SpecId, U256},
 };
 use std::{boxed::Box, vec::Vec};
 
@@ -510,10 +510,10 @@ where
 impl<EVM, ERROR> InspectorHandler for OpHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
-            Context: OpContextTr,
-            Frame = EthFrame<EthInterpreter>,
-            Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
-        >,
+        Context: OpContextTr,
+        Frame = EthFrame<EthInterpreter>,
+        Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
+    >,
     ERROR: EvmTrError<EVM> + From<OpTransactionError> + FromStringError + IsTxError,
 {
     type IT = EthInterpreter;
@@ -523,12 +523,12 @@ where
 mod tests {
     use super::*;
     use crate::{
-        DefaultOp, OpBuilder, OpTransaction,
         api::default_ctx::OpContext,
         constants::{
             BASE_FEE_SCALAR_OFFSET, ECOTONE_L1_BLOB_BASE_FEE_SLOT, ECOTONE_L1_FEE_SCALARS_SLOT,
             L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, OPERATOR_FEE_SCALARS_SLOT,
         },
+        DefaultOp, OpBuilder, OpTransaction,
     };
     use alloy_primitives::uint;
     use revm::{
@@ -538,7 +538,7 @@ mod tests {
         database_interface::EmptyDB,
         handler::EthFrame,
         interpreter::{CallOutcome, CreateOutcome, InstructionResult, InterpreterResult},
-        primitives::{Address, B256, Bytes, bytes},
+        primitives::{bytes, Address, Bytes, B256},
         state::AccountInfo,
     };
     use rstest::rstest;

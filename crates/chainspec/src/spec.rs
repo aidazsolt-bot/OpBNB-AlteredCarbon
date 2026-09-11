@@ -1065,7 +1065,6 @@ impl<H: BlockHeader> EthereumHardforks for ChainSpec<H> {
 #[cfg(feature = "optimism")]
 impl reth_optimism_forks::OptimismHardforks for ChainSpec {}
 
-
 /// A trait for reading the current chainspec.
 #[auto_impl::auto_impl(&, Arc)]
 pub trait ChainSpecProvider: Debug + Send {
