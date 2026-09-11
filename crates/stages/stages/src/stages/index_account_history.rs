@@ -179,7 +179,7 @@ mod tests {
         stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, TestRunnerError,
         TestStageDB, UnwindStageTestRunner,
     };
-    use alloy_primitives::{address, BlockNumber, B256};
+    use alloy_primitives::{address, Address, BlockNumber, B256};
     use itertools::Itertools;
     use reth_db_api::{
         cursor::DbCursorRO,

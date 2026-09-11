@@ -335,6 +335,7 @@ Official reference for the throughput comparisons below: [Diversifying BNB Smart
 | Cursor Aug-23 BSC focus (`7bb73584…`) | **~8.5 h** interactive span; **56** user / **838** assistant; **1619** tools; ~1.0 MB → ~255K tok proxy |
 | Cursor Session 22 (2026-09-09 ~23:06–23:32 CEST, `ea987bef` C17) | **~0.43 h** interactive; sync/status + session-memory + cost-hour correction; no new consensus code |
 | Cursor Session 23 (2026-09-10 ~09:51–10:35 CEST, `ea987bef` C18) | **~0.73 h** interactive; Wright-Gate tip correction to `34367717`, live status/docs, GitHub About+topics, README hero dashboard logo; no consensus code |
+| Cursor Session 24 (2026-09-11 ~11:45–18:50 CEST, `ea987bef`) | **~6 h** interactive (coding + status; heal idle not fully counted); TxLookup OOM forensics → chunked ETL + RocksDB auto-commit; `make maxperf-op` ~23 min; tip steps 20k/2 M/10 M; Unichain NAT `127.0.0.1` issues; effort/cost docs |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -364,14 +365,14 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 
 ##### Cursor AI cost allocated to opBNB (operator statement)
 
-- **~EUR 70** (unchanged through 2026-09-10 morning).
-- Larger Cursor account spend also covered other projects; **no** new invoice for late-August / Session-22/23 clusters.
+- **~EUR 70** (unchanged through 2026-09-11 evening).
+- Larger Cursor account spend also covered other projects; **no** new invoice for Session-22/23/24 clusters.
 - Hours corrected below; EUR allocation not invented upward.
 
-##### Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST)
+##### Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST; +Session 24)
 
-- Chat lived **2026-08-12 → 09-10**. File **~4.45 MB** → proxy **~1.1M tokens** (÷4); **~327** user / **~2211** assistant; **~4120** tool_use.
-- Interactive Gap>90 min span sum **~25.1 h** (18 clusters). Early Session-12 estimate (~8.5 h to 08-16) **undercounted** (~12.6 h for C1–C8 alone).
+- Chat lived **2026-08-12 → 09-11**. Through 09-10: File **~4.45 MB** → proxy **~1.1M tokens** (÷4); **~327** user / **~2211** assistant; **~4120** tool_use; Gap>90 min **~25.1 h** (18 clusters).
+- **Session 24 (+~6 h):** TxLookup streaming work; cumulative Cursor interactive ~**54 h** (prior ~48 h + Session 24).
 
 ##### Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09)
 
@@ -527,16 +528,16 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-10, order of magnitude) | Storage-v2 / networking (Sessions 13–18); Execution pipelining (Session 20); Wright incident + fix (Session 21, **~7 h** wall, build **22m25s**, unwind **72m35s**); Cursor Session 22 evening docs (~0.43 h); Session 23 morning Gate tip + GitHub About/logo (~0.73 h). Late-Aug Cursor BSC-cut hours (`7bb73584` + `ea987bef` C15–C16) belong to scope cleanup, measured in effort log. |
-| Cost summary through 2026-09-10 **10:35** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR Cursor **not** raised despite hour correction to ~**48 h** interactive). Electricity: **~EUR 70.4**. A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 650.** Session 21 token-rate ~USD 12.23 informational only. Hardware/labor excluded. |
+| September incident/recovery follow-ups (2026-09-02 → 09-11, order of magnitude) | Storage-v2 / networking (Sessions 13–18); Execution pipelining (Session 20); Wright incident + fix (Session 21, **~7 h** wall); Cursor Session 22/23 docs+Gate tip; **Session 24** TxLookup OOM→streaming (~**6 h** interactive, maxperf ~23 min). Late-Aug BSC-cut hours in effort log. |
+| Cost summary through 2026-09-11 **18:50** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR **not** raised despite ~**54 h** Cursor interactive). Electricity: **~EUR 72.5** (rack meter + ~EUR 2.14/d). A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 650.** Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
 
 #### Human operations and senior-development effort
 
 The AI work required continuous senior supervision: the initial unaided experiment did not
 produce a usable end-to-end node, so reference comparison, PIPE+FLOW methodology, reviews,
 datadir/unwind risk decisions, deployments and live validation remained human-owned. Documented
-interactive session clusters imply approximately **63–73 h senior development**, including
-**41–49 h operations/DevOps** (Cursor interactive re-measured ~**48 h** + Copilot windows ~**27–33 h**,
+interactive session clusters imply approximately **69–79 h senior development**, including
+**45–55 h operations/DevOps** (Cursor interactive ~**54 h** + Copilot windows ~**27–33 h**,
 with role overlap counted fully). Unattended sync, build and unwind wall time is excluded.
 
 Mixed incident/deployment sessions are counted fully in both roles, as requested. This produces
@@ -544,19 +545,19 @@ role-hours and replacement value, not deduplicated human elapsed time or an invo
 
 | Role | Session-derived effort | 2026 Austria/DACH freelance band (net, excl. VAT) | Replacement value |
 | --- | ---: | ---: | ---: |
-| Senior operations / DevOps | **~41–49 h** | **EUR 80–120/h** | **~EUR 3,280–5,880** |
-| Senior Reth/blockchain developer | **~63–73 h** | **EUR 100–150/h** | **~EUR 6,300–10,950** |
-| **Labor total, overlaps fully counted** | **~104–122 role-hours** | — | **~EUR 9,580–16,830** |
-| **Planning midpoint** | Ops 45 h @100 + developer 68 h @125 | — | **~EUR 13,000** |
+| Senior operations / DevOps | **~45–55 h** | **EUR 80–120/h** | **~EUR 3,600–6,600** |
+| Senior Reth/blockchain developer | **~69–79 h** | **EUR 100–150/h** | **~EUR 6,900–11,850** |
+| **Labor total, overlaps fully counted** | **~114–134 role-hours** | — | **~EUR 10,500–18,450** |
+| **Planning midpoint** | Ops 50 h @100 + developer 74 h @125 | — | **~EUR 14,250** |
 
 Adding the tracked **~EUR 650** AI/electricity/connectivity costs gives a documented project
-value of **~EUR 10,230–17,480**, with a planning midpoint of **~EUR 13,650**. These are market-rate
+value of **~EUR 11,150–19,100**, with a planning midpoint of **~EUR 14,900**. These are market-rate
 replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
 undocumented supervision are excluded.
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
-#### Infra-operation cost proxies (2026-08-10 → 2026-09-10, restart/rebuild proxies + measured power)
+#### Infra-operation cost proxies (2026-08-10 → 2026-09-11, restart/rebuild proxies + measured power)
 
 No real hosting invoice exists for the archive node (it runs on the operator's own infrastructure,
 not a metered cloud instance). Restart/rebuild figures below are direct operational proxies; the
@@ -586,8 +587,8 @@ measured.** At a typical gross household energy price (~**€0.231/kWh**, no sup
 | … per month (30 days) | **~€57.8** |
 
 **Linear carry-forward after the last meter reading (not a new measurement):** applying the same
-measured rack average to 2026-09-04 00:00 → 2026-09-10 10:35 CEST gives **~54 kWh /
-~€12.6** additional, or **~304 kWh / ~€70.4** for the measured value plus extrapolation.
+measured rack average to 2026-09-04 00:00 → 2026-09-11 18:50 CEST gives **~63 kWh /
+~€14.7** additional, or **~313 kWh / ~€72.5** for the measured value plus extrapolation.
 The seven-hour Wright incident window corresponds to **~2.43 kWh / ~€0.56** at that average.
 This is whole-rack time allocation, not measured marginal incident energy.
 

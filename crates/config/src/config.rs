@@ -381,7 +381,12 @@ impl Default for MerkleConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct TransactionLookupConfig {
-    /// The maximum number of transactions to process before writing to disk.
+    /// Maximum number of transactions to hash, ETL-sort, and write before returning to the
+    /// pipeline (`done = false`) so the provider can commit.
+    ///
+    /// This bounds `TransactionHashNumbers` write-batch / WAL growth on archive genesis sync.
+    /// Within each chunk, keys are still ETL-sorted so an empty table can use append; later
+    /// chunks use insert/upsert into the non-empty table.
     pub chunk_size: u64,
 }
 
