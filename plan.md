@@ -35,30 +35,26 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-11 ~18:57 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-09-12 ~08:20 CEST) {#session-memory}
 
-> **Handoff für nächsten Agenten.** Zuerst Skills laden (`reth-opbnb-port` + `rust-best-practices`),
-> dann diese Tabelle + *Nächste Schritte* + *Live Sync Progress*. Chat: `ea987bef…` (Session 24).
+> **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`. Chat: `ea987bef…`.
 
 | Thema | Lage |
 | --- | --- |
-| **Kette / Binary** | opBNB **204** · Live `op-reth-bnb` **maxperf 09-11 ~16:29 CEST** (TxLookup-Streaming) · **kein BSC** |
-| **Git `main`** | Konsens-Fix **`29d7bfa2dd`** (Wright L1FeeVault). HEAD Docs: `e4fc02f683`. Feature-Branch Speedup `b32f9e58d6` **nicht** auf `main`. |
-| **Uncommitted (wichtig)** | `crates/stages/stages/src/stages/tx_lookup.rs` + `crates/config/src/config.rs` (+ test-Import `index_account_history.rs`): **chunked TxLookup** (`chunk_size` = Pipeline-Grenze, default 5 M Txs, RocksDB `batch_with_auto_commit`). Draft: `files/upstream-txlookup-streaming-notes.md`. Effort-Doku: `plan.md` / `README.md` / Skill — ebenfalls dirty. **Nicht committen ohne User-Auftrag.** |
-| **Wright-Gate** | Exec+MerkleExecute @ **`34367717`** zuvor ✅. Danach TxLookup-OOM (One-Shot WriteBatch → ~71 GiB WAL) — behoben durch Streaming-Binary. |
-| **Live jetzt** | Tip **`--debug.max-block 10000000`** + `--debug.terminate`. Index-CP **2 000 000**. RocksDB **~746 MiB** (gesund). **Heal:** TxHash ✅ (~16:40 UTC); **StoragesHistory** 🔄 **~1168/3237** @18:57 CEST (~2–3 s/batch → Rest Storages ~**1,5 h**); dann Accounts-Heal; **dann** TxLookup **2 M→10 M** Streaming. ETA TxLookup-Start **~21:30–22:30 CEST**. Mimir während Heal oft **0**. Pfade: `source .cursor/local/opbnb-archive-paths.env`. |
-| **Ops-Fallen** | Restart mit Index≪SF-Tip → **voller Heal von vorn** (nicht mitten im Heal killen ohne Grund). `rocksdb.bak-oom-*` darf weg (nicht auto-gebunden). „Pruning TransactionHashNumbers“ = Heal-Tombstones, **kein** Archive-Prune. |
-| **Neben** | Unichain `admin_nodeInfo` → `127.0.0.1` (discv5 + `--nat any`). Issues: [op-rs/reth#3](https://github.com/op-rs/reth/issues/3), [optimism#22873](https://github.com/ethereum-optimism/optimism/issues/22873). |
-| **Kosten** | Cursor Interaktiv ~**54 h**; EUR Cursor **70** / Copilot **170**; Summe ~**EUR 650** (09-11). |
-| **Nicht verwechseln** | MerkleUnwind Session-20 @`71185159` ≠ Wright-Vault ≠ TxLookup-OOM. |
-| **Offene Gates** | **PORT-PIPE-012** live (Streaming TxLookup); FLOW nach Heal. Snap **FEAT-SNAP-001** gesperrt bis DoD. |
+| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** (`Starting Reth … 04eb5ac`) · Tip **`--debug.max-block 43519340`** + terminate · IPC `/tmp/BSCRethArchiveNode.ipc` · metrics `:6060` |
+| **Git** | Streaming **`a1e50e6352`** + rustfmt **`04eb5ac2a9`** · ahead 2 unpushed · Speedup Feature-Branch |
+| **Live jetzt** | **läuft** seit ~08:18 CEST. Startup: **TxHash-Heal** aktiv (CP TxLookup **10 M**, SF tip **43 519 337**, tx `58.5 M→~2.55 B`). Danach History-Heal (→Exec **34 367 717**), dann Pipeline: Sender skip→**Exec 34 M→43.5 M**→Merkle→TxLookup/Index streaming→Finish. |
+| **Stage-Tips (vor Lauf)** | Headers **71.2 M** · Bodies **43 519 337** · Exec/Merkle **34 367 717** · Index/TxLookup **10 M** |
+| **TxLookup-Streaming** | @10 M live ✅ (12×5 M). Erwartet erneut `10 M→43.5 M` nach Heals+Exec. |
+| **Ops** | **Nicht restarten** während Heal. Peak RSS zuletzt ~136 GiB. RocksDB start ~4.8 GiB. |
+| **Kosten / Gates** | ~54 h / EUR 650 · PIPE-012 @10 M ✅ · Snap gesperrt |
 
-### Nächste Schritte (unmittelbar — Stand 2026-09-11 ~18:57 CEST)
+### Nächste Schritte (unmittelbar — Stand 2026-09-12 ~08:20 CEST)
 
-1. **Kein Eingriff:** StoragesHistory-Heal zu Ende → Accounts-Heal → TxLookup **2 M→10 M** (mehrere Pipeline-Runden, `chunk_size=5 M` Txs) unter Tip **10 M** + terminate.
-2. **Verify:** kein OOM / kein ~70 GiB-WAL; RocksDB bleibt O(hundert MiB–wenige GiB); Logs `Preparing`/`Committed` TransactionLookup.
-3. **Code (nur nach User):** Streaming committen + optional Upstream-PR; optional Heal-Skip bei stepped tip.
-4. **Später:** Tip zurück auf Wright **`34367717`** / Catch-up; Point-4; Speedup-Merge; Snap erst nach PIPE+FLOW.
+1. **Laufen lassen** bis Tip **`43 519 340`** + terminate (Heal→Exec→Index).
+2. Beobachten: Heal-Fortschritt; danach Exec blk/s; TxLookup-Chunks ohne OOM.
+3. Nach Finish: Stage-CPs = Tip; Startup-Heal sollte weg sein (Index≈Bodies/ChangeSets).
+4. Später: höherer Tip / Catch-up; Point-4; Upstream-PR; Speedup-Merge.
 
 ## Ziel & Kontext
 
@@ -532,7 +528,7 @@ Pipeline-Reihenfolge: Headers → Bodies → SenderRecovery → Execution → Me
 | PORT-PIPE-009 | Execution Wright+ | L1-Fee **nur** wenn `gasPrice==0` → 0 | `factory.rs` setzt `skip_l1_data_fee=true` ab Wright. Der frühere Port setzte den Skip nur beim Sender-Debit um, nicht beim Credit an `L1_FEE_RECIPIENT`; dadurch wurde für gasless Wright-Txs Wert erzeugt. `tx_cost_with_tx` und `reward_beneficiary` verwenden jetzt dieselbe `l1_data_fee_with_tx`-Semantik. Wright-Höhe Mainnet ~**32984677** (`ts=1724738400`). | **X02 🐛→✅** | ✅ Debit-/Credit-Units · 🔬 Re-Execution ab sicherem Pre-Wright-State und Root-Abgleich @ `34367717` |
 | PORT-PIPE-010 | Execution L1-Attr | Snow/Volta/Fourier nur CL → Deposit-Calldata | ➖ Snow erzeugt den Median-L1-Gaspreis im op-node und schreibt ihn in die L1-Info-Deposit-Tx. Volta/Fourier erzeugen Millisekundenzeit plus Fourier-Intervallzähler in `prevRandao[0..4]`; der OP-Engine-Pfad übernimmt diesen unverändert als Header-`mix_hash`, während EL nur monotonen Millisekundenfortschritt prüft. Kadenz-/Span-Batch-Regeln sind op-node-Consensus. | — | ➖ n/a zusätzliche EL-Logik · 📝 CL liefert L1-Info und `prevRandao` |
 | PORT-PIPE-011 | MerkleExecute | Root = Execution-Ergebnis | ➖ Generic Stages; kein opBNB-Extra-Port | X03 | ➖ kein Extra-Port · ⏳ live hängt an PIPE-007…009 |
-| PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit (PORT-STOR-007/008); Session 24: chunked TxLookup (OOM-Fix, lokal) | S01–S02 | ✅ umgesetzt · 🔬 live: Heal→TxLookup 2 M→10 M (Streaming) |
+| PORT-PIPE-012 | History / TxLookup | storage.v2 Indices | ✅ Code + Unit; Session 24: chunked TxLookup **`a1e50e6352`** | S01–S02 | ✅ live Streaming @ Tip **10 M** (12 Chunks); History-Catch-up zu Exec noch offen |
 | PORT-PIPE-013 | Testnet only | PreContract @ `5805494` | `OpEvmConfig` setzt am exakten Forkblock `OpBlockExecutionCtx::apply_pre_contract_hardfork`; der vendorte `OpBlockExecutor::apply_pre_execution_changes` mutiert vor allen System-/Nutzer-Txs WBNB Slot 0/1 und selfdestructed das Governance-Predeploy, entsprechend op-geth `StateProcessor`. | — | ✅ Hook, Zustandsmutation und Executor-Transition-Test (WBNB Slots + Governance-Löschung) · 🔬 Testnet-Archive-Verifikation (Mainnet n/a) |
 | PORT-PIPE-014 | Execution pre-Canyon | Receipt-**Content**-Parity vs op-geth | Hertz @ `0x67`; Fail war `21591154` | **X04 ✅** | ✅ Fix + `re-execute` ✅ · 🔄 live Exec≫Fail nach Bodies/Sender Catch-up |
 | PORT-PIPE-015 | Snap Cap / Wire | Hello **snap/1 und snap/2**; Message-IDs Spec (V1 inkl. TrieNodes 0x06/0x07; V2 BAL); Negotiate mit op-geth = V1 | 🔬 heute kein V1; V2 Cap-only/optional | **SNAP-01** | 🔬 FEAT-SNAP-001 · gesperrt bis FLOW-SNAP-01 |
@@ -767,7 +763,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session Aug-24 opBNB-only Cut (in `ea987bef` C16 + Nebenchat `065d5aa7…`) | C16 **~5,7 h** Span (09:42–15:24); Nebenchat kurz (~32 KB) | Auto/Composer | in ea987bef-Vollstand enthalten | (Proxy) | BSC-Crates entfernt, `main`-Force-Push AlteredCarbon, Doku Anti-Pattern Dual-Chain | Workspace **opBNB-only**; siehe Commit-Serie `chore(opbnb): remove BSC…` |
 | Cursor Session 22 (Chat `ea987bef…` C17, **2026-09-09 ~23:06–23:32 CEST**) | Interaktiv **~0,43 h** | Auto/Composer | Delta im laufenden Transcript; kein separater billed Meter | (Proxy) | Sync-ETA/Health, Session-Memory, Kostenkorrektur | Kein neuer Code-Fix; Konsens-Fix bleibt `29d7bfa2dd` |
 | Cursor Session 23 (Chat `ea987bef…` C18, **2026-09-10 ~09:51–10:35 CEST**) | Interaktiv **~0,73 h** | Auto/Composer | Delta im laufenden Transcript | (Proxy) | Tip→`34367717`, Live-Status/Docs, GitHub About+Topics, README Hero-Logo | Gate-Lauf aktiv; kein Konsens-Code |
-| Cursor Session 24 (Chat `ea987bef…`, **2026-09-11 ~11:45–18:50 CEST**) | Interaktiv **~6 h** (Status/Heal-Polling + Coding; Idle während Heals nicht voll gezählt) | Auto/Composer | Delta Transcript; billed n/a | (Proxy) | TxLookup-OOM-Forensik; chunked ETL+RocksDB-auto-commit; `make maxperf-op` ~23 min; Tip-Steps 20k/2 M/10 M; Unichain NAT `127.0.0.1`; Issues op-rs#3 + optimism#22873; Effort-Doku | Streaming-Binary live; Heal→TxLookup 2 M→10 M ausstehend |
+| Cursor Session 24 (Chat `ea987bef…`, **2026-09-11 ~11:45–18:50 CEST**) | Interaktiv **~6 h** (Status/Heal-Polling + Coding; Idle während Heals nicht voll gezählt) | Auto/Composer | Delta Transcript; billed n/a | (Proxy) | TxLookup-OOM-Forensik; chunked ETL+RocksDB-auto-commit; `make maxperf-op` ~23 min; Tip-Steps 20k/2 M/10 M; Unichain NAT `127.0.0.1`; Issues op-rs#3 + optimism#22873; Effort-Doku | Tip-10 M ✅ Finish; Streaming live verifiziert; commits `a1e50e6352`/`04eb5ac2a9` |
 
 | Copilot Session 13 (Storage-v2 recovery, 2026-09-02) | Journal/Mimir-Diagnose (Static-File-Underflow, fehlender Slot-Preimage-Port); zwei Source-Fixes (`fa6caf3022`, `ce0c722d9b`); 6 reaktivierte Preimage-Regressionstests + `test_pipeline`/`test_pipeline_v2`; 2× `make maxperf-op` | k.A. | k.A. | k.A. | Kein Per-Session-Token-Ledger verfügbar; keine Kostenschätzung |
 | Copilot Session 14 (Peer-Connectivity + migrate-v2-Validierung, 2026-09-03) | ForkHash-Re-Verifikation, Peer-Injection-Tool + systemd-Timer (später obsolet), isolierter `p2p body`-Reachability-Test, Dev-Host `db migrate-v2` End-zu-Ende-Test | k.A. | k.A. | k.A. | Kein Ledger; mehrere kurze Dev-Host-Rebuilds/Restarts (s. Restart-Historie Session 18) |
@@ -913,17 +909,10 @@ Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Bela
 Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
 Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-## Nächste Schritte (unmittelbar — Stand 2026-09-11 ~18:57 CEST)
+## Nächste Schritte (unmittelbar — Stand 2026-09-12 ~08:20 CEST)
 
-> Spiegel von [#session-memory](#session-memory) — bei Abweichung gilt die Session-Memory-Tabelle.
+> Spiegel [#session-memory](#session-memory): Tip-**43 519 340**-Lauf läuft — nicht restarten.
 
-1. **Kein Eingriff:** StoragesHistory-Heal (~1168/3237 @18:57) → Accounts → TxLookup **2 M→10 M**
-   (Streaming) unter Tip **`10 000 000`** + `--debug.terminate`.
-2. **Beobachten:** mehrere TxLookup-Pipeline-Runden; kein OOM / kein ~70 GiB-WAL; RocksDB ~746 MiB-Band.
-3. **Code:** nur nach User — Streaming committen / Upstream-PR (`files/upstream-txlookup-streaming-notes.md`);
-   optional Heal-Skip bei stepped tip.
-4. **Branch:** `main` = Wright-Fix; Speedup Feature-Branch; Streaming lokal dirty.
-5. **Später:** Wright-Tip **`34 367 717`** / Catch-up; Point-4; **FEAT-SNAP-001** erst nach PIPE+FLOW-DoD.
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
 
@@ -1662,22 +1651,24 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-11 **~18:57 CEST** · chain **204** · Post-Gate Indexing ·
-`--debug.max-block **10 000 000**` + `--debug.terminate` · Binary maxperf **09-11** (TxLookup-Streaming) ·
-Mimir während RocksDB-Heal oft **0** (Pipeline noch nicht aktiv) · RocksDB **~746 MiB**
+**Stichprobe (aktuell):** 2026-09-12 **~08:20 CEST** · chain **204** · Tip **`43 519 340`** + terminate **läuft**
+· Binary **`04eb5ac`** · Startup **TxHash-Heal** (Index 10 M → SF Bodies) · danach History-Heal + Exec Catch-up
 
-| Stage | Checkpoint / Target | Status |
+| Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers / Bodies / Sender / Exec / Merkle* | ≥ Gate **`34 367 717`** (bzw. Bodies **43.5 M**) | ✅ Wright-Gate zuvor durch; Exec/Merkle am Gate ohne Unwind |
-| TransactionLookup | **2 000 000** → **10 000 000** | ⏳ nach Startup-Heal; Streaming `chunk_size=5 000 000` Txs |
-| IndexStorage / IndexAccount | **2 000 000** | ⏳ Heal dann Catch-up mit Tip |
-| RocksDB consistency | TxHash ✅; **StoragesHistory** 🔄 **~1168/3237** @18:57; Accounts danach | Pathologisch bei Index≪SF-Tip (Tombstone-Loop); Restart = Heal von vorn |
-| P2P / errors | — | Heal-Phase; validation/OOM-Watch nach TxLookup-Start |
-| Konsens | PIPE-009 / FLOW-X02 | ✅ Live-Gate Receipt-Root-Pfad zuvor; Indexing ≠ Konsens |
+| Headers | **71 185 160** | Rest älterer Tip |
+| Bodies | **43 519 337** | > Exec/Index |
+| SenderRecovery / Execution / Merkle* / Hashing | **34 367 717** | ✅ Wright-Gate |
+| TransactionLookup | **10 000 000** | ✅ Streaming live (12 Chunks @5 M Txs, ~75 s, kein OOM) |
+| IndexStorageHistory / IndexAccountHistory | **10 000 000** | ✅ nach Heal |
+| Prune / Finish | **10 000 000** | ✅ terminate |
+| Konsens | PIPE-009 / FLOW-X02 | ✅ Gate zuvor; Indexing ≠ Konsens |
 
-**TxLookup-OOM (09-11):** One-Shot ETL→ein RocksDB-WriteBatch → ~71 GiB WAL; Fix = chunked Pipeline-Commits + `batch_with_auto_commit`. `rocksdb.bak-oom-*` darf weg.
+**TxLookup-OOM (09-11):** One-Shot → ~71 GiB WAL; Fix **`a1e50e6352`** chunked ETL + auto-commit — live verifiziert @10 M.
 
-**Branch-Lage:** `main` = Wright-Fix. TxLookup-Streaming **dirty lokal** (Session 24). Feature-Branch Execution-Speedup unverändert.
+**Heal:** Startup heilt Index≪SF (History→Exec, TxHash→Bodies). Nächster Tip min. **`34 367 717`**; Heal-frei bis Bodies: **`43 519 337`**. Kein Tip → Headers **71 M**.
+
+**Branch-Lage:** `main` = Wright-Fix + TxLookup-Streaming (+ rustfmt). Speedup Feature-Branch. **ahead 2**, unpushed.
 
 **Handoff:** siehe [#session-memory](#session-memory).
 
@@ -2658,12 +2649,13 @@ verhindert das nicht (CommitLimit ≫ Peak). Smoke 20 k / Tip 2 M mit frisch
 ETL nur pro Chunk, `with_rocksdb_batch_auto_commit`, `done=false` bis Ziel (SenderRecovery-Muster).
 Tests `transaction_lookup` + RocksDB-Pfade grün. `make maxperf-op` ~**23 min** → `dist/bin/op-reth-bnb`.
 
-**Live:** Tip **10 M** + terminate. Startup-Heal (Index 2 M ≪ SF Tip) dominiert die Wanduhr —
-TxHash-Heal ~**1,2 h** (ETA traf zu); Storages/Accounts folgen; TxLookup-Batching erst danach sichtbar
-(`is_final_range` / mehrere Preparing-Runden).
+**Live:** Tip **10 M** + terminate. Startup-Heal (Index 2 M ≪ SF) dominierte die Wanduhr —
+TxHash ~1,2 h; Storages fertig ~22:32; Accounts danach; TxLookup **2 M→10 M** @ ~02:04–02:05 CEST;
+Finish+terminate **02:18 CEST**. Streaming: **12** Chunks (`tx_threshold=5 M`), ~75 s, **kein OOM**,
+RocksDB ~**4,3 GiB**. Commits: **`a1e50e6352`** (fix) + **`04eb5ac2a9`** (style); maxperf ~22 min
+(20:05 CEST).
 
-**Neben:** Unichain `127.0.0.1`-Announce → Issues **op-rs/reth#3**, **ethereum-optimism/optimism#22873**.
-Draft Upstream-Notes: `files/upstream-txlookup-streaming-notes.md`.
+**Neben:** Unichain `127.0.0.1` → **op-rs/reth#3**, **optimism#22873**.
+Draft: `files/upstream-txlookup-streaming-notes.md`.
 
-**Aufwand Session 24:** Interaktiv ~**6 h**; kumuliert Cursor-Interaktiv ~**54 h**; EUR-Allokation unverändert
-(Cursor **70** / Copilot **170** / Summe ~**650**).
+**Aufwand Session 24:** Interaktiv ~**6 h**; kumuliert Cursor ~**54 h**; EUR unverändert (~**650**).

@@ -29,19 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-11 ~18:57 CEST)
+## Session-Memory / Status (Stand 2026-09-12 ~08:20 CEST)
 
-Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress* + *Nächste Schritte*.
+Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | Tip **10 M** + terminate; Wright-Gate ✅. Heal: TxHash ✅; **StoragesHistory ~1168/3237**; → Accounts → TxLookup **2 M→10 M** Streaming. RocksDB ~**746 MiB** |
-| `main` | Konsens-Fix `29d7bfa2dd` |
-| Dirty lokal | `tx_lookup.rs` + `config.rs` (chunked TxLookup) — **nicht** ohne User committen. Notes: `files/upstream-txlookup-streaming-notes.md` |
-| Feature-Branch | Speedup `b32f9e58d6` weiter unmerged |
-| Ops | Restart während Heal = Fortschritt verloren. Pfade: `.cursor/local/opbnb-archive-paths.env` |
-| Gates | PIPE-012 live-verify; Snap gesperrt |
-| Kosten | Cursor ~**54 h**; EUR **70**/**170**; Summe ~**650** |
+| Live | **läuft** Tip **`43 519 340`** + terminate · Binary **`04eb5ac`** · gerade **TxHash-Heal** (10 M→Bodies SF) |
+| Danach | History-Heal → Exec **34 M→43.5 M** → Merkle → TxLookup/Index streaming → Finish |
+| Ops | **Kein Restart** während Heal. IPC `/tmp/BSCRethArchiveNode.ipc` · metrics `:6060` |
+| Prior | Tip-10 M ✅; Streaming live belegt |
+| Gates | PIPE-012 @10 M ✅; Snap gesperrt |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 

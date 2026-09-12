@@ -335,7 +335,7 @@ Official reference for the throughput comparisons below: [Diversifying BNB Smart
 | Cursor Aug-23 BSC focus (`7bb73584…`) | **~8.5 h** interactive span; **56** user / **838** assistant; **1619** tools; ~1.0 MB → ~255K tok proxy |
 | Cursor Session 22 (2026-09-09 ~23:06–23:32 CEST, `ea987bef` C17) | **~0.43 h** interactive; sync/status + session-memory + cost-hour correction; no new consensus code |
 | Cursor Session 23 (2026-09-10 ~09:51–10:35 CEST, `ea987bef` C18) | **~0.73 h** interactive; Wright-Gate tip correction to `34367717`, live status/docs, GitHub About+topics, README hero dashboard logo; no consensus code |
-| Cursor Session 24 (2026-09-11 ~11:45–18:50 CEST, `ea987bef`) | **~6 h** interactive (coding + status; heal idle not fully counted); TxLookup OOM forensics → chunked ETL + RocksDB auto-commit; `make maxperf-op` ~23 min; tip steps 20k/2 M/10 M; Unichain NAT `127.0.0.1` issues; effort/cost docs |
+| Cursor Session 24 (2026-09-11 ~11:45–18:50 CEST, `ea987bef`) | **~6 h** interactive; TxLookup OOM→chunked ETL; tip **10 M** Finish ✅ overnight (02:18 CEST 09-12); **12** streaming chunks @5 M txs live; commits `a1e50e6352`/`04eb5ac2a9`; maxperf ~22 min |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -429,6 +429,14 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - Bodies 43.5 M skip; Sender tip; **Execution ~33.44 M** (~43 blk/s 1 h; ETA Gate **~6 h**).
 - Peers 4; validation **0**; Point-4 MATCH. Await receipt root `0xc8e83d75…30c`. Grafana hero screenshot → `assets/logo.png`.
 - Details: `plan.md` § Live Sync Progress.
+
+##### Live sync Tip-10 M + TxLookup streaming (2026-09-12 ~08:15 CEST)
+
+- Tip **`10 000 000`** + terminate **✅** Finish @ **02:18 CEST**; node stopped.
+- Stage tips: Headers **71.2 M** · Bodies **43.5 M** · Exec/Merkle **34 367 717** · TxLookup/Index/Finish **10 M**.
+- TxLookup streaming live: **12** pipeline chunks (`chunk_size=5 000 000`), ~75 s, no OOM (vs prior ~71 GiB WAL).
+- Next tip **min. `34 367 717`** (close History heal); heal-free to Bodies **`43 519 337`**; do **not** run tip-free (→ Headers 71 M).
+- Details: `plan.md` `#session-memory`.
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 
@@ -528,7 +536,7 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-11, order of magnitude) | Storage-v2 / networking (Sessions 13–18); Execution pipelining (Session 20); Wright incident + fix (Session 21, **~7 h** wall); Cursor Session 22/23 docs+Gate tip; **Session 24** TxLookup OOM→streaming (~**6 h** interactive, maxperf ~23 min). Late-Aug BSC-cut hours in effort log. |
+| September incident/recovery follow-ups (2026-09-02 → 09-12, order of magnitude) | Storage-v2 / networking; Execution pipelining; Wright fix; Session 24 TxLookup OOM→streaming + Tip-**10 M** Finish ✅ (overnight). Next: tip ≥ Exec **34 367 717**. |
 | Cost summary through 2026-09-11 **18:50** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR **not** raised despite ~**54 h** Cursor interactive). Electricity: **~EUR 72.5** (rack meter + ~EUR 2.14/d). A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 650.** Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
 
 #### Human operations and senior-development effort
