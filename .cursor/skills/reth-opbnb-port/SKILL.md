@@ -29,17 +29,19 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-12 ~08:20 CEST)
+## Session-Memory / Status (Stand 2026-09-13 ~08:45 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | **läuft** Tip **`43 519 340`** + terminate · Binary **`04eb5ac`** · gerade **TxHash-Heal** (10 M→Bodies SF) |
-| Danach | History-Heal → Exec **34 M→43.5 M** → Merkle → TxLookup/Index streaming → Finish |
-| Ops | **Kein Restart** während Heal. IPC `/tmp/BSCRethArchiveNode.ipc` · metrics `:6060` |
-| Prior | Tip-10 M ✅; Streaming live belegt |
-| Gates | PIPE-012 @10 M ✅; Snap gesperrt |
+| Live | **Execution** ~**35.0 M** / Horizon **`43 519 340`** (~80 %) · Binary **`04eb5ac`** · History-Heal ✅ · IPC/metrics UP |
+| Danach | Merkle → TxLookup/Index streaming → Finish |
+| Recovery | Wright mismatch **09-09** → Heal **~18 h** (09-12/13) → Exec catch-up (kein Genesis-Re-Sync) |
+| Ops | **Kein Restart** mid-Exec. `scripts/sync-eta.sh` = Sync-Horizon. Log via `$ARCHIVE_LOG` |
+| Git | **`92990c1861`** (+ handshake example) · Streaming **`a1e50e6352`** |
+| Gates | PIPE-012 @10 M ✅; X02 Re-Exec 🔄; Snap gesperrt |
+| Extra | Checkmk MCP OAuth live |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 

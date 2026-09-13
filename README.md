@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="opBNB AlteredCarbon Reth archive node — Grafana sync dashboard (storage, peers, stage checkpoints)" width="900">
+  <img src="assets/logo.png" alt="opBNB AlteredCarbon Reth archive — Grafana sync (Execution ~35M→43.5M, stage checkpoints, peers)" width="900">
 </p>
 
 # ‼️ Project Notice — Read Before Use ‼️
@@ -336,6 +336,7 @@ Official reference for the throughput comparisons below: [Diversifying BNB Smart
 | Cursor Session 22 (2026-09-09 ~23:06–23:32 CEST, `ea987bef` C17) | **~0.43 h** interactive; sync/status + session-memory + cost-hour correction; no new consensus code |
 | Cursor Session 23 (2026-09-10 ~09:51–10:35 CEST, `ea987bef` C18) | **~0.73 h** interactive; Wright-Gate tip correction to `34367717`, live status/docs, GitHub About+topics, README hero dashboard logo; no consensus code |
 | Cursor Session 24 (2026-09-11 ~11:45–18:50 CEST, `ea987bef`) | **~6 h** interactive; TxLookup OOM→chunked ETL; tip **10 M** Finish ✅ overnight (02:18 CEST 09-12); **12** streaming chunks @5 M txs live; commits `a1e50e6352`/`04eb5ac2a9`; maxperf ~22 min |
+| Cursor Session 25 (2026-09-12 ~18:30–19:05 + 2026-09-13 ~08:40 CEST, `6cc355ee…` + follow-ups) | **~3–4 h** interactive; workspace reentry, Checkmk OAuth-MCP, `handshake_reject` P2P smoke, `sync-eta.sh` horizon fix, README hero + effort docs |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -372,7 +373,7 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 ##### Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST; +Session 24)
 
 - Chat lived **2026-08-12 → 09-11**. Through 09-10: File **~4.45 MB** → proxy **~1.1M tokens** (÷4); **~327** user / **~2211** assistant; **~4120** tool_use; Gap>90 min **~25.1 h** (18 clusters).
-- **Session 24 (+~6 h):** TxLookup streaming work; cumulative Cursor interactive ~**54 h** (prior ~48 h + Session 24).
+- **Session 24 (+~6 h) + Session 25 (~3–4 h):** TxLookup streaming + recovery/docs/infra; cumulative Cursor interactive ~**57–58 h**.
 
 ##### Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09)
 
@@ -437,6 +438,20 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - TxLookup streaming live: **12** pipeline chunks (`chunk_size=5 000 000`), ~75 s, no OOM (vs prior ~71 GiB WAL).
 - Next tip **min. `34 367 717`** (close History heal); heal-free to Bodies **`43 519 337`**; do **not** run tip-free (→ Headers 71 M).
 - Details: `plan.md` `#session-memory`.
+
+##### Wright-Incident recovery + Tip-43.5 M re-execution (2026-09-09 → 2026-09-13)
+
+- **2026-09-09:** Receipt-root mismatch @ **`34367717`** after Wright L1-fee fix landed → automatic unwind to **`34366337`**; Copilot Session 21 fix **`29d7bfa2dd`**; offline unwind **72m35s** + build **22m25s**.
+- **2026-09-10:** Wright-Gate tip run to **`34 367 717`** (Exec ~33 M→34.37 M, ~6–9 h machine).
+- **2026-09-12→13:** Tip **`43 519 340`** + terminate — **~18 h** History-Heal (TxHash → StoragesHistory → AccountsHistory **2437/2437** @ ~00:12 UTC 09-13).
+- **2026-09-13 ~08:45:** **Execution** ~**35.0 M** / horizon **43.5 M** (~**80 %**); ~**58 blk/s** (15m); Exec-only ETA **~1d 17h**; validation errors **0**; peers **5**.
+- **Not** a genesis re-sync (unlike 2026-09-02 Session 13); recovery = heal + re-execute on existing archive datadir.
+- `scripts/sync-eta.sh` now uses **sync horizon** (Bodies/Sender cap) when Headers ≫ Bodies.
+
+##### Live sync progress (2026-09-13 ~08:45 CEST)
+
+- Horizon **`43 519 340`**; active stage **Execution**; then Merkle + TxLookup/index streaming → Finish.
+- Grafana hero: `assets/logo.png` (2026-09-13 snapshot).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 
@@ -536,16 +551,16 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Build / deploy | Fat-LTO `maxperf` rebuilds (~20–23 min each), binary install, flag/datadir/IPC/metrics wiring (paths anonymized in public docs) |
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
-| September incident/recovery follow-ups (2026-09-02 → 09-12, order of magnitude) | Storage-v2 / networking; Execution pipelining; Wright fix; Session 24 TxLookup OOM→streaming + Tip-**10 M** Finish ✅ (overnight). Next: tip ≥ Exec **34 367 717**. |
-| Cost summary through 2026-09-11 **18:50** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (EUR **not** raised despite ~**54 h** Cursor interactive). Electricity: **~EUR 72.5** (rack meter + ~EUR 2.14/d). A1 fiber: **~EUR 340**. **Tracked opBNB total: ~EUR 650.** Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
+| September incident/recovery follow-ups (2026-09-02 → 09-13, order of magnitude) | Storage-v2 (09-02 genesis re-sync, historical); Wright mismatch **09-09** + re-exec path; Session 24 Tip-**10 M** ✅; Tip-**43.5 M** + **~18 h** History-Heal + Exec catch-up (**~4–5 d** rack machine wall cumulative). |
+| Cost summary through 2026-09-13 **08:45** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (unchanged). Electricity: **~EUR 76** (rack meter + extrapolation). A1 fiber: **~EUR 342**. **Tracked opBNB total: ~EUR 658.** Wright recovery rack share **~EUR 8–10** (estimate). Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
 
 #### Human operations and senior-development effort
 
 The AI work required continuous senior supervision: the initial unaided experiment did not
 produce a usable end-to-end node, so reference comparison, PIPE+FLOW methodology, reviews,
 datadir/unwind risk decisions, deployments and live validation remained human-owned. Documented
-interactive session clusters imply approximately **69–79 h senior development**, including
-**45–55 h operations/DevOps** (Cursor interactive ~**54 h** + Copilot windows ~**27–33 h**,
+interactive session clusters imply approximately **72–82 h senior development**, including
+**48–58 h operations/DevOps** (Cursor interactive ~**57–58 h** + Copilot windows ~**27–33 h**,
 with role overlap counted fully). Unattended sync, build and unwind wall time is excluded.
 
 Mixed incident/deployment sessions are counted fully in both roles, as requested. This produces
@@ -553,19 +568,19 @@ role-hours and replacement value, not deduplicated human elapsed time or an invo
 
 | Role | Session-derived effort | 2026 Austria/DACH freelance band (net, excl. VAT) | Replacement value |
 | --- | ---: | ---: | ---: |
-| Senior operations / DevOps | **~45–55 h** | **EUR 80–120/h** | **~EUR 3,600–6,600** |
-| Senior Reth/blockchain developer | **~69–79 h** | **EUR 100–150/h** | **~EUR 6,900–11,850** |
-| **Labor total, overlaps fully counted** | **~114–134 role-hours** | — | **~EUR 10,500–18,450** |
-| **Planning midpoint** | Ops 50 h @100 + developer 74 h @125 | — | **~EUR 14,250** |
+| Senior operations / DevOps | **~48–58 h** | **EUR 80–120/h** | **~EUR 3,800–7,000** |
+| Senior Reth/blockchain developer | **~72–82 h** | **EUR 100–150/h** | **~EUR 7,200–12,300** |
+| **Labor total, overlaps fully counted** | **~120–140 role-hours** | — | **~EUR 11,000–19,300** |
+| **Planning midpoint** | Ops 53 h @100 + developer 77 h @125 | — | **~EUR 14,925** |
 
-Adding the tracked **~EUR 650** AI/electricity/connectivity costs gives a documented project
-value of **~EUR 11,150–19,100**, with a planning midpoint of **~EUR 14,900**. These are market-rate
+Adding the tracked **~EUR 658** AI/electricity/connectivity costs gives a documented project
+value of **~EUR 11,650–19,950**, with a planning midpoint of **~EUR 15,580**. These are market-rate
 replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
 undocumented supervision are excluded.
 
 Catch-up / full tip sync and long-running Execution remain **human-owned** (agent may analyze metrics/logs; operator starts and owns the run).
 
-#### Infra-operation cost proxies (2026-08-10 → 2026-09-11, restart/rebuild proxies + measured power)
+#### Infra-operation cost proxies (2026-08-10 → 2026-09-13, restart/rebuild proxies + measured power)
 
 No real hosting invoice exists for the archive node (it runs on the operator's own infrastructure,
 not a metered cloud instance). Restart/rebuild figures below are direct operational proxies; the
@@ -578,7 +593,7 @@ cross-check — neither is a substitute for an actual bill, and no invoice is cl
 | Restarts in the 2026-09-02 18:00 → now window | 14 | same source |
 | Longest uninterrupted run (as of 2026-09-05 07:14 UTC) | **~24 h 45 min** (since the 09-04 08:29 CEST restart) | same source |
 | `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥8 full builds @ ~20–24 min each, plus smaller dev-host rebuilds; latest: execution pipeline **23m39s**, Wright fix **22m25s** | `plan.md` session log |
-| Wright recovery machine time (2026-09-09→10) | Build **22m25s** + offline unwind **72m35s**; Bodies refill done; Execution replaying to Gate `34367717` (~33.4 M / ~6 h ETA @ ~43 blk/s) | build/node logs + Mimir |
+| Wright recovery machine time (2026-09-09→13) | Build **22m25s** + unwind **72m35s**; Gate run 09-10; **~18 h** History-Heal 09-12/13; Exec **~1.5–2 d** remaining @ ~50–67 blk/s (09-13) | build/node logs + Mimir; `plan.md` *Wright-Recovery* |
 | A1 fiber Internet 250/100, unlimited | **~EUR 30/month**, **~EUR 360/year**, active since October 2025; shared by all services/nodes, not attributable solely to opBNB | operator statement |
 | Hardware spec / archive datadir size | not tracked in this document (operator-owned infrastructure) | — |
 
@@ -595,9 +610,10 @@ measured.** At a typical gross household energy price (~**€0.231/kWh**, no sup
 | … per month (30 days) | **~€57.8** |
 
 **Linear carry-forward after the last meter reading (not a new measurement):** applying the same
-measured rack average to 2026-09-04 00:00 → 2026-09-11 18:50 CEST gives **~63 kWh /
-~€14.7** additional, or **~313 kWh / ~€72.5** for the measured value plus extrapolation.
-The seven-hour Wright incident window corresponds to **~2.43 kWh / ~€0.56** at that average.
+measured rack average to 2026-09-04 00:00 → 2026-09-13 08:45 CEST gives **~78 kWh /
+~€18.1** additional, or **~328 kWh / ~€76** for the measured value plus extrapolation.
+The Wright recovery path (~4–5 days machine wall since 09-09) corresponds to roughly **~€8–10**
+rack energy at that average (estimate, not an isolated meter).
 This is whole-rack time allocation, not measured marginal incident energy.
 
 **PSU/rack plausibility:** the host uses a **be quiet! SFX Power 3 450 W, 80 PLUS Bronze**.

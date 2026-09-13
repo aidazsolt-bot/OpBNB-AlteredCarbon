@@ -35,26 +35,29 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-12 ~08:20 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-09-13 ~08:45 CEST) {#session-memory}
 
-> **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`. Chat: `ea987bef…`.
+> **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
+> Chats: `ea987bef…` (Langthread) · `6cc355ee…` (09-12 Infra/Handshake).
 
 | Thema | Lage |
 | --- | --- |
-| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** (`Starting Reth … 04eb5ac`) · Tip **`--debug.max-block 43519340`** + terminate · IPC `/tmp/BSCRethArchiveNode.ipc` · metrics `:6060` |
-| **Git** | Streaming **`a1e50e6352`** + rustfmt **`04eb5ac2a9`** · ahead 2 unpushed · Speedup Feature-Branch |
-| **Live jetzt** | **läuft** seit ~08:18 CEST. Startup: **TxHash-Heal** aktiv (CP TxLookup **10 M**, SF tip **43 519 337**, tx `58.5 M→~2.55 B`). Danach History-Heal (→Exec **34 367 717**), dann Pipeline: Sender skip→**Exec 34 M→43.5 M**→Merkle→TxLookup/Index streaming→Finish. |
-| **Stage-Tips (vor Lauf)** | Headers **71.2 M** · Bodies **43 519 337** · Exec/Merkle **34 367 717** · Index/TxLookup **10 M** |
-| **TxLookup-Streaming** | @10 M live ✅ (12×5 M). Erwartet erneut `10 M→43.5 M` nach Heals+Exec. |
-| **Ops** | **Nicht restarten** während Heal. Peak RSS zuletzt ~136 GiB. RocksDB start ~4.8 GiB. |
-| **Kosten / Gates** | ~54 h / EUR 650 · PIPE-012 @10 M ✅ · Snap gesperrt |
+| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · Tip **`--debug.max-block 43519340`** + `--debug.terminate` · IPC **UP** · metrics **`:6060`** |
+| **Git** | **`92990c1861`** lokal (+ `handshake_reject` example) · Streaming **`a1e50e6352`** · `sync-eta.sh` Horizon-Fix uncommitted · `main` ahead `alteredcarbon/main` |
+| **Live jetzt (~08:45)** | **Execution** ~**35 044 653** / Horizon **43 519 340** (~**80 %**) · ~**50–67 blk/s** (15m) · Exec-ETA **~1d 12h–2d 6h** · danach Merkle/Hashing + TxLookup/Index **streaming** → Finish |
+| **Recovery-Heal (09-12→13)** | TxHash ✅ · StoragesHistory ✅ (~5.8 h) · AccountsHistory **2437/2437 ✅** (~00:12 UTC 09-13) → Exec-Catch-up **34.37 M→43.5 M** |
+| **Wright-Incident (09-09)** | Receipt-Root @ **`34367717`** → Unwind **`34366337`** · Fix **`29d7bfa2dd`** (PIPE-009/X02) · **Kein** Weiterlaufen auf divergentem State — Re-Exec-Pfad über Tip-Läufe + History-Heal |
+| **TxLookup-Streaming** | @10 M live ✅ · erneut **`10 M→43.5 M`** nach Exec+Heal |
+| **Ops** | **Kein Restart** mid-Exec ohne OPS-001. `scripts/sync-eta.sh` nutzt **Sync-Horizon** (nicht Headers-Tip). Log: `$ARCHIVE_LOG`. |
+| **Gates** | PIPE-012 @10 M ✅ · Snap gesperrt · **X02 Re-Exec past Wright** 🔄 (Exec→Horizon) · Point-4 nach Exec-Stichprobe |
+| **Checkmk** | OAuth-MCP **live** (read); Influx/Checkmk-Rule **`local-infra-monitoring`** |
 
-### Nächste Schritte (unmittelbar — Stand 2026-09-12 ~08:20 CEST)
+### Nächste Schritte (Stand 2026-09-13 ~08:45 CEST)
 
-1. **Laufen lassen** bis Tip **`43 519 340`** + terminate (Heal→Exec→Index).
-2. Beobachten: Heal-Fortschritt; danach Exec blk/s; TxLookup-Chunks ohne OOM.
-3. Nach Finish: Stage-CPs = Tip; Startup-Heal sollte weg sein (Index≈Bodies/ChangeSets).
-4. Später: höherer Tip / Catch-up; Point-4; Upstream-PR; Speedup-Merge.
+1. Exec bis Horizon **43 519 340** laufen lassen; validation errors **0** halten.
+2. Merkle → Index/TxLookup streaming; Receipt-Root @ Gate erneut prüfen wenn Exec ≥ **`34367717`**.
+3. Point-4 stateRoot (Haber/Wright) nach Exec-Fortschritt.
+4. `sync-eta.sh`-Fix + Doku committen wenn gewünscht.
 
 ## Ziel & Kontext
 
@@ -398,25 +401,25 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-10 ~09:59 CEST (Wright-Gate-Lauf):** Tip-Hash `0xd6094500…` = **`34 367 717`** + terminate. Bodies skip (43.5 M > Tip); Sender ✅ Tip; **Execution ~33.32 M → Tip** (~37–40 blk/s, ETA ~6–9 h). Peers 4; errors 0; Point-4 MATCH. PIPE-009/X02 Code ✅ `main` (`29d7bfa2dd`); Speedup nur Feature-Branch. (09-09 Abend: Bodies-Refill Richtung 71.2 M / Exec park Wright−1 — überholt.)
+- **Stand 2026-09-13 ~08:45 CEST (Tip-43.5 M Recovery):** Nach Wright-Receipt-Mismatch (09-09) und Tip-10 M-Streaming (09-12): Tip **`43 519 340`** + terminate. History-Heal **~18 h** Maschinenzeit (09-12 06:18Z→09-13 00:12Z). **Execution** **35.0 M→43.5 M** (~**8.5 M** rest, ~**1.5–2 d** @ 50–67 blk/s). Peers **5**; errors **0**. Siehe [#session-memory](#session-memory) und *Wright-Recovery* unten.
 
 ## Roadmap (aktuell — Exec-Fenster)
 
 | Fenster | Ziel | Aufwand (Schätzung) | Status |
 | --- | --- | --- | --- |
-| **jetzt** | Wright-Gate: Exec → `34367717` (`0xd6094500…`) + terminate; Receipt-Root Match | unsupervised + Spot-Check | 🔄 Exec ~33.32 M / tip 34.37 M; ETA ~6–9 h |
-| **≤48 h nach Exec past Wright** | Point-4 stateRoot @ Haber + Wright (+ Stichprobe `34367717`) vs public RPC | ~0.5 h Agent/Stichprobe | ✅ Haber MATCH (08-17, pre-Incident); ⏳ nach Re-Exec wiederholen |
-| **≤48 h** | Journal/Mimir: kein Unwind / receipt-root / peers>0 | ~5–10 min / Check | 🔄 Bodies errors 0; peers 2 |
-| **nach Gate `34367717`** | Feature-Branch Speedup `b32f9e58d6` → `main` (oder bewusst zurückhalten) | Review + merge | 📋 Speedup live gemessen ~2×, noch nicht auf `main` |
-| **diese Woche** | CLEANUP-A02 Rest (provider/rpc/db/…) + A03/A04 | ~2–4 h Agent | 🔄 A02 partial |
-| **bei geplantem Restart** | PORT-P2P-006 Dual-Stack; optional Serve-RX / ENGINE-004 | ~0.5–1 d Code+Live | 📋 geparkt |
-| **Kontext 09-02 Re-Sync** | Genesis-Rebuild `storage_v2`; später `--debug.tip` `71185160` nach Merkle-Unwind-Forensik | — | Historie Session 13/18/20; aktueller Lauf = Recovery nach Wright-Incident |
+| **jetzt** | Exec → Horizon **`43 519 340`** + terminate; danach Merkle/Index/TxLookup | **~1.5–2 d** Exec-Maschine + **~0.5–1 d** Rest (Schätzung) | 🔄 Exec **~80 %** · sync-eta 15m **~1d 17h** |
+| **wenn Exec ≥ `34367717`** | Receipt-Root / Point-4 @ Wright-Gate vs public RPC | ~0.5 h Spot-Check | ⏳ Re-Exec läuft |
+| **≤48 h** | Mimir/Logs: validation **0**, kein Unwind-Sturm | ~5–10 min / Check | ✅ errors 0 · peers 5 |
+| **nach Horizon** | Feature-Branch Speedup `b32f9e58d6` → `main` (optional) | Review + merge | 📋 ~2× gemessen, nicht auf `main` |
+| **diese Woche** | CLEANUP-A02 Rest; `sync-eta.sh` Horizon-Fix committen | ~1–2 h Agent | 🔄 |
+| **Kontext Recovery** | **09-09** Wright-Mismatch + Unwind · **09-10** Gate-Lauf · **09-12** Tip-43.5 M + History-Heal · **09-13** Exec-Catch-up | **~3–4 d** kum. Maschinenwall (Heal+Exec, ohne Genesis) | 🔄 s. Aufwandsprotokoll *Wright-Recovery* |
+| **Kontext 09-02 Re-Sync** | Genesis-Rebuild `storage_v2` (Session 13) | **~Wochen** Maschine (historisch) | ✅ abgeschlossen; **nicht** wiederholt für Wright |
 | **nach Tip** | Snapshot-Manifest/`download` für op-reth verdrahten; FEAT-HIST-* | groß | 📋 nach Sync-Gates |
 | **nach Wright-Gate + Sync-Stabilität** | **FEAT-SNAP-001:** 100 % Spec-konforme **snap/1 + snap/2** **Client + Peer** (Serve+Sync); PIPE-015…017 + FLOW-SNAP-01…06; **nicht** Archive-History-Ersatz | Server MVP ~6–10 Wo / Prod ~3–4 Mo; Client MVP ~3–5 Mo / Prod ~5–8+ Mo; beide ~6–10 Mo (1 Senior) | 🔬 Roadmap · Code erst nach PIPE+FLOW-DoD; opBNB-Interop zuerst snap/1 |
 | **erledigt 09-02** | **V2-State-Integrität — drei gekoppelte Guards.** (a) **PORT-STOR-011**: `remove_state_above` kehrt still zurück, wenn Static Files bereits gekürzt sind → State-Revert entfällt, Checkpoint wird trotzdem gesetzt. (b) **PORT-STAGE-006**: `AccountHashing`/`StorageHashing` sind unter `use_hashed_state()` im Forward reine No-ops; nach abgebrochenem Unwind bleibt die Differenz ungehasht. (c) **PORT-STAGE-007**: Hashing-`unwind()` hat keinen Table-Clear-Pfad, „Unwind auf 0“ leert den Hashed State nicht. Zusammen erzeugen sie **stillen, nicht reparierbaren State-Verlust** | ~1–2 d Code + Regressionstests | ✅ lokal gehärtet: Storage-V2-aware `stage drop Execution`, `remove_state_above`-Abort bei Execution>Blockdaten, Startup-Consistency-Guard bei Execution==Header-Tip aber Hashing darunter, Hashing-Unwind-to-0 clear. Upstream-Issue/PR später prüfen bzw. melden |
 | **nicht jetzt** | Rebase → reth 2.5.0; Live-Datadir snapshotten während Exec | — | ⛔ |
 
-**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · **X02/PIPE-009 Code ✅ (`main` `29d7bfa2dd`)** · Live Re-Exec past Wright + `34367717` ⏳ · Haber Point-4 historisch ✅ (nach Recovery erneut) · Tip/`--debug.tip` 71.2 M 🔄 · FLOW-X05 watch · Speedup nur Feature-Branch.
+**P0-Gates (Exec):** PIPE-014 live past Fail ✅ · **X02/PIPE-009 Code ✅ (`29d7bfa2dd`)** · Live Re-Exec past Wright **`34367717`** 🔄 (Exec 35 M→43.5 M) · Haber Point-4 historisch ✅ · FLOW-X05 watch · Speedup Feature-Branch.
 
 ### BSC Mainnet Port — ARCHIV (Workspace opBNB-only seit 2026-08-24)
 
@@ -764,6 +767,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Cursor Session 22 (Chat `ea987bef…` C17, **2026-09-09 ~23:06–23:32 CEST**) | Interaktiv **~0,43 h** | Auto/Composer | Delta im laufenden Transcript; kein separater billed Meter | (Proxy) | Sync-ETA/Health, Session-Memory, Kostenkorrektur | Kein neuer Code-Fix; Konsens-Fix bleibt `29d7bfa2dd` |
 | Cursor Session 23 (Chat `ea987bef…` C18, **2026-09-10 ~09:51–10:35 CEST**) | Interaktiv **~0,73 h** | Auto/Composer | Delta im laufenden Transcript | (Proxy) | Tip→`34367717`, Live-Status/Docs, GitHub About+Topics, README Hero-Logo | Gate-Lauf aktiv; kein Konsens-Code |
 | Cursor Session 24 (Chat `ea987bef…`, **2026-09-11 ~11:45–18:50 CEST**) | Interaktiv **~6 h** (Status/Heal-Polling + Coding; Idle während Heals nicht voll gezählt) | Auto/Composer | Delta Transcript; billed n/a | (Proxy) | TxLookup-OOM-Forensik; chunked ETL+RocksDB-auto-commit; `make maxperf-op` ~23 min; Tip-Steps 20k/2 M/10 M; Unichain NAT `127.0.0.1`; Issues op-rs#3 + optimism#22873; Effort-Doku | Tip-10 M ✅ Finish; Streaming live verifiziert; commits `a1e50e6352`/`04eb5ac2a9` |
+| Cursor Session 25 (Chats `6cc355ee…` + Folgetasks **2026-09-12 ~18:30–19:05 CEST**; Doku **2026-09-13 ~08:40 CEST**) | Interaktiv **~3–4 h** (Workspace-Reentry, Checkmk OAuth-MCP, `handshake_reject`, sync-eta Horizon-Fix, README-Grafik, Aufwands-Doku) | Auto/Composer | billed n/a | (Proxy) | Infra-Scaffold; P2P-Handshake-Smoke vs op-geth-Peer ✅; kein Konsens-Code | Live: Tip-43.5 M Heal→Exec; Commit `92990c1861` (example only) |
 
 | Copilot Session 13 (Storage-v2 recovery, 2026-09-02) | Journal/Mimir-Diagnose (Static-File-Underflow, fehlender Slot-Preimage-Port); zwei Source-Fixes (`fa6caf3022`, `ce0c722d9b`); 6 reaktivierte Preimage-Regressionstests + `test_pipeline`/`test_pipeline_v2`; 2× `make maxperf-op` | k.A. | k.A. | k.A. | Kein Per-Session-Token-Ledger verfügbar; keine Kostenschätzung |
 | Copilot Session 14 (Peer-Connectivity + migrate-v2-Validierung, 2026-09-03) | ForkHash-Re-Verifikation, Peer-Injection-Tool + systemd-Timer (später obsolet), isolierter `p2p body`-Reachability-Test, Dev-Host `db migrate-v2` End-zu-Ende-Test | k.A. | k.A. | k.A. | Kein Ledger; mehrere kurze Dev-Host-Rebuilds/Restarts (s. Restart-Historie Session 18) |
@@ -774,42 +778,54 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Copilot Session 20 (Execution fetch/execute pipeline, 2026-09-07) | Lokales Block-Fetch/Decode mit EVM-Ausführung über bounded `sync_channel(4)` überlappt; maxperf-Build **23m39s**, Live-Vergleich **~2,37x** pro Batch bzw. **~2,0x** Checkpoint-Rate; Änderung bleibt vorerst auf `feat/execution-stage-fetch-pipeline` | k.A. | k.A. | k.A. | Kein separater Billed-Token-Snapshot; 1 maxperf-Build + Live-Restart |
 | Copilot Session 21 (Wright L1FeeVault Consensus-Fix, 2026-09-09; Usage-Snapshot während Doku-Update 13:30–13:47 CEST) | Fataler Receipt-Root-Mismatch @`34367717`; öffentliche Receipt-RLP/MPT-Verifikation; op-geth-Paritätsaudit; gemeinsamer Debit/Credit-Fix + 2 Wright-Regressionstests; maxperf-Build **22m25s**; Offline-Unwind **72m35s**; isolierter Fix-Commit `29d7bfa2dd` nach `main` gepusht, Execution-Speedup nicht enthalten | **20.386.711 Input**, davon **19.270.326 Cache-Read** + **545.276 Cache-Write** | **77.366 Output** | **178 Modellaufrufe**; **~7 h Incident-Wall** | Offizielle GitHub-Tokenpreise: **~USD 13,59 / 1.358,8 AI Credits**, mit 10-%-Auto-Rabatt **~USD 12,23 / 1.222,9 Credits**; tatsächlicher Zusatzbetrag kann innerhalb des Plan-Kontingents **USD 0** sein |
 
+### Wright-Incident → Re-Execution / History-Heal (Maschinenzeit, kein Genesis-Re-Sync)
+
+| Phase | Zeitraum (CEST/UTC) | Maschinen-/Wall-Zeit (Größenordnung) | Ergebnis |
+| --- | --- | ---: | --- |
+| Receipt-Mismatch + Unwind | **2026-09-09** | Build **22m** + Unwind **72m** + Incident-Analyse **~7 h** Agent-Wall | Unwind auf **`34366337`**; Fix `29d7bfa2dd` |
+| Wright-Gate-Lauf (Tip **`34367717`**) | **2026-09-10** | Exec **~33 M→34.37 M** (~**6–9 h** unsupervised, Schätzung) | Gate-CP erreicht; divergenter State nicht weiterverwendet |
+| Tip-10 M + TxLookup-Streaming | **2026-09-11→12** | Overnight Finish **~02:18 CEST**; Session-24 Coding **~6 h** interaktiv | PIPE-012 @10 M ✅ |
+| Tip **`43 519 340`** — TxHash + History-Heal | **2026-09-12 08:18→09-13 02:12 CEST** | **~18 h** durchgehend (RocksDB Index-Heal, Logs) | AccountsHistory **2437/2437** ✅ |
+| Exec Catch-up **34.37 M→43.5 M** | **ab 09-13 ~02:12 CEST** | **~1.5–2 d** rest @ 50–67 blk/s (Mimir/logs 09-13 08:45) | 🔄 **~80 %** |
+| **Summe Recovery-Pfad** | 09-09 → Finish Horizon | **~4–5 d** Rack-Maschinenzeit (Heal+Exec, überlappend mit normaler Sync-Last) + **~13 h** dokumentierte Agent/Copilot-Incident-Walls | Kein erneuter Genesis-Drop (anders als 09-02 Session 13) |
+
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
 > Turn. Cursor speichert hier **keinen** äquivalenten `assistant_usage_events`-Zähler (Chat-Blobs teils
 > verschlüsselt) — daher Activity-Counts + Content-Size-Proxies. Kein Effizienz-Benchmark.
 > **Kosten (illustrativ, kein Invoice):** Copilot `a95758da` allein ~650M in / ~1,9M out ≈ **USD 1,5–2k**
 > bei öffentlichen Sonnet/GPT-Listenpreisen ohne Cache-Rabatt. Cursor: Content-Proxy unterzählt
 > Context-Resend; **billed** nur Account-Dashboard / Abo. **Dem opBNB-Projekt zugerechnete Cursor-AI-Kosten
-> laut Betreiberangabe weiterhin ca. EUR 70** (Stand 09-11; kein neuer Rechnungsbeleg für Session 22–24).
+> laut Betreiberangabe weiterhin ca. EUR 70** (Stand 09-13; kein neuer Rechnungsbeleg für Session 22–25).
 > Der höhere Cursor-Gesamtaufwand umfasste auch andere Projekte und wird hier deshalb nicht vollständig
 > angesetzt. **Zeitkorrektur 09-10 10:35:** Chat `ea987bef` + Aug-23-Chat `7bb73584` liefern messbare
 > Interaktiv-Spans (**~25,1 h** bzw. **~8,5 h**) weit über der alten Session-12-Schätzung (~8,5 h nur bis 16.08) —
-> das korrigiert **Arbeitsstunden**, nicht die EUR-70-Allokation. **Session 24 (+~6 h):** kumuliert Cursor
-> ~**54 h**; EUR **unverändert**. **Reale Copilot-Kosten laut Betreiberangabe: ~EUR 170 kumuliert**
+> das korrigiert **Arbeitsstunden**, nicht die EUR-70-Allokation. **Session 24 (+~6 h) + Session 25 (~3–4 h):**
+> kumuliert Cursor ~**57–58 h**; EUR **unverändert**. **Reale Copilot-Kosten laut Betreiberangabe: ~EUR 170 kumuliert**
 > (EUR 100 August + ~EUR 70 davor/danach). Sessions 13–20 (Copilot CLI): kein Per-Session-Billed-Token-Ledger —
 > **keine** Zahl erfinden. Session 21: strukturierte Usage-Zähler, Listenpreis **~USD 13,59** / mit Auto-Rabatt
 > **~USD 12,23** (Verbrauchsäquivalent, nicht zusätzlich zu EUR 170 summieren; marginal oft USD 0 im
 > Plan-Kontingent). Quellen: lokale Transcripts unter `agent-transcripts/` (Cluster Gap>90 min),
 > Copilot-Usage-Snapshot Session 21; `files/`-Metriken lokal-only.
 
-**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert; Stand 2026-09-11 ~18:50 CEST):**
+**Kostenübersicht (Währungen bewusst nicht ohne Wechselkurs addiert; Stand 2026-09-13 ~08:45 CEST):**
 
 | Kostenart | Betrag | Einordnung |
 | --- | ---: | --- |
-| Cursor AI | **~EUR 70** | opBNB-Anteil laut Betreiberangabe; **unverändert** trotz ~**54 h** Cursor-Interaktiv |
+| Cursor AI | **~EUR 70** | opBNB-Anteil laut Betreiberangabe; **unverändert** trotz ~**57–58 h** Cursor-Interaktiv |
 | Copilot | **~EUR 170 tatsächlich** | EUR 100 August + ~EUR 70 davor/danach, Betreiberangabe |
 | Copilot Session 21 | **~USD 13,59** Listenpreis / **~USD 12,23** Auto-Rabatt | Verbrauchsäquivalent; nicht zusätzlich zur EUR-Copilot-Zahl |
 | Rack-Strom, 05.08.–04.09. | **~EUR 57,8** | 250 kWh gemessen × 0,231 EUR/kWh |
-| Rack-Strom, 04.09.–11.09. **18:50** | **~EUR 14,7** | Fortschreibung ~EUR 2,14/Tag (+~1 d vs 09-10); kein neuer Zähler |
-| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 340** aufgelaufen seit 01.10.2025 bis 11.09.2026 | zeitanteilig; gemeinsame Anbindung; +1 d vernachlässigbar |
-| **Erfasste EUR-Summe** | **~EUR 650** | Cursor 70 + Copilot 170 + Strom **~72,5** + Internet **~340**; gerundet ~650 (ohne Hardware/Arbeitszeit) |
+| Rack-Strom, 04.09.–13.09. **08:45** | **~EUR 18,5** | Fortschreibung ~EUR 2,14/Tag (~9,4 d); kein neuer Zähler |
+| Wright-Recovery Rack-Anteil (09-09→13) | **~EUR 8–10** (Schätzung) | ~4–5 d Maschinenwall × ~EUR 2,14/Tag; **kein** isolierter Zähler |
+| A1 Glasfaser 250/100 | **~EUR 30/Monat** / **~EUR 342** aufgelaufen seit 01.10.2025 bis 13.09.2026 | zeitanteilig; gemeinsame Anbindung |
+| **Erfasste EUR-Summe** | **~EUR 658** | Cursor 70 + Copilot 170 + Strom **~76** + Internet **~342**; gerundet (ohne Hardware/Arbeitszeit) |
 | **USD-Verbrauchsäquivalent** | **~USD 12,23** | Session-21-Kontrollrechnung; nicht in EUR-Summe |
 
 **Menschlicher Ops-/Senior-Developer-Aufwand (Session-basierter Marktwert, keine Rechnung):**
 
 Nur dokumentierte Interaktiv-Cluster (Gap>90 min-Span), keine unbeaufsichtigte Sync-Laufzeit.
-**Cursor (korrigiert 09-11):** Sessions 6+8+9+10 (**~14,7 h**) + `ea987bef` C1–C18 (**~25,1 h**) +
-`7bb73584` Aug-23 (**~8,5 h**) + Session 24 (**~6 h**) ≈ **~54 h** Cursor-Interaktiv. **Copilot:** `a95758da`
+**Cursor (korrigiert 09-13):** Sessions 6+8+9+10 (**~14,7 h**) + `ea987bef` C1–C18 (**~25,1 h**) +
+`7bb73584` Aug-23 (**~8,5 h**) + Session 24 (**~6 h**) + Session 25 (**~3–4 h**) ≈ **~57–58 h** Cursor-Interaktiv. **Copilot:** `a95758da`
 ~8,1 h; Sessions 13–18 ~6–12 h; Session 19 ~0,8 h; Session 20 ~4,7 h; Session 21 ~7 h Incident-Wall;
 09-08-Status ~0,1 h ≈ **~27–33 h** Copilot-Fenster. Parallelität Agent/Maschine → keine Kalenderdauer als Vollzeit.
 
@@ -817,17 +833,17 @@ Gemäß Betreiberwahl: gemischte Stunden **voll in beiden Rollen**; Rollensumme 
 
 | Rolle | Erfasster Aufwand | Marktband (netto, exkl. USt) | Arbeitswert |
 | --- | ---: | ---: | ---: |
-| Senior Ops / DevOps | **~45–55 h** | **EUR 80–120/h** | **~EUR 3.600–6.600** |
-| Senior Reth-/Blockchain-Developer | **~69–79 h** | **EUR 100–150/h** | **~EUR 6.900–11.850** |
-| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~114–134 Rollenstunden** | — | **~EUR 10.500–18.450** |
-| **Mittelpunkt für Budgetplanung** | Ops 50 h @100 + Dev 74 h @125 | — | **~EUR 14.250** |
+| Senior Ops / DevOps | **~48–58 h** | **EUR 80–120/h** | **~EUR 3.800–7.000** |
+| Senior Reth-/Blockchain-Developer | **~72–82 h** | **EUR 100–150/h** | **~EUR 7.200–12.300** |
+| **Gesamt Arbeitswert, mit Vollzählung der Überschneidung** | **~120–140 Rollenstunden** | — | **~EUR 11.000–19.300** |
+| **Mittelpunkt für Budgetplanung** | Ops 53 h @100 + Dev 77 h @125 | — | **~EUR 14.925** |
 
 Die Stundensatzbänder sind Marktansätze für österreichische/DACH-Freelancer 2026, keine
-tatsächlich gestellte Rechnung. Zuzüglich erfasster Sach-/AI-Kosten von **~EUR 650** ergibt sich ein
-dokumentierter Projektwert von **~EUR 11.150–19.100**, mit Budget-Mittelpunkt **~EUR 14.900**.
+tatsächlich gestellte Rechnung. Zuzüglich erfasster Sach-/AI-Kosten von **~EUR 658** ergibt sich ein
+dokumentierter Projektwert von **~EUR 11.650–19.950**, mit Budget-Mittelpunkt **~EUR 15.580**.
 Hardware, USt, Opportunitätskosten und undokumentierte Betreuung bleiben ausgeschlossen.
 
-### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-11 **18:50** CEST)
+### Infra-Betrieb-Kosten (Restart-/Rebuild-Proxys direkt, Stromkosten — Stand 2026-09-13 **08:45** CEST)
 
 Es liegt **keine reale Hosting-Rechnung** für den Archive-Node vor (Betrieb auf Nutzer-eigener
 Infrastruktur, nicht gemietete Cloud-Instanz mit Abrechnung pro Stunde). Restart-/Rebuild-Zahlen
@@ -841,7 +857,7 @@ aber es wird keine Zahl frei erfunden:
 | Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
 | Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
 | `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 9 vollständige Fat-LTO-Builds à ~20–24 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16); Session 20 **23m39s**, Session 21 **22m25s**, Session 24 **~23 min** (TxLookup-Streaming) | plan.md-Sessionprotokoll |
-| Wright-Recovery-Maschinenzeit (09-09) | Build **22m25s** + Offline-Unwind **72m35s**; anschließender Header-/Body-Refill und Re-Execution laufen weiter | Build-/Node-Log |
+| Wright-Recovery-Maschinenzeit (09-09→13) | Build **22m25s** + Unwind **72m35s**; Gate-Lauf 09-10; **~18 h** History-Heal 09-12/13; Exec **~1.5–2 d** rest (09-13) | Build-/Node-Log + Mimir; s. Tabelle *Wright-Recovery* |
 | A1 Glasfaser Internet 250/100, unlimitiert | **~EUR 30/Monat**, **~EUR 360/Jahr**, aktiv seit Oktober 2025; gemeinsame Anbindung aller Dienste/Nodes, nicht opBNB-exklusiv | Betreiberangabe |
 | Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
 
@@ -859,10 +875,10 @@ ergibt das:
 | … pro Monat (30 Tage) | **~EUR 57,8** |
 
 **Fortschreibung nach dem letzten realen Zählerstand (keine neue Messung):** Für
-04.09.2026 00:00 bis 11.09.2026 **18:50** CEST (~7,78 Tage) ergibt die unveränderte gemessene
-Rack-Durchschnittsrate von 8,33 kWh/Tag rechnerisch **~64,8 kWh / ~EUR 15,0** zusätzlich.
-Gemessener 30-Tage-Wert plus Fortschreibung entsprechen damit **~314,8 kWh / ~EUR 72,8** über
-~37,8 Tage (in der Kostenübersicht gerundet **~EUR 72,5** Strom / Gesamtsumme **~EUR 650**).
+04.09.2026 00:00 bis 13.09.2026 **08:45** CEST (~9,4 Tage) ergibt die unveränderte gemessene
+Rack-Durchschnittsrate von 8,33 kWh/Tag rechnerisch **~78,3 kWh / ~EUR 18,1** zusätzlich.
+Gemessener 30-Tage-Wert plus Fortschreibung entsprechen damit **~328,3 kWh / ~EUR 75,9** über
+~39,4 Tage (in der Kostenübersicht gerundet **~EUR 76** Strom / Gesamtsumme **~EUR 658**).
 Das ist ausdrücklich eine lineare Extrapolation, kein neuer Zählerstand.
 
 Für das rund siebenstündige Wright-Incident-Fenster entspricht derselbe Rack-Durchschnitt
@@ -909,9 +925,9 @@ Gesamtverbrauch umrechnen. Diese Werte werden nicht auf 450 W hochskaliert. Bela
 Rack-Zähler und die obige elektrische Plausibilitätsgrenze. Der Preis von 0,231 EUR/kWh bleibt ein
 Haushalts-Bruttopreis-Proxy; Hardware-/Node-Anteile benötigen Einzelmessungen.
 
-## Nächste Schritte (unmittelbar — Stand 2026-09-12 ~08:20 CEST)
+## Nächste Schritte (unmittelbar — Stand 2026-09-12 ~09:05 CEST)
 
-> Spiegel [#session-memory](#session-memory): Tip-**43 519 340**-Lauf läuft — nicht restarten.
+> Spiegel [#session-memory](#session-memory): Tip-**43 519 340**-Lauf · TxHash-Heal ~40 % — **nicht** restarten.
 
 
 ## Session `a95758da` Fortsetzung (2026-08-06, `cargo check -p reth-bsc-evm` Kompilier-Loop)
@@ -1651,26 +1667,24 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-12 **~08:20 CEST** · chain **204** · Tip **`43 519 340`** + terminate **läuft**
-· Binary **`04eb5ac`** · Startup **TxHash-Heal** (Index 10 M → SF Bodies) · danach History-Heal + Exec Catch-up
+**Stichprobe (aktuell):** 2026-09-13 **~08:45 CEST** · chain **204** · Horizon **`43 519 340`** + terminate
+· Binary **`04eb5ac`** · **Execution** ~**35 044 653** (~**80 %** Horizon) · ~**58 blk/s** (15m) · IPC/metrics **UP**
+· `scripts/sync-eta.sh`: Active **Execution**, ETA Exec-only **~1d 17h** (15m window)
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers | **71 185 160** | Rest älterer Tip |
-| Bodies | **43 519 337** | > Exec/Index |
-| SenderRecovery / Execution / Merkle* / Hashing | **34 367 717** | ✅ Wright-Gate |
-| TransactionLookup | **10 000 000** | ✅ Streaming live (12 Chunks @5 M Txs, ~75 s, kein OOM) |
-| IndexStorageHistory / IndexAccountHistory | **10 000 000** | ✅ nach Heal |
-| Prune / Finish | **10 000 000** | ✅ terminate |
-| Konsens | PIPE-009 / FLOW-X02 | ✅ Gate zuvor; Indexing ≠ Konsens |
+| Headers | **71 185 160** | 100 % (älterer Tip) |
+| Bodies / SenderRecovery | **43 519 340** | 100 % Horizon |
+| Execution | **~35 044 653** | 🔄 Catch-up **34.37 M→43.5 M** |
+| Merkle* / Hashing | **34 367 717** | wartet auf Exec |
+| TransactionLookup / Index* / Finish | **10 000 000** | Streaming nach Exec; Re-Index erwartet |
+| Konsens | PIPE-009 / X02 | Fix ✅; **Re-Exec** 🔄 |
 
-**TxLookup-OOM (09-11):** One-Shot → ~71 GiB WAL; Fix **`a1e50e6352`** chunked ETL + auto-commit — live verifiziert @10 M.
+**Wright-Recovery (09-09→13):** Receipt-Root-Mismatch @ **`34367717`** → Unwind · Code-Fix Session 21 · Tip-10 M ✅ (09-12) · Tip-43.5 M + **~18 h** History-Heal (09-12/13) · Exec läuft. Kein Genesis-Re-Sync.
 
-**Heal:** Startup heilt Index≪SF (History→Exec, TxHash→Bodies). Nächster Tip min. **`34 367 717`**; Heal-frei bis Bodies: **`43 519 337`**. Kein Tip → Headers **71 M**.
+**TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M live ✅.
 
-**Branch-Lage:** `main` = Wright-Fix + TxLookup-Streaming (+ rustfmt). Speedup Feature-Branch. **ahead 2**, unpushed.
-
-**Handoff:** siehe [#session-memory](#session-memory).
+**Handoff:** [#session-memory](#session-memory).
 
 Historische Stichprobe 2026-08-20 (~Exec 65.8 M / Tip 174 M, peers 16): `files/opbnb-archive-sync-snapshot-20260820.json`.
 
