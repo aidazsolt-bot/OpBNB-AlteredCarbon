@@ -83,6 +83,9 @@ __pycache__/
 # Local infra paths / hostnames / LAN IPs (never commit)
 .cursor/local/
 
+# Local operator scripts (ETA, publish helpers, forensics) — never commit
+scripts/
+
 # Local agent/compile/sync scratch and forensic artefacts (never commit)
 files/
 first-build.log
