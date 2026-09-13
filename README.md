@@ -337,6 +337,7 @@ Official reference for the throughput comparisons below: [Diversifying BNB Smart
 | Cursor Session 23 (2026-09-10 ~09:51–10:35 CEST, `ea987bef` C18) | **~0.73 h** interactive; Wright-Gate tip correction to `34367717`, live status/docs, GitHub About+topics, README hero dashboard logo; no consensus code |
 | Cursor Session 24 (2026-09-11 ~11:45–18:50 CEST, `ea987bef`) | **~6 h** interactive; TxLookup OOM→chunked ETL; tip **10 M** Finish ✅ overnight (02:18 CEST 09-12); **12** streaming chunks @5 M txs live; commits `a1e50e6352`/`04eb5ac2a9`; maxperf ~22 min |
 | Cursor Session 25 (2026-09-12 ~18:30–19:05 + 2026-09-13 ~08:40 CEST, `6cc355ee…` + follow-ups) | **~3–4 h** interactive; workspace reentry, Checkmk OAuth-MCP, `handshake_reject` P2P smoke, `sync-eta.sh` horizon fix, README hero + effort docs |
+| Cursor Session 26 (2026-09-13 ~20:00–21:15 CEST, `92a6866f…`) | **~1–1.5 h**; `gh` workflow-scope + push; CI Smoke `--debug.tip` @10 M; tip vs max-block Doku; live Stand ~83.6 % Exec |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -445,13 +446,15 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-09-10:** Wright-Gate tip run to **`34 367 717`** (Exec ~33 M→34.37 M, ~6–9 h machine).
 - **2026-09-12→13:** Tip **`43 519 340`** + terminate — **~18 h** History-Heal (TxHash → StoragesHistory → AccountsHistory **2437/2437** @ ~00:12 UTC 09-13).
 - **2026-09-13 ~08:45:** **Execution** ~**35.0 M** / horizon **43.5 M** (~**80 %**); ~**58 blk/s** (15m); Exec-only ETA **~1d 17h**; validation errors **0**; peers **5**.
+- **2026-09-13 ~21:15:** **Execution** **36.38 M** (~**83.6 %**); ~**21 blk/s** (15m); ETA **~3–4 d**; peers **7**; Point-4 **MATCH** (incl. 35 M / 36.37 M); CI Smoke → **`--debug.tip` @10 M** (`3adbe256a9`).
 - **Not** a genesis re-sync (unlike 2026-09-02 Session 13); recovery = heal + re-execute on existing archive datadir.
-- `scripts/sync-eta.sh` now uses **sync horizon** (Bodies/Sender cap) when Headers ≫ Bodies.
+- `scripts/sync-eta.sh` now uses **sync horizon** (Bodies/Sender cap) when Headers ≫ Bodies (lokal unter `scripts/`, gitignored).
 
-##### Live sync progress (2026-09-13 ~08:45 CEST)
+##### Live sync progress (2026-09-13 ~21:15 CEST)
 
-- Horizon **`43 519 340`**; active stage **Execution**; then Merkle + TxLookup/index streaming → Finish.
+- Horizon **`43 519 340`**; active **Execution**; then Merkle + TxLookup/index streaming → Finish.
 - Grafana hero: `assets/logo.png` (2026-09-13 snapshot).
+- GHA: fixed tip hash block **10 000 000** + `--debug.terminate` (no op-node).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 
@@ -552,7 +555,7 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Verify | Point-4 / public-RPC spot-checks; receipt-root harness direction; when to park before fail height |
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups. |
 | September incident/recovery follow-ups (2026-09-02 → 09-13, order of magnitude) | Storage-v2 (09-02 genesis re-sync, historical); Wright mismatch **09-09** + re-exec path; Session 24 Tip-**10 M** ✅; Tip-**43.5 M** + **~18 h** History-Heal + Exec catch-up (**~4–5 d** rack machine wall cumulative). |
-| Cost summary through 2026-09-13 **08:45** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (unchanged). Electricity: **~EUR 76** (rack meter + extrapolation). A1 fiber: **~EUR 342**. **Tracked opBNB total: ~EUR 658.** Wright recovery rack share **~EUR 8–10** (estimate). Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
+| Cost summary through 2026-09-13 **21:15** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (unchanged). Electricity: **~EUR 77** (rack meter + extrapolation). A1 fiber: **~EUR 342**. **Tracked opBNB total: ~EUR 659.** Wright recovery rack share **~EUR 8–10** (estimate). Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
 
 #### Human operations and senior-development effort
 
@@ -573,7 +576,7 @@ role-hours and replacement value, not deduplicated human elapsed time or an invo
 | **Labor total, overlaps fully counted** | **~120–140 role-hours** | — | **~EUR 11,000–19,300** |
 | **Planning midpoint** | Ops 53 h @100 + developer 77 h @125 | — | **~EUR 14,925** |
 
-Adding the tracked **~EUR 658** AI/electricity/connectivity costs gives a documented project
+Adding the tracked **~EUR 659** AI/electricity/connectivity costs gives a documented project
 value of **~EUR 11,650–19,950**, with a planning midpoint of **~EUR 15,580**. These are market-rate
 replacement estimates, not confirmed labor payments. Hardware, VAT, opportunity cost and
 undocumented supervision are excluded.

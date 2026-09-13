@@ -29,17 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-13 ~08:45 CEST)
+## Session-Memory / Status (Stand 2026-09-13 ~21:15 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | **Execution** ~**35.0 M** / Horizon **`43 519 340`** (~80 %) · Binary **`04eb5ac`** · History-Heal ✅ · IPC/metrics UP |
+| Live | **Execution** **36.38 M** / Horizon **`43 519 340`** (~83.6 %) · Binary **`04eb5ac`** · History-Heal ✅ · Point-4 MATCH · peers 7 · errors 0 |
 | Danach | Merkle → TxLookup/Index streaming → Finish |
-| Recovery | Wright mismatch **09-09** → Heal **~18 h** (09-12/13) → Exec catch-up (kein Genesis-Re-Sync) |
-| Ops | **Kein Restart** mid-Exec. `scripts/sync-eta.sh` = Sync-Horizon. Log via `$ARCHIVE_LOG` |
-| Git | **`92990c1861`** (+ handshake example) · Streaming **`a1e50e6352`** |
+| Recovery | Wright mismatch **09-09** → Heal **~18 h** → Exec catch-up (kein Genesis-Re-Sync) |
+| Ops | **Kein Restart** mid-Exec. `scripts/sync-eta.sh` = Sync-Horizon (lokal). **Kein sudo.** |
+| Git / CI | **`3adbe256a9`** · GHA `--debug.tip` @10 M · Streaming **`a1e50e6352`** |
 | Gates | PIPE-012 @10 M ✅; X02 Re-Exec 🔄; Snap gesperrt |
 | Extra | Checkmk MCP OAuth live |
 
