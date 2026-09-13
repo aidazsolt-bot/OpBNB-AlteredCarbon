@@ -6,14 +6,13 @@ Public CI for this fork is the GitHub Actions workflow
 1. **Log runner hardware** (`lscpu`, memory, `lsblk`/`df`, Azure IMDS `vmSize` when available).
 2. **Build** `op-reth` (`maxperf`, jemalloc + asm-keccak + keccak-cache-global). Cache hits via
    `Swatinem/rust-cache` often cut wall time from ~20–25 m (cold Fat-LTO) to ~10–15 m.
-3. **Disk-budget smoke sync** on `opbnb-mainnet`: after the build, measure free space on the
-   datadir filesystem, set `--debug.max-block` from an **underestimate** of bytes/block so the tip
-   is high enough, then run with `--debug.terminate`. A watchdog stops the node once the datadir
-   reaches **~80 % of free space** (or filesystem use% hits 80). Defaults are overridable via
-   `workflow_dispatch` inputs (`disk_fill_pct`, `bytes_per_block`, `max_block_cap`, `min_block`).
+3. **Tip-sync smoke** on `opbnb-mainnet`: `--debug.tip` = hash of block **10 000 000**
+   (`0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5`) +
+   `--debug.terminate` (no op-node; tip hash starts backfill). Override via
+   `workflow_dispatch` input `tip_hash`.
 
-Success is either a clean exit after `--debug.max-block`, or a stop after the disk fill target.
-A 330-minute `timeout` wrapper is only a hang safety net (job budget: **360** minutes).
+Success is a clean exit after the tip backfill. A 330-minute `timeout` wrapper is only a hang
+safety net (job budget: **360** minutes).
 
 Triggers: `workflow_dispatch`, and `push` to `main` when `Cargo.toml` / `Cargo.lock` /
 `Makefile` / `crates/**` / the workflow file change.
@@ -34,7 +33,7 @@ For upstream CI definitions, see [paradigmxyz/reth](https://github.com/paradigmx
 
 **Not a claim, not a product benchmark.** One-off operator notes while a live opBNB archive
 Execution catch-up shared the same box. Tip for these runs was **2 000 000** (temporary CI tip
-override; public workflow now uses a **disk-budget `--debug.max-block`**, not a fixed tip). Binary around `27fa672` (maxperf).
+override; public workflow now uses **`--debug.tip` @ block 10 000 000**). Binary around `27fa672` (maxperf).
 
 ### Anonymized host class (local)
 

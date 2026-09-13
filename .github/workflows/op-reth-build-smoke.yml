@@ -3,22 +3,10 @@ name: op-reth build and tip-sync smoke
 on:
   workflow_dispatch:
     inputs:
-      disk_fill_pct:
-        description: "Fill this fraction of free disk with chain data (1–95)"
+      tip_hash:
+        description: "opBNB mainnet --debug.tip hash (default: block 10000000)"
         required: false
-        default: "80"
-      bytes_per_block:
-        description: "Underestimate of bytes/block for max-block sizing (lower → higher tip)"
-        required: false
-        default: "1024"
-      max_block_cap:
-        description: "Hard ceiling for --debug.max-block (timeout safety)"
-        required: false
-        default: "10000000"
-      min_block:
-        description: "Floor for --debug.max-block"
-        required: false
-        default: "20000"
+        default: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
   push:
     branches:
       - main
@@ -32,17 +20,14 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Defaults when not using workflow_dispatch inputs (push path).
-  OPBNB_SMOKE_DISK_FILL_PCT: "80"
-  OPBNB_SMOKE_BYTES_PER_BLOCK: "1024"
-  OPBNB_SMOKE_MAX_BLOCK_CAP: "10000000"
-  OPBNB_SMOKE_MIN_BLOCK: "20000"
+  # Block 10_000_000 on opbnb-mainnet (eth_getBlockByNumber).
+  OPBNB_SMOKE_TIP_HASH: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
+  OPBNB_SMOKE_TIP_BLOCK: "10000000"
 
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
-    # Build (~10–25m) + disk-budget sync can run long on large free disks; watchdog
-    # stops once chain data hits the fill target.
+    # Build (~10–25m) + sync genesis→10M; Bodies dominate wall time.
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -140,14 +125,10 @@ jobs:
           end=$(date +%s)
           echo "cargo_wall_sec=$((end - start))"
 
-      - name: Sync op-reth until chain data fills ~80% free disk (${{ matrix.profile }})
+      - name: Sync op-reth to tip block ${{ env.OPBNB_SMOKE_TIP_BLOCK }} (${{ matrix.profile }})
         shell: bash
         env:
-          # workflow_dispatch inputs override env defaults on push.
-          DISK_FILL_PCT: ${{ github.event.inputs.disk_fill_pct != '' && github.event.inputs.disk_fill_pct || env.OPBNB_SMOKE_DISK_FILL_PCT }}
-          BYTES_PER_BLOCK: ${{ github.event.inputs.bytes_per_block != '' && github.event.inputs.bytes_per_block || env.OPBNB_SMOKE_BYTES_PER_BLOCK }}
-          MAX_BLOCK_CAP: ${{ github.event.inputs.max_block_cap != '' && github.event.inputs.max_block_cap || env.OPBNB_SMOKE_MAX_BLOCK_CAP }}
-          MIN_BLOCK: ${{ github.event.inputs.min_block != '' && github.event.inputs.min_block || env.OPBNB_SMOKE_MIN_BLOCK }}
+          TIP_HASH: ${{ github.event.inputs.tip_hash != '' && github.event.inputs.tip_hash || env.OPBNB_SMOKE_TIP_HASH }}
         run: |
           set -euo pipefail
 
@@ -156,101 +137,24 @@ jobs:
           DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${{ matrix.profile }}"
           LOG_DIR="$RUNNER_TEMP/opbnb-logs-${{ matrix.profile }}"
           IPC_PATH="$RUNNER_TEMP/opbnb-${{ matrix.profile }}.ipc"
+          TIP_BLOCK="${OPBNB_SMOKE_TIP_BLOCK}"
 
           mkdir -p "$DATA_DIR" "$LOG_DIR"
           openssl rand -hex 32 > "$JWT_SECRET"
 
-          # Measure AFTER the build — cargo/target already ate some free space.
-          FS_SIZE=$(df -B1 --output=size "$DATA_DIR" | tail -1 | tr -d ' ')
-          FS_USED=$(df -B1 --output=used "$DATA_DIR" | tail -1 | tr -d ' ')
-          FS_AVAIL=$(df -B1 --output=avail "$DATA_DIR" | tail -1 | tr -d ' ')
-          FILL_PCT="${DISK_FILL_PCT}"
-          if [ "$FILL_PCT" -lt 1 ] || [ "$FILL_PCT" -gt 95 ]; then
-            echo "DISK_FILL_PCT=$FILL_PCT out of range 1..95"
-            exit 1
-          fi
-
-          # Prefer: use FILL_PCT of *currently free* space for the datadir.
-          # Also never push the filesystem past FILL_PCT of total size.
-          TARGET_FROM_FREE=$(( FS_AVAIL * FILL_PCT / 100 ))
-          ROOM_TO_FILL_PCT=$(( FS_SIZE * FILL_PCT / 100 - FS_USED ))
-          if [ "$ROOM_TO_FILL_PCT" -lt 0 ]; then
-            ROOM_TO_FILL_PCT=0
-          fi
-          if [ "$TARGET_FROM_FREE" -lt "$ROOM_TO_FILL_PCT" ]; then
-            TARGET_BYTES=$TARGET_FROM_FREE
-          else
-            TARGET_BYTES=$ROOM_TO_FILL_PCT
-          fi
-
-          # Underestimate bytes/block → higher max-block; disk watchdog is the hard stop.
-          BPB="${BYTES_PER_BLOCK}"
-          if [ "$BPB" -lt 64 ]; then
-            echo "BYTES_PER_BLOCK too small: $BPB"
-            exit 1
-          fi
-          if [ "$TARGET_BYTES" -le 0 ]; then
-            echo "No disk budget left (target_bytes=0). Free some space or lower fill %."
-            df -hT "$DATA_DIR"
-            exit 1
-          fi
-
-          MAX_BLOCK=$(( TARGET_BYTES / BPB ))
-          if [ "$MAX_BLOCK" -lt "$MIN_BLOCK" ]; then
-            MAX_BLOCK="$MIN_BLOCK"
-          fi
-          if [ "$MAX_BLOCK" -gt "$MAX_BLOCK_CAP" ]; then
-            MAX_BLOCK="$MAX_BLOCK_CAP"
-          fi
-
-          echo "===== disk budget ====="
-          echo "fs_size_bytes=$FS_SIZE"
-          echo "fs_used_bytes=$FS_USED"
-          echo "fs_avail_bytes=$FS_AVAIL"
-          echo "fill_pct=$FILL_PCT"
-          echo "target_chain_bytes=$TARGET_BYTES ($(numfmt --to=iec-i --suffix=B "$TARGET_BYTES" 2>/dev/null || echo "$TARGET_BYTES"))"
-          echo "bytes_per_block_estimate=$BPB (underestimate)"
-          echo "debug.max-block=$MAX_BLOCK (floor=$MIN_BLOCK cap=$MAX_BLOCK_CAP)"
+          echo "===== tip smoke ====="
+          echo "debug.tip=$TIP_HASH (block $TIP_BLOCK)"
+          echo "debug.terminate=true"
           df -hT "$DATA_DIR"
 
-          # Watchdog: stop once datadir reaches target OR filesystem use% hits FILL_PCT.
-          # max-block alone cannot predict archive growth accurately across heights.
-          WATCHDOG_PID=""
           cleanup() {
-            if [ -n "${WATCHDOG_PID}" ] && kill -0 "$WATCHDOG_PID" 2>/dev/null; then
-              kill "$WATCHDOG_PID" 2>/dev/null || true
-            fi
             if [ -n "${NODE_PID:-}" ] && kill -0 "$NODE_PID" 2>/dev/null; then
               kill -TERM "$NODE_PID" 2>/dev/null || true
             fi
           }
           trap cleanup EXIT
 
-          (
-            set +e
-            while true; do
-              sleep 15
-              if [ ! -d "$DATA_DIR" ]; then
-                continue
-              fi
-              used=$(du -sb "$DATA_DIR" 2>/dev/null | awk '{print $1}')
-              used=${used:-0}
-              # df Use% for the datadir mount
-              pct=$(df -P "$DATA_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
-              pct=${pct:-0}
-              if [ "$used" -ge "$TARGET_BYTES" ] || [ "$pct" -ge "$FILL_PCT" ]; then
-                echo "disk_watchdog: stop (datadir_bytes=$used target=$TARGET_BYTES fs_use_pct=$pct fill_pct=$FILL_PCT)"
-                # Prefer graceful TERM on the node process group leader.
-                if [ -f "$RUNNER_TEMP/opbnb-node-${{ matrix.profile }}.pid" ]; then
-                  kill -TERM "$(cat "$RUNNER_TEMP/opbnb-node-${{ matrix.profile }}.pid")" 2>/dev/null || true
-                fi
-                exit 0
-              fi
-            done
-          ) &
-          WATCHDOG_PID=$!
-
-          echo "Syncing with --debug.max-block $MAX_BLOCK --debug.terminate (disk-budget smoke)."
+          echo "Syncing with --debug.tip $TIP_HASH --debug.terminate (no op-node)."
           set +e
           # Outer timeout is a hang safety net; job timeout is 360m.
           timeout 330m "$BIN" node \
@@ -269,45 +173,26 @@ jobs:
             --authrpc.jwtsecret "$JWT_SECRET" \
             --metrics 127.0.0.1:6060 \
             --log.file.directory "$LOG_DIR" \
-            --debug.max-block "$MAX_BLOCK" \
+            --debug.tip "$TIP_HASH" \
             --debug.terminate &
           NODE_PID=$!
           echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${{ matrix.profile }}.pid"
           wait "$NODE_PID"
           status=$?
           set -e
-
-          # Stop watchdog; ignore its exit.
-          kill "$WATCHDOG_PID" 2>/dev/null || true
-          wait "$WATCHDOG_PID" 2>/dev/null || true
-          WATCHDOG_PID=""
           NODE_PID=""
 
-          FINAL_BYTES=$(du -sb "$DATA_DIR" 2>/dev/null | awk '{print $1}')
-          FINAL_BYTES=${FINAL_BYTES:-0}
-          FINAL_PCT=$(df -P "$DATA_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
           echo "===== post-sync disk ====="
-          echo "datadir_bytes=$FINAL_BYTES"
-          echo "fs_use_pct=$FINAL_PCT"
+          du -sh "$DATA_DIR" || true
           df -hT "$DATA_DIR"
 
-          hit_target=0
-          if [ "$FINAL_BYTES" -ge "$TARGET_BYTES" ] || [ "${FINAL_PCT:-0}" -ge "$FILL_PCT" ]; then
-            hit_target=1
-          fi
-
-          # TERM from watchdog → 143; clean terminate → 0; timeout → 124.
           if [ "$status" -eq 0 ]; then
-            echo "Reached --debug.max-block $MAX_BLOCK and terminated cleanly."
-            exit 0
-          fi
-          if [ "$hit_target" -eq 1 ]; then
-            echo "Stopped after hitting disk fill target (~${FILL_PCT}% free→chain / fs use)."
+            echo "Reached --debug.tip $TIP_HASH (block $TIP_BLOCK) and terminated cleanly."
             exit 0
           fi
           if [ "$status" -eq 124 ] || [ "$status" -eq 143 ]; then
-            echo "Stopped early (status=$status) without reaching disk target (have $FINAL_BYTES / want $TARGET_BYTES)."
+            echo "Stopped early (status=$status) before tip $TIP_HASH."
             exit 1
           fi
-          echo "Node exited with status $status before tip/disk target."
+          echo "Node exited with status $status before tip."
           exit "$status"
