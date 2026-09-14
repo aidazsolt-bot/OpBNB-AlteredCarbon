@@ -450,16 +450,17 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-09-10:** Wright-Gate tip run to **`34 367 717`** (Exec ~33 M→34.37 M, ~6–9 h machine).
 - **2026-09-12→13:** Tip **`43 519 340`** + terminate — **~18 h** History-Heal (TxHash → StoragesHistory → AccountsHistory **2437/2437** @ ~00:12 UTC 09-13).
 - **2026-09-13 ~08:45:** **Execution** ~**35.0 M** / horizon **43.5 M** (~**80 %**); ~**58 blk/s** (15m); Exec-only ETA **~1d 17h**; validation errors **0**; peers **5**.
-- **2026-09-13 ~21:15:** **Execution** **36.38 M** (~**83.6 %**); ~**21 blk/s** (15m); ETA **~3–4 d**; peers **7**; Point-4 **MATCH** (incl. 35 M / 36.37 M); CI Smoke → **`--debug.tip` @10 M** (`3adbe256a9`).
-- **GHA bench (run [34775664819](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34775664819/job/103773196382)):** Execution **~1 h 52 m** @10 M (~**1483** blk/s); gas median/mean/max ~**1.03 / 1.24 / 4.27 Ggas/s** — see `docs/repo/ci.md`.
+- **2026-09-13 ~21:15:** **Execution** **36.38 M** (~**83.6 %**); ~**21 blk/s** (15m); ETA **~3–4 d**; peers **7**; Point-4 **MATCH** (incl. 35 M / 36.37 M); CI Smoke then **`--debug.tip` @10 M** (`3adbe256a9`).
+- **GHA bench (run [34775664819](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34775664819/job/103773196382)):** Execution **~1 h 52 m** @10 M (~**1483** blk/s); gas median/mean/max ~**1.03 / 1.24 / 4.27 Ggas/s**; datadir **45 G** — see `docs/repo/ci.md`.
+- **2026-09-14 ~16:22:** **Execution** **38.55 M** (~**88.6 %**); ~**42 blk/s** (15m); ETA **~1.5–2 d**; peers **9**; Point-4 **MATCH** (incl. Wright `34367717`); CI default tip **20 M** (`030cd6fd6f`, smoke run 🔄).
 - **Not** a genesis re-sync (unlike 2026-09-02 Session 13); recovery = heal + re-execute on existing archive datadir.
 - `scripts/sync-eta.sh` now uses **sync horizon** (Bodies/Sender cap) when Headers ≫ Bodies (lokal unter `scripts/`, gitignored).
 
-##### Live sync progress (2026-09-13 ~21:15 CEST)
+##### Live sync progress (2026-09-14 ~16:22 CEST)
 
-- Horizon **`43 519 340`**; active **Execution**; then Merkle + TxLookup/index streaming → Finish.
+- Horizon **`43 519 340`**; active **Execution** (~**88.6 %**); then Merkle + TxLookup/index streaming → Finish.
 - Grafana hero: `assets/logo.png` (2026-09-13 snapshot).
-- GHA: fixed tip hash block **10 000 000** + `--debug.terminate` (no op-node); Execution bench above.
+- GHA: default tip hash block **20 000 000** + `--debug.terminate`; cargo/`target` freed before sync; 10 M Execution bench above.
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 
