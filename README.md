@@ -613,8 +613,8 @@ measured.** At a typical gross household energy price (~**€0.231/kWh**, no sup
 | … per month (30 days) | **~€57.8** |
 
 **Linear carry-forward after the last meter reading (not a new measurement):** applying the same
-measured rack average to 2026-09-04 00:00 → 2026-09-13 08:45 CEST gives **~78 kWh /
-~€18.1** additional, or **~328 kWh / ~€76** for the measured value plus extrapolation.
+measured rack average to 2026-09-04 00:00 → 2026-09-13 21:15 CEST gives **~82.5 kWh /
+~€19.1** additional, or **~332.5 kWh / ~€77** for the measured value plus extrapolation.
 The Wright recovery path (~4–5 days machine wall since 09-09) corresponds to roughly **~€8–10**
 rack energy at that average (estimate, not an isolated meter).
 This is whole-rack time allocation, not measured marginal incident energy.

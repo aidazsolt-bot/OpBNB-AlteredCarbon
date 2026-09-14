@@ -1,0 +1,33 @@
+---
+description: Local monitoring infra map — Checkmk + InfluxDB + Grafana/Mimir (load gitignored topology)
+alwaysApply: true
+---
+
+# Local Infra Monitoring Map
+
+When the user asks about **CPU / load / hosts / Checkmk / Influx / Grafana infra**, do **not** rediscover from scratch.
+
+## Load first
+
+1. Read gitignored **`.cursor/local/infra-topology.md`** (concrete host/CT names, URLs, query patterns).
+2. Archive sync paths: **`.cursor/local/opbnb-archive-paths.env`**.
+3. Checkmk secrets: **`~/.cursor/local/checkmk.env`** (never commit / never echo passwords).
+
+## Topology (short)
+
+| Layer | Where | Use for |
+| --- | --- | --- |
+| Checkmk site | `monitor` → HTTPS site **crius** | Live service state / plugin_output (MCP `checkmk` or REST) |
+| InfluxDB v1 | **`db:8086`**, database **`checkmk`** | Historical Checkmk perfdata (InfluxQL) |
+| Grafana | CT **Grafana** | Dashboards; DS **InfluxDB checkmk** + Mimir |
+| Bare metal | **crius** (LXC parent) | Real host CPU/load; most CT CPU checks are thin/stale |
+| Reth sync metrics | Mimir via Grafana (`scripts/sync-eta.sh`) | Pipeline stages — not Influx `checkmk` |
+
+## Query habits
+
+- Trends/CPU history → InfluxQL on `http://db:8086` DB `checkmk` (`util`, `load15`, `pcpu`, tags `host_name` + `service_description`).
+- Point-in-time status → Checkmk REST/MCP.
+- opBNB archive process load → `crius` + process checks / `pcpu`, not only the archive CT hostname.
+- MCP 401 after secret change → update env **and** `checkmk-mcp.runtime.yaml`, then **restart MCP**.
+
+Do not invent a second metrics stack; do not write secrets into `plan.md` or committed rules.
