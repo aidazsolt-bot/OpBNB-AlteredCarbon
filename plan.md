@@ -48,7 +48,7 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | **Recovery-Heal (09-12→13)** | TxHash ✅ · StoragesHistory ✅ · AccountsHistory **2437/2437 ✅** (~00:12 UTC 09-13) → Exec-Catch-up **34.37 M→43.5 M** |
 | **Wright-Incident (09-09)** | Receipt-Root @ **`34367717`** → Unwind **`34366337`** · Fix **`29d7bfa2dd`** (PIPE-009/X02) · Re-Exec läuft (Exec bereits **> Wright**) |
 | **TxLookup-Streaming** | @10 M live ✅ · erneut **`10 M→43.5 M`** nach Exec+Heal |
-| **CI Smoke** | GHA: **`--debug.tip`** = hash Block **10 000 000** (`0xba60240a…bbd5`) + `--debug.terminate` (kein op-node). `max-block` allein startet **kein** Backfill |
+| **CI Smoke** | GHA: **`--debug.tip`** = hash Block **20 000 000** (`0x32d00a40…9c9f6b`) + `--debug.terminate` (kein op-node); vor Smoke: `target/` + cargo registry/git löschen (gleicher Root-FS). Bench @10 M run **34775664819**: Exec **~1 h 52 m** / ~**1483** blk/s; gas ~**1.03 / 1.24 / 4.27 Ggas/s**; datadir **45 G** → `docs/repo/ci.md` |
 | **Ops** | **Kein Restart** mid-Exec ohne OPS-001. `scripts/sync-eta.sh` = **Sync-Horizon**. Log: `$ARCHIVE_LOG`. **Kein `sudo`** für Agents. |
 | **Gates** | PIPE-012 @10 M ✅ · Snap gesperrt · **X02 Re-Exec** 🔄 bis Horizon · Point-4 Stichprobe ✅ (Header-`stateRoot`) |
 | **Checkmk** | OAuth-MCP **live**; Rule **`local-infra-monitoring`** |
@@ -1685,7 +1685,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M live ✅.
 
-**CI (09-13):** Smoke auf **`--debug.tip` @10 M** (`3adbe256a9`); Disk-Budget-`max-block` entfernt.
+**CI (09-13):** Smoke auf **`--debug.tip` @10 M** (`3adbe256a9`); Disk-Budget-`max-block` entfernt. Bench (run 34775664819): Execution **~1 h 52 m**, ~**1483** blk/s wall, gas median/mean/max ~**1.03 / 1.24 / 4.27 Ggas/s** — `docs/repo/ci.md`.
 
 **Handoff:** [#session-memory](#session-memory).
 
