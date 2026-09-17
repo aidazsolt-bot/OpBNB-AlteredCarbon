@@ -76,7 +76,7 @@ project notice above for status, personal-use limits, and liability.
 > session start (this repo: **opBNB only**).
 
 **CI:** The repository includes an `op-reth` maxperf build + tip-sync smoke workflow
-(`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to block **20 000 000** via
+(`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to block **15 000 000** via
 `--debug.tip` + `--debug.terminate` (no op-node), after logging runner CPU/disk/IMDS and
 freeing cargo/`target` on the same root FS as the datadir.
 It uses `actions/checkout@v5` and the current `--metrics <host:port>` CLI form. Local
@@ -461,7 +461,7 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 
 - Horizon **`43 519 340`** EL stages done; **IndexStorageHistory** collecting; then IndexAccount → Prune → Finish → terminate.
 - Grafana hero: `assets/logo.png` (older Exec-era snapshot).
-- GHA: default tip hash block **20 000 000** + `--debug.terminate`; cargo/`target` freed before sync; 10 M Execution bench above.
+- GHA: default tip hash block **15 000 000** + `--debug.terminate`; cargo/`target` freed before sync; 10 M Execution bench above. (20 M ENOSPC on GHA — run 34853720560.)
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 

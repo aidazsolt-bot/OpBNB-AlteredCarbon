@@ -10,21 +10,22 @@ Public CI for this fork is the GitHub Actions workflow
 3. **Free disk** for the smoke: copy `op-reth` to `$RUNNER_TEMP`, then delete workspace
    `target/` and `$CARGO_HOME/{registry,git}` (same root FS as the datadir; rust-cache
    `save-if: false` so the emptied tree is not re-uploaded).
-4. **Tip-sync smoke** on `opbnb-mainnet`: `--debug.tip` = hash of block **20 000 000**
-   (`0x32d00a406210786cb84c5336e32e6c1c28db605b58126892acb867fdd09c9f6b`) +
+4. **Tip-sync smoke** on `opbnb-mainnet`: `--debug.tip` = hash of block **15 000 000**
+   (`0x493972b18223c87efecc995d1335edba166eba2deb91904f82961d601b9b0e71`) +
    `--debug.terminate` (no op-node; tip hash starts backfill). Override via
    `workflow_dispatch` input `tip_hash`.
 
 Success is a clean exit after the tip backfill. A 330-minute `timeout` wrapper is only a hang
-safety net (job budget: **360** minutes — GitHub-hosted max). **20 M** is ~2× the prior **10 M**
-wall (~3 h); still watch the 6 h cap. Disk: ~45 G @10 M → roughly ~90 G @20 M if linear
-(cleanup of cargo/`target` required).
+safety net (job budget: **360** minutes — GitHub-hosted max). **20 M** ENOSPC'd on GHA root
+(~145 G) mid-Bodies ([run 34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560));
+default is therefore **15 M** (between proven **10 M** ~45 G and failed **20 M**). Cleanup of
+cargo/`target` remains required.
 
 ### Observed GHA bench — tip **10 000 000** (2026-09-13)
 
 **Not a product claim.** One successful maxperf smoke on GitHub-hosted runners
 ([run 34775664819](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34775664819/job/103773196382),
-commit `3adbe256a9`). Workflow default tip was later raised to **20 000 000**.
+commit `3adbe256a9`). Tip was raised to **20 M** then lowered to **15 M** after ENOSPC.
 
 | | |
 | --- | --- |
@@ -60,7 +61,7 @@ For upstream CI definitions, see [paradigmxyz/reth](https://github.com/paradigmx
 
 **Not a claim, not a product benchmark.** One-off operator notes while a live opBNB archive
 Execution catch-up shared the same box. Tip for these runs was **2 000 000** (temporary CI tip
-override; public workflow now defaults to **`--debug.tip` @ block 20 000 000**). Binary around `27fa672` (maxperf).
+override; public workflow now defaults to **`--debug.tip` @ block 15 000 000**). Binary around `27fa672` (maxperf).
 
 ### Anonymized host class (local)
 
