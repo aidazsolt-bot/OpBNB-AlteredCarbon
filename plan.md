@@ -35,29 +35,28 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-14 ~16:22 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-09-17 ~07:58 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
-> Chats: `ea987bef…` (Langthread) · `6cc355ee…` (09-12 Infra/Handshake) · `92a6866f…` (09-13 CI tip) · diese Session (09-14 Doku/CI 20 M).
+> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…17.
 
 | Thema | Lage |
 | --- | --- |
-| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · Tip **`--debug.max-block 43519340`** + `--debug.terminate` · IPC **UP** · metrics **`:6060`** |
-| **Git** | **`030cd6fd6f`** on `alteredcarbon/main` (CI `--debug.tip` @**20 M** + cargo disk-free) · Streaming **`a1e50e6352`** · `handshake_reject` **`92990c1861`** · `scripts/sync-eta.sh` Horizon-Fix **lokal** (gitignored `scripts/`) |
-| **Live jetzt (~16:22)** | **Execution** **38 546 103** / Horizon **43 519 340** (~**88.6 %**) · ~**42 blk/s** (15m; 6h ~28) · Exec-ETA **~1.5–2 d** · peers **9** · validation **0** · Point-4 MATCH (1k / 100k / Fermat / Wright `34367717` / 36 M / 38.47 M) |
-| **Recovery-Heal (09-12→13)** | TxHash ✅ · StoragesHistory ✅ · AccountsHistory **2437/2437 ✅** (~00:12 UTC 09-13) → Exec-Catch-up **34.37 M→43.5 M** |
-| **Wright-Incident (09-09)** | Receipt-Root @ **`34367717`** → Unwind **`34366337`** · Fix **`29d7bfa2dd`** (PIPE-009/X02) · Re-Exec läuft (Exec **≫ Wright**; Point-4 @ Fail-Höhe MATCH) |
-| **TxLookup-Streaming** | @10 M live ✅ · erneut **`10 M→43.5 M`** nach Exec+Heal |
-| **CI Smoke** | GHA: **`--debug.tip`** = hash Block **20 000 000** (`0x32d00a40…9c9f6b`) + `--debug.terminate`; vor Smoke: `target/` + cargo registry/git löschen. Bench @10 M run **34775664819**: Exec **~1 h 52 m** / ~**1483** blk/s; gas ~**1.03 / 1.24 / 4.27 Ggas/s**; datadir **45 G**. Run **34853720560** (20 M) 🔄 in_progress → `docs/repo/ci.md` |
-| **Ops** | **Kein Restart** mid-Exec ohne OPS-001. `scripts/sync-eta.sh` = **Sync-Horizon**. Log: `$ARCHIVE_LOG`. **Kein `sudo`** für Agents. |
-| **Gates** | PIPE-012 @10 M ✅ · Snap gesperrt · **X02 Re-Exec** 🔄 bis Horizon · Point-4 Stichprobe ✅ (Header-`stateRoot`) |
-| **Checkmk** | OAuth-MCP **live**; Rule **`local-infra-monitoring`** (gitignored `local*`) |
+| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · Tip **`--debug.max-block 43519340`** + `--debug.terminate` · metrics **`:6060`** · IPC-Pfad derzeit **nicht** am Host gemountet (Point-4 via IPC skipped) |
+| **Git** | lokal ahead `alteredcarbon/main` (**`5ee9834be5`** + dieser Docs-Commit) · CI tip @**20 M** **`030cd6fd6f`** · Streaming **`a1e50e6352`** |
+| **Live jetzt (~07:58)** | **Horizon-EL fertig:** Exec / Merkle / Hashing / **TxLookup** = **43 519 340** ✅ · aktiv **IndexStorageHistory** (Collect ~**35.2 M**/43.5 M, CP noch **10 M** bis Commit) · danach IndexAccount → Prune → Finish → terminate |
+| **Timing 09-17 UTC** | Exec ✅ **03:06** · MerkleExecute ✅ **04:12** (~1 h) · TxLookup ✅ **05:19** (~1 h streaming) · IndexStorage Collect ab **05:20** @ ~**11 k blk/s** → Collect-ETA **~10–15 min** (+ Write) |
+| **Recovery** | Wright 09-09 → Heal ~18 h → Exec Catch-up **34.37 M→43.5 M** ✅ (kein Genesis-Re-Sync) |
+| **Health** | peers **14** · validation/timeout/invalid **0** · Status-Log: Collecting indices (kein Stall) |
+| **CI Smoke** | GHA `--debug.tip` @**20 M**; siehe `docs/repo/ci.md` |
+| **Ops** | Index-CP bleibt **10 M** bis Stage-Ende (wie Headers-ETL). **Kein Restart** mitten in Index. **Kein sudo.** Snap **nicht** advertised (Roadmap). |
+| **Gates** | PIPE-012 @10 M ✅ · Exec+Merkle @Horizon ✅ · X02 Re-Exec Horizon ✅ · Index/Finish 🔄 · Snap gesperrt |
 
-### Nächste Schritte (Stand 2026-09-14 ~16:22 CEST)
+### Nächste Schritte (Stand 2026-09-17 ~07:58 CEST)
 
-1. Exec bis Horizon **43 519 340**; validation **0** halten (kein mid-Exec Restart).
-2. Merkle → Index/TxLookup streaming nach Exec.
-3. GHA Smoke @20 M (run **34853720560**) beobachten — 6 h-Cap / Disk.
+1. IndexStorageHistory → IndexAccountHistory → Prune → Finish; auf `--debug.terminate` achten.
+2. Nach Finish: IPC wieder erreichbar machen / Point-4 @ Horizon; optional nächster Tip über 43.5 M.
+3. `sync-eta.sh`: Index-Collect-Progress (nicht nur Stage-CP) wäre hilfreich — lokal/optional.
 
 ## Ziel & Kontext
 
@@ -786,7 +785,7 @@ Zusätzlich bekannt, aber noch nicht angegangen:
 | Wright-Gate-Lauf (Tip **`34367717`**) | **2026-09-10** | Exec **~33 M→34.37 M** (~**6–9 h** unsupervised, Schätzung) | Gate-CP erreicht; divergenter State nicht weiterverwendet |
 | Tip-10 M + TxLookup-Streaming | **2026-09-11→12** | Overnight Finish **~02:18 CEST**; Session-24 Coding **~6 h** interaktiv | PIPE-012 @10 M ✅ |
 | Tip **`43 519 340`** — TxHash + History-Heal | **2026-09-12 08:18→09-13 02:12 CEST** | **~18 h** durchgehend (RocksDB Index-Heal, Logs) | AccountsHistory **2437/2437** ✅ |
-| Exec Catch-up **34.37 M→43.5 M** | **ab 09-13 ~02:12 CEST** | Rest **~5.0 M** Blk; Rate variabel (~21–58 blk/s) → ETA **~1.5–2 d** (Mimir 09-14 **16:22**, Exec **~88.6 %**) | 🔄 **~88.6 %** |
+| Exec Catch-up **34.37 M→43.5 M** | **09-13 ~02:12 → 09-17 05:06 CEST** | Exec ✅ **03:06Z**; Merkle ✅ **04:12Z**; TxLookup ✅ **05:19Z** | ✅ **100 %** Horizon-EL |
 | **Summe Recovery-Pfad** | 09-09 → Finish Horizon | **~4–5 d** Rack-Maschinenzeit (Heal+Exec, überlappend mit normaler Sync-Last) + **~13 h** dokumentierte Agent/Copilot-Incident-Walls | Kein erneuter Genesis-Drop (anders als 09-02 Session 13) |
 
 > Hinweis: Copilot-Token-Zahlen sind kumulative Modellaufrufe inkl. Tool-Nutzung/Kontext-Wiederholung pro
@@ -857,7 +856,7 @@ aber es wird keine Zahl frei erfunden:
 | Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
 | Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
 | `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 9 vollständige Fat-LTO-Builds à ~20–24 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16); Session 20 **23m39s**, Session 21 **22m25s**, Session 24 **~23 min** (TxLookup-Streaming) | plan.md-Sessionprotokoll |
-| Wright-Recovery-Maschinenzeit (09-09→13) | Build **22m25s** + Unwind **72m35s**; Gate-Lauf 09-10; **~18 h** History-Heal 09-12/13; Exec Catch-up **~83.6 %** @ 09-13 21:15 (~**7.1 M** rest) | Build-/Node-Log + Mimir; s. Tabelle *Wright-Recovery* |
+| Wright-Recovery-Maschinenzeit (09-09→17) | Build **22m25s** + Unwind **72m35s**; Gate 09-10; **~18 h** History-Heal; Exec→Merkle→TxLookup @ Horizon ✅ **09-17**; Index/Finish 🔄 | Build-/Node-Log + Mimir |
 | A1 Glasfaser Internet 250/100, unlimitiert | **~EUR 30/Monat**, **~EUR 360/Jahr**, aktiv seit Oktober 2025; gemeinsame Anbindung aller Dienste/Nodes, nicht opBNB-exklusiv | Betreiberangabe |
 | Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
 
@@ -1667,25 +1666,28 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-14 **~16:22 CEST** · chain **204** · Horizon **`43 519 340`** + terminate
-· Binary **`04eb5ac`** · **Execution** **38 546 103** (~**88.6 %** Horizon) · ~**42 blk/s** (15m) · peers **9** · errors **0**
-· Point-4 **MATCH** (1 000 / 100 000 / Fermat `9397477` / Wright `34367717` / 36 M / 38.47 M) · IPC/metrics **UP**
-· `scripts/sync-eta.sh`: Active **Execution**, ETA Exec-only **~1.5–2 d** (15m ~**1d 9h**)
+**Stichprobe (aktuell):** 2026-09-17 **~07:58 CEST** · chain **204** · Horizon **`43 519 340`** + terminate
+· Binary **`04eb5ac`** · **Exec/Merkle/Hashing/TxLookup = Horizon ✅** · aktiv **IndexStorageHistory** Collect ~**35.2 M** (CP **10 M** bis Commit)
+· peers **14** · errors **0** · IPC Host-Pfad derzeit missing (Point-4 skipped) · metrics **UP**
+· Collect-Rate IndexStorage ~**11 k blk/s** → Collect-Rest **~10–15 min** (+ Write); danach IndexAccount → Prune → Finish
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
 | Headers | **71 185 160** | 100 % (älterer Tip) |
 | Bodies / SenderRecovery | **43 519 340** | 100 % Horizon |
-| Execution | **38 546 103** | 🔄 Catch-up **34.37 M→43.5 M** |
-| Merkle* / Hashing | **34 367 717** | wartet auf Exec |
-| TransactionLookup / Index* / Finish | **10 000 000** | Streaming nach Exec; Re-Index erwartet |
-| Konsens | PIPE-009 / X02 | Fix ✅; **Re-Exec** 🔄 (Exec **≫ Wright**; Point-4 @ Fail MATCH) |
+| Execution | **43 519 340** | ✅ **03:06Z** |
+| Account/Storage Hashing | **43 519 340** | ✅ mit Exec |
+| MerkleExecute | **43 519 340** | ✅ **04:12Z** (~1 h) |
+| TransactionLookup | **43 519 340** | ✅ **05:19Z** (streaming) |
+| IndexStorageHistory | **10 000 000** | 🔄 Collect ~35 M→43.5 M (ab **05:20Z**) |
+| IndexAccountHistory / Prune / Finish | **10 000 000** | wartend |
+| Konsens | PIPE-009 / X02 | Fix ✅; Re-Exec Horizon ✅ |
 
-**Wright-Recovery (09-09→13):** Receipt-Root-Mismatch @ **`34367717`** → Unwind · Code-Fix Session 21 · Tip-10 M ✅ (09-12) · Tip-43.5 M + **~18 h** History-Heal (09-12/13) · Exec Catch-up. Kein Genesis-Re-Sync.
+**Wright-Recovery (09-09→17):** Receipt-Root @ **`34367717`** → Unwind · Fix Session 21 · Tip-10 M ✅ · Tip-43.5 M + Heal ~18 h · **Exec→Merkle→TxLookup @ Horizon ✅** · Index/Finish 🔄. Kein Genesis-Re-Sync.
 
-**TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M live ✅.
+**TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + erneut @43.5 M ✅.
 
-**CI (09-14):** Smoke default **`--debug.tip` @20 M** (`030cd6fd6f`) + cargo/`target` disk-free vor Sync; Bench @10 M (run 34775664819): Execution **~1 h 52 m**, ~**1483** blk/s, gas ~**1.03 / 1.24 / 4.27 Ggas/s**, datadir **45 G** — `docs/repo/ci.md`. 20 M-Lauf **34853720560** 🔄.
+**CI (09-14):** Smoke **`--debug.tip` @20 M** (`030cd6fd6f`); Bench @10 M in `docs/repo/ci.md`.
 
 **Handoff:** [#session-memory](#session-memory).
 

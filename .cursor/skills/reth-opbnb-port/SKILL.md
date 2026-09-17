@@ -29,19 +29,18 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-14 ~16:22 CEST)
+## Session-Memory / Status (Stand 2026-09-17 ~07:58 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | **Execution** **38.55 M** / Horizon **`43 519 340`** (~88.6 %) · Binary **`04eb5ac`** · History-Heal ✅ · Point-4 MATCH · peers 9 · errors 0 |
-| Danach | Merkle → TxLookup/Index streaming → Finish |
-| Recovery | Wright mismatch **09-09** → Heal **~18 h** → Exec catch-up (kein Genesis-Re-Sync) |
-| Ops | **Kein Restart** mid-Exec. `scripts/sync-eta.sh` = Sync-Horizon (lokal). **Kein sudo.** |
-| Git / CI | **`030cd6fd6f`** · GHA `--debug.tip` @**20 M** (+ cargo disk-free) · Streaming **`a1e50e6352`** |
-| Gates | PIPE-012 @10 M ✅; X02 Re-Exec 🔄; Snap gesperrt |
-| Extra | Checkmk MCP OAuth live |
+| Live | **Horizon-EL ✅** Exec/Merkle/Hashing/TxLookup **43.5 M** · aktiv **IndexStorageHistory** Collect ~35 M · peers 14 · errors 0 |
+| Danach | IndexAccount → Prune → Finish → terminate |
+| Recovery | Wright **09-09** → Heal → Exec Catch-up **✅** (kein Genesis-Re-Sync) |
+| Ops | Index-CP bleibt 10 M bis Commit. **Kein Restart** mid-Index. **Kein sudo.** |
+| Git / CI | tip @20 M · Streaming **`a1e50e6352`** |
+| Gates | PIPE-012 ✅; X02 @Horizon ✅; Index/Finish 🔄; Snap gesperrt |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
