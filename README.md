@@ -76,7 +76,7 @@ project notice above for status, personal-use limits, and liability.
 > session start (this repo: **opBNB only**).
 
 **CI:** The repository includes an `op-reth` maxperf build + tip-sync smoke workflow
-(`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to block **15 000 000** via
+(`.github/workflows/op-reth-build-smoke.yml`): sync `opbnb-mainnet` to block **12 000 000** via
 `--debug.tip` + `--debug.terminate` (no op-node), after logging runner CPU/disk/IMDS and
 freeing cargo/`target` on the same root FS as the datadir.
 It uses `actions/checkout@v5` and the current `--metrics <host:port>` CLI form. Local
@@ -461,7 +461,7 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 ##### Live sync progress (2026-09-17 ~12:35 CEST)
 
 - Horizon **43.5 M** pipeline **done**; uncapped catch-up toward Headers **71.2 M** (Bodies first).
-- GHA tip **15 M** run [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554) 🔄 (~4 h+ sync step).
+- GHA: default tip **12 000 000**; prior 15 M run [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554); 20 M ENOSPC **34853720560**.
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 

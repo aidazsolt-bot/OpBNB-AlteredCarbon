@@ -43,19 +43,19 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | Thema | Lage |
 | --- | --- |
 | **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · **ohne** `--debug.tip` / `--debug.max-block` (Restart **12:32 CEST**) · metrics **`:6060`** |
-| **Git** | lokal ahead möglich nach diesem Docs-Commit · CI tip @**15 M** **`0f74830ef4`** · Streaming **`a1e50e6352`** |
+| **Git** | CI tip @**12 M** · Streaming **`a1e50e6352`** |
 | **Horizon 43.5 M ✅** | Finish **09:45Z** (11:45 CEST) + `--debug.terminate` · IndexStorage **05:20→08:33Z (~3 h 13 m)** · IndexAccount **→09:45Z (~1 h 12 m)** · Prune/Finish sekunden |
 | **Live jetzt (~12:35)** | Backfill auf Headers-Tip **`71 185 160`** (`initial_target=0x9b722c2e…`) · aktiv **Bodies** ~**43.60 M** (~**61 %**) @ ~**400–500 blk/s** · Rest ~**27.6 M** → ETA Bodies **~15–18 h** (peers **2**, peer-bound) · Sender/Exec/… noch **43 519 340** |
 | **Recovery** | Wright 09-09 → Heal → Exec→Merkle→TxLookup→Index→**Finish @43.5 M ✅** (kein Genesis-Re-Sync) |
 | **Health** | peers **2** · validation/timeout/invalid **0** |
-| **CI Smoke** | Run **35188544554** tip **15 M** 🔄 Sync-Step seit **06:21Z** (~**4 h 14 m** wall sync; Logs mid-run nicht downloadbar) · 20 M ENOSPC **34853720560** |
+| **CI Smoke** | Default `--debug.tip` @**12 M** (`0xcf8da654…1044`); 15 M run **35188544554**; 20 M ENOSPC **34853720560** |
 | **Ops** | Uncapped Restart: Consistency-Target = Headers-Hash → Bodies holt 43.5 M→71.2 M. `sync-eta.sh` Horizon=Bodies irreführend solange Bodies≫Exec. **Kein sudo.** |
 | **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Bodies→71.2 M 🔄 · Snap gesperrt |
 
 ### Nächste Schritte (Stand 2026-09-17 ~12:35 CEST)
 
 1. Bodies (dann Sender→Exec→…) bis Headers-Tip **71.2 M** laufen lassen; Peers beobachten.
-2. GHA **35188544554** (15 M) zu Ende beobachten — Disk vs 10 M-Benchmark.
+2. GHA tip **12 M** Smoke beobachten (Disk/Zeit vs 10 M-Benchmark).
 3. Optional: `sync-eta.sh` wenn Bodies > Exec: Horizon = min(Bodies, Headers) nur für Downstream, Active=Bodies.
 
 ## Ziel & Kontext
@@ -858,7 +858,7 @@ aber es wird keine Zahl frei erfunden:
 | Restarts im Fenster 2026-09-02 18:00 → jetzt | 14 | dito |
 | Längste unterbrechungsfreie Laufzeit (Stand 09-05 07:14 UTC) | **~24 h 45 min** (seit 09-04 08:29 CEST) | dito |
 | `make maxperf-op`-Rebuilds (dokumentiert, kumulativ über alle Sessions) | ≥ 9 vollständige Fat-LTO-Builds à ~20–24 Min (`CARGO_BUILD_JOBS=1`) + mehrere kleinere Dev-Host-Rebuilds (Sessions 14–16); Session 20 **23m39s**, Session 21 **22m25s**, Session 24 **~23 min** (TxLookup-Streaming) | plan.md-Sessionprotokoll |
-| Wright-Recovery-Maschinenzeit (09-09→17) | Build **22m25s** + Unwind **72m35s**; Gate 09-10; **~18 h** History-Heal; Exec→Merkle→TxLookup @ Horizon ✅ **09-17**; Index/Finish 🔄 | Build-/Node-Log + Mimir |
+| Wright-Recovery-Maschinenzeit (09-09→17) | … Exec→Merkle→TxLookup; Index **~4 h 25 m**; **Finish @43.5 M** 11:45 CEST; uncapped Bodies→71.2 M ab 12:32 | Logs + Mimir |
 | A1 Glasfaser Internet 250/100, unlimitiert | **~EUR 30/Monat**, **~EUR 360/Jahr**, aktiv seit Oktober 2025; gemeinsame Anbindung aller Dienste/Nodes, nicht opBNB-exklusiv | Betreiberangabe |
 | Archive-Datenvolumen / Hardware-Spezifikation | nicht in diesem Dokument erfasst (Betreiber-eigene Infrastruktur) | — |
 
