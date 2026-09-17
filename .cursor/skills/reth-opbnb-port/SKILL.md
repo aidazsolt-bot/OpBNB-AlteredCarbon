@@ -29,18 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-17 ~07:58 CEST)
+## Session-Memory / Status (Stand 2026-09-17 ~12:35 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | **Horizon-EL ✅** Exec/Merkle/Hashing/TxLookup **43.5 M** · aktiv **IndexStorageHistory** Collect ~35 M · peers 14 · errors 0 |
-| Danach | IndexAccount → Prune → Finish → terminate |
-| Recovery | Wright **09-09** → Heal → Exec Catch-up **✅** (kein Genesis-Re-Sync) |
-| Ops | Index-CP bleibt 10 M bis Commit. **Kein Restart** mid-Index. **Kein sudo.** |
-| Git / CI | tip @20 M · Streaming **`a1e50e6352`** |
-| Gates | PIPE-012 ✅; X02 @Horizon ✅; Index/Finish 🔄; Snap gesperrt |
+| Live | **Horizon 43.5 M Finish ✅** · uncapped Restart → **Bodies** ~43.6 M→**71.2 M** (~61 %, ETA ~15–18 h) · peers 2 · errors 0 |
+| Davor | IndexStorage ~3 h 13 m + IndexAccount ~1 h 12 m → Finish 11:45 CEST + terminate |
+| Ops | Kein tip/max-block → Consistency-Target = Headers-Hash. **Kein sudo.** |
+| Git / CI | tip @**15 M** · GHA **35188544554** 🔄 |
+| Gates | X02 @Horizon Finish ✅; Bodies catch-up 🔄; Snap gesperrt |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
