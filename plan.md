@@ -43,7 +43,7 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | Thema | Lage |
 | --- | --- |
 | **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · Tip **`--debug.max-block 43519340`** + `--debug.terminate` · metrics **`:6060`** · IPC-Pfad derzeit **nicht** am Host gemountet (Point-4 via IPC skipped) |
-| **Git** | lokal ahead `alteredcarbon/main` (**`5ee9834be5`** + dieser Docs-Commit) · CI tip @**20 M** **`030cd6fd6f`** · Streaming **`a1e50e6352`** |
+| **Git** | **`0f74830ef4`** on `alteredcarbon/main` · CI tip @**15 M** · Streaming **`a1e50e6352`** |
 | **Live jetzt (~07:58)** | **Horizon-EL fertig:** Exec / Merkle / Hashing / **TxLookup** = **43 519 340** ✅ · aktiv **IndexStorageHistory** (Collect ~**35.2 M**/43.5 M, CP noch **10 M** bis Commit) · danach IndexAccount → Prune → Finish → terminate |
 | **Timing 09-17 UTC** | Exec ✅ **03:06** · MerkleExecute ✅ **04:12** (~1 h) · TxLookup ✅ **05:19** (~1 h streaming) · IndexStorage Collect ab **05:20** @ ~**11 k blk/s** → Collect-ETA **~10–15 min** (+ Write) |
 | **Recovery** | Wright 09-09 → Heal ~18 h → Exec Catch-up **34.37 M→43.5 M** ✅ (kein Genesis-Re-Sync) |
