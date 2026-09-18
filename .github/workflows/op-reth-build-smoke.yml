@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tip_hash:
-        description: "opBNB mainnet --debug.tip hash (default: block 12000000)"
+        description: "opBNB mainnet --debug.tip hash (default: block 10000000)"
         required: false
-        default: "0xcf8da65486de824411ebf092f83926cf31dfb42152e2556b8f0613144e0b1044"
+        default: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
   push:
     branches:
       - main
@@ -20,15 +20,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Block 12_000_000 on opbnb-mainnet (eth_getBlockByNumber).
-  # 20M ENOSPC mid-Bodies; 15M smoke still long; 12M between proven 10M (~45G) and 15M.
-  OPBNB_SMOKE_TIP_HASH: "0xcf8da65486de824411ebf092f83926cf31dfb42152e2556b8f0613144e0b1044"
-  OPBNB_SMOKE_TIP_BLOCK: "12000000"
+  # Block 10_000_000 on opbnb-mainnet (eth_getBlockByNumber).
+  # Proven GHA success (~45G, ~3h). 12M timed out mid-Exec (+ disk 99%); 15/20M failed.
+  OPBNB_SMOKE_TIP_HASH: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
+  OPBNB_SMOKE_TIP_BLOCK: "10000000"
 
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
-    # Build (~10–25m) + sync genesis→12M. GitHub-hosted job cap is 6h (360m).
+    # Build (~10–25m) + sync genesis→10M. GitHub-hosted job cap is 6h (360m).
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -135,7 +135,7 @@ jobs:
           set -euo pipefail
           # Cargo home, workspace target/, and $RUNNER_TEMP datadir all live on the
           # same GitHub-hosted root FS (/dev/root ~145G). 10M smoke used ~45G datadir
-          # with ~37G free left; 20M ENOSPC mid-Bodies — default tip is 12M + cleanup.
+          # with ~37G free left; 12/15/20M failed — default tip is proven 10M + cleanup.
           BIN_SRC="${{ matrix.binary }}"
           BIN_DST="$RUNNER_TEMP/op-reth-${{ matrix.profile }}"
           CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"

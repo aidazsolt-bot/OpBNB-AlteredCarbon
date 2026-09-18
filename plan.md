@@ -43,19 +43,19 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | Thema | Lage |
 | --- | --- |
 | **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · **ohne** `--debug.tip` / `--debug.max-block` (Restart **12:32 CEST**) · metrics **`:6060`** |
-| **Git** | CI tip @**12 M** · Streaming **`a1e50e6352`** |
+| **Git** | CI tip @**10 M** · Streaming **`a1e50e6352`** |
 | **Horizon 43.5 M ✅** | Finish **09:45Z** (11:45 CEST) + `--debug.terminate` · IndexStorage **05:20→08:33Z (~3 h 13 m)** · IndexAccount **→09:45Z (~1 h 12 m)** · Prune/Finish sekunden |
 | **Live jetzt (~12:35)** | Backfill auf Headers-Tip **`71 185 160`** (`initial_target=0x9b722c2e…`) · aktiv **Bodies** ~**43.60 M** (~**61 %**) @ ~**400–500 blk/s** · Rest ~**27.6 M** → ETA Bodies **~15–18 h** (peers **2**, peer-bound) · Sender/Exec/… noch **43 519 340** |
 | **Recovery** | Wright 09-09 → Heal → Exec→Merkle→TxLookup→Index→**Finish @43.5 M ✅** (kein Genesis-Re-Sync) |
 | **Health** | peers **2** · validation/timeout/invalid **0** |
-| **CI Smoke** | Default `--debug.tip` @**12 M** (`0xcf8da654…1044`); 15 M run **35188544554**; 20 M ENOSPC **34853720560** |
+| **CI Smoke** | Default `--debug.tip` @**10 M** (`0xba60240a…bbd5`, proven); 12 M timeout **35288190515**; 15 M **35188544554**; 20 M ENOSPC **34853720560** |
 | **Ops** | Uncapped Restart: Consistency-Target = Headers-Hash → Bodies holt 43.5 M→71.2 M. `sync-eta.sh` Horizon=Bodies irreführend solange Bodies≫Exec. **Kein sudo.** |
 | **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Bodies→71.2 M 🔄 · Snap gesperrt |
 
 ### Nächste Schritte (Stand 2026-09-17 ~12:35 CEST)
 
 1. Bodies (dann Sender→Exec→…) bis Headers-Tip **71.2 M** laufen lassen; Peers beobachten.
-2. GHA tip **12 M** Smoke beobachten (Disk/Zeit vs 10 M-Benchmark).
+2. GHA tip **10 M** Smoke (Regression) beobachten.
 3. Optional: `sync-eta.sh` wenn Bodies > Exec: Horizon = min(Bodies, Headers) nur für Downstream, Active=Bodies.
 
 ## Ziel & Kontext
@@ -1683,7 +1683,7 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + @43.5 M ✅.
 
-**CI:** tip **15 M** (`0f74830ef4`); run **35188544554** 🔄 (~4 h 14 m Sync-Step); 20 M ENOSPC **34853720560**.
+**CI:** tip **10 M** (zurück nach 12/15/20 M-Fails); siehe `docs/repo/ci.md`.
 
 **Handoff:** [#session-memory](#session-memory).
 
