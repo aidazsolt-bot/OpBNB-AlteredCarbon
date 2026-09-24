@@ -35,27 +35,27 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-18 ~22:15 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-09-24 ~06:55 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
-> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…18.
+> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…24.
 
 | Thema | Lage |
 | --- | --- |
-| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped (kein tip/max-block) · metrics **`:6060` derzeit down** (IPC fehlt) |
-| **Git** | CI tip @**10 M** (`95d20642d2`) · Streaming **`a1e50e6352`** |
-| **Horizon 43.5 M ✅** | Finish **09-17 11:45 CEST** + terminate · danach Bodies-Catch-up Richtung Headers **71.2 M** |
-| **Live jetzt (~22:15)** | Nach CT-Neustarts: **StoragesHistory unwind** Batch **#64 / 109** (~59 %, ~4.7–5.5 min/Batch) → ETA **~3.5–4 h** (~**01:40–02:20 CEST 09-19**); nur dieser Unwind — danach ggf. weitere History/Pipeline. Letzter Mimir vor Metrics-Drop (~12:27): Headers/Bodies **71.2 M**, Exec **~44.6 M** |
-| **Recovery** | Wright 09-09 → Heal → … → **Finish @43.5 M ✅** · uncapped Bodies→71.2 M · jetzt History-Unwind nach CT-Restart (kein Genesis-Re-Sync) |
-| **Health** | CT `:9100` up · `:6060`/IPC **down** · Log schreibt Unwind-Batches · Checkmk BSC-Reth-Prozesse noch aktiv |
-| **CI Smoke** | Default `--debug.tip` @**10 M** (`0xba60240a…bbd5`, proven); 12 M timeout **35288190515**; 15 M **35188544554**; 20 M ENOSPC **34853720560** |
-| **Ops** | CT-Neustarts 09-18 · **Kein sudo.** Metrics/ETA erst wieder zuverlässig wenn `:6060`+IPC zurück |
-| **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Tip-Catch-up / History-Unwind 🔄 · Snap gesperrt |
+| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped · metrics **`:6060`** + IPC **up** |
+| **Git** | CI tip @**10 M** (`95d20642d2` + docs `0e3e5de238` lokal) · Streaming **`a1e50e6352`** |
+| **Horizon 43.5 M ✅** | Finish **09-17 11:45 CEST** · Headers/Bodies/Sender danach **71 185 160** |
+| **Live jetzt (~06:55)** | Aktiv **Execution** **~50.78 M** / 71.2 M (**~71.3 %**) · Rest **~20.4 M** · ETA Exec **~8–13 d** (15 m ~13 d @18 blk/s; 30 m ~7.5 d @31 blk/s) · Merkle…Finish noch **43.5 M** |
+| **Recovery** | Wright → Horizon Finish ✅ · CT-Neustarts 09-18 → History-Unwind → Exec-Catch-up (kein Genesis-Re-Sync) |
+| **Health** | peers **25** · validation/timeout/invalid **0** · Log `Executed block range` ok |
+| **CI Smoke** | Default `--debug.tip` @**10 M** (`0xba60240a…bbd5`); 12/15/20 M failed (Timeout/ENOSPC) |
+| **Ops** | **Kein sudo.** `scripts/sync-eta.sh` für Fenster-ETAs |
+| **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Exec→71.2 M 🔄 · Snap gesperrt |
 
-### Nächste Schritte (Stand 2026-09-18 ~22:15 CEST)
+### Nächste Schritte (Stand 2026-09-24 ~06:55 CEST)
 
-1. StoragesHistory-Unwind **#64→109** zu Ende laufen lassen; danach Log auf weitere History-/Pipeline-Stufen prüfen.
-2. Sobald `:6060`/IPC wieder da: `scripts/sync-eta.sh` + Point-1/2 Health; Exec-Catch-up vs Headers **71.2 M**.
+1. Execution bis Headers-Tip **71.2 M** laufen lassen; kurze ETA-Fenster (15 m/30 m) beobachten.
+2. Nach Exec: Merkle/Index/TxLookup/Finish; Point-4 Stichproben im Exec-Fenster.
 3. GHA tip **10 M** Smoke (Regression) beobachten.
 
 ## Ziel & Kontext
@@ -400,8 +400,8 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-18 ~22:15 CEST:** CT-Neustarts · **StoragesHistory unwind #64/109** ETA **~3.5–4 h**; Metrics/IPC down. Siehe [#session-memory](#session-memory).
-- **Stand 2026-09-14 ~16:22 CEST (Tip-43.5 M Recovery):** Tip **`43 519 340`** + terminate. History-Heal **~18 h** (09-12/13). **Execution** **38.55 M→43.5 M** (~**5.0 M** rest, ETA **~1.5–2 d** @15m ~42 blk/s). Peers **9**; errors **0**; Point-4 MATCH (inkl. Wright). CI Smoke damals **`--debug.tip` @20 M**.
+- **Stand 2026-09-24 ~06:55 CEST:** Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-09-18 ~22:15 CEST:** CT-Neustarts · **StoragesHistory unwind #64/109** ETA **~3.5–4 h**; Metrics/IPC down.
 
 ## Roadmap (aktuell — Exec-Fenster)
 
@@ -1669,18 +1669,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-17 **~12:35 CEST** · chain **204** · Binary **`04eb5ac`**
-· **Horizon 43.5 M Finish ✅** (09:45Z) · Restart **ohne** tip/max-block → Target Headers **71 185 160**
-· aktiv **Bodies** ~**43.60 M** / 71.2 M (~**61 %**) · ~**450 blk/s** · ETA Bodies **~15–18 h** · peers **2** · errors **0**
+**Stichprobe (aktuell):** 2026-09-24 **~06:55 CEST** · chain **204** · Binary **`04eb5ac`**
+· Horizon **71 185 160** (Headers/Bodies/Sender ✅) · aktiv **Execution** **~50.78 M** (~**71.3 %**)
+· Rest **~20.4 M** · ETA Exec **~8–13 d** (15 m/30 m) · peers **25** · errors **0**
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers / Bodies (letzter Mimir) | **71 185 160** | vor Metrics-Drop 09-18 ~12:27 |
-| Execution (letzter Mimir) | **~44.6 M** | Catch-up war aktiv; aktuell Metrics down |
+| Headers / Bodies / Sender | **71 185 160** | ✅ Tip-Horizon |
+| **Execution** | **~50.78 M** | 🔄 Catch-up · ETA **~8–13 d** |
+| Merkle…Finish | **43 519 340** | warten bis Exec |
 | Horizon 43.5 M Pipeline | **Finish ✅** | 09-17 11:45 CEST |
-| StoragesHistory unwind | **#64 / 109** | 🔄 ETA **~3.5–4 h** (~01:40–02:20 CEST 09-19) |
 
-**Wright-Recovery (09-09→17):** … → **Finish @43.5 M ✅** · uncapped Bodies→71.2 M · **09-18** CT-Neustarts → StoragesHistory unwind. Kein Genesis-Re-Sync.
+**Wright-Recovery (09-09→24):** … → **Finish @43.5 M ✅** · Bodies/Headers **71.2 M** · CT-Neustarts 09-18 → History-Unwind → Exec **~50.8 M**. Kein Genesis-Re-Sync.
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + @43.5 M ✅.
 

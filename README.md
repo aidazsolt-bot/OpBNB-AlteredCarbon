@@ -456,13 +456,13 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-09-17 ~07:58:** Exec/Merkle/TxLookup @ Horizon; IndexStorage collecting.
 - **2026-09-17 ~11:45 CEST:** **Finish @ 43 519 340 ✅** (IndexStorage ~**3 h 13 m**, IndexAccount ~**1 h 12 m**); `--debug.terminate`.
 - **2026-09-17 ~12:32 CEST:** Restart **ohne** tip/max-block → Backfill Headers **71.2 M**; **Bodies** ~**43.6 M** (~61 %) @ ~450 blk/s; ETA Bodies **~15–18 h**; peers **2**.
-- **2026-09-18 ~22:15 CEST:** CT-Neustarts · Metrics/IPC down · **StoragesHistory unwind #64/109** (~4.7–5.5 min/Batch) → ETA **~3.5–4 h** (~01:40–02:20 CEST 09-19). Last Mimir before drop: Headers/Bodies **71.2 M**, Exec **~44.6 M**.
+- **2026-09-18 ~22:15 CEST:** CT-Neustarts · Metrics/IPC down · **StoragesHistory unwind #64/109** → ETA **~3.5–4 h**.
+- **2026-09-24 ~06:55 CEST:** Metrics/IPC up · Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~**71 %**) · ETA Exec **~8–13 d** (15 m/30 m) · peers **25** · errors **0**.
 - **Not** a genesis re-sync; recovery path closed at Horizon Finish (History unwind is post-restart heal).
 
-##### Live sync progress (2026-09-18 ~22:15 CEST)
+##### Live sync progress (2026-09-24 ~06:55 CEST)
 
-- Horizon **43.5 M** Finish ✅ (09-17); uncapped catch-up reached Headers/Bodies **71.2 M** / Exec **~44.6 M** (Mimir), then CT restarts.
-- Active: **StoragesHistory** unwind **64/109**; metrics `:6060`/IPC currently down — ETA from log batch timing only.
+- Horizon Headers/Bodies/Sender **71 185 160** ✅; active **Execution ~50.8 M** / 71.2 M; Merkle…Finish still **43.5 M**.
 - GHA: default tip **10 000 000** (proven). Failed: 12 M timeout [35288190515](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35288190515), 15 M [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554), 20 M ENOSPC [34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)

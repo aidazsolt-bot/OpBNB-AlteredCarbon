@@ -29,17 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-09-18 ~22:15 CEST)
+## Session-Memory / Status (Stand 2026-09-24 ~06:55 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | **StoragesHistory unwind #64/109** nach CT-Neustarts · ETA **~3.5–4 h** · `:6060`/IPC down |
-| Davor | Horizon **43.5 M Finish ✅** (09-17) · Bodies/Headers **71.2 M** · Exec **~44.6 M** (letzter Mimir) |
-| Ops | CT-Neustarts 09-18 · Log-Batch-ETA bis Metrics wieder da · **Kein sudo.** |
-| Git / CI | tip @**10 M** (`95d20642d2`) |
-| Gates | X02 @Horizon Finish ✅; History-Unwind / Tip-Catch-up 🔄; Snap gesperrt |
+| Live | **Execution ~50.8 M** / Headers **71.2 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0** |
+| Davor | Horizon **43.5 M Finish ✅** · Bodies/Headers **71.2 M** · CT-Neustarts → History-Unwind |
+| Ops | Metrics/IPC up · `sync-eta.sh` · **Kein sudo.** |
+| Git / CI | tip @**10 M** |
+| Gates | X02 @Horizon Finish ✅; Exec→71.2 M 🔄; Snap gesperrt |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
