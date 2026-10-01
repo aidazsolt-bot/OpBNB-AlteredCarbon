@@ -35,28 +35,28 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-09-24 ~06:55 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-01 ~17:05 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
-> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…24.
+> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…10-01.
 
 | Thema | Lage |
 | --- | --- |
-| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped · metrics **`:6060`** + IPC **up** |
-| **Git** | CI tip @**10 M** (`95d20642d2` + docs `0e3e5de238` lokal) · Streaming **`a1e50e6352`** |
-| **Horizon 43.5 M ✅** | Finish **09-17 11:45 CEST** · Headers/Bodies/Sender danach **71 185 160** |
-| **Live jetzt (~06:55)** | Aktiv **Execution** **~50.78 M** / 71.2 M (**~71.3 %**) · Rest **~20.4 M** · ETA Exec **~8–13 d** (15 m ~13 d @18 blk/s; 30 m ~7.5 d @31 blk/s) · Merkle…Finish noch **43.5 M** |
-| **Recovery** | Wright → Horizon Finish ✅ · CT-Neustarts 09-18 → History-Unwind → Exec-Catch-up (kein Genesis-Re-Sync) |
-| **Health** | peers **25** · validation/timeout/invalid **0** · Log `Executed block range` ok |
-| **CI Smoke** | Default `--debug.tip` @**10 M** (`0xba60240a…bbd5`); 12/15/20 M failed (Timeout/ENOSPC) |
-| **Ops** | **Kein sudo.** `scripts/sync-eta.sh` für Fenster-ETAs |
-| **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Exec→71.2 M 🔄 · Snap gesperrt |
+| **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped · metrics **`:6060` down** (IPC fehlt) nach Reboot |
+| **Git** | CI tip @**10 M** · Streaming **`a1e50e6352`** · docs lokal voraus |
+| **Horizon Tip** | Headers/Bodies/Sender/Exec/MerkleExecute **71 185 160** ✅ (vor Stop) |
+| **Live jetzt (~17:05)** | **op-reth down** (SIGTERM ~06:48 während **TxLookup** @ ~**47 M**) · **op-node Crash-Loop**: L1 `bsc-dataseed.bnbchain.org` *address unavailable* (Restart 240+) · CT up (`:9100`) |
+| **Pipeline vor Stop** | Exec+Merkle @ Tip ✅ · TxLookup ~**45–47 M** / 71.2 M · Index/Finish noch **43.5 M** |
+| **Health** | Mimir `up=0` seit ~07:03 · validation n/a (EL offline) |
+| **CI Smoke** | Default `--debug.tip` @**10 M** |
+| **Ops** | Reboot 10-01 · **Kein sudo.** Nächste: L1-RPC erreichbar machen → op-reth starten (TxLookup fortsetzen) |
+| **Gates** | PIPE-012 ✅ · X02 @43.5 M Finish ✅ · Tip-Pipeline 🔄 (TxLookup/Index/Finish) · Snap gesperrt |
 
-### Nächste Schritte (Stand 2026-09-24 ~06:55 CEST)
+### Nächste Schritte (Stand 2026-10-01 ~17:05 CEST)
 
-1. Execution bis Headers-Tip **71.2 M** laufen lassen; kurze ETA-Fenster (15 m/30 m) beobachten.
-2. Nach Exec: Merkle/Index/TxLookup/Finish; Point-4 Stichproben im Exec-Fenster.
-3. GHA tip **10 M** Smoke (Regression) beobachten.
+1. L1-RPC für op-node fixen (DNS/`bsc-dataseed` oder alternativer BSC-Endpoint).
+2. **op-reth** neu starten; TxLookup ab ~47 M → Tip, dann Index/Finish.
+3. Danach `scripts/sync-eta.sh` + Point-1/2 Health.
 
 ## Ziel & Kontext
 
@@ -400,7 +400,8 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-09-24 ~06:55 CEST:** Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-10-01 ~17:05 CEST:** Exec/Merkle **71.2 M** ✅ · TxLookup ~**47 M** unterbrochen · **op-reth down** · **op-node** L1 `bsc-dataseed` Crash-Loop. Siehe [#session-memory](#session-memory).
+- **Stand 2026-09-24 ~06:55 CEST:** Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0**.
 - **Stand 2026-09-18 ~22:15 CEST:** CT-Neustarts · **StoragesHistory unwind #64/109** ETA **~3.5–4 h**; Metrics/IPC down.
 
 ## Roadmap (aktuell — Exec-Fenster)
@@ -1669,18 +1670,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-09-24 **~06:55 CEST** · chain **204** · Binary **`04eb5ac`**
-· Horizon **71 185 160** (Headers/Bodies/Sender ✅) · aktiv **Execution** **~50.78 M** (~**71.3 %**)
-· Rest **~20.4 M** · ETA Exec **~8–13 d** (15 m/30 m) · peers **25** · errors **0**
+**Stichprobe (aktuell):** 2026-10-01 **~17:05 CEST** · chain **204** · Binary **`04eb5ac`**
+· vor Reboot: Headers…MerkleExecute **71 185 160** ✅ · TxLookup ~**47 M** · Index/Finish **43.5 M**
+· **jetzt:** op-reth **down** · op-node L1-Dial-Fail (`bsc-dataseed`) Crash-Loop · CT `:9100` up
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers / Bodies / Sender | **71 185 160** | ✅ Tip-Horizon |
-| **Execution** | **~50.78 M** | 🔄 Catch-up · ETA **~8–13 d** |
-| Merkle…Finish | **43 519 340** | warten bis Exec |
-| Horizon 43.5 M Pipeline | **Finish ✅** | 09-17 11:45 CEST |
+| Headers / Bodies / Sender / Execution / MerkleExecute | **71 185 160** | ✅ vor Stop |
+| TransactionLookup | **~45–47 M** | ⏸ unterbrochen @ Reboot |
+| Index* / Finish | **43 519 340** | warten |
+| EL / CL | — | op-reth down · op-node L1 unavailable |
 
-**Wright-Recovery (09-09→24):** … → **Finish @43.5 M ✅** · Bodies/Headers **71.2 M** · CT-Neustarts 09-18 → History-Unwind → Exec **~50.8 M**. Kein Genesis-Re-Sync.
+**Wright-Recovery (09-09→10-01):** Horizon Finish ✅ · Exec/Merkle @ **71.2 M** ✅ · TxLookup Catch-up unterbrochen durch Reboot. Kein Genesis-Re-Sync.
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + @43.5 M ✅.
 
