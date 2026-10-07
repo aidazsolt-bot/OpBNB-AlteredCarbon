@@ -459,12 +459,12 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-09-18 ~22:15 CEST:** CT-Neustarts · Metrics/IPC down · **StoragesHistory unwind #64/109** → ETA **~3.5–4 h**.
 - **2026-09-24 ~06:55 CEST:** Metrics/IPC up · Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~**71 %**) · ETA Exec **~8–13 d** · peers **25**.
 - **2026-10-01 ~17:05 CEST:** Exec/Merkle **71.2 M** ✅ · TxLookup ~**47 M** · Reboot → **op-reth down** · **op-node** fail dial L1 `bsc-dataseed.bnbchain.org` (Crash-Loop).
+- **2026-10-07 ~15:25 CEST:** **Finish @ 71 185 160 ✅** (alle Stages) · aktiv **Headers** Catch-up → Live-Tip ~**193 M** (DL ~149 M @ ~53 k hdr/s) · peers **8** · errors **0** · Metrics/IPC/op-node up.
 - **Not** a genesis re-sync; recovery path closed at Horizon Finish (History unwind is post-restart heal).
 
-##### Live sync progress (2026-10-01 ~17:05 CEST)
+##### Live sync progress (2026-10-07 ~15:25 CEST)
 
-- Tip stages Exec/Merkle **71 185 160** done before stop; TxLookup interrupted ~47 M; Index/Finish still **43.5 M**.
-- EL offline; CL cannot init L1 RPC — fix dataseed/DNS then restart op-reth.
+- Pipeline **Finish @ 71.2 M** complete; now extending Headers toward live tip (~193 M). Bodies/Exec/… still at 71.2 M until Headers tip advances.
 - GHA: default tip **10 000 000** (proven). Failed: 12 M timeout [35288190515](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35288190515), 15 M [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554), 20 M ENOSPC [34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
