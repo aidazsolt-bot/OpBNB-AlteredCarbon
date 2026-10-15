@@ -460,12 +460,13 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-09-24 ~06:55 CEST:** Metrics/IPC up · Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~**71 %**) · ETA Exec **~8–13 d** · peers **25**.
 - **2026-10-01 ~17:05 CEST:** Exec/Merkle **71.2 M** ✅ · TxLookup ~**47 M** · Reboot → **op-reth down** · **op-node** fail dial L1 `bsc-dataseed.bnbchain.org` (Crash-Loop).
 - **2026-10-07 ~15:25 CEST:** **Finish @ 71 185 160 ✅** · Headers Catch-up → Live ~**193 M**.
-- **2026-10-15 ~14:15 CEST:** Headers…MerkleExecute **192 990 975** ✅ · **TxLookup ~73.8 M** / 193.0 M · ETA **~0.8 h** · Engine ~**195.8 M** · peers **11** · unexpected_errors **151**.
+- **2026-10-15 ~14:15 CEST:** Headers…Merkle **192 990 975** ✅ · TxLookup Catch-up.
+- **2026-10-15 ~16:35 CEST:** **TxLookup @ 193.0 M ✅** · **IndexStorageHistory** Collect ~**87.7 M** / 193.0 M · ETA Collect **~5.5–6 h** · Engine ~**195.83 M** · peers **11** · unexpected **151**.
 - **Not** a genesis re-sync; recovery path closed at Horizon Finish (History unwind is post-restart heal).
 
-##### Live sync progress (2026-10-15 ~14:15 CEST)
+##### Live sync progress (2026-10-15 ~16:35 CEST)
 
-- Tip pipeline through Merkle @ **193.0 M**; active **TxLookup** (~0.8 h ETA); then Index/Finish.
+- Tip through TxLookup @ **193.0 M**; active IndexStorage collect (~5.5–6 h); then IndexAccount/Finish.
 - GHA: default tip **10 000 000** (proven). Failed: 12 M timeout [35288190515](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35288190515), 15 M [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554), 20 M ENOSPC [34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)

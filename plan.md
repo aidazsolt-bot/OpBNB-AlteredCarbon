@@ -35,7 +35,7 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-15 ~14:15 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-15 ~16:35 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
 > Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…10-15.
@@ -44,19 +44,19 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 | --- | --- |
 | **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped · metrics **`:6060`** + IPC **up** |
 | **Git** | CI tip @**10 M** · Streaming **`a1e50e6352`** |
-| **Sync-Horizon** | Headers/Bodies/Sender/Exec/Hashing/**MerkleExecute** **192 990 975** ✅ |
-| **Live jetzt (~14:15)** | Aktiv **TransactionLookup** ~**73.8 M** / 193.0 M · ~**41 k** blk/s · **ETA TxLookup ~0.8 h** → dann Index*/Finish |
-| **Engine Tip** | ~**195.8 M** (op-node; Pipeline-Horizon 193.0 M) |
-| **Health** | peers **11** · validation/timeout/invalid **0** · **unexpected_errors=151** (ALERT beobachten) |
+| **Sync-Horizon** | Headers…Merkle/**TxLookup** **192 990 975** ✅ |
+| **Live jetzt (~16:35)** | Aktiv **IndexStorageHistory** Collect ~**87.7 M** / 193.0 M (~**13.5 %** der Range) · ~**4.8–5.4 k** blk/s · **ETA Collect ~5.5–6 h** → dann IndexAccount + Finish |
+| **Engine Tip** | ~**195.83 M** |
+| **Health** | peers **11** · validation/timeout/invalid **0** · **unexpected_errors=151** |
 | **CI Smoke** | Default `--debug.tip` @**10 M** |
-| **Ops** | **Kein sudo.** `scripts/sync-eta.sh` |
-| **Gates** | Tip H…Merkle ✅ · TxLookup→Finish 🔄 · Snap gesperrt |
+| **Ops** | **Kein sudo.** Checkpoint bleibt **71.2 M** bis Index-Commit |
+| **Gates** | Tip H…TxLookup ✅ · Index→Finish 🔄 · Snap gesperrt |
 
-### Nächste Schritte (Stand 2026-10-15 ~14:15 CEST)
+### Nächste Schritte (Stand 2026-10-15 ~16:35 CEST)
 
-1. TxLookup → Index* → Finish bis **193.0 M** laufen lassen (~Stunden für Index möglich).
-2. `unexpected_errors=151` im Blick behalten.
-3. Point-4 Stichproben (Exec bereits @ Horizon).
+1. IndexStorage Collect → Commit; IndexAccount; Finish @ **193.0 M**.
+2. `unexpected_errors=151` beobachten.
+3. Nach Finish: Point-4 Stichproben @ Horizon.
 
 ## Ziel & Kontext
 
@@ -400,7 +400,8 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-10-15 ~14:15 CEST:** H…Merkle @**193.0 M** ✅ · **TxLookup ~73.8 M** ETA **~0.8 h** · peers **11** · unexpected **151**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-10-15 ~16:35 CEST:** H…TxLookup @**193.0 M** ✅ · **IndexStorage Collect ~87.7 M** ETA **~5.5–6 h** · peers **11** · unexpected **151**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-10-15 ~14:15 CEST:** H…Merkle @**193.0 M** ✅ · **TxLookup ~73.8 M** ETA **~0.8 h** · peers **11** · unexpected **151**.
 - **Stand 2026-10-07 ~15:25 CEST:** **Finish @ 71.2 M ✅** · Headers Catch-up → Live ~**193 M** (DL ~149 M, ~53 k hdr/s) · peers **8** · errors **0**.
 - **Stand 2026-10-01 ~17:05 CEST:** Exec/Merkle **71.2 M** ✅ · TxLookup ~**47 M** unterbrochen · **op-reth down** · **op-node** L1 `bsc-dataseed` Crash-Loop.
 - **Stand 2026-09-24 ~06:55 CEST:** Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0**.
@@ -1672,18 +1673,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-10-15 **~14:15 CEST** · chain **204** · Binary **`04eb5ac`**
-· Horizon **192 990 975** (H…Merkle ✅) · aktiv **TxLookup** ~**73.8 M** · ETA **~0.8 h**
-· Index/Finish noch **71.2 M** · Engine ~**195.8 M** · peers **11** · unexpected **151**
+**Stichprobe (aktuell):** 2026-10-15 **~16:35 CEST** · chain **204** · Binary **`04eb5ac`**
+· Horizon **192 990 975** (H…TxLookup ✅) · aktiv **IndexStorageHistory** Collect ~**87.7 M**
+· ETA Collect **~5.5–6 h** · Index/Finish ck **71.2 M** · Engine ~**195.83 M** · peers **11** · unexpected **151**
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers…MerkleExecute | **192 990 975** | ✅ |
-| **TransactionLookup** | **~73.8 M** | 🔄 ETA **~0.8 h** @ ~41 k blk/s |
-| Index* / Prune / Finish | **71 185 160** | warten |
-| Engine tip | ~**195.8 M** | op-node live |
+| Headers…TransactionLookup | **192 990 975** | ✅ |
+| **IndexStorageHistory** | **71.2 M** ck · Collect ~**87.7 M** | 🔄 ETA Collect **~5.5–6 h** |
+| IndexAccount / Prune / Finish | **71 185 160** | warten |
+| Engine tip | ~**195.83 M** | op-node live |
 
-**Wright-Recovery (09-09→10-15):** Finish @71.2 M ✅ → Tip-Backfill H…Merkle @**193.0 M** ✅ · TxLookup→Finish Rest. Kein Genesis-Re-Sync.
+**Wright-Recovery (09-09→10-15):** Tip-Backfill H…TxLookup @**193.0 M** ✅ · Index→Finish Rest. Kein Genesis-Re-Sync.
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + @43.5 M ✅.
 

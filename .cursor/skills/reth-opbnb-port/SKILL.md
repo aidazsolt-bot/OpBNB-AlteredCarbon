@@ -29,17 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-10-15 ~14:15 CEST)
+## Session-Memory / Status (Stand 2026-10-15 ~16:35 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
 
 | | |
 | --- | --- |
-| Live | H…Merkle @**193.0 M** ✅ · **TxLookup ~74 M** ETA **~0.8 h** · Index/Finish **71.2 M** |
-| Davor | Tip-Backfill Headers→Exec→Merkle |
+| Live | H…TxLookup @**193.0 M** ✅ · **IndexStorage Collect ~88 M** ETA **~5.5–6 h** |
+| Davor | Merkle + TxLookup Catch-up done |
 | Ops | peers **11** · unexpected **151** · **Kein sudo.** |
 | Git / CI | tip @**10 M** |
-| Gates | TxLookup→Finish 🔄; Snap gesperrt |
+| Gates | Index→Finish 🔄; Snap gesperrt |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
