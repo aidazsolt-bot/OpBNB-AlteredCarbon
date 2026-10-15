@@ -35,28 +35,28 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-07 ~15:25 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-15 ~14:15 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices` + `network-linux-sysadmin`.
-> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…10-07.
+> Chats: `ea987bef…` · `6cc355ee…` · `92a6866f…` · Follow-ups 09-14…10-15.
 
 | Thema | Lage |
 | --- | --- |
 | **Kette / Binary** | opBNB **204** · Live **`04eb5ac`** · uncapped · metrics **`:6060`** + IPC **up** |
 | **Git** | CI tip @**10 M** · Streaming **`a1e50e6352`** |
-| **Horizon 71.2 M ✅** | **alle** Stages inkl. **Finish @ 71 185 160** (TxLookup/Index nach History-Unwind durch) |
-| **Live jetzt (~15:25)** | Aktiv **Headers**-Catch-up Richtung Live-Tip ~**193.05 M** · Download-Fenster ~**148.9 M** (~**53 k** hdr/s) · Checkpoint noch **71.2 M** bis Lücke geschlossen · ETA Header-Fill **~0.4 h** |
-| **Recovery** | Reboot 10-01 → StoragesHistory unwind → Tip-Pipeline @71.2 M Finish ✅ → jetzt Tip-Backfill |
-| **Health** | peers **8** · validation/timeout/invalid **0** · op-node liefert Payloads |
+| **Sync-Horizon** | Headers/Bodies/Sender/Exec/Hashing/**MerkleExecute** **192 990 975** ✅ |
+| **Live jetzt (~14:15)** | Aktiv **TransactionLookup** ~**73.8 M** / 193.0 M · ~**41 k** blk/s · **ETA TxLookup ~0.8 h** → dann Index*/Finish |
+| **Engine Tip** | ~**195.8 M** (op-node; Pipeline-Horizon 193.0 M) |
+| **Health** | peers **11** · validation/timeout/invalid **0** · **unexpected_errors=151** (ALERT beobachten) |
 | **CI Smoke** | Default `--debug.tip` @**10 M** |
-| **Ops** | **Kein sudo.** `scripts/sync-eta.sh` (Horizon=71.2 M bis Headers-Checkpoint steigt) |
-| **Gates** | PIPE-012 ✅ · X02 @43.5 M ✅ · Finish @71.2 M ✅ · Tip-Catch-up (H→…→Finish) 🔄 · Snap gesperrt |
+| **Ops** | **Kein sudo.** `scripts/sync-eta.sh` |
+| **Gates** | Tip H…Merkle ✅ · TxLookup→Finish 🔄 · Snap gesperrt |
 
-### Nächste Schritte (Stand 2026-10-07 ~15:25 CEST)
+### Nächste Schritte (Stand 2026-10-15 ~14:15 CEST)
 
-1. Headers-Lücke zum Live-Tip schließen; dann Bodies→Sender→Exec→… beobachten (langer Teil).
-2. Point-1/2 Health + gelegentlich Point-3/4 im ausgeführten Fenster.
-3. GHA tip **10 M** Smoke (Regression) beobachten.
+1. TxLookup → Index* → Finish bis **193.0 M** laufen lassen (~Stunden für Index möglich).
+2. `unexpected_errors=151` im Blick behalten.
+3. Point-4 Stichproben (Exec bereits @ Horizon).
 
 ## Ziel & Kontext
 
@@ -400,7 +400,8 @@ ergänzt.
 - **Catch-up** und **Full Sync** startet/führt **nur ein Human** durch — sobald die AI den Port als
   **lauffähig** einstuft (Compile + Boot/RPC-Smoke + Kern-Tests ohne Blocker).
 - AI macht höchstens Boot-Smoke / kurze Pipeline-Sanity; keine langen Sync-Läufe.
-- **Stand 2026-10-07 ~15:25 CEST:** **Finish @ 71.2 M ✅** · Headers Catch-up → Live ~**193 M** (DL ~149 M, ~53 k hdr/s) · peers **8** · errors **0**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-10-15 ~14:15 CEST:** H…Merkle @**193.0 M** ✅ · **TxLookup ~73.8 M** ETA **~0.8 h** · peers **11** · unexpected **151**. Siehe [#session-memory](#session-memory).
+- **Stand 2026-10-07 ~15:25 CEST:** **Finish @ 71.2 M ✅** · Headers Catch-up → Live ~**193 M** (DL ~149 M, ~53 k hdr/s) · peers **8** · errors **0**.
 - **Stand 2026-10-01 ~17:05 CEST:** Exec/Merkle **71.2 M** ✅ · TxLookup ~**47 M** unterbrochen · **op-reth down** · **op-node** L1 `bsc-dataseed` Crash-Loop.
 - **Stand 2026-09-24 ~06:55 CEST:** Headers/Bodies/Sender **71.2 M** ✅ · **Execution ~50.78 M** (~71 %) · ETA Exec **~8–13 d** · peers **25** · errors **0**.
 - **Stand 2026-09-18 ~22:15 CEST:** CT-Neustarts · **StoragesHistory unwind #64/109** ETA **~3.5–4 h**; Metrics/IPC down.
@@ -1671,17 +1672,18 @@ maxperf → `Cargo/bin/op-reth-bnb` only; Smoke `files/dev-250ms` ohne Persisten
 
 ### Live Sync Progress — opBNB Archive (`<archive-ct>` / `op-reth-bnb`) {#live-sync-progress}
 
-**Stichprobe (aktuell):** 2026-10-07 **~15:25 CEST** · chain **204** · Binary **`04eb5ac`**
-· **Finish @ 71 185 160 ✅** (alle Stages) · aktiv **Headers** Catch-up → Live-Tip ~**193.05 M**
-· Download ~**148.9 M** @ ~**53 k** hdr/s · peers **8** · errors **0** · Metrics/IPC/op-node **up**
+**Stichprobe (aktuell):** 2026-10-15 **~14:15 CEST** · chain **204** · Binary **`04eb5ac`**
+· Horizon **192 990 975** (H…Merkle ✅) · aktiv **TxLookup** ~**73.8 M** · ETA **~0.8 h**
+· Index/Finish noch **71.2 M** · Engine ~**195.8 M** · peers **11** · unexpected **151**
 
 | Stage | Checkpoint | Status |
 | --- | ---: | --- |
-| Headers…Finish (Horizon) | **71 185 160** | ✅ Tip-Pipeline geschlossen |
-| **Headers** (aktiv) | **71.2 M** ck · DL ~**149 M** | 🔄 Catch-up → ~193 M · ETA Fill **~0.4 h** |
-| Bodies…Finish (nach Headers) | **71.2 M** | warten auf neuen Headers-Tip |
+| Headers…MerkleExecute | **192 990 975** | ✅ |
+| **TransactionLookup** | **~73.8 M** | 🔄 ETA **~0.8 h** @ ~41 k blk/s |
+| Index* / Prune / Finish | **71 185 160** | warten |
+| Engine tip | ~**195.8 M** | op-node live |
 
-**Wright-Recovery (09-09→10-07):** Horizon Finish ✅ · Exec/Merkle @71.2 M → Reboot/Unwind → **Finish @71.2 M ✅** → Tip-Backfill. Kein Genesis-Re-Sync.
+**Wright-Recovery (09-09→10-15):** Finish @71.2 M ✅ → Tip-Backfill H…Merkle @**193.0 M** ✅ · TxLookup→Finish Rest. Kein Genesis-Re-Sync.
 
 **TxLookup-OOM (09-11):** Fix **`a1e50e6352`** — @10 M + @43.5 M ✅.
 
