@@ -462,12 +462,12 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **2026-10-07 ~15:25 CEST:** **Finish @ 71 185 160 ✅** · Headers Catch-up → Live ~**193 M**.
 - **2026-10-15 ~14:15 CEST:** Headers…Merkle **192 990 975** ✅ · TxLookup Catch-up.
 - **2026-10-15 ~16:35 CEST:** **TxLookup @ 193.0 M ✅** · **IndexStorageHistory** Collect ~**87.7 M** / 193.0 M · ETA Collect **~5.5–6 h** · Engine ~**195.83 M** · peers **11** · unexpected **151**.
-- **2026-10-16 ~16:05 CEST:** IndexStorage **Collect ✅** (15 Okt ~18:05 CEST) · **Writing/Load** · log Writing **10 %** @ ~00:56 CEST · linear **~30–35 %** · **ETA Write ~1.5–2 d** (~**18 Okt**) · Engine ~**196.17 M** · peers **12** · unexpected **151**.
+- **2026-10-16 ~16:15 CEST:** IndexStorage Writing **alive** (90 s: StoragesHistory get **~502/s**, CPU **~1.0**) · last **`Writing 10%`** 00:55:43 CEST · **no 20%** after **>15.28 h** · 0→10 % took **6.85 h** · **Finish-ETA n/a** (need ≥2 %-logs) · peers **12** · unexpected **151**.
 - **Not** a genesis re-sync; recovery path closed at Horizon Finish (History unwind is post-restart heal).
 
-##### Live sync progress (2026-10-16 ~16:05 CEST)
+##### Live sync progress (2026-10-16 ~16:15 CEST)
 
-- Tip through TxLookup @ **193.0 M**; IndexStorage Writing/Load (~1.5–2 d); then IndexAccount/Finish.
+- Tip through TxLookup @ **193.0 M**; IndexStorage Writing active (gets+CPU); Finish-ETA deferred until next `Writing indices progress=` log.
 - GHA: default tip **10 000 000** (proven). Failed: 12 M timeout [35288190515](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35288190515), 15 M [35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554), 20 M ENOSPC [34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560).
 
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
