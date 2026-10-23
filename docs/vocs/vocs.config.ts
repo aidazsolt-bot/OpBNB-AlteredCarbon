@@ -21,33 +21,25 @@ export default defineConfig({
     { text: 'Run', link: '/run/ethereum' },
     { text: 'SDK', link: '/sdk' },
     { text: 'Rustdocs', link: '/docs' },
-    { text: 'GitHub', link: 'https://github.com/paradigmxyz/reth' },
+    { text: 'GitHub', link: 'https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon' },
     {
       text: 'v2.8.0',
       items: [
         {
           text: 'Releases',
-          link: 'https://github.com/paradigmxyz/reth/releases'
+          link: 'https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/releases'
         },
-        {
-          text: 'Contributing',
-          link: 'https://github.com/paradigmxyz/reth/blob/main/CONTRIBUTING.md'
-        }
       ]
     }
   ],
   socials: [
     {
       icon: 'github',
-      link: 'https://github.com/paradigmxyz/reth',
-    },
-    {
-      icon: 'telegram',
-      link: 'https://t.me/paradigm_reth',
+      link: 'https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon',
     },
   ],
   editLink: {
-    link: "https://github.com/paradigmxyz/reth/edit/main/docs/vocs/docs/pages/:path",
+    link: "https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/edit/main/docs/vocs/docs/pages/:path",
   },
   vite: {
     plugins: [

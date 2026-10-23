@@ -1720,7 +1720,7 @@ where
                             PayloadStatus::new(
                                 PayloadStatusEnum::Invalid { validation_error: error.to_string() },
                                 // TODO: return a proper latest valid hash
-                                // See: <https://github.com/paradigmxyz/reth/issues/7146>
+                                // See: <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/7146>
                                 self.forkchoice_state_tracker.last_valid_head(),
                             )
                         }

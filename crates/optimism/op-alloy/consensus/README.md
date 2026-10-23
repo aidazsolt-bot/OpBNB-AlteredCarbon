@@ -15,4 +15,4 @@ For consensus types that are not modified by the OP Stack, the `alloy-consensus`
 
 Much of this code was ported from [reth-primitives] as part of ongoing alloy migrations.
 
-[reth-primitives]: https://github.com/paradigmxyz/reth/tree/main/crates/primitives
+[reth-primitives]: https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/tree/main/crates/primitives

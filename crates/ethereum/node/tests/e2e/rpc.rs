@@ -879,7 +879,7 @@ async fn test_sepolia_amsterdam_eth_config() -> eyre::Result<()> {
     Ok(())
 }
 
-// <https://github.com/paradigmxyz/reth/issues/19765>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/19765>
 #[tokio::test]
 async fn test_admin_external_ip() -> eyre::Result<()> {
     reth_tracing::init_test_tracing();
@@ -914,7 +914,7 @@ async fn test_admin_external_ip() -> eyre::Result<()> {
     Ok(())
 }
 
-// <https://github.com/paradigmxyz/reth/issues/27867>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/27867>
 #[tokio::test]
 async fn test_disable_auth_server_skips_jwt_secret() -> eyre::Result<()> {
     reth_tracing::init_test_tracing();

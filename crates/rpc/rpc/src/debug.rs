@@ -384,7 +384,7 @@ where
     /// If not provided, then uses the post-state (default behavior).
     ///
     /// Differences compare to `eth_call`:
-    ///  - `debug_traceCall` executes with __enabled__ basefee check, `eth_call` does not: <https://github.com/paradigmxyz/reth/issues/6240>
+    ///  - `debug_traceCall` executes with __enabled__ basefee check, `eth_call` does not: <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/6240>
     pub async fn debug_trace_call(
         &self,
         call: RpcTxReq<Eth::NetworkTypes>,

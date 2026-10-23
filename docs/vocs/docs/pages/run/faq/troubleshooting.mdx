@@ -49,7 +49,7 @@ If you're:
     2023-11-08T15:17:24.789731Z  WARN providers::db: Transaction insertion took too long block_number=18528075 tx_num=2150227643 hash=0xb7de1d6620efbdd3aa8547c47a0ff09a7fd3e48ba3fd2c53ce94c6683ed66e7c elapsed=6.793759034s
     ```
 
-then most likely you're experiencing issues with the [database freelist](https://github.com/paradigmxyz/reth/issues/5228).
+then most likely you're experiencing issues with the [database freelist](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/5228).
 To confirm it, check if the values on the `Freelist` chart on [Grafana dashboard](/run/monitoring#prometheus--grafana)
 is greater than 10M.
 
@@ -62,7 +62,7 @@ equal to the [freshly synced node](/run/system-requirements).
 
 1. Clone Reth
     ```bash
-    git clone https://github.com/paradigmxyz/reth
+    git clone https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon
     cd reth
     ```
 2. Build database debug tools
@@ -123,12 +123,12 @@ Caused by:
 1. Check your memory health: use [memtest86+](https://www.memtest.org/) or [memtester](https://linux.die.net/man/8/memtester). If your memory is faulty, it's better to resync the node on different hardware.
 2. Check database integrity:
     ```bash
-    git clone https://github.com/paradigmxyz/reth
+    git clone https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon
     cd reth
     make db-tools
     ./db-tools/mdbx_chk $(reth db path)/mdbx.dat | tee mdbx_chk.log
     ```
-    If `mdbx_chk` has detected any errors, please [open an issue](https://github.com/paradigmxyz/reth/issues) and post the output from the `mdbx_chk.log` file.
+    If `mdbx_chk` has detected any errors, please [open an issue](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues) and post the output from the `mdbx_chk.log` file.
 
 ### Concurrent database access error (using containers/Docker)
 

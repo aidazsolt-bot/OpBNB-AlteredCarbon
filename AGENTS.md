@@ -208,7 +208,7 @@ This builds `reth` in debug mode and runs `docs/cli/update.sh` to regenerate all
 
 The `book` CI job (`.github/workflows/lint.yml`) enforces this by regenerating the docs and running `git diff --exit-code`. If the committed docs don't match the generated output, CI fails. Manually editing these pages is never productive — always use `make update-book-cli`.
 
-### Opening PRs against <https://github.com/paradigmxyz/reth>
+### Opening PRs against this fork (<https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon>)
 
 #### Titles
 

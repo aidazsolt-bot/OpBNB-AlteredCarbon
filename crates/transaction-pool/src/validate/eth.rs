@@ -1784,7 +1784,7 @@ mod tests {
         assert!(ensure_intrinsic_gas(&calldata_tx(261_910), &no_cap).is_ok());
     }
 
-    // <https://github.com/paradigmxyz/reth/issues/5178>
+    // <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/5178>
     #[tokio::test]
     async fn validate_transaction() {
         let transaction = get_transaction();
@@ -1934,7 +1934,7 @@ mod tests {
         assert_eq!(validator.recover_authorities(&transaction), Some(expected));
     }
 
-    // <https://github.com/paradigmxyz/reth/issues/8550>
+    // <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/8550>
     #[tokio::test]
     async fn invalid_on_gas_limit_too_high() {
         let transaction = get_transaction();

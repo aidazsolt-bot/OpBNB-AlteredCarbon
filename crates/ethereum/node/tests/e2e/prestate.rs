@@ -18,7 +18,7 @@ const PRESTATE_SNAPSHOT: &str =
 
 /// Replays the selfdestruct transaction via `debug_traceCall` and ensures Reth's prestate matches
 /// Geth's captured snapshot.
-// <https://github.com/paradigmxyz/reth/issues/19703>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/19703>
 #[tokio::test]
 async fn debug_trace_call_matches_geth_prestate_snapshot() -> Result<()> {
     reth_tracing::init_test_tracing();

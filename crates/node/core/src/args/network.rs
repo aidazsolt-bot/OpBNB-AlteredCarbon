@@ -1023,7 +1023,7 @@ impl DiscoveryArgs {
         }
 
         if self.disable_nat {
-            // we only check for `disable-nat` here and not for disable discovery because nat:extip can be used without discovery: <https://github.com/paradigmxyz/reth/issues/14878>
+            // we only check for `disable-nat` here and not for disable discovery because nat:extip can be used without discovery: <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/14878>
             network_config_builder = network_config_builder.disable_nat();
         }
 

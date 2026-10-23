@@ -1,12 +1,9 @@
-## Repository and Project Structure
+## Repository structure (this fork)
 
-### Planning
+This tree is an independent opBNB / AlteredCarbon experiment. It is **not** the
+upstream paradigmxyz/reth contributor project — there is no Paradigm issue triage,
+label scheme, release train, or CI matrix here.
 
-Documents on planning and process in the repository: what the labels mean, how issues are triaged, how a new release is cut and so on.
-
-- [Labels](./labels.md): Describes the labels in the repository.
-
-### Structure
-
-- [Layout](./layout.md): Describes each of the crates in the repository and their function.
-- [CI](./ci.md): An overview of the CI workflows
+- [Layout](./layout.md): crate layout notes (historical; some links still point at upstream for provenance).
+- Root `README.md` / `NOTICE-PERSONAL-USE.md`: permitted use and project notice.
+- `.github/workflows/`: only this fork’s smoke + Actions scan workflows.

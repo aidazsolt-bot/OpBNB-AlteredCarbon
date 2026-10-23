@@ -892,7 +892,7 @@ mod tests {
     /// distance-pruned segment) must initialize the writer at the file's expected block
     /// start instead of erroring out.
     ///
-    /// See <https://github.com/paradigmxyz/reth/issues/23463>.
+    /// See <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/23463>.
     #[test]
     fn test_ensure_at_block_on_empty_non_genesis_file() {
         let static_dir = tempfile::tempdir().unwrap();

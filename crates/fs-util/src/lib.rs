@@ -1,9 +1,9 @@
 //! Wrapper for `std::fs` methods
 
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
+    html_logo_url = "https://raw.githubusercontent.com/aidazsolt-bot/OpBNB-AlteredCarbon/main/assets/logo.png",
     html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
+    issue_tracker_base_url = "https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 use serde::{de::DeserializeOwned, Serialize};
@@ -323,7 +323,7 @@ pub fn write_json_file<T: Serialize>(path: &Path, obj: &T) -> Result<()> {
 /// 5. Fsyncs the file directory.
 ///
 /// Atomic writes are hard:
-/// * <https://github.com/paradigmxyz/reth/issues/8622>
+/// * <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/8622>
 /// * <https://users.rust-lang.org/t/how-to-write-replace-files-atomically/42821/13>
 pub fn atomic_write_file<F, E>(file_path: &Path, write_fn: F) -> Result<()>
 where

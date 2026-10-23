@@ -1,9 +1,9 @@
 //! OP-Reth chain specs.
 
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
+    html_logo_url = "https://raw.githubusercontent.com/aidazsolt-bot/OpBNB-AlteredCarbon/main/assets/logo.png",
     html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
+    issue_tracker_base_url = "https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/"
 )]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -739,7 +739,7 @@ mod tests {
                     Head { number: 0, ..Default::default() },
                     ForkId { hash: ForkHash([0xca, 0xf5, 0x17, 0xed]), next: 3950000 },
                 ),
-                // TODO: complete these, see https://github.com/paradigmxyz/reth/issues/8012
+                // TODO: complete these, see https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/8012
                 (
                     Head { number: 105235063, timestamp: 1710374401, ..Default::default() },
                     ForkId { hash: ForkHash([0x19, 0xda, 0x4c, 0x52]), next: 1720627201 },

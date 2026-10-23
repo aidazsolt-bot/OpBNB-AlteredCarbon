@@ -8,13 +8,16 @@ Reth (short for Rust Ethereum, [pronunciation](https://twitter.com/kelvinfichter
 
 Reth is production ready, and suitable for usage in mission-critical environments such as staking or high-uptime services. We also actively recommend professional node operators to switch to Reth in production for performance and cost reasons in use cases where high performance with great margins is required such as RPC, MEV, Indexing, Simulations, and P2P activities.
 
-![Reth](https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-prod.png)
+![Reth](https://raw.githubusercontent.com/aidazsolt-bot/OpBNB-AlteredCarbon/main/assets/reth-prod.png)
 
 ## What is Reth?
 
-[Reth](https://github.com/paradigmxyz/reth/) is an execution layer (EL) implementation that is compatible with all Ethereum consensus layer (CL) implementations that support the [Engine API](https://github.com/ethereum/execution-apis/tree/main/src/engine).
+[Reth](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/) is an execution layer (EL) implementation that is compatible with all Ethereum consensus layer (CL) implementations that support the [Engine API](https://github.com/ethereum/execution-apis/tree/main/src/engine).
 
-It is originally built and driven forward by [Paradigm](https://paradigm.xyz/), and is licensed under the Apache and MIT licenses.
+**This documentation tree is for an independent personal opBNB / AlteredCarbon experiment**,
+not the upstream paradigmxyz/reth project. Upstream Reth was originally built by Paradigm and
+remains Apache-2.0 / MIT; see root `README.md` and `NOTICE-PERSONAL-USE.md` for this fork’s
+permitted-use rules.
 
 As a full Ethereum node, Reth allows users to connect to the Ethereum network and interact with the Ethereum blockchain. This includes sending and receiving transactions, querying logs and traces, as well as accessing and interacting with smart contracts.
 
@@ -68,12 +71,12 @@ As a data engineer/analyst, or as a data indexer, you'll want to use Archive mod
 Reth implements the specification of Ethereum as defined in the [ethereum/execution-specs](https://github.com/ethereum/execution-specs/) repository. To make sure the node is built securely, we run the following tests:
 
 1. EVM state tests are run on every [Revm Pull Request](https://github.com/bluealloy/revm/blob/main/.github/workflows/ethereum-tests.yml)
-1. Hive tests are [run every 24 hours](https://github.com/paradigmxyz/reth/blob/main/.github/workflows/hive.yml) in the main Reth repository.
+1. Hive tests are [run every 24 hours](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/blob/main/.github/workflows/hive.yml) in the main Reth repository.
 1. We regularly resync multiple nodes from scratch.
 1. We operate multiple nodes at the tip of the Ethereum mainnet and various testnets.
 1. We extensively unit test, fuzz test and document all our code, while also restricting PRs with aggressive lint rules.
 
-We have completed an audit of the [Reth v1.0.0-rc.2](https://github.com/paradigmxyz/reth/releases/tag/v1.0.0-rc.2) with [Sigma Prime](https://sigmaprime.io/), the developers of [Lighthouse](https://github.com/sigp/lighthouse), the Rust Consensus Layer implementation. Find it [here](https://github.com/paradigmxyz/reth/blob/main/audit/sigma_prime_audit_v2.pdf).
+We have completed an audit of the [Reth v1.0.0-rc.2](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/releases/tag/v1.0.0-rc.2) with [Sigma Prime](https://sigmaprime.io/), the developers of [Lighthouse](https://github.com/sigp/lighthouse), the Rust Consensus Layer implementation. Find it [here](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/blob/main/audit/sigma_prime_audit_v2.pdf).
 
 [Revm](https://github.com/bluealloy/revm) (the EVM used in Reth) underwent an audit with [Guido Vranken](https://twitter.com/guidovranken) (#1 [Ethereum Bug Bounty](https://ethereum.org/en/bug-bounty)).
 
@@ -99,11 +102,10 @@ Want to set up metrics for your own Reth node? Check out our [monitoring guide](
 -   [Monitor your node](/run/monitoring) with statistics and metrics.
 -   [Query the JSON-RPC](/jsonrpc/intro) using Foundry's `cast` or `curl`.
 -   [Explore the SDK](/sdk) to build custom blockchain infrastructure.
--   [Set up your development environment and contribute](/introduction/contributing)!
 
 :::note
 The documentation is continuously rendered [here](https://reth.rs)!
 You can contribute to the docs on [GitHub][gh-docs].
 :::
 
-[gh-docs]: https://github.com/paradigmxyz/reth/tree/main/docs
+[gh-docs]: https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/tree/main/docs

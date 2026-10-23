@@ -4,22 +4,12 @@ description: Instructions for installing Reth using pre-built binaries for Windo
 
 # Binaries
 
-[**Archives of precompiled binaries of reth are available for Windows, macOS and Linux.**](https://github.com/paradigmxyz/reth/releases) They are static executables. Users of platforms not explicitly listed below should download one of these archives.
+[**Archives of precompiled binaries of reth are available for Windows, macOS and Linux.**](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/releases) They are static executables. Users of platforms not explicitly listed below should download one of these archives.
 
-If you use **macOS Homebrew** or **Linuxbrew**, you can install Reth from Paradigm's homebrew tap:
-
-```text
-brew install paradigmxyz/brew/reth
-```
-
-If you use **Arch Linux** you can install stable Reth from the AUR using an [AUR helper](https://wiki.archlinux.org/title/AUR_helpers) ([paru][paru] as an example here):
-
-```text
-paru -S reth # Stable
-paru -S reth-git # Unstable (git)
-```
-
-[paru]: https://github.com/Morganamilo/paru
+This fork has **no** Homebrew tap and **no** AUR package. Prefer building from
+source (`make build-op` / `cargo build`) or any [release artefacts](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/releases)
+published for **this** repository (if any). Do not install upstream `paradigmxyz/brew/reth`
+and expect opBNB / AlteredCarbon behaviour.
 
 ## Signature Verification
 

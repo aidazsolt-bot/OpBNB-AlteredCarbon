@@ -28,7 +28,7 @@ The `testsuite` module is an action framework: a `TestBuilder` applies a `Setup`
 
 The engine tree suite runs on Cancun chains, and the RPC compatibility suite imports a prebuilt
 chain. See the
-[testsuite README](https://github.com/paradigmxyz/reth/blob/main/crates/e2e-test-utils/src/testsuite/README.md)
+[testsuite README](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/blob/main/crates/e2e-test-utils/src/testsuite/README.md)
 for the actions.
 
 ## Where tests live and how to run them

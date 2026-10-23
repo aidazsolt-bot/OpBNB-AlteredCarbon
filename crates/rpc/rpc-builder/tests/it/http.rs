@@ -887,7 +887,7 @@ async fn test_call_otterscan_functions_http_and_ws() {
     test_basic_otterscan_calls(&client).await;
 }
 
-// <https://github.com/paradigmxyz/reth/issues/5830>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/5830>
 #[tokio::test(flavor = "multi_thread")]
 async fn test_eth_logs_args() {
     reth_tracing::init_test_tracing();

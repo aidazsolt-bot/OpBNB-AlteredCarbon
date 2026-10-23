@@ -29,8 +29,6 @@ export const redirects: Record<string, string> = {
   '/developers/exex/hello-world': '/exex/hello-world',
   '/developers/exex/tracking-state': '/exex/tracking-state',
   '/developers/exex/remote': '/exex/remote',
-  // Contributing
-  '/developers/contribute': '/introduction/contributing',
 }
 
 export const basePath = '/';

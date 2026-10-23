@@ -114,7 +114,7 @@ async fn test_discv5_and_rlpx_same_socket_ok_without_discv4() {
     let _network = NetworkManager::new(config).await.expect("should build");
 }
 
-// <https://github.com/paradigmxyz/reth/issues/8851>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/8851>
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tcp_port_node_record_no_discovery() {
     let secret_key = rng_secret_key();
@@ -132,7 +132,7 @@ async fn test_tcp_port_node_record_no_discovery() {
     assert_eq!(record.tcp_port, local_addr.port());
 }
 
-// <https://github.com/paradigmxyz/reth/issues/8851>
+// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/8851>
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tcp_port_node_record_discovery() {
     let secret_key = rng_secret_key();

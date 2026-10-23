@@ -1981,7 +1981,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     /// absence from static files is not an inconsistency. Without this, a pruned segment
     /// whose stage checkpoint is ahead of its (empty) static files is treated as data
     /// corruption and triggers an unwind to block 0, which aborts the node on startup.
-    /// See <https://github.com/paradigmxyz/reth/issues/23463>.
+    /// See <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/23463>.
     fn effective_coverage_block<Provider>(
         provider: &Provider,
         segment: StaticFileSegment,

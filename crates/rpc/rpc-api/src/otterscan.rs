@@ -77,7 +77,7 @@ pub trait Otterscan<T: RpcObject, H: RpcObject> {
     /// Gets paginated inbound/outbound transaction calls for a certain address.
     ///
     /// Unimplemented: returns JSON-RPC error -32603 with message "unimplemented".
-    /// See <https://github.com/paradigmxyz/reth/issues/13499>.
+    /// See <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/13499>.
     #[method(name = "searchTransactionsBefore")]
     async fn search_transactions_before(
         &self,
@@ -89,7 +89,7 @@ pub trait Otterscan<T: RpcObject, H: RpcObject> {
     /// Gets paginated inbound/outbound transaction calls for a certain address.
     ///
     /// Unimplemented: returns JSON-RPC error -32603 with message "unimplemented".
-    /// See <https://github.com/paradigmxyz/reth/issues/13499>.
+    /// See <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/13499>.
     #[method(name = "searchTransactionsAfter")]
     async fn search_transactions_after(
         &self,

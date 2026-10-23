@@ -328,7 +328,7 @@ pub trait LoadState:
     ///
     /// If local pending state is unavailable or fails to build, falls back to the provider's
     /// pending state. Other block IDs resolve only canonical state. See
-    /// <https://github.com/paradigmxyz/reth/issues/4515>.
+    /// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/4515>.
     ///
     /// Pending block construction may spawn blocking work, so await this outside a blocking task.
     /// The fallback provider lookup is synchronous on the calling task; RPC handlers should use

@@ -162,7 +162,7 @@ pub trait EthCall: EstimateCall + LoadBlock + FullEthApiTypes {
                     }
 
                     if !validation {
-                        // If not explicitly required, we disable nonce check <https://github.com/paradigmxyz/reth/issues/16108>
+                        // If not explicitly required, we disable nonce check <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/16108>
                         evm_env.cfg_env.disable_nonce_check = true;
                         evm_env.cfg_env.disable_base_fee = true;
                         evm_env.block_env.inner_mut().basefee = 0;
@@ -883,11 +883,11 @@ pub trait Call:
         }
 
         // Disable block gas limit check to allow executing transactions with higher gas limit (call
-        // gas limit): https://github.com/paradigmxyz/reth/issues/18577
+        // gas limit): https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/18577
         evm_env.cfg_env.disable_block_gas_limit = true;
 
         // Disabled because eth_call is sometimes used with eoa senders
-        // See <https://github.com/paradigmxyz/reth/issues/1959>
+        // See <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/1959>
         evm_env.cfg_env.disable_eip3607 = true;
 
         // The basefee should be ignored for eth_call
@@ -904,7 +904,7 @@ pub trait Call:
 
         // Disable additional fee charges, e.g. opstack operator fee charge
         // See:
-        // <https://github.com/paradigmxyz/reth/issues/18470>
+        // <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/18470>
         evm_env.cfg_env.disable_fee_charge = true;
 
         evm_env.cfg_env.memory_limit = self.evm_memory_limit();

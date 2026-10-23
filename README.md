@@ -88,7 +88,7 @@ details in `docs/repo/ci.md`.
 ## Build from Source
 
 For prerequisites and detailed build instructions please read
-the [Installation Instructions](https://paradigmxyz.github.io/reth/installation/source.html).
+the [Installation Instructions](/installation/source).
 
 With Rust and the dependencies installed, you're ready to build this fork. First, clone the repository:
 
@@ -559,7 +559,7 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 
 ##### Public repo hygiene
 
-Repository was recreated from a sanitized local-only history on 2026-09-02. `main` starts at 2026-08-06, has one normalized author, no inherited upstream parents/tags, no `.github/CODEOWNERS`, only the op-reth smoke workflow under `.github/`, and no `files/` artefacts anywhere in public history.
+Repository was recreated from a sanitized local-only history on 2026-09-02. `main` starts at 2026-08-06, has one normalized author, no inherited upstream parents/tags, no `.github/CODEOWNERS`, only this fork’s smoke + Actions-scan workflows under `.github/`, and no `files/` artefacts anywhere in public history.
 
 #### Operator / senior admin–dev effort (human-owned)
 

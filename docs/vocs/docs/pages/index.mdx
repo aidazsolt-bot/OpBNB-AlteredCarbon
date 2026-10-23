@@ -4,7 +4,6 @@ description: Secure, performant, and modular blockchain SDK and node.
 ---
 
 import { SdkShowcase } from "../components/SdkShowcase";
-import { TrustedBy } from "../components/TrustedBy";
 
 <div className="reth-home-page">
   <section className="reth-home-hero" aria-labelledby="reth-home-title">
@@ -30,9 +29,9 @@ import { TrustedBy } from "../components/TrustedBy";
 
   <section className="reth-home-metrics-section" aria-label="Reth project metrics">
     <div className="reth-home-metrics">
-      <a href="https://github.com/paradigmxyz/reth/stargazers" rel="noreferrer noopener" target="_blank"><span>stars</span><strong>5K+</strong></a>
-      <a className="reth-home-metric-highlight" href="https://github.com/paradigmxyz/reth/graphs/contributors" rel="noreferrer noopener" target="_blank"><span>contributors</span><strong>580+</strong></a>
-      <a href="https://github.com/paradigmxyz/reth/blob/main/LICENSE-MIT" rel="noreferrer noopener" target="_blank"><span>license</span><strong>MIT</strong></a>
+      <a href="https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/stargazers" rel="noreferrer noopener" target="_blank"><span>scope</span><strong>personal</strong></a>
+      <a className="reth-home-metric-highlight" href="https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon" rel="noreferrer noopener" target="_blank"><span>experiment</span><strong>fork</strong></a>
+      <a href="https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/blob/main/LICENSE-MIT" rel="noreferrer noopener" target="_blank"><span>license</span><strong>MIT</strong></a>
     </div>
   </section>
 
@@ -46,11 +45,11 @@ import { TrustedBy } from "../components/TrustedBy";
       :::code-group
 
       ```bash [Run a Node]
-      # Install the binary
-      brew install paradigmxyz/brew/reth
+      # Build from this fork (no Homebrew tap)
+      make build-op
 
-      # Run the node with JSON-RPC enabled
-      reth node --http --http.api eth,trace
+      # Run with JSON-RPC enabled (example)
+      ./target/release/op-reth node --http --http.api eth,trace
       ```
 
       ```rust [Build a Node]
@@ -67,20 +66,11 @@ import { TrustedBy } from "../components/TrustedBy";
     </div>
   </section>
 
-  <section className="reth-home-feature-grid" aria-label="Reth capabilities">
-    <a href="/run/ethereum"><span>Institutional Security</span><strong>Run reliable staking nodes trusted by Coinbase Staking.</strong></a>
-    <a href="/overview"><span>Performance</span><strong>Sync faster with optimized transaction processing and storage.</strong></a>
-    <a href="/sdk"><span>Customizable</span><strong>Build custom nodes with tailored transaction handling.</strong></a>
-    <a href="/exex/overview"><span>Extensible</span><strong>Build indexers and offchain services with ExExs.</strong></a>
-  </section>
-
-  <section className="reth-home-section" id="trusted-by-the-best">
-    <div className="reth-home-section-header">
-      <div className="reth-home-kicker">Operators and infra teams</div>
-      <h2>Trusted by the Best</h2>
-      <div className="reth-home-section-copy">Leading infra companies use Reth for MEV applications, staking, RPC services, and zero-knowledge proofs.</div>
-    </div>
-    <TrustedBy />
+  <section className="reth-home-feature-grid" aria-label="Capabilities">
+    <a href="/overview"><span>Archive experiment</span><strong>opBNB mainnet archive sync / port methodology — not a product.</strong></a>
+    <a href="/sdk"><span>Modular crates</span><strong>Same Reth crate layout; treat as research code.</strong></a>
+    <a href="/exex/overview"><span>ExEx</span><strong>Upstream ExEx docs retained for reference only.</strong></a>
+    <a href="/installation/source"><span>Build</span><strong>Build from this repository — no upstream taps/images.</strong></a>
   </section>
 
   <section className="reth-home-section" id="built-with-reth-sdk">
@@ -92,14 +82,14 @@ import { TrustedBy } from "../components/TrustedBy";
     <SdkShowcase />
   </section>
 
-  <section className="reth-home-section reth-home-supporters" id="supporters">
+  <section className="reth-home-section" id="fork-notice">
     <div className="reth-home-section-header">
-      <div className="reth-home-kicker">Supporters</div>
-      <h2>Supporters</h2>
-    </div>
-    <div className="reth-home-supporter-grid">
-      <a href="https://paradigm.xyz" rel="noreferrer noopener" target="_blank"><img src="https://raw.githubusercontent.com/wevm/.github/main/content/sponsors/paradigm-light.svg" alt="Paradigm" /></a>
-      <a href="https://ithaca.xyz" rel="noreferrer noopener" target="_blank"><img src="https://raw.githubusercontent.com/wevm/.github/main/content/sponsors/ithaca-light.svg" alt="Ithaca" /></a>
+      <div className="reth-home-kicker">This repository</div>
+      <h2>Personal experiment — not upstream Reth</h2>
+      <div className="reth-home-section-copy">
+        Independent opBNB / AlteredCarbon work. Not affiliated with Paradigm or BNB Chain.
+        Read the root README Project Notice and NOTICE-PERSONAL-USE.md before use.
+      </div>
     </div>
   </section>
 </div>

@@ -59,7 +59,7 @@ use std::{sync::Arc, time::Duration};
 /// Geth also disables the basefee check for tracing: <https://github.com/ethereum/go-ethereum/blob/bc0b87ca196f92e5af49bd33cc190ef0ec32b197/eth/tracers/api.go#L955-L955>
 /// Erigon does not: <https://github.com/ledgerwatch/erigon/blob/aefb97b07d1c4fd32a66097a24eddd8f6ccacae0/turbo/transactions/tracing.go#L209-L209>
 ///
-/// See also <https://github.com/paradigmxyz/reth/issues/6240>
+/// See also <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/6240>
 ///
 /// This implementation follows the behaviour of Geth and disables the basefee check for tracing.
 pub trait EthTransactions: LoadTransaction<Provider: BlockReaderIdExt> {

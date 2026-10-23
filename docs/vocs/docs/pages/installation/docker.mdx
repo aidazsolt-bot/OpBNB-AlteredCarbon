@@ -4,41 +4,12 @@ description: Guide to running Reth using Docker, including obtaining images from
 
 # Docker
 
-There are two ways to obtain a Reth Docker image:
-
-1. [GitHub](#github)
-2. [Building it from source](#building-the-docker-image)
-
-Once you have obtained the Docker image, proceed to [Using the Docker
-image](#using-the-docker-image).
+This fork does **not** publish images to `ghcr.io/paradigmxyz/reth`. Build a local
+image from this repository, then proceed to [Using the Docker image](#using-the-docker-image).
 
 :::note
 Reth requires Docker Engine version 20.10.10 or higher due to [missing support](https://docs.docker.com/engine/release-notes/20.10/#201010) for the `clone3` syscall in previous versions.
 :::
-
-## GitHub
-
-Reth docker images for both x86_64 and ARM64 machines are published with every release of reth on GitHub Container Registry.
-
-You can obtain the latest image with:
-
-```bash
-docker pull ghcr.io/paradigmxyz/reth
-```
-
-Or a specific version (e.g. v0.0.1) with:
-
-```bash
-docker pull ghcr.io/paradigmxyz/reth:v0.0.1
-```
-
-You can test the image with:
-
-```bash
-docker run --rm ghcr.io/paradigmxyz/reth --version
-```
-
-If you can see the latest [Reth release](https://github.com/paradigmxyz/reth/releases) version, then you've successfully installed Reth via Docker.
 
 ## Building the Docker image
 
@@ -81,7 +52,7 @@ docker run \
 The above command will create a container named `reth` and a named volume called `rethdata` for data persistence.
 It will also expose the `30303` port (TCP and UDP) for peering with other nodes and the `9001` port for metrics.
 
-It will use the local image `reth:local`. If you want to use the GitHub Container Registry remote image, use `ghcr.io/paradigmxyz/reth` with your preferred tag.
+It will use the local image `reth:local` built above.
 
 ### Using Docker Compose
 

@@ -637,7 +637,7 @@ mod test {
         assert_eq!(operator_fee_constant, None, "incorrect operator fee constant");
     }
 
-    // <https://github.com/paradigmxyz/reth/issues/12177>
+    // <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/12177>
     #[test]
     fn base_receipt_gas_fields() {
         // https://basescan.org/tx/0x510fd4c47d78ba9f97c91b0f2ace954d5384c169c9545a77a373cf3ef8254e6e

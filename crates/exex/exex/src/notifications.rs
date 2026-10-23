@@ -969,7 +969,7 @@ mod tests {
         Ok(())
     }
 
-    /// Regression test for <https://github.com/paradigmxyz/reth/issues/19665>.
+    /// Regression test for <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/19665>.
     ///
     /// During backfill, `poll_next` must drain the notification channel so that
     /// the upstream `ExExManager` is never blocked by a full channel. Without

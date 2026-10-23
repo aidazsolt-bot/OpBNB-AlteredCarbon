@@ -138,7 +138,7 @@ mod tests {
     use reth_exex_types::ExExHead;
     use reth_node_api::FullNodeComponents;
 
-    /// <https://github.com/paradigmxyz/reth/issues/12054>
+    /// <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/12054>
     #[test]
     const fn issue_12054() {
         #[expect(dead_code)]

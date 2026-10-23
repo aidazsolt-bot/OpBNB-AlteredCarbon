@@ -26,17 +26,18 @@ First, in your home directory, create a file with the name `network_params.yaml`
 ```yaml
 participants:
     - el_type: reth
-      el_image: ghcr.io/paradigmxyz/reth
+      el_image: reth:local
       cl_type: lighthouse
       cl_image: sigp/lighthouse:latest
     - el_type: reth
-      el_image: ghcr.io/paradigmxyz/reth
+      el_image: reth:local
       cl_type: teku
       cl_image: consensys/teku:latest
 ```
 
 > [!TIP]
-> If you would like to use a modified reth node, you can build an image locally with a custom tag. The tag can then be used in the `el_image` field in the `network_params.yaml` file.
+> Build a local image from this fork first (`docker build . -t reth:local`). There is no public
+> `ghcr.io/paradigmxyz/reth` image for this experiment.
 
 ### Step 2: Spin up your network
 

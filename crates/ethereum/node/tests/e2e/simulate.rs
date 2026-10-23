@@ -352,7 +352,7 @@ async fn test_simulate_v1_explicit_gas_over_remaining_block_gas_errors() -> eyre
 /// `blob_versioned_hashes` or sidecar. The transaction should be treated as EIP-1559, not
 /// EIP-4844.
 ///
-/// Reproduces <https://github.com/paradigmxyz/reth/issues/21809>
+/// Reproduces <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/21809>
 #[tokio::test]
 async fn test_simulate_v1_with_max_fee_per_blob_gas_only() -> eyre::Result<()> {
     reth_tracing::init_test_tracing();

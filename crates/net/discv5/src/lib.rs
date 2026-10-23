@@ -1,9 +1,9 @@
 //! Wrapper around [`discv5::Discv5`].
 
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
+    html_logo_url = "https://raw.githubusercontent.com/aidazsolt-bot/OpBNB-AlteredCarbon/main/assets/logo.png",
     html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
+    issue_tracker_base_url = "https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/"
 )]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -914,7 +914,7 @@ mod test {
 
     #[test]
     fn reachable_tcp_port_follows_session_address_family() {
-        // Regression test for https://github.com/paradigmxyz/reth/issues/27734:
+        // Regression test for https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/27734:
         // the TCP port paired with the session socket's IP must come from the
         // ENR field of the *session's* address family, not the local node's
         // RLPx listen family.

@@ -5188,7 +5188,7 @@ mod tests {
         );
     }
 
-    // <https://github.com/paradigmxyz/reth/issues/12286>
+    // <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/12286>
     #[test]
     fn one_sender_one_independent_transaction() {
         let mut on_chain_balance = U256::from(4_999); // only enough for 4 txs
@@ -5397,7 +5397,7 @@ mod tests {
         );
     }
 
-    /// Test for <https://github.com/paradigmxyz/reth/issues/17701>
+    /// Test for <https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/issues/17701>
     ///
     /// When a new transaction is added and its `updates` contain a same-sender transaction with
     /// a lower nonce, the lower-nonce tx must be added to the pending subpool *before* the
