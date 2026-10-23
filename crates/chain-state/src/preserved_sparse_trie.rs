@@ -1,101 +1,143 @@
 //! Preserved sparse trie for reuse across payload validations.
 
-use alloy_primitives::B256;
+use alloy_primitives::{map::B256Map, B256};
 use reth_trie_sparse::SparseStateTrie;
+use std::{fmt, sync::mpsc::Receiver};
 use tracing::debug;
 
-/// Type alias for the sparse trie type used in preservation.
-pub type SparseTrie = SparseStateTrie;
-
-/// Guard that holds the lock on the preserved trie.
-/// While held, the next trie take will block. Call `store()` to save the trie before dropping.
-#[derive(Debug)]
-pub struct PreservedTrieGuard<'a>(parking_lot::MutexGuard<'a, Option<PreservedSparseTrie>>);
-
-impl<'a> PreservedTrieGuard<'a> {
-    /// Creates a new guard from the preserved trie lock.
-    pub(crate) const fn new(
-        guard: parking_lot::MutexGuard<'a, Option<PreservedSparseTrie>>,
-    ) -> Self {
-        PreservedTrieGuard(guard)
-    }
-
-    /// Stores a preserved trie for later reuse.
-    pub fn store(&mut self, trie: PreservedSparseTrie) {
-        self.0.replace(trie);
-    }
+/// A preserved sparse trie that can be reused across payload validations.
+pub struct PreservedSparseTrie {
+    /// The finalized sparse trie and its revealed storage roots, which may still be pending.
+    trie: Receiver<SparseTrieWithStorageRoots>,
+    /// Hash of the block whose post-state this trie represents.
+    ///
+    /// Used to verify continuity: a new payload's parent hash must match this before the existing
+    /// sparse trie nodes can be reused.
+    block_hash: B256,
+    /// Parent block hash of the earliest overlay state covered by this trie.
+    anchor_hash: B256,
 }
 
-/// A preserved sparse trie that can be reused across payload validations.
-///
-/// The trie exists in one of two states:
-/// - **Anchored**: Has a computed state root and can be reused for payloads whose parent state root
-///   matches the anchor.
-/// - **Cleared**: Trie data has been cleared but allocations are preserved for reuse.
-#[derive(Debug)]
-pub enum PreservedSparseTrie {
-    /// Trie with a computed state root that can be reused for continuation payloads.
-    Anchored {
-        /// The sparse state trie anchored to the computed state root.
-        trie: SparseTrie,
-        /// The state root this trie represents (computed from the previous block).
-        /// Used to verify continuity: new payload's `parent_state_root` must match this.
-        state_root: B256,
-    },
-    /// Cleared trie with preserved allocations, ready for fresh use.
-    Cleared {
-        /// The sparse state trie with cleared data but preserved allocations.
-        trie: SparseTrie,
-    },
+impl fmt::Debug for PreservedSparseTrie {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreservedSparseTrie")
+            .field("block_hash", &self.block_hash)
+            .field("anchor_hash", &self.anchor_hash)
+            .finish_non_exhaustive()
+    }
 }
 
 impl PreservedSparseTrie {
-    /// Creates a new anchored preserved trie.
-    ///
-    /// The `state_root` is the computed state root from the trie, which becomes the
-    /// anchor for determining if subsequent payloads can reuse this trie.
-    pub const fn anchored(trie: SparseTrie, state_root: B256) -> Self {
-        Self::Anchored { trie, state_root }
+    /// Associates a trie still being finalized with its completed block and pruning anchor.
+    pub const fn pending(
+        trie: Receiver<SparseTrieWithStorageRoots>,
+        block_hash: B256,
+        anchor_hash: B256,
+    ) -> Self {
+        Self { trie, block_hash, anchor_hash }
     }
 
-    /// Creates a cleared preserved trie (allocations preserved, data cleared).
-    pub const fn cleared(trie: SparseTrie) -> Self {
-        Self::Cleared { trie }
+    /// Returns the hash of the block whose post-state this trie represents.
+    pub const fn block_hash(&self) -> B256 {
+        self.block_hash
     }
 
-    /// Consumes self and returns the trie for reuse.
+    /// Returns the parent block hash of the earliest overlay state covered by this trie.
+    pub const fn anchor_hash(&self) -> B256 {
+        self.anchor_hash
+    }
+
+    /// Consumes self and returns the sparse trie and its revealed storage roots if reusable for
+    /// the parent block.
     ///
-    /// If the preserved trie is anchored and the parent state root matches, the preserved
-    /// trie structure is reused directly. Otherwise, the trie is cleared but allocations
-    /// are preserved to reduce memory overhead.
-    pub fn into_trie_for(self, parent_state_root: B256) -> SparseTrie {
+    /// If the parent block hash does not match the preserved trie's block hash, this drops the
+    /// trie and returns `None` so the caller can create a fresh sparse trie.
+    pub fn into_trie_for(
+        self,
+        parent_hash: B256,
+    ) -> Result<Option<SparseTrieWithStorageRoots>, PreservedSparseTrieError> {
+        if self.block_hash == parent_hash {
+            let trie = self.trie.recv().map_err(|_| PreservedSparseTrieError::ProducerDropped {
+                block_hash: self.block_hash,
+            })?;
+            debug!(
+                target: "engine::tree::payload_processor",
+                block_hash = %self.block_hash,
+                anchor_hash = %self.anchor_hash,
+                "Reusing anchored sparse trie for continuation payload"
+            );
+            Ok(Some(trie))
+        } else {
+            debug!(
+                target: "engine::tree::payload_processor",
+                block_hash = %self.block_hash,
+                anchor_hash = %self.anchor_hash,
+                %parent_hash,
+                "Dropping anchored sparse trie - parent hash mismatch"
+            );
+            Ok(None)
+        }
+    }
+}
+
+/// Error returned when consuming a preserved sparse trie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreservedSparseTrieError {
+    /// The producer of a pending preserved sparse trie dropped before publishing it.
+    ProducerDropped {
+        /// The block hash the pending trie was expected to represent.
+        block_hash: B256,
+    },
+}
+
+impl fmt::Display for PreservedSparseTrieError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Anchored { trie, state_root } if state_root == parent_state_root => {
-                debug!(
-                    target: "engine::tree::payload_processor",
-                    %state_root,
-                    "Reusing anchored sparse trie for continuation payload"
-                );
-                trie
-            }
-            Self::Anchored { mut trie, state_root } => {
-                debug!(
-                    target: "engine::tree::payload_processor",
-                    anchor_root = %state_root,
-                    %parent_state_root,
-                    "Clearing anchored sparse trie - parent state root mismatch"
-                );
-                trie.clear();
-                trie
-            }
-            Self::Cleared { trie } => {
-                debug!(
-                    target: "engine::tree::payload_processor",
-                    %parent_state_root,
-                    "Using cleared sparse trie with preserved allocations"
-                );
-                trie
+            Self::ProducerDropped { block_hash } => {
+                write!(f, "pending preserved sparse trie producer dropped for {block_hash}")
             }
         }
+    }
+}
+
+impl std::error::Error for PreservedSparseTrieError {}
+
+/// A finalized sparse trie and its revealed storage roots for the next block's proof workers.
+#[derive(Debug, Default)]
+pub struct SparseTrieWithStorageRoots {
+    /// The sparse trie after finalization and pruning.
+    pub trie: SparseStateTrie,
+    /// Roots of all revealed storage tries before pruning, keyed by hashed account address.
+    pub storage_roots: B256Map<B256>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn pending_trie_exposes_block_hash_before_completion() {
+        let block_hash = B256::with_last_byte(1);
+        let anchor_hash = B256::with_last_byte(2);
+        let (tx, rx) = mpsc::channel();
+        let preserved = PreservedSparseTrie::pending(rx, block_hash, anchor_hash);
+
+        assert_eq!(preserved.block_hash(), block_hash);
+        assert_eq!(preserved.anchor_hash(), anchor_hash);
+        tx.send(SparseTrieWithStorageRoots::default()).unwrap();
+        assert!(preserved.into_trie_for(block_hash).unwrap().is_some());
+    }
+
+    #[test]
+    fn pending_trie_with_mismatched_parent_does_not_wait() {
+        let block_hash = B256::with_last_byte(1);
+        let other_block_hash = B256::with_last_byte(2);
+        let anchor_hash = B256::with_last_byte(3);
+        let (tx, rx) = mpsc::channel();
+        let preserved = PreservedSparseTrie::pending(rx, block_hash, anchor_hash);
+
+        assert!(preserved.into_trie_for(other_block_hash).unwrap().is_none());
+        assert!(tx.send(SparseTrieWithStorageRoots::default()).is_err());
     }
 }

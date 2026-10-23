@@ -12,7 +12,11 @@
 extern crate alloc;
 
 use alloy_consensus::BlockHeader;
-use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock};
+use reth_payload_primitives::{
+    EngineApiMessageVersion, EngineObjectValidationError, InvalidPayloadAttributesError,
+    NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
+};
+use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock, SealedHeader};
 use reth_storage_api::{errors::ProviderResult, StateProviderBox};
 use reth_trie_common::HashedPostState;
 use serde::{de::DeserializeOwned, Serialize};
@@ -20,11 +24,7 @@ use serde::{de::DeserializeOwned, Serialize};
 // Re-export [`ExecutionPayload`] moved to `reth_payload_primitives`
 #[cfg(feature = "std")]
 pub use reth_evm::{ConfigureEngineEvm, ConvertTx, ExecutableTxIterator, ExecutableTxTuple};
-pub use reth_payload_primitives::{
-    EngineApiMessageVersion, EngineObjectValidationError, ExecutionPayload,
-    InvalidPayloadAttributesError, NewPayloadError, PayloadAttributes, PayloadOrAttributes,
-    PayloadTypes,
-};
+pub use reth_payload_primitives::ExecutionPayload;
 
 mod error;
 pub use error::*;
@@ -147,9 +147,6 @@ pub trait EngineApiValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static
     ) -> Result<(), EngineObjectValidationError>;
 }
 
-/// Legacy alias for [`EngineApiValidator`].
-pub use EngineApiValidator as EngineValidator;
-
 /// Type that validates an [`ExecutionPayload`].
 ///
 /// This trait handles validation at the engine API boundary — converting payloads
@@ -206,7 +203,8 @@ pub trait PayloadValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static {
     /// fields.
     ///
     /// Implementers should ensure that the checks are done in the order that conforms with the
-    /// engine-API specification.
+    /// engine-API specification. Callers that recover senders separately use
+    /// [`Self::convert_payload_to_block`] directly, so required payload checks belong there.
     fn ensure_well_formed_payload(
         &self,
         payload: Types::ExecutionData,
@@ -217,13 +215,19 @@ pub trait PayloadValidator<Types: PayloadTypes>: Send + Sync + Unpin + 'static {
 
     /// Verifies payload post-execution w.r.t. hashed state updates.
     ///
+    /// `state_updates` lazily yields the block's hashed post-state; call it only if the
+    /// implementation needs the executed state changes (the L1 default does not).
+    ///
+    /// `parent_header` is the parent header the engine resolved for the block.
+    ///
     /// `parent_state` lazily builds the overlay-aware provider for the block's parent that the
     /// engine used for execution — resolving even a not-yet-canonical in-memory parent. It is only
     /// built if the implementation needs it (the L1 default does not).
     fn validate_block_post_execution_with_hashed_state<'a>(
         &self,
-        _state_updates: &dyn Fn() -> &'a HashedPostState,
+        _state_updates: impl FnOnce() -> &'a HashedPostState,
         _block: &RecoveredBlock<Self::Block>,
+        _parent_header: &SealedHeader<<Self::Block as Block>::Header>,
         _parent_state: impl FnOnce() -> ProviderResult<StateProviderBox>,
     ) -> Result<(), InsertBlockErrorKind>
     where

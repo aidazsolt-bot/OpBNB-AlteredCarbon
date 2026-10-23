@@ -1,7 +1,6 @@
 //! Contains the main provider types and traits for interacting with the blockchain's storage.
 
 use reth_chainspec::EthereumHardforks;
-use reth_codecs::Compact;
 use reth_db_api::table::Value;
 use reth_node_types::{NodePrimitives, NodeTypes, NodeTypesWithDB};
 
@@ -16,33 +15,22 @@ pub use static_file::{
 
 mod state;
 pub use state::{
-    historical::{
-        compute_history_rank, history_info, needs_prev_shard_check, HistoricalStateProvider,
-        HistoricalStateProviderRef, HistoryInfo, LowestAvailableBlocks, PipelineConsistency,
-    },
+    historical::{compute_history_rank, history_info, needs_prev_shard_check, HistoryInfo},
     latest::{LatestStateProvider, LatestStateProviderRef},
-    overlay::{OverlayBuilder, OverlayStateProvider, OverlayStateProviderFactory},
 };
 
-mod consistent_view;
-pub use consistent_view::{ConsistentDbView, ConsistentViewError};
-
 mod blockchain_provider;
-pub use blockchain_provider::BlockchainProvider;
+pub use blockchain_provider::{BlockchainProvider, SNAPSHOT_STATE_RETENTION};
 
 mod consistent;
 pub use consistent::ConsistentProvider;
 
-mod parlia_snapshot;
-
-// RocksDB currently only supported on Unix platforms
-// Windows support is planned for future releases
-#[cfg_attr(all(unix, feature = "rocksdb"), path = "rocksdb/mod.rs")]
-#[cfg_attr(not(all(unix, feature = "rocksdb")), path = "rocksdb_stub.rs")]
 pub(crate) mod rocksdb;
 
 pub use rocksdb::{
-    PruneShardOutcome, PrunedIndices, RocksDBBatch, RocksDBBuilder, RocksDBProvider, RocksTx,
+    OwnedRocksReadSnapshot, PruneShardOutcome, PrunedIndices, RocksDBBatch, RocksDBBuilder,
+    RocksDBIter, RocksDBProvider, RocksDBRawIter, RocksDBStats, RocksDBTableStats,
+    RocksReadSnapshot, RocksTx,
 };
 
 /// Helper trait to bound [`NodeTypes`] so that combined with database they satisfy
@@ -52,11 +40,7 @@ where
     Self: NodeTypes<
         ChainSpec: EthereumHardforks,
         Storage: ChainStorage<Self::Primitives>,
-        Primitives: NodePrimitives<
-            SignedTx: Value + Compact,
-            Receipt: Value + Compact,
-            BlockHeader: Value + Compact,
-        >,
+        Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
     >,
 {
 }
@@ -65,11 +49,7 @@ impl<T> NodeTypesForProvider for T where
     T: NodeTypes<
         ChainSpec: EthereumHardforks,
         Storage: ChainStorage<T::Primitives>,
-        Primitives: NodePrimitives<
-            SignedTx: Value + Compact,
-            Receipt: Value + Compact,
-            BlockHeader: Value + Compact,
-        >,
+        Primitives: NodePrimitives<SignedTx: Value, Receipt: Value, BlockHeader: Value>,
     >
 {
 }

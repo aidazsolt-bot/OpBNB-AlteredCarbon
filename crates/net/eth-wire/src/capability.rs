@@ -259,7 +259,8 @@ impl SharedCapabilities {
             cap = next
         }
 
-        Some(cap)
+        let end = u16::from(cap.message_id_offset()) + u16::from(cap.num_messages());
+        (u16::from(offset) < end).then_some(cap)
     }
 
     /// Returns the shared capability for the given capability or an error if it's not compatible.
@@ -467,6 +468,18 @@ mod tests {
     }
 
     #[test]
+    fn lookup_rejects_message_ids_past_last_capability() {
+        let cap = Capability::new_static("test", 1);
+        let shared =
+            SharedCapabilities::try_new(vec![Protocol::new(cap.clone(), 1)], vec![cap.clone()])
+                .unwrap();
+        let offset = shared.find(&cap).unwrap().message_id_offset();
+
+        assert_eq!(shared.find_by_offset(offset).unwrap().capability().as_ref(), &cap);
+        assert!(shared.find_by_offset(offset + 1).is_none());
+    }
+
+    #[test]
     fn test_peer_capability_version_zero() {
         let cap = Capability::new_static("TestName", 0);
         let local_capabilities: Vec<Protocol> =
@@ -569,10 +582,9 @@ mod tests {
     fn relative_message_id_accounts_for_intermediate_capabilities() {
         let intermediate_cap = Capability::new_static("foo", 1);
         let intermediate = Protocol::new(intermediate_cap.clone(), 3);
-        let snap = Capability::snap(SnapVersion::V2);
-        let eth = Capability::eth(EthVersion::Eth69);
-        let local_capabilities =
-            vec![EthVersion::Eth69.into(), intermediate, Protocol::snap(SnapVersion::V2)];
+        let snap = Capability::snap_2();
+        let eth = Capability::eth_69();
+        let local_capabilities = vec![EthVersion::Eth69.into(), intermediate, Protocol::snap_2()];
         let peer_capabilities = vec![eth, intermediate_cap, snap.clone()];
 
         let shared = SharedCapabilities::try_new(local_capabilities, peer_capabilities).unwrap();
@@ -586,11 +598,9 @@ mod tests {
     fn capability_message_id_rejects_other_capability_range() {
         let intermediate_cap = Capability::new_static("foo", 1);
         let intermediate = Protocol::new(intermediate_cap.clone(), 3);
-        let snap = Capability::snap(SnapVersion::V2);
-        let local_capabilities =
-            vec![EthVersion::Eth69.into(), intermediate, Protocol::snap(SnapVersion::V2)];
-        let peer_capabilities =
-            vec![Capability::eth(EthVersion::Eth69), intermediate_cap.clone(), snap.clone()];
+        let snap = Capability::snap_2();
+        let local_capabilities = vec![EthVersion::Eth69.into(), intermediate, Protocol::snap_2()];
+        let peer_capabilities = vec![Capability::eth_69(), intermediate_cap.clone(), snap.clone()];
 
         let shared = SharedCapabilities::try_new(local_capabilities, peer_capabilities).unwrap();
         let intermediate_id = shared.relative_message_id(&intermediate_cap, 1).unwrap();

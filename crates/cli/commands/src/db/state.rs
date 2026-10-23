@@ -8,9 +8,11 @@ use reth_db_api::{
     transaction::DbTx,
 };
 use reth_db_common::DbTool;
-use reth_node_builder::NodeTypesWithDB;
-use reth_provider::{providers::ProviderNodeTypes, StaticFileProviderFactory};
-use reth_storage_api::{BlockNumReader, StateProvider, StorageSettingsCache};
+use reth_provider::{
+    providers::{BlockchainProvider, ProviderNodeTypes},
+    StaticFileProviderFactory,
+};
+use reth_storage_api::{BlockNumReader, StateProvider, StateProviderFactory, StorageSettingsCache};
 use reth_tasks::spawn_scoped_os_thread;
 use std::{
     collections::BTreeSet,
@@ -43,10 +45,7 @@ pub struct Command {
 
 impl Command {
     /// Execute `db state` command
-    pub fn execute<N: NodeTypesWithDB + ProviderNodeTypes>(
-        self,
-        tool: &DbTool<N>,
-    ) -> eyre::Result<()> {
+    pub fn execute<N: ProviderNodeTypes>(self, tool: &DbTool<N>) -> eyre::Result<()> {
         let address = self.address;
         let limit = self.limit;
 
@@ -57,7 +56,7 @@ impl Command {
         }
     }
 
-    fn execute_current<N: NodeTypesWithDB + ProviderNodeTypes>(
+    fn execute_current<N: ProviderNodeTypes>(
         &self,
         tool: &DbTool<N>,
         address: Address,
@@ -75,7 +74,7 @@ impl Command {
                 let mut last_log = Instant::now();
                 for (idx, entry) in walker.enumerate() {
                     let (_, storage_entry) = entry?;
-                    if storage_entry.value != U256::ZERO {
+                    if !storage_entry.value.is_zero() {
                         entries.push((storage_entry.key, storage_entry.value));
                     }
                     if entries.len() >= limit {
@@ -102,7 +101,7 @@ impl Command {
                 let mut last_log = Instant::now();
                 for (idx, entry) in walker.enumerate() {
                     let (_, storage_entry) = entry?;
-                    if storage_entry.value != U256::ZERO {
+                    if !storage_entry.value.is_zero() {
                         entries.push((storage_entry.key, storage_entry.value));
                     }
                     if entries.len() >= limit {
@@ -131,24 +130,29 @@ impl Command {
         Ok(())
     }
 
-    fn execute_historical<N: NodeTypesWithDB + ProviderNodeTypes>(
+    fn execute_historical<N: ProviderNodeTypes>(
         &self,
         tool: &DbTool<N>,
         address: Address,
         block: BlockNumber,
         limit: usize,
     ) -> eyre::Result<()> {
-        let provider = tool.provider_factory.history_by_block_number(block)?;
+        let provider = BlockchainProvider::new(tool.provider_factory.clone())?
+            .history_by_block_number(block)?;
 
         // Get account info at that block
         let account = provider.basic_account(&address)?;
+
+        // Check storage settings to determine where history is stored
+        let storage_settings = tool.provider_factory.cached_storage_settings();
+        let history_in_rocksdb = storage_settings.storage_v2;
 
         // For historical queries, enumerate keys from history indices only
         // (not PlainStorageState, which reflects current state)
         let mut storage_keys = BTreeSet::new();
 
-        if tool.provider_factory.cached_storage_settings().storage_changesets_in_static_files() {
-            self.collect_static_file_storage_keys_parallel(tool, address, &mut storage_keys)?;
+        if history_in_rocksdb {
+            self.collect_staticfile_storage_keys(tool, address, &mut storage_keys)?;
         } else {
             self.collect_mdbx_storage_keys_parallel(tool, address, &mut storage_keys)?;
         }
@@ -168,7 +172,7 @@ impl Command {
 
         for (idx, key) in storage_keys.iter().enumerate() {
             match provider.storage(address, *key) {
-                Ok(Some(value)) if value != U256::ZERO => {
+                Ok(Some(value)) if !value.is_zero() => {
                     entries.push((*key, value));
                 }
                 _ => {}
@@ -197,19 +201,13 @@ impl Command {
         Ok(())
     }
 
-    /// Collects storage keys from the `StorageChangeSets` static file segment using parallel
-    /// block range scanning.
-    fn collect_static_file_storage_keys_parallel<N: NodeTypesWithDB + ProviderNodeTypes>(
+    /// Collects storage keys from static file StorageChangeSets (storage_v2).
+    fn collect_staticfile_storage_keys<N: ProviderNodeTypes>(
         &self,
         tool: &DbTool<N>,
         address: Address,
         keys: &mut BTreeSet<B256>,
     ) -> eyre::Result<()> {
-        const CHUNK_SIZE: u64 = 500_000; // 500k blocks per thread
-        let num_threads = std::thread::available_parallelism()
-            .map(|p| p.get().saturating_sub(1).max(1))
-            .unwrap_or(4);
-
         let tip = tool.provider_factory.provider()?.best_block_number()?;
 
         if tip == 0 {
@@ -220,99 +218,48 @@ impl Command {
             target: "reth::cli",
             address = %address,
             tip,
-            chunk_size = CHUNK_SIZE,
-            num_threads,
-            "Starting parallel static file changeset scan"
+            "Scanning static file storage changesets"
         );
 
-        let collected_keys: Mutex<BTreeSet<B256>> = Mutex::new(BTreeSet::new());
-        let total_entries_scanned = Mutex::new(0usize);
+        let static_file_provider = tool.provider_factory.static_file_provider();
+        let walker = static_file_provider.walk_storage_changeset_range(0..=tip);
 
-        let mut chunks: Vec<(u64, u64)> = Vec::new();
-        let mut start = 0u64;
-        while start <= tip {
-            let end = (start + CHUNK_SIZE - 1).min(tip);
-            chunks.push((start, end));
-            start = end + 1;
-        }
+        let mut total_scanned = 0usize;
+        let mut last_log = Instant::now();
 
-        let chunks_ref = &chunks;
-        let next_chunk = Mutex::new(0usize);
-        let next_chunk_ref = &next_chunk;
-        let collected_keys_ref = &collected_keys;
-        let total_entries_ref = &total_entries_scanned;
-        let sf_provider = tool.provider_factory.static_file_provider();
-        let sf_provider_ref = &sf_provider;
+        for changeset_result in walker {
+            let (block_addr, storage_entry) = changeset_result?;
+            total_scanned += 1;
 
-        thread::scope(|s| {
-            let handles: Vec<_> = (0..num_threads)
-                .map(|thread_id| {
-                    spawn_scoped_os_thread(s, "db-state-worker", move || loop {
-                        let chunk_idx = {
-                            let mut idx = next_chunk_ref.lock();
-                            if *idx >= chunks_ref.len() {
-                                return Ok::<_, eyre::Report>(());
-                            }
-                            let current = *idx;
-                            *idx += 1;
-                            current
-                        };
-
-                        let (chunk_start, chunk_end) = chunks_ref[chunk_idx];
-
-                        let mut local_keys = BTreeSet::new();
-                        let mut entries_in_chunk = 0usize;
-
-                        let walker = sf_provider_ref
-                            .clone()
-                            .walk_storage_changeset_range(chunk_start..=chunk_end);
-                        for entry in walker {
-                            let (block_address, storage_entry) = entry?;
-                            if block_address.address() == address {
-                                local_keys.insert(storage_entry.key);
-                            }
-                            entries_in_chunk += 1;
-                        }
-
-                        collected_keys_ref.lock().extend(local_keys);
-                        *total_entries_ref.lock() += entries_in_chunk;
-
-                        info!(
-                            target: "reth::cli",
-                            thread_id,
-                            chunk_start,
-                            chunk_end,
-                            entries_in_chunk,
-                            "Thread completed chunk"
-                        );
-                    })
-                })
-                .collect();
-
-            for handle in handles {
-                handle.join().map_err(|_| eyre::eyre!("Thread panicked"))??;
+            if block_addr.address() == address {
+                keys.insert(storage_entry.key);
             }
 
-            Ok::<_, eyre::Report>(())
-        })?;
-
-        let final_keys = collected_keys.into_inner();
-        let total = *total_entries_scanned.lock();
+            if last_log.elapsed() >= LOG_INTERVAL {
+                info!(
+                    target: "reth::cli",
+                    address = %address,
+                    entries_scanned = total_scanned,
+                    unique_keys = keys.len(),
+                    "Scanning static file storage changesets"
+                );
+                last_log = Instant::now();
+            }
+        }
 
         info!(
             target: "reth::cli",
             address = %address,
-            total_entries = total,
-            unique_keys = final_keys.len(),
-            "Finished parallel static file changeset scan"
+            total_entries = total_scanned,
+            unique_keys = keys.len(),
+            "Finished static file storage changeset scan"
         );
 
-        keys.extend(final_keys);
         Ok(())
     }
 
     /// Collects storage keys from MDBX StorageChangeSets using parallel block range scanning.
-    fn collect_mdbx_storage_keys_parallel<N: NodeTypesWithDB + ProviderNodeTypes>(
+    fn collect_mdbx_storage_keys_parallel<N: ProviderNodeTypes>(
         &self,
         tool: &DbTool<N>,
         address: Address,
@@ -390,14 +337,12 @@ impl Command {
                                 let mut local_keys = BTreeSet::new();
                                 let mut entries_in_chunk = 0usize;
 
-                                if let Ok(walker) = changeset_cursor.walk_range(start_key..=end_key)
-                                {
-                                    for (block_addr, storage_entry) in walker.flatten() {
-                                        if block_addr.address() == address {
-                                            local_keys.insert(storage_entry.key);
-                                        }
-                                        entries_in_chunk += 1;
+                                for entry in changeset_cursor.walk_range(start_key..=end_key)? {
+                                    let (block_addr, storage_entry) = entry?;
+                                    if block_addr.address() == address {
+                                        local_keys.insert(storage_entry.key);
                                     }
+                                    entries_in_chunk += 1;
                                 }
 
                                 // Merge into global state
@@ -517,6 +462,7 @@ pub enum OutputFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::address;
 
     #[test]
     fn parse_state_args() {
@@ -527,10 +473,7 @@ mod tests {
             "1000000",
         ])
         .unwrap();
-        assert_eq!(
-            cmd.address,
-            "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045".parse::<Address>().unwrap()
-        );
+        assert_eq!(cmd.address, address!("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"));
         assert_eq!(cmd.block, Some(1000000));
     }
 

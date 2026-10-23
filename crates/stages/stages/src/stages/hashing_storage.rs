@@ -3,20 +3,22 @@ use itertools::Itertools;
 use reth_config::config::{EtlConfig, HashingConfig};
 use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRW},
-    models::CompactU256,
+    models::{BlockNumberAddress, CompactU256},
     table::Decompress,
     tables,
     transaction::{DbTx, DbTxMut},
 };
 use reth_etl::Collector;
 use reth_primitives_traits::StorageEntry;
-use reth_provider::{DBProvider, HashingWriter, StatsReader, StorageReader, StorageSettingsCache};
+use reth_provider::{DBProvider, HashingWriter, StatsReader, StorageReader};
 use reth_stages_api::{
-    EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint, StageError, StageId,
-    StorageHashingCheckpoint, UnwindInput, UnwindOutput,
+    BlockRangeOutput, EntitiesCheckpoint, ExecInput, ExecOutput, Stage, StageCheckpoint,
+    StageError, StageId, StorageHashingCheckpoint, UnwindInput, UnwindOutput,
 };
+use reth_storage_api::StorageSettingsCache;
 use reth_storage_errors::provider::ProviderResult;
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     sync::mpsc::{self, Receiver},
 };
@@ -41,6 +43,9 @@ pub struct StorageHashingStage {
     pub clean_threshold: u64,
     /// The maximum number of slots to process before committing during unwind.
     pub commit_threshold: u64,
+    /// The maximum number of changeset entries to process before committing. The stage commits
+    /// after either `commit_threshold` blocks or `commit_entries` entries, whichever comes first.
+    pub commit_entries: u64,
     /// ETL configuration
     pub etl_config: EtlConfig,
 }
@@ -51,6 +56,7 @@ impl StorageHashingStage {
         Self {
             clean_threshold: config.clean_threshold,
             commit_threshold: config.commit_threshold,
+            commit_entries: config.commit_entries,
             etl_config,
         }
     }
@@ -59,8 +65,9 @@ impl StorageHashingStage {
 impl Default for StorageHashingStage {
     fn default() -> Self {
         Self {
-            clean_threshold: 5_000_000,
+            clean_threshold: 500_000,
             commit_threshold: 100_000,
+            commit_entries: 30_000_000,
             etl_config: EtlConfig::default(),
         }
     }
@@ -86,19 +93,24 @@ where
             return Ok(ExecOutput::done(input.checkpoint()))
         }
 
-        // Execution writes hashed state directly when it is canonical.
+        // If use_hashed_state is enabled, execution writes directly to `HashedStorages`,
+        // so this stage becomes a no-op.
         if provider.cached_storage_settings().use_hashed_state() {
             return Ok(ExecOutput::done(input.checkpoint().with_block_number(input.target())));
         }
 
-        let (from_block, to_block) = input.next_block_range().into_inner();
+        // Use the total remaining range to decide clean vs incremental.
+        let total_range = input.target() - input.checkpoint().block_number;
+        let from_block = input.next_block();
 
-        // if there are more blocks then threshold it is faster to go over Plain state and hash all
-        // account otherwise take changesets aggregate the sets and apply hashing to
-        // AccountHashing table. Also, if we start from genesis, we need to hash from scratch, as
-        // genesis accounts are not in changeset, along with their storages.
-        if to_block - from_block > self.clean_threshold || from_block == 1 {
-            // clear table, load all accounts and hash it
+        if total_range > self.clean_threshold || from_block == 1 {
+            // if there are more blocks than threshold it is faster to go over Plain state and
+            // hash all storage otherwise take changesets aggregate the sets and apply
+            // hashing to HashedStorages table. Also, if we start from genesis, we need to
+            // hash from scratch, as genesis accounts are not in changeset, along with their
+            // storages.
+
+            // clear table, load all entries and hash them
             tx.clear::<tables::HashedStorages>()?;
 
             let mut storage_cursor = tx.cursor_read::<tables::PlainStorageState>()?;
@@ -108,10 +120,9 @@ where
 
             for chunk in &storage_cursor.walk(None)?.chunks(WORKER_CHUNK_SIZE) {
                 // An _unordered_ channel to receive results from a rayon job
-                let (tx, rx) = mpsc::channel();
-                channels.push(rx);
-
                 let chunk = chunk.collect::<Result<Vec<_>, _>>()?;
+                let (tx, rx) = mpsc::sync_channel(chunk.len());
+                channels.push(rx);
                 // Spawn the hashing task onto the global rayon pool
                 rayon::spawn(move || {
                     // Cache hashed address since PlainStorageState is sorted by address
@@ -143,7 +154,7 @@ where
                 if index > 0 && index.is_multiple_of(interval) {
                     info!(
                         target: "sync::stages::hashing_storage",
-                        progress = %format!("{:.2}%", (index as f64 / total_hashes as f64) * 100.0),
+                        progress = %format_args!("{:.2}%", (index as f64 / total_hashes as f64) * 100.0),
                         "Inserting hashes"
                     );
                 }
@@ -157,26 +168,58 @@ where
                     },
                 )?;
             }
+
+            let checkpoint = StageCheckpoint::new(input.target())
+                .with_storage_hashing_stage_checkpoint(StorageHashingCheckpoint {
+                    progress: stage_checkpoint_progress(provider)?,
+                    ..Default::default()
+                });
+
+            Ok(ExecOutput::done(checkpoint))
         } else {
-            // Aggregate all changesets and make list of storages that have been
-            // changed.
-            let lists = provider.changed_storages_with_range(from_block..=to_block)?;
-            // iterate over plain state and get newest storage value.
-            // Assumption we are okay with is that plain state represent
-            // `previous_stage_progress` state.
-            let storages = provider.plain_state_storages(lists)?;
+            // Stream changesets entry-by-entry, bounded by both block count
+            // (commit_threshold) and entry count (commit_entries), whichever comes first.
+            let BlockRangeOutput { block_range, is_final_range } =
+                input.next_block_range_with_threshold(self.commit_threshold);
+            let (from_block, to_block) = block_range.into_inner();
+
+            let mut changeset_cursor = tx.cursor_read::<tables::StorageChangeSets>()?;
+            let mut changed: BTreeMap<Address, BTreeSet<B256>> = BTreeMap::new();
+            let mut total_entries = 0u64;
+            let mut last_block = from_block;
+
+            for entry in
+                changeset_cursor.walk_range(BlockNumberAddress::range(from_block..=to_block))?
+            {
+                let (BlockNumberAddress((block_number, address)), storage_entry) = entry?;
+
+                // Check the entry limit only at block boundaries so we never
+                // checkpoint mid-block (which would skip the remaining entries
+                // for that block on the next invocation).
+                if block_number != last_block && total_entries >= self.commit_entries {
+                    break;
+                }
+
+                last_block = block_number;
+                changed.entry(address).or_default().insert(storage_entry.key);
+                total_entries += 1;
+            }
+
+            let storages = provider.plain_state_storages(changed)?;
             provider.insert_storage_for_hashing(storages)?;
+
+            let exhausted = total_entries < self.commit_entries;
+            let done = exhausted && is_final_range;
+            let progress_block = if exhausted { to_block } else { last_block };
+
+            let checkpoint = StageCheckpoint::new(progress_block)
+                .with_storage_hashing_stage_checkpoint(StorageHashingCheckpoint {
+                    progress: stage_checkpoint_progress(provider)?,
+                    ..Default::default()
+                });
+
+            Ok(ExecOutput { checkpoint, done })
         }
-
-        // We finished the hashing stage, no future iterations is expected for the same block range,
-        // so no checkpoint is needed.
-        let checkpoint = StageCheckpoint::new(input.target())
-            .with_storage_hashing_stage_checkpoint(StorageHashingCheckpoint {
-                progress: stage_checkpoint_progress(provider)?,
-                ..Default::default()
-            });
-
-        Ok(ExecOutput { checkpoint, done: true })
     }
 
     /// Unwind the stage.
@@ -185,14 +228,15 @@ where
         provider: &Provider,
         input: UnwindInput,
     ) -> Result<UnwindOutput, StageError> {
+        // NOTE: this runs in both v1 and v2 mode. In v2 mode, execution writes
+        // directly to `HashedStorages`, but the unwind must still revert those
+        // entries here because `MerkleUnwind` runs after this stage (in unwind
+        // order) and needs `HashedStorages` to reflect the target block state
+        // before it can verify the state root.
         let (range, unwind_progress, _) =
             input.unwind_block_range_with_threshold(self.commit_threshold);
 
-        if provider.cached_storage_settings().use_hashed_state() && unwind_progress == 0 {
-            provider.tx_ref().clear::<tables::HashedStorages>()?;
-        } else {
-            provider.unwind_storage_hashing_range(range)?;
-        }
+        provider.unwind_storage_hashing_range(range)?;
 
         let mut stage_checkpoint =
             input.checkpoint.storage_hashing_stage_checkpoint().unwrap_or_default();
@@ -244,32 +288,12 @@ mod tests {
     };
     use reth_ethereum_primitives::Block;
     use reth_primitives_traits::SealedBlock;
-    use reth_provider::{providers::StaticFileWriter, StorageSettings};
+    use reth_provider::providers::StaticFileWriter;
     use reth_testing_utils::generators::{
         self, random_block_range, random_contract_account_range, BlockRangeParams,
     };
 
     stage_test_suite_ext!(StorageHashingTestRunner, storage_hashing);
-
-    #[tokio::test]
-    async fn unwind_storage_v2_to_genesis_clears_hashed_storages() {
-        let runner = StorageHashingTestRunner::with_storage_v2();
-        runner
-            .db
-            .commit(|tx| {
-                Ok(tx.put::<tables::HashedStorages>(
-                    B256::repeat_byte(1),
-                    StorageEntry { key: B256::repeat_byte(2), value: U256::from(1) },
-                )?)
-            })
-            .unwrap();
-
-        let input =
-            UnwindInput { checkpoint: StageCheckpoint::new(10), unwind_to: 0, bad_block: None };
-
-        assert_matches!(runner.unwind(input).await, Ok(_));
-        assert!(runner.db.table_is_empty::<tables::HashedStorages>().unwrap());
-    }
 
     /// Execute with low clean threshold so as to hash whole storage
     #[tokio::test]
@@ -341,6 +365,7 @@ mod tests {
         db: TestStageDB,
         commit_threshold: u64,
         clean_threshold: u64,
+        commit_entries: u64,
         etl_config: EtlConfig,
     }
 
@@ -350,6 +375,7 @@ mod tests {
                 db: TestStageDB::default(),
                 commit_threshold: 1000,
                 clean_threshold: 1000,
+                commit_entries: u64::MAX,
                 etl_config: EtlConfig::default(),
             }
         }
@@ -366,6 +392,7 @@ mod tests {
             Self::S {
                 commit_threshold: self.commit_threshold,
                 clean_threshold: self.clean_threshold,
+                commit_entries: self.commit_entries,
                 etl_config: self.etl_config.clone(),
             }
         }
@@ -479,12 +506,6 @@ mod tests {
     }
 
     impl StorageHashingTestRunner {
-        fn with_storage_v2() -> Self {
-            let runner = Self::default();
-            runner.db.factory.set_storage_settings_cache(StorageSettings::v2());
-            runner
-        }
-
         fn set_clean_threshold(&mut self, threshold: u64) {
             self.clean_threshold = threshold;
         }
@@ -536,7 +557,7 @@ mod tests {
                             .expect("failed to delete entry");
                         e
                     }
-                    _ => StorageEntry { key: entry.key, value: U256::from(0) },
+                    _ => StorageEntry { key: entry.key, value: U256::ZERO },
                 };
             tx.put::<tables::PlainStorageState>(bn_address.address(), entry)?;
 
@@ -576,8 +597,7 @@ mod tests {
 
                     if storage_cursor
                         .seek_by_key_subkey(bn_address.address(), entry.key)?
-                        .filter(|e| e.key == entry.key)
-                        .is_some()
+                        .is_some_and(|e| e.key == entry.key)
                     {
                         storage_cursor.delete_current()?;
                     }

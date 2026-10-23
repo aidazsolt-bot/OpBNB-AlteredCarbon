@@ -1,19 +1,17 @@
 //! Helper provider traits to encapsulate all provider traits for simplicity.
 
 use crate::{
-    AccountReader, BlockReader, BlockReaderIdExt, ChainSpecProvider, ChangeSetReader,
-    DatabaseProviderFactory, HashedPostStateProvider, PruneCheckpointReader,
-    RocksDBProviderFactory, StageCheckpointReader, StateProviderFactory, StateReader,
-    StaticFileProviderFactory,
+    BalProvider, BlockReader, BlockReaderIdExt, ChainSpecProvider, ChangeSetReader,
+    DatabaseProviderFactory, PruneCheckpointReader, RocksDBProviderFactory, StageCheckpointReader,
+    StateProviderFactory, StateRangeProviderFactory, StateReader, StaticFileProviderFactory,
 };
 use reth_chain_state::{
     CanonStateSubscriptions, ForkChoiceSubscriptions, PersistedBlockSubscriptions,
 };
 use reth_node_types::{BlockTy, HeaderTy, NodeTypesWithDB, ReceiptTy, TxTy};
 use reth_storage_api::{
-    BalProvider, NodePrimitivesProvider, StorageChangeSetReader, StorageSettingsCache,
+    HistoryReader, NodePrimitivesProvider, StorageChangeSetReader, StorageSettingsCache,
 };
-use std::fmt::Debug;
 
 /// Helper trait to unify all provider traits for simplicity.
 pub trait FullProvider<N: NodeTypesWithDB>:
@@ -24,7 +22,9 @@ pub trait FullProvider<N: NodeTypesWithDB>:
                       + PruneCheckpointReader
                       + ChangeSetReader
                       + StorageChangeSetReader
-                      + StorageSettingsCache,
+                      + StorageSettingsCache
+                      + HistoryReader
+                      + 'static,
     > + NodePrimitivesProvider<Primitives = N::Primitives>
     + StaticFileProviderFactory<Primitives = N::Primitives>
     + RocksDBProviderFactory
@@ -33,20 +33,19 @@ pub trait FullProvider<N: NodeTypesWithDB>:
         Block = BlockTy<N>,
         Receipt = ReceiptTy<N>,
         Header = HeaderTy<N>,
-    > + AccountReader
-    + StateProviderFactory
+    > + BalProvider
+    + StateProviderFactory<Primitives = N::Primitives>
+    + StateRangeProviderFactory
     + StateReader
-    + HashedPostStateProvider
     + ChainSpecProvider<ChainSpec = N::ChainSpec>
     + ChangeSetReader
-    + CanonStateSubscriptions
+    + StorageChangeSetReader
+    + CanonStateSubscriptions<Primitives = N::Primitives>
     + ForkChoiceSubscriptions<Header = HeaderTy<N>>
     + PersistedBlockSubscriptions
     + StageCheckpointReader
     + PruneCheckpointReader
-    + BalProvider
     + Clone
-    + Debug
     + Unpin
     + 'static
 {
@@ -60,7 +59,9 @@ impl<T, N: NodeTypesWithDB> FullProvider<N> for T where
                           + PruneCheckpointReader
                           + ChangeSetReader
                           + StorageChangeSetReader
-                          + StorageSettingsCache,
+                          + StorageSettingsCache
+                          + HistoryReader
+                          + 'static,
         > + NodePrimitivesProvider<Primitives = N::Primitives>
         + StaticFileProviderFactory<Primitives = N::Primitives>
         + RocksDBProviderFactory
@@ -69,20 +70,19 @@ impl<T, N: NodeTypesWithDB> FullProvider<N> for T where
             Block = BlockTy<N>,
             Receipt = ReceiptTy<N>,
             Header = HeaderTy<N>,
-        > + AccountReader
-        + StateProviderFactory
+        > + BalProvider
+        + StateProviderFactory<Primitives = N::Primitives>
+        + StateRangeProviderFactory
         + StateReader
-        + HashedPostStateProvider
         + ChainSpecProvider<ChainSpec = N::ChainSpec>
         + ChangeSetReader
-        + CanonStateSubscriptions
+        + StorageChangeSetReader
+        + CanonStateSubscriptions<Primitives = N::Primitives>
         + ForkChoiceSubscriptions<Header = HeaderTy<N>>
         + PersistedBlockSubscriptions
         + StageCheckpointReader
         + PruneCheckpointReader
-        + BalProvider
         + Clone
-        + Debug
         + Unpin
         + 'static
 {

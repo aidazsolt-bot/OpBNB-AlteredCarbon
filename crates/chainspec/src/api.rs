@@ -1,14 +1,13 @@
 use crate::{ChainSpec, DepositContract};
 use alloc::{boxed::Box, vec::Vec};
 use alloy_chains::Chain;
-use alloy_consensus::BlockHeader as _;
-use alloy_eips::{calc_next_block_base_fee, eip1559::BaseFeeParams, eip7840::BlobParams};
+use alloy_eips::{eip1559::BaseFeeParams, eip7840::BlobParams};
 use alloy_genesis::Genesis;
 use alloy_primitives::{B256, U256};
 use core::fmt::{Debug, Display};
 use reth_ethereum_forks::EthereumHardforks;
 use reth_network_peers::NodeRecord;
-use reth_primitives_traits::BlockHeader;
+use reth_primitives_traits::{AlloyBlockHeader, BlockHeader};
 
 /// Trait representing type configuring a chain spec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -61,26 +60,16 @@ pub trait EthChainSpec: Send + Sync + Unpin + Debug {
         self.chain().is_ethereum()
     }
 
-    /// Returns `true` if this chain contains Binance Smart Chain configuration.
-    fn is_bsc(&self) -> bool;
-
     /// Returns the final total difficulty if the Paris hardfork is known.
     fn final_paris_total_difficulty(&self) -> Option<U256>;
 
-    /// See [`calc_next_block_base_fee`].
+    /// See [`AlloyBlockHeader::next_block_base_fee`].
     fn next_block_base_fee(&self, parent: &Self::Header, target_timestamp: u64) -> Option<u64> {
-        Some(calc_next_block_base_fee(
-            parent.gas_used(),
-            parent.gas_limit(),
-            parent.base_fee_per_gas()?,
-            self.base_fee_params_at_timestamp(target_timestamp),
-        ))
+        parent.next_block_base_fee(self.base_fee_params_at_timestamp(target_timestamp))
     }
 }
 
-impl<H: BlockHeader + Debug + Send + Sync + Unpin + alloy_primitives::Sealable> EthChainSpec
-    for ChainSpec<H>
-{
+impl<H: BlockHeader> EthChainSpec for ChainSpec<H> {
     type Header = H;
 
     fn chain(&self) -> Chain {
@@ -139,9 +128,5 @@ impl<H: BlockHeader + Debug + Send + Sync + Unpin + alloy_primitives::Sealable> 
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.get_final_paris_total_difficulty()
-    }
-
-    fn is_bsc(&self) -> bool {
-        Self::is_bsc(self)
     }
 }

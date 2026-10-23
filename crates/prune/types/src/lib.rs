@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_group_by_block_single_entry() {
         let mut config_map = BTreeMap::new();
-        let address = Address::new([1; 20]);
+        let address = Address::repeat_byte(1);
         let prune_mode = PruneMode::Before(500);
         config_map.insert(address, prune_mode);
 
@@ -165,8 +165,8 @@ mod tests {
     #[test]
     fn test_group_by_block_multiple_entries() {
         let mut config_map = BTreeMap::new();
-        let address1 = Address::new([1; 20]);
-        let address2 = Address::new([2; 20]);
+        let address1 = Address::repeat_byte(1);
+        let address2 = Address::repeat_byte(2);
         let prune_mode1 = PruneMode::Before(600);
         let prune_mode2 = PruneMode::Before(800);
         config_map.insert(address1, prune_mode1);
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn test_group_by_block_with_distance_prune_mode() {
         let mut config_map = BTreeMap::new();
-        let address = Address::new([1; 20]);
+        let address = Address::repeat_byte(1);
         let prune_mode = PruneMode::Distance(100000);
         config_map.insert(address, prune_mode);
 
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_lowest_block_with_distance_no_distance_mode() {
         let mut config_map = BTreeMap::new();
-        let address = Address::new([1; 20]);
+        let address = Address::repeat_byte(1);
         let prune_mode = PruneMode::Before(500);
         config_map.insert(address, prune_mode);
 
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_lowest_block_with_distance_single_entry() {
         let mut config_map = BTreeMap::new();
-        let address = Address::new([1; 20]);
+        let address = Address::repeat_byte(1);
         let prune_mode = PruneMode::Distance(100000);
         config_map.insert(address, prune_mode);
 
@@ -271,8 +271,8 @@ mod tests {
     #[test]
     fn test_lowest_block_with_distance_multiple_entries_last() {
         let mut config_map = BTreeMap::new();
-        let address1 = Address::new([1; 20]);
-        let address2 = Address::new([2; 20]);
+        let address1 = Address::repeat_byte(1);
+        let address2 = Address::repeat_byte(2);
         let prune_mode1 = PruneMode::Distance(100100);
         let prune_mode2 = PruneMode::Distance(100300);
         config_map.insert(address1, prune_mode1);
@@ -292,8 +292,8 @@ mod tests {
     #[test]
     fn test_lowest_block_with_distance_multiple_entries_first() {
         let mut config_map = BTreeMap::new();
-        let address1 = Address::new([1; 20]);
-        let address2 = Address::new([2; 20]);
+        let address1 = Address::repeat_byte(1);
+        let address2 = Address::repeat_byte(2);
         let prune_mode1 = PruneMode::Distance(100400);
         let prune_mode2 = PruneMode::Distance(100300);
         config_map.insert(address1, prune_mode1);
@@ -313,8 +313,8 @@ mod tests {
     #[test]
     fn test_lowest_block_with_distance_multiple_entries_pruned_block() {
         let mut config_map = BTreeMap::new();
-        let address1 = Address::new([1; 20]);
-        let address2 = Address::new([2; 20]);
+        let address1 = Address::repeat_byte(1);
+        let address2 = Address::repeat_byte(2);
         let prune_mode1 = PruneMode::Distance(100400);
         let prune_mode2 = PruneMode::Distance(100300);
         config_map.insert(address1, prune_mode1);

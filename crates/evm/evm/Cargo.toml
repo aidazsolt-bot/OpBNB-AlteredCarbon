@@ -23,42 +23,46 @@ reth-trie-common.workspace = true
 revm.workspace = true
 
 # alloy
-alloy-consensus.workspace = true
-alloy-evm.workspace = true
-alloy-eip7928.workspace = true
 alloy-primitives.workspace = true
+alloy-eip7928.workspace = true
 alloy-eips.workspace = true
+alloy-evm.workspace = true
+alloy-consensus.workspace = true
 
 auto_impl.workspace = true
 derive_more.workspace = true
 futures-util.workspace = true
 metrics = { workspace = true, optional = true }
-parking_lot = { workspace = true, optional = true }
-rayon.workspace = true
-tokio = { workspace = true, features = ["sync", "time"] }
+rayon = { workspace = true, optional = true }
+fixed-cache.workspace = true
 
 [dev-dependencies]
-parking_lot.workspace = true
-reth-ethereum-forks.workspace = true
-alloy-consensus.workspace = true
+reth-ethereum-primitives.workspace = true
 
 [features]
 default = ["std"]
-std = ["metrics",
+std = [
+    "dep:rayon",
     "reth-primitives-traits/std",
-    "reth-storage-api/std",
-    "reth-trie-common/std",
     "alloy-eips/std",
     "alloy-primitives/std",
     "alloy-consensus/std",
-    "alloy-evm/std",
     "revm/std",
-    "derive_more/std",
+    "alloy-evm/std",
+    "reth-execution-errors/std",
+    "reth-execution-types/std",
+    "reth-storage-errors/std",
     "futures-util/std",
+    "derive_more/std",
+    "reth-storage-api/std",
+    "reth-trie-common/std",
+    "reth-ethereum-primitives/std",
+    "alloy-eip7928/std",
+    "fixed-cache/std",
 ]
-metrics = ["dep:metrics", "dep:reth-metrics"]
+metrics = ["std", "dep:metrics", "dep:reth-metrics"]
 test-utils = [
-    "dep:parking_lot",
     "reth-primitives-traits/test-utils",
-    "reth-trie-common/test-utils"
+    "reth-trie-common/test-utils",
+    "reth-ethereum-primitives/test-utils",
 ]

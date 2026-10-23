@@ -14,13 +14,8 @@ pub use execution_stats::ExecutionTimingStats;
 mod in_memory;
 pub use in_memory::*;
 
-mod state_trie_overlay;
-pub use state_trie_overlay::*;
-
 mod preserved_sparse_trie;
 pub use preserved_sparse_trie::*;
-
-mod noop;
 
 mod chain_info;
 pub use chain_info::ChainInfoTracker;
@@ -33,19 +28,9 @@ pub use notifications::{
     WatchValueStream,
 };
 
-mod memory_overlay;
-pub use memory_overlay::{MemoryOverlayStateProvider, MemoryOverlayStateProviderRef};
-
-pub use cache::cached_provider::CachedStateProvider;
-
-/// Cache layer for plain states.
-pub mod cache;
-
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers
 pub mod test_utils;
 
 // todo: remove when generic data prim integration complete
 pub use reth_ethereum_primitives::EthPrimitives;
-
-pub use reth_trie::ComputedTrieData;

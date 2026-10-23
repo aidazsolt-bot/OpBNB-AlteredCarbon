@@ -1,23 +1,23 @@
 //! `Eth` Sim bundle implementation and helpers.
 
 use alloy_consensus::{transaction::TxHashRef, BlockHeader};
-use alloy_eips::BlockNumberOrTag;
 use alloy_evm::{env::BlockEnvironment, overrides::apply_block_overrides};
 use alloy_primitives::U256;
-use alloy_rpc_types_eth::BlockId;
+use alloy_rpc_types_eth::{BlockId, Log};
 use alloy_rpc_types_mev::{
     BundleItem, Inclusion, MevSendBundle, Privacy, RefundConfig, SimBundleLogs, SimBundleOverrides,
     SimBundleResponse, Validity,
 };
 use jsonrpsee::core::RpcResult;
+use reth_errors::RethError;
 use reth_evm::{ConfigureEvm, Evm};
-use reth_primitives_traits::{NodePrimitives, Recovered, SignedTransaction};
+use reth_primitives_traits::Recovered;
 use reth_rpc_api::MevSimApiServer;
 use reth_rpc_eth_api::{
     helpers::{block::LoadBlock, Call, EthTransactions},
     FromEthApiError, FromEvmError,
 };
-use reth_rpc_eth_types::{utils::recover_raw_transaction, EthApiError};
+use reth_rpc_eth_types::EthApiError;
 use reth_storage_api::ProviderTx;
 use reth_tasks::pool::BlockingTaskGuard;
 use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
@@ -77,12 +77,72 @@ impl<Eth> EthSimBundle<Eth> {
     pub fn eth_api(&self) -> &Eth {
         &self.inner.eth_api
     }
+
+    /// Builds a hierarchical `SimBundleLogs` structure from flattened transaction logs.
+    fn build_bundle_logs(
+        bundle: &MevSendBundle,
+        flat_logs: &[Vec<Log>],
+    ) -> Result<Vec<SimBundleLogs>, EthApiError> {
+        struct BundleFrame<'a> {
+            bundle: &'a MevSendBundle,
+            next_idx: usize,
+            logs: Vec<SimBundleLogs>,
+        }
+
+        let mut stack = vec![BundleFrame { bundle, next_idx: 0, logs: Vec::new() }];
+        let mut flat_log_idx = 0;
+        let mut root_logs = None;
+
+        while let Some(mut frame) = stack.pop() {
+            if frame.next_idx == frame.bundle.bundle_body.len() {
+                if let Some(parent) = stack.last_mut() {
+                    parent
+                        .logs
+                        .push(SimBundleLogs { tx_logs: None, bundle_logs: Some(frame.logs) });
+                } else {
+                    root_logs = Some(frame.logs);
+                }
+
+                continue;
+            }
+
+            match &frame.bundle.bundle_body[frame.next_idx] {
+                BundleItem::Tx { .. } => {
+                    let tx_logs = flat_logs.get(flat_log_idx).cloned().ok_or_else(|| {
+                        EthApiError::InvalidParams(EthSimBundleError::UnmatchedBundle.to_string())
+                    })?;
+
+                    frame.logs.push(SimBundleLogs { tx_logs: Some(tx_logs), bundle_logs: None });
+                    frame.next_idx += 1;
+                    flat_log_idx += 1;
+                    stack.push(frame);
+                }
+                BundleItem::Bundle { bundle } => {
+                    frame.next_idx += 1;
+                    stack.push(frame);
+                    stack.push(BundleFrame { bundle, next_idx: 0, logs: Vec::new() });
+                }
+                BundleItem::Hash { .. } => {
+                    return Err(EthApiError::InvalidParams(
+                        EthSimBundleError::InvalidBundle.to_string(),
+                    ));
+                }
+            }
+        }
+
+        if flat_log_idx != flat_logs.len() {
+            return Err(EthApiError::InvalidParams(EthSimBundleError::UnmatchedBundle.to_string()));
+        }
+
+        root_logs.ok_or_else(|| {
+            EthApiError::InvalidParams(EthSimBundleError::UnmatchedBundle.to_string())
+        })
+    }
 }
 
 impl<Eth> EthSimBundle<Eth>
 where
-    Eth: EthTransactions + LoadBlock + Call + 'static,
-    <Eth::Primitives as NodePrimitives>::SignedTx: SignedTransaction,
+    Eth: EthTransactions + LoadBlock + Call,
 {
     /// Flattens a potentially nested bundle into a list of individual transactions in a
     /// `FlattenedBundleItem` with their associated metadata. This handles recursive bundle
@@ -168,8 +228,10 @@ where
             while idx < body.len() {
                 match &body[idx] {
                     BundleItem::Tx { tx, can_revert } => {
-                        let tx = recover_raw_transaction::<PoolPooledTx<Eth::Pool>>(tx)?;
-                        let tx = tx.map(
+                        let recovered_tx = self
+                            .eth_api()
+                            .recover_raw_transaction::<PoolPooledTx<Eth::Pool>>(tx)?;
+                        let tx = recovered_tx.map(
                             <Eth::Pool as TransactionPool>::Transaction::pooled_into_consensus,
                         );
 
@@ -193,9 +255,7 @@ where
                             refund_configs,
                         };
 
-                        // Add to items
                         items.push(flattened_item);
-
                         idx += 1;
                     }
                     BundleItem::Bundle { bundle } => {
@@ -231,24 +291,41 @@ where
         // Also, flatten the bundle here so that its easier to process
         let flattened_bundle = self.parse_and_flatten_bundle(&request)?;
 
-        let block_id = parent_block.unwrap_or(BlockId::Number(BlockNumberOrTag::Latest));
-        let (mut evm_env, current_block_id) = self.eth_api().evm_env_at(block_id).await?;
-        let current_block = self.eth_api().recovered_block(current_block_id).await?;
-        let current_block = current_block.ok_or(EthApiError::HeaderNotFound(block_id))?;
+        let block_id = parent_block.unwrap_or(BlockId::latest());
+        let (parent, _, parent_block_id) =
+            self.eth_api().evm_env_and_recovered_block_at(block_id).await?;
+
+        // The bundle is simulated in the block that builds on the parent, so derive the
+        // environment of the next block, see
+        // <https://github.com/flashbots/builder/blob/main/internal/ethapi/sbundle_api.go>
+        let parent_header = parent.clone_sealed_header();
+        let mut evm_env = {
+            let attributes = self
+                .eth_api()
+                .pending_env_builder()
+                .pending_env_attributes(&parent_header, Some(&block_overrides))?;
+            self.eth_api()
+                .evm_config()
+                .next_evm_env(&parent_header, &attributes)
+                .map_err(RethError::other)
+                .map_err(EthApiError::from_eth_err)?
+        };
 
         let eth_api = self.inner.eth_api.clone();
 
         let sim_response = self
             .inner
             .eth_api
-            .spawn_with_state_at_block(current_block_id, move |_, mut db| {
-                // Setup environment
-                let current_block_number = current_block.number();
+            .spawn_with_state_at_block(parent_block_id, move |_, mut db| {
+                // apply overrides before reading the block values they may change
+                apply_block_overrides(block_overrides, &mut db, evm_env.block_env.inner_mut());
+
+                let state_block = parent.number();
+                let simulated_block_number = evm_env.block_env.number().saturating_to::<u64>();
+                let simulated_block_timestamp =
+                    evm_env.block_env.timestamp().saturating_to::<u64>();
                 let coinbase = evm_env.block_env.beneficiary();
                 let basefee = evm_env.block_env.basefee();
-
-                // apply overrides
-                apply_block_overrides(block_overrides, &mut db, evm_env.block_env.inner_mut());
 
                 let initial_coinbase_balance = DatabaseRef::basic_ref(&db, coinbase)
                     .map_err(EthApiError::from_eth_err)?
@@ -259,7 +336,7 @@ where
                 let mut total_gas_used = 0;
                 let mut total_profit = U256::ZERO;
                 let mut refundable_value = U256::ZERO;
-                let mut body_logs: Vec<SimBundleLogs> = Vec::new();
+                let mut flat_logs: Vec<Vec<Log>> = Vec::new();
 
                 let mut evm = eth_api.evm_config().evm_with_env(db, evm_env);
                 let mut log_index = 0;
@@ -270,8 +347,8 @@ where
                     let max_block_number =
                         item.inclusion.max_block_number().unwrap_or(block_number);
 
-                    if current_block_number < block_number ||
-                        current_block_number > max_block_number
+                    if simulated_block_number < block_number ||
+                        simulated_block_number > max_block_number
                     {
                         return Err(EthApiError::InvalidParams(
                             EthSimBundleError::InvalidInclusion.to_string(),
@@ -290,7 +367,7 @@ where
                         .into());
                     }
 
-                    let gas_used = result.gas_used();
+                    let gas_used = result.tx_gas_used();
                     total_gas_used += gas_used;
 
                     // coinbase is always present in the result state
@@ -309,19 +386,19 @@ where
                     // Update coinbase balance before next tx
                     coinbase_balance_before_tx = coinbase_balance_after_tx;
 
-                    // Collect logs if requested
-                    // TODO: since we are looping over iteratively, we are not collecting bundle
-                    // logs. We should collect bundle logs when we are processing the bundle items.
+                    // Keep one log entry per executed transaction so we can rebuild the bundle
+                    // tree in execution order after simulation.
                     if logs {
-                        let tx_logs = result
+                        let tx_logs: Vec<Log> = result
                             .into_logs()
                             .into_iter()
                             .map(|inner| {
-                                let full_log = alloy_rpc_types_eth::Log {
+                                let full_log = Log {
                                     inner,
+                                    // the simulated block has no hash yet
                                     block_hash: None,
-                                    block_number: None,
-                                    block_timestamp: None,
+                                    block_number: Some(simulated_block_number),
+                                    block_timestamp: Some(simulated_block_timestamp),
                                     transaction_hash: Some(*item.tx.tx_hash()),
                                     transaction_index: Some(tx_index as u64),
                                     log_index: Some(log_index),
@@ -331,21 +408,21 @@ where
                                 full_log
                             })
                             .collect();
-                        let sim_bundle_logs =
-                            SimBundleLogs { tx_logs: Some(tx_logs), bundle_logs: None };
-                        body_logs.push(sim_bundle_logs);
+                        flat_logs.push(tx_logs);
                     }
 
                     // Apply state changes
                     evm.db_mut().commit(state);
                 }
 
+                let body_logs =
+                    if logs { Self::build_bundle_logs(&request, &flat_logs)? } else { vec![] };
+
                 // After processing all transactions, process refunds
                 // Store the original refundable value to calculate all payouts correctly
                 let original_refundable_value = refundable_value;
                 for item in &flattened_bundle {
                     if let Some(refund_percent) = item.refund_percent {
-                        // Get refund configurations
                         let refund_configs = item.refund_configs.clone().unwrap_or_else(|| {
                             vec![RefundConfig { address: item.tx.signer(), percent: 100 }]
                         });
@@ -359,8 +436,8 @@ where
                         total_gas_used += SBUNDLE_PAYOUT_MAX_COST * refund_configs.len() as u64;
 
                         // Calculate allocated refundable value (payout value) based on ORIGINAL
-                        // refundable value This ensures all refund_percent
-                        // values are calculated from the same base
+                        // refundable value. This ensures all refund_percent values are
+                        // calculated from the same base.
                         let payout_value = original_refundable_value * U256::from(refund_percent) /
                             U256::from(100);
 
@@ -396,7 +473,7 @@ where
 
                 Ok(SimBundleResponse {
                     success: true,
-                    state_block: current_block_number,
+                    state_block,
                     error: None,
                     logs: Some(body_logs),
                     gas_used: total_gas_used,
@@ -416,8 +493,7 @@ where
 #[async_trait::async_trait]
 impl<Eth> MevSimApiServer for EthSimBundle<Eth>
 where
-    Eth: EthTransactions + LoadBlock + Call + 'static,
-    <Eth::Primitives as NodePrimitives>::SignedTx: SignedTransaction,
+    Eth: EthTransactions + LoadBlock + Call,
 {
     async fn sim_bundle(
         &self,
@@ -496,4 +572,331 @@ pub enum EthSimBundleError {
     /// Thrown when a bundle simulation returns negative profit
     #[error("bundle simulation returned negative profit")]
     NegativeProfit,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::Bytes;
+    use alloy_rpc_types_mev::{Inclusion, ProtocolVersion};
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sim_bundle_uses_next_block_env_and_overrides() {
+        use crate::EthApiBuilder;
+        use alloy_consensus::{transaction::SignerRecoverable, TxEip1559};
+        use alloy_eips::eip2718::Encodable2718;
+        use alloy_genesis::{Genesis, GenesisAccount};
+        use alloy_primitives::{Address, TxKind, B256};
+        use alloy_rpc_types_eth::BlockOverrides;
+        use reth_chainspec::{ChainSpecBuilder, ChainSpecProvider};
+        use reth_db_common::init::init_genesis;
+        use reth_evm_ethereum::EthEvmConfig;
+        use reth_network_api::noop::NoopNetwork;
+        use reth_provider::{
+            providers::BlockchainProvider, test_utils::create_test_provider_factory_with_chain_spec,
+        };
+        use reth_testing_utils::generators::{self, generate_key, sign_tx_with_key_pair};
+        use reth_transaction_pool::test_utils::testing_pool;
+
+        let contract = Address::repeat_byte(0xaa);
+        let coinbase = Address::repeat_byte(0x11);
+        let overridden_coinbase = Address::repeat_byte(0x22);
+        let mut rng = generators::rng();
+        let tx = sign_tx_with_key_pair(
+            generate_key(&mut rng),
+            reth_ethereum_primitives::Transaction::Eip1559(TxEip1559 {
+                chain_id: 1,
+                nonce: 0,
+                gas_limit: 100_000,
+                max_fee_per_gas: 2_000_000_000,
+                max_priority_fee_per_gas: 1_000_000_000,
+                to: TxKind::Call(contract),
+                ..Default::default()
+            }),
+        );
+        let sender = tx.recover_signer().unwrap();
+
+        // Log NUMBER, TIMESTAMP, BASEFEE and COINBASE as topics, in that order.
+        let code = Bytes::from_static(&[0x41, 0x48, 0x42, 0x43, 0x5f, 0x5f, 0xa4, 0x00]);
+        let genesis = Genesis::default()
+            .with_gas_limit(30_000_000)
+            .with_timestamp(100)
+            .with_base_fee(Some(1_000_000_000))
+            .with_coinbase(coinbase)
+            .extend_accounts([
+                (sender, GenesisAccount::default().with_balance(U256::from(10u128.pow(18)))),
+                (contract, GenesisAccount::default().with_code(Some(code))),
+                (
+                    overridden_coinbase,
+                    GenesisAccount::default().with_balance(U256::from(10u128.pow(18))),
+                ),
+            ]);
+        let chain_spec =
+            Arc::new(ChainSpecBuilder::mainnet().cancun_activated().genesis(genesis).build());
+        let factory = create_test_provider_factory_with_chain_spec(chain_spec);
+        init_genesis(&factory).unwrap();
+        let provider = BlockchainProvider::new(factory).unwrap();
+
+        let eth_api = EthApiBuilder::new(
+            provider.clone(),
+            testing_pool(),
+            NoopNetwork::default(),
+            EthEvmConfig::new(provider.chain_spec()),
+        )
+        .build();
+        let api = EthSimBundle::new(eth_api, BlockingTaskGuard::new(4));
+
+        let bundle = |block| MevSendBundle {
+            protocol_version: ProtocolVersion::V0_1,
+            inclusion: Inclusion::at_block(block),
+            bundle_body: vec![BundleItem::Tx { tx: tx.encoded_2718().into(), can_revert: false }],
+            validity: None,
+            privacy: None,
+        };
+
+        for (overrides, number, timestamp, base_fee, beneficiary) in [
+            (SimBundleOverrides::default(), 1, 112, 875_000_000, coinbase),
+            (
+                SimBundleOverrides {
+                    parent_block: Some(BlockId::number(0)),
+                    block_overrides: BlockOverrides {
+                        number: Some(U256::from(2)),
+                        time: Some(200),
+                        base_fee: Some(U256::from(1_500_000_000)),
+                        coinbase: Some(overridden_coinbase),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                2,
+                200,
+                1_500_000_000,
+                overridden_coinbase,
+            ),
+        ] {
+            let response = api.sim_bundle(bundle(number), overrides.clone()).await.unwrap();
+            assert!(response.success);
+            assert_eq!(response.state_block, 0);
+            let tip = (2_000_000_000u64 - base_fee).min(1_000_000_000);
+            assert_eq!(response.profit, U256::from(response.gas_used) * U256::from(tip));
+            assert_eq!(response.refundable_value, response.profit);
+            assert_eq!(response.mev_gas_price, U256::from(tip));
+
+            let logs = response.logs.unwrap();
+            assert_eq!(logs.len(), 1);
+            let tx_logs = logs[0].tx_logs.as_ref().unwrap();
+            assert_eq!(tx_logs.len(), 1);
+            let log = &tx_logs[0];
+            assert_eq!(
+                log.inner.topics(),
+                &[
+                    B256::from(U256::from(number)),
+                    B256::from(U256::from(timestamp)),
+                    B256::from(U256::from(base_fee)),
+                    beneficiary.into_word(),
+                ]
+            );
+            assert_eq!(log.block_hash, None);
+            assert_eq!(log.block_number, Some(number));
+            assert_eq!(log.block_timestamp, Some(timestamp));
+            assert_eq!(log.transaction_hash, Some(*tx.tx_hash()));
+            assert_eq!(log.transaction_index, Some(0));
+            assert_eq!(log.log_index, Some(0));
+
+            // Nonzero inclusion bounds reach the simulation check instead of failing parsing.
+            let err = api.sim_bundle(bundle(number + 1), overrides.clone()).await.unwrap_err();
+            assert!(err.message().contains("invalid inclusion"), "{err}");
+            if number > 1 {
+                let err = api.sim_bundle(bundle(number - 1), overrides).await.unwrap_err();
+                assert!(err.message().contains("invalid inclusion"), "{err}");
+            }
+        }
+    }
+
+    fn create_test_bundle(tx_bytes: Vec<Bytes>) -> MevSendBundle {
+        let body: Vec<BundleItem> =
+            tx_bytes.into_iter().map(|tx| BundleItem::Tx { tx, can_revert: false }).collect();
+        MevSendBundle {
+            bundle_body: body,
+            inclusion: Inclusion { block: 1, max_block: None },
+            validity: None,
+            privacy: None,
+            protocol_version: ProtocolVersion::V0_1,
+        }
+    }
+
+    fn create_nested_bundle(outer_tx: Bytes, inner_txs: Vec<Bytes>) -> MevSendBundle {
+        let inner_bundle = create_test_bundle(inner_txs);
+        MevSendBundle {
+            bundle_body: vec![
+                BundleItem::Tx { tx: outer_tx, can_revert: false },
+                BundleItem::Bundle { bundle: inner_bundle },
+            ],
+            inclusion: Inclusion { block: 1, max_block: None },
+            validity: None,
+            privacy: None,
+            protocol_version: ProtocolVersion::V0_1,
+        }
+    }
+
+    fn create_bundle_with_body(bundle_body: Vec<BundleItem>) -> MevSendBundle {
+        MevSendBundle {
+            bundle_body,
+            inclusion: Inclusion { block: 1, max_block: None },
+            validity: None,
+            privacy: None,
+            protocol_version: ProtocolVersion::V0_1,
+        }
+    }
+
+    fn create_bundle_logs(log_counts: &[usize]) -> Vec<Vec<Log>> {
+        log_counts.iter().map(|count| vec![Log::default(); *count]).collect()
+    }
+
+    fn assert_unmatched_bundle(result: Result<Vec<SimBundleLogs>, EthApiError>) {
+        assert!(matches!(
+            result,
+            Err(EthApiError::InvalidParams(ref message))
+                if message == &EthSimBundleError::UnmatchedBundle.to_string()
+        ));
+    }
+
+    #[test]
+    fn test_build_bundle_logs_single_tx() {
+        let bundle = create_test_bundle(vec![Bytes::from(vec![0x01, 0x02, 0x03])]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&bundle, &create_bundle_logs(&[1])).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].tx_logs.is_some());
+        assert!(result[0].bundle_logs.is_none());
+        assert_eq!(result[0].tx_logs.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_empty_bundle() {
+        let bundle = create_test_bundle(vec![]);
+        let result = EthSimBundle::<()>::build_bundle_logs(&bundle, &[]).unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_bundle_logs_nested_bundle() {
+        let outer_tx = Bytes::from(vec![0x01, 0x02, 0x03]);
+        let inner_tx1 = Bytes::from(vec![0x04, 0x05, 0x06]);
+        let inner_tx2 = Bytes::from(vec![0x07, 0x08, 0x09]);
+        let bundle = create_nested_bundle(outer_tx, vec![inner_tx1, inner_tx2]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&bundle, &create_bundle_logs(&[1, 1, 2]))
+                .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result[0].tx_logs.is_some());
+        assert!(result[0].bundle_logs.is_none());
+        assert_eq!(result[0].tx_logs.as_ref().unwrap().len(), 1);
+
+        assert!(result[1].tx_logs.is_none());
+        assert!(result[1].bundle_logs.is_some());
+
+        let nested_logs = result[1].bundle_logs.as_ref().unwrap();
+        assert_eq!(nested_logs.len(), 2);
+        assert!(nested_logs[0].tx_logs.is_some());
+        assert_eq!(nested_logs[0].tx_logs.as_ref().unwrap().len(), 1);
+        assert!(nested_logs[1].tx_logs.is_some());
+        assert_eq!(nested_logs[1].tx_logs.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_duplicate_transactions_same_level() {
+        let duplicate_tx = Bytes::from(vec![0x01, 0x02, 0x03]);
+        let bundle = create_test_bundle(vec![duplicate_tx.clone(), duplicate_tx]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&bundle, &create_bundle_logs(&[1, 2])).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].tx_logs.as_ref().unwrap().len(), 1);
+        assert_eq!(result[1].tx_logs.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_duplicate_transactions_across_nested_bundles() {
+        let duplicate_tx = Bytes::from(vec![0x01, 0x02, 0x03]);
+        let bundle = create_nested_bundle(duplicate_tx.clone(), vec![duplicate_tx]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&bundle, &create_bundle_logs(&[1, 2])).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result[1].bundle_logs.is_some());
+        assert_eq!(result[0].tx_logs.as_ref().unwrap().len(), 1);
+
+        let nested_logs = result[1].bundle_logs.as_ref().unwrap();
+        assert_eq!(nested_logs.len(), 1);
+        assert_eq!(nested_logs[0].tx_logs.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_root_with_only_nested_bundles() {
+        let first_nested = create_test_bundle(vec![Bytes::from(vec![0x01])]);
+        let second_nested =
+            create_test_bundle(vec![Bytes::from(vec![0x02]), Bytes::from(vec![0x03])]);
+        let bundle = create_bundle_with_body(vec![
+            BundleItem::Bundle { bundle: first_nested },
+            BundleItem::Bundle { bundle: second_nested },
+        ]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&bundle, &create_bundle_logs(&[1, 1, 2]))
+                .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result[0].tx_logs.is_none());
+        assert!(result[1].tx_logs.is_none());
+
+        let first_nested_logs = result[0].bundle_logs.as_ref().unwrap();
+        assert_eq!(first_nested_logs.len(), 1);
+        assert_eq!(first_nested_logs[0].tx_logs.as_ref().unwrap().len(), 1);
+
+        let second_nested_logs = result[1].bundle_logs.as_ref().unwrap();
+        assert_eq!(second_nested_logs.len(), 2);
+        assert_eq!(second_nested_logs[0].tx_logs.as_ref().unwrap().len(), 1);
+        assert_eq!(second_nested_logs[1].tx_logs.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_deeply_nested_bundle() {
+        let leaf_bundle = create_test_bundle(vec![Bytes::from(vec![0x03])]);
+        let middle_bundle = create_bundle_with_body(vec![
+            BundleItem::Tx { tx: Bytes::from(vec![0x02]), can_revert: false },
+            BundleItem::Bundle { bundle: leaf_bundle },
+        ]);
+        let root_bundle = create_bundle_with_body(vec![
+            BundleItem::Tx { tx: Bytes::from(vec![0x01]), can_revert: false },
+            BundleItem::Bundle { bundle: middle_bundle },
+        ]);
+        let result =
+            EthSimBundle::<()>::build_bundle_logs(&root_bundle, &create_bundle_logs(&[1, 2, 3]))
+                .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].tx_logs.as_ref().unwrap().len(), 1);
+
+        let middle_logs = result[1].bundle_logs.as_ref().unwrap();
+        assert_eq!(middle_logs.len(), 2);
+        assert_eq!(middle_logs[0].tx_logs.as_ref().unwrap().len(), 2);
+
+        let leaf_logs = middle_logs[1].bundle_logs.as_ref().unwrap();
+        assert_eq!(leaf_logs.len(), 1);
+        assert_eq!(leaf_logs[0].tx_logs.as_ref().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_build_bundle_logs_mismatched_flat_logs() {
+        let bundle = create_test_bundle(vec![Bytes::from(vec![0x01, 0x02, 0x03])]);
+
+        assert_unmatched_bundle(EthSimBundle::<()>::build_bundle_logs(&bundle, &[]));
+        assert_unmatched_bundle(EthSimBundle::<()>::build_bundle_logs(
+            &bundle,
+            &create_bundle_logs(&[1, 2]),
+        ));
+    }
 }

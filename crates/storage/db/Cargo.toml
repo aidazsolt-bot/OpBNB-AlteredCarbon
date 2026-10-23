@@ -20,16 +20,10 @@ reth-nippy-jar.workspace = true
 reth-tracing.workspace = true
 tracing.workspace = true
 reth-static-file-types.workspace = true
-reth-primitives.workspace = true
-reth-primitives-traits.workspace = true
+reth-primitives-traits = { workspace = true, optional = true, features = ["quanta"] }
 
 # ethereum
 alloy-primitives.workspace = true
-
-# misc
-paste.workspace = true
-bincode.workspace = true
-serde = { workspace = true, features = ["derive"] }
 
 # mdbx
 reth-libmdbx = { workspace = true, optional = true, features = ["return-borrowed", "read-tx-timeouts"] }
@@ -38,7 +32,6 @@ eyre = { workspace = true, optional = true }
 # metrics
 reth-metrics = { workspace = true, optional = true }
 metrics = { workspace = true, optional = true }
-quanta = { workspace = true, optional = true }
 
 # misc
 page_size = { workspace = true, optional = true }
@@ -75,12 +68,13 @@ proptest.workspace = true
 assert_matches.workspace = true
 
 [features]
+dst = ["reth-libmdbx?/dst"]
 default = ["mdbx"]
 mdbx = [
     "dep:reth-libmdbx",
     "dep:eyre",
     "dep:page_size",
-    "dep:quanta",
+    "dep:reth-primitives-traits",
     "reth-metrics",
     "dep:metrics",
     "dep:strum",
@@ -104,6 +98,3 @@ arbitrary = [
     "reth-prune-types/arbitrary",
 ]
 disable-lock = []
-optimism = [
-	"reth-db-api/optimism"
-]

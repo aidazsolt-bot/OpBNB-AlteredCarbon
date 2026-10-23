@@ -22,10 +22,9 @@ pub use traits::*;
 /// Provider trait implementations.
 pub mod providers;
 pub use providers::{
-    DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW, HistoricalStateProvider,
-    HistoricalStateProviderRef, LatestStateProvider, LatestStateProviderRef, ProviderFactory,
-    PruneShardOutcome, PrunedIndices, SaveBlocksMode, StaticFileAccess, StaticFileProviderBuilder,
-    StaticFileWriteCtx, StaticFileWriter,
+    DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW, LatestStateProvider,
+    LatestStateProviderRef, ProviderFactory, PruneShardOutcome, PrunedIndices, SaveBlocksInput,
+    StaticFileAccess, StaticFileProviderBuilder, StaticFileWriteCtx, StaticFileWriter,
 };
 
 pub mod changeset_walker;
@@ -38,10 +37,8 @@ pub mod test_utils;
 pub mod either_writer;
 pub use either_writer::*;
 
-pub mod writer;
-
 mod bal;
-pub use bal::{BalConfig, InMemoryBalStore};
+pub use bal::{BalConfig, InMemoryBalStore, RocksDBBalStore};
 
 pub use reth_chain_state::{
     CanonStateNotification, CanonStateNotificationSender, CanonStateNotificationStream,
@@ -53,9 +50,9 @@ pub use revm::database::states::OriginalValuesKnown;
 // reexport traits to avoid breaking changes
 pub use reth_static_file_types as static_file;
 pub use reth_storage_api::{
-    BalNotification, BalNotificationStream, BalProvider, BalStore, BalStoreHandle,
-    GetBlockAccessListLimit, HistoryWriter, MetadataProvider, MetadataWriter, NoopBalStore, RawBal,
-    StateWriteConfig, StatsReader, StoragePath, StorageSettings, StorageSettingsCache,
+    BalProvider, BalStore, BalStoreHandle, GetBlockAccessListLimit, HistoryWriter,
+    MetadataProvider, MetadataWriter, NoopBalStore, RawBal, StateWriteConfig, StatsReader,
+    StorageSettings, StorageSettingsCache,
 };
 /// Re-export provider error.
 pub use reth_storage_errors::provider::{ProviderError, ProviderResult};
@@ -76,20 +73,4 @@ pub fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Range<u64
     };
 
     start..end
-}
-
-/// Converts a value between two [`Compact`]-encodable types via a byte roundtrip.
-///
-/// This fork's DB tables (`tables::Headers`, `tables::Receipts`) are fixed to concrete storage
-/// types (`alloy_consensus::Header`, `reth_ethereum_primitives::Receipt`), while call sites are
-/// generic over `N::BlockHeader`/`N::Receipt`. Since `NodeTypesForProvider` requires both the
-/// storage type and the generic associated type to implement `Compact`, and today only
-/// `EthPrimitives` implements `NodePrimitives` (making `N::BlockHeader`/`N::Receipt` identical in
-/// practice to the concrete storage types), a `Compact` roundtrip is a safe, dependency-free way
-/// to bridge the two without requiring new `From` impls.
-pub fn compact_convert<From: reth_codecs::Compact, To: reth_codecs::Compact>(value: From) -> To {
-    let mut buf = Vec::new();
-    let len = value.to_compact(&mut buf);
-    let (converted, _) = To::from_compact(&buf, len);
-    converted
 }

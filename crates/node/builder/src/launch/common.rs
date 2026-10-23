@@ -34,25 +34,28 @@ use crate::{
     hooks::OnComponentInitializedHook,
     BuilderContext, ExExLauncher, NodeAdapter, PrimitivesTy,
 };
-use alloy_consensus::BlockHeader as _;
 use alloy_eips::eip2124::Head;
 use alloy_primitives::{BlockNumber, B256};
 use eyre::Context;
 use rayon::ThreadPoolBuilder;
-use reth_chainspec::{Chain, EthChainSpec, EthereumHardfork, EthereumHardforks};
-use reth_config::{config::EtlConfig, PruneConfig, StateDbConfig};
+use reth_chainspec::{Chain, EthChainSpec, EthereumHardforks};
+use reth_config::{config::EtlConfig, PruneConfig};
 use reth_consensus::noop::NoopConsensus;
-use reth_db_api::{database::Database, database_metrics::DatabaseMetrics, DatabaseError};
-use reth_db_common::init::{init_genesis_with_settings, InitStorageError};
+use reth_db_api::{
+    database::Database, database_metrics::DatabaseMetrics, models::PartialStateTrieUnwindMarker,
+};
+use reth_db_common::init::{
+    init_genesis_with_settings, init_genesis_with_settings_and_validate, InitStorageError,
+};
 use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHeaderDownloader};
 use reth_engine_local::MiningMode;
-use reth_evm::{noop::NoopEvmConfig, ConfigureEvm};
+use reth_evm::{noop::NoopEvmConfig, ConfigureEvm, SenderRecoveryCache};
 use reth_exex::ExExManagerHandle;
 use reth_fs_util as fs;
 use reth_network_p2p::headers::client::HeadersClient;
 use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithDB, NodeTypesWithDBAdapter};
 use reth_node_core::{
-    args::DefaultEraHost,
+    args::{DefaultEraHost, PruneConfigKind},
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
     primitives::BlockHeader,
@@ -63,31 +66,30 @@ use reth_node_metrics::{
     hooks::Hooks,
     recorder::install_prometheus_recorder,
     server::{MetricServer, MetricServerConfig},
+    storage::StorageSettingsInfo,
     version::VersionInfo,
 };
 use reth_provider::{
     providers::{NodeTypesForProvider, ProviderNodeTypes, RocksDBProvider, StaticFileProvider},
-    BlockHashReader, BlockNumReader, BlockReaderIdExt, DBProvider, DatabaseProviderFactory,
-    HeaderProvider, ProviderError, ProviderFactory, ProviderResult, RocksDBProviderFactory,
-    StageCheckpointReader, StaticFileProviderBuilder, StaticFileProviderFactory,
-    StorageSettingsCache,
+    BalStoreHandle, BlockHashReader, BlockNumReader, DBProvider, DatabaseProviderFactory,
+    MetadataProvider, MetadataWriter, ProviderError, ProviderFactory, ProviderResult,
+    RocksDBBalStore, RocksDBProviderFactory, StageCheckpointReader, StaticFileProviderBuilder,
+    StaticFileProviderFactory, StorageSettingsCache,
 };
-use reth_prune::{PruneModes, PrunerBuilder};
+use reth_prune::{PruneMode, PruneModes, PrunerBuilder};
 use reth_rpc_builder::config::RethRpcServerConfig;
 use reth_rpc_layer::JwtSecret;
 use reth_stages::{
-    sets::DefaultStages, stages::EraImportSource, MetricEvent, PipelineBuilder, PipelineTarget,
-    StageId,
+    sets::DefaultStages,
+    stages::{EraImportSource, MerkleStage},
+    MetricEvent, PipelineBuilder, PipelineTarget, StageId, StageSet,
 };
-use reth_static_file::{StaticFileProducer, StaticFileSegment};
+use reth_static_file::{blocks_per_file_for_prune_distance, StaticFileProducer, StaticFileSegment};
+use reth_storage_overlay::OverlayManager;
 use reth_tasks::TaskExecutor;
-use reth_tracing::{
-    throttle,
-    tracing::{debug, error, info, warn},
-};
+use reth_tracing::tracing::{debug, error, info, warn};
 use reth_transaction_pool::TransactionPool;
-use reth_trie_db::ChangesetCache;
-use std::{path::PathBuf, sync::Arc, thread::available_parallelism, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     oneshot, watch,
@@ -96,9 +98,6 @@ use tokio::sync::{
 use futures::{future::Either, stream, Stream, StreamExt};
 use reth_node_ethstats::EthStatsService;
 use reth_node_events::{cl::ConsensusLayerHealthEvents, node::NodeEvent};
-use rust_eth_triedb::triedb_manager::{
-    disable_triedb, init_global_triedb_manager, is_triedb_active,
-};
 
 /// Reusable setup for launching a node.
 ///
@@ -169,28 +168,16 @@ impl LaunchContext {
             .wrap_err_with(|| format!("Could not load config file {config_path:?}"))?;
 
         Self::save_pruning_config(&mut toml_config, config, &config_path)?;
-        Self::save_statedb_config_if_triedb(
-            &mut toml_config,
-            config,
-            &config_path,
-            &self.data_dir,
-        )?;
 
         info!(target: "reth::cli", path = ?config_path, "Configuration loaded");
 
-        // Update the config with the command line arguments
-        toml_config.peers.trusted_nodes_only = config.network.trusted_only;
+        // Update the config with the command line arguments. Only override when the CLI flag is
+        // set, so the TOML value is preserved when the flag is not passed.
+        toml_config.peers.trusted_nodes_only |= config.network.trusted_only;
 
         // Merge static file CLI arguments with config file, giving priority to CLI
         toml_config.static_files =
             config.static_files.merge_with_config(toml_config.static_files, config.pruning.minimal);
-
-        // Apply fastnode settings when skip_state_root_validation is enabled
-        if config.engine.skip_state_root_validation {
-            info!(target: "reth::cli", "Fastnode mode enabled via --engine.skip-state-root-validation - disabling hashing stages and state root validation");
-            toml_config.stages.disable_hashing_stages = true;
-            reth_engine_primitives::activate_fastnode();
-        }
 
         Ok(toml_config)
     }
@@ -213,107 +200,11 @@ impl LaunchContext {
                 should_save = true;
             }
         } else if !reth_config.prune.is_default() {
-            warn!(target: "reth::cli", "Pruning configuration is present in the config file, but no CLI arguments are provided. Using config from file.");
+            info!(target: "reth::cli", "Pruning configuration is present in the config file, but no CLI arguments are provided. Using config from file.");
         }
 
         if should_save {
             info!(target: "reth::cli", "Saving prune config to toml file");
-            reth_config.save(config_path.as_ref())?;
-        }
-
-        Ok(())
-    }
-
-    /// Save state database config to the toml file.
-    fn save_statedb_config_if_triedb<ChainSpec>(
-        reth_config: &mut reth_config::Config,
-        config: &NodeConfig<ChainSpec>,
-        config_path: impl AsRef<std::path::Path>,
-        data_dir: &ChainPath<DataDirPath>,
-    ) -> eyre::Result<()>
-    where
-        ChainSpec: EthChainSpec + reth_chainspec::EthereumHardforks,
-    {
-        // Collect information first to avoid borrow conflicts
-        let update_action: Option<(PathBuf, StateDbConfig)> = match &reth_config.statedb {
-            Some(existing_config) => {
-                // Config already exists in file, log current config
-                info!(
-                    target: "reth::cli",
-                    db_type = %existing_config.r#type,
-                    db_path = ?existing_config.path,
-                    "State database config found in toml file"
-                );
-
-                // Check for conflicts
-                if config.statedb.triedb && existing_config.r#type != "triedb" {
-                    warn!(
-                        target: "reth::cli",
-                        "Conflict: --statedb.triedb is set but config file specifies {} database. Using config file setting.",
-                        existing_config.r#type
-                    );
-                }
-
-                // Update path if it may have changed (e.g., datadir changed)
-                let expected_path = if existing_config.r#type == "triedb" {
-                    data_dir.data_dir().join("rust_eth_triedb")
-                } else {
-                    data_dir.data_dir().join("db")
-                };
-
-                // Initialize or disable TrieDB based on config type
-                if existing_config.r#type == "triedb" {
-                    // Initialize TrieDB with the configured path
-                    let path_str = expected_path.to_string_lossy().to_string();
-                    init_global_triedb_manager(&path_str);
-                } else {
-                    // Disable TrieDB if using MDBX
-                    disable_triedb();
-                }
-
-                // Check if path needs to be updated
-                (existing_config.path != expected_path).then(|| {
-                    let mut updated_config = existing_config.clone();
-                    updated_config.path = expected_path.clone();
-                    (expected_path, updated_config)
-                })
-            }
-            None => {
-                // No config in file, create and save based on command line argument
-                if config.statedb.triedb {
-                    // Use TrieDB
-                    let triedb_path = data_dir.data_dir().join("rust_eth_triedb");
-                    let path_str = triedb_path.to_string_lossy().to_string();
-                    let statedb_config =
-                        StateDbConfig { r#type: "triedb".to_string(), path: triedb_path };
-                    reth_config.update_statedb_config(statedb_config);
-                    info!(target: "reth::cli", "Saving state database config (triedb) to toml file");
-                    reth_config.save(config_path.as_ref())?;
-                    // Initialize TrieDB
-                    init_global_triedb_manager(&path_str);
-                } else {
-                    // Use default MDBX and save to file
-                    let db_path = data_dir.data_dir().join("db");
-                    let statedb_config =
-                        StateDbConfig { r#type: "mdbx".to_string(), path: db_path };
-                    reth_config.update_statedb_config(statedb_config);
-                    info!(target: "reth::cli", "Saving state database config (mdbx) to toml file");
-                    reth_config.save(config_path.as_ref())?;
-                    // Disable TrieDB
-                    disable_triedb();
-                }
-                None
-            }
-        };
-
-        // Perform update action outside the match block to avoid borrow conflicts
-        if let Some((new_path, updated_config)) = update_action {
-            reth_config.update_statedb_config(updated_config);
-            info!(
-                target: "reth::cli",
-                new_path = ?new_path,
-                "Updating state database path in config file"
-            );
             reth_config.save(config_path.as_ref())?;
         }
 
@@ -329,9 +220,7 @@ impl LaunchContext {
     /// Configure global settings this includes:
     ///
     /// - Raising the file descriptor limit
-    /// - Configuring the global rayon thread pool with available parallelism. Honoring
-    ///   engine.reserved-cpu-cores to reserve given number of cores for O while using at least 1
-    ///   core for the rayon thread pool
+    /// - Configuring the global rayon thread pool for implicit `par_iter` usage
     pub fn configure_globals(&self, reserved_cpu_cores: usize) {
         // Raise the fd limit of the process.
         // Does not do anything on windows.
@@ -343,14 +232,14 @@ impl LaunchContext {
             Err(err) => warn!(%err, "Failed to raise file descriptor limit"),
         }
 
-        // Reserving the given number of CPU cores for the rest of OS.
-        // Users can reserve more cores by setting engine.reserved-cpu-cores
-        // Note: The global rayon thread pool will use at least one core.
-        let num_threads = available_parallelism()
-            .map_or(0, |num| num.get().saturating_sub(reserved_cpu_cores).max(1));
+        // Configure the implicit global rayon pool for `par_iter` usage.
+        // TODO: reserved_cpu_cores is currently ignored because subtracting from thread pool
+        // sizes doesn't actually reserve CPU cores for other processes.
+        let _ = reserved_cpu_cores;
+        let num_threads = self.task_executor.cpu_pool().current_num_threads();
         if let Err(err) = ThreadPoolBuilder::new()
             .num_threads(num_threads)
-            .thread_name(|i| format!("reth-rayon-{i}"))
+            .thread_name(|i| format!("rayon-{i:02}"))
             .build_global()
         {
             warn!(%err, "Failed to build global thread pool")
@@ -559,8 +448,6 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
         ChainSpec: reth_chainspec::EthereumHardforks,
     {
         PrunerBuilder::new(self.prune_config())
-            .delete_limit(self.chain_spec().prune_delete_limit())
-            .timeout(PrunerBuilder::DEFAULT_TIMEOUT)
     }
 
     /// Loads the JWT secret for the engine API
@@ -575,12 +462,7 @@ impl<R, ChainSpec: EthChainSpec> LaunchContextWith<Attached<WithConfigs<ChainSpe
     where
         Pool: TransactionPool + Unpin,
     {
-        let config = self.node_config();
-        if let Some(interval) = config.dev.block_time {
-            MiningMode::interval(interval)
-        } else {
-            MiningMode::instant(pool, config.dev.block_max_transactions)
-        }
+        self.node_config().dev_mining_mode(pool)
     }
 }
 
@@ -594,7 +476,31 @@ where
     /// check.**
     pub async fn create_provider_factory<N, Evm>(
         &self,
-        changeset_cache: ChangesetCache,
+        overlay_manager: OverlayManager<N::Primitives>,
+        rocksdb_provider: Option<RocksDBProvider>,
+        disabled_stages: &[StageId],
+    ) -> eyre::Result<ProviderFactory<N>>
+    where
+        N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
+        Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    {
+        self.create_provider_factory_with_recovery::<N, Evm>(
+            overlay_manager,
+            rocksdb_provider,
+            disabled_stages,
+            |_| Ok(()),
+        )
+        .await
+    }
+
+    /// Like [`Self::create_provider_factory`], but first runs `recover` to finish writes an earlier
+    /// run left half-committed, before the consistency check.
+    pub async fn create_provider_factory_with_recovery<N, Evm>(
+        &self,
+        overlay_manager: OverlayManager<N::Primitives>,
+        rocksdb_provider: Option<RocksDBProvider>,
+        disabled_stages: &[StageId],
+        recover: impl FnOnce(&ProviderFactory<N>) -> eyre::Result<()>,
     ) -> eyre::Result<ProviderFactory<N>>
     where
         N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
@@ -604,90 +510,90 @@ where
         let static_files_config = &self.toml_config().static_files;
         static_files_config.validate()?;
 
+        let prune_config = self.prune_config();
+
+        let mut blocks_per_file = static_files_config.as_blocks_per_file_map();
+        // Receipts in static files are pruned by deleting whole files, so with the default file
+        // size a distance-based prune target is only reached every 500k blocks. Unless a file size
+        // is explicitly configured, derive one from the prune distance so retention tracks the
+        // configured distance.
+        if blocks_per_file.get(StaticFileSegment::Receipts).is_none() &&
+            let Some(PruneMode::Distance(distance)) = prune_config.segments.receipts
+        {
+            blocks_per_file
+                .insert(StaticFileSegment::Receipts, blocks_per_file_for_prune_distance(distance));
+        }
+
         // Apply per-segment blocks_per_file configuration
         let static_file_provider =
             StaticFileProviderBuilder::read_write(self.data_dir().static_files())
                 .with_metrics()
-                .with_blocks_per_file_for_segments(&static_files_config.as_blocks_per_file_map())
+                .with_blocks_per_file_for_segments(&blocks_per_file)
                 .with_genesis_block_number(self.chain_spec().genesis().number.unwrap_or_default())
                 .build()?;
 
-        // Initialize RocksDB provider with metrics, statistics, and default tables
-        let rocksdb_provider = RocksDBProvider::builder(self.data_dir().rocksdb())
-            .with_default_tables()
-            .with_metrics()
-            .with_statistics()
-            .build()?;
+        // Use the provided RocksDB provider or create a new one
+        let rocksdb_provider = if let Some(provider) = rocksdb_provider {
+            provider
+        } else {
+            RocksDBProvider::builder(self.data_dir().rocksdb())
+                .with_default_tables()
+                .with_metrics()
+                .with_statistics()
+                .with_block_cache_size_opt(self.node_config().db.rocksdb_block_cache_size)
+                .build()?
+        };
 
+        let bal_store = self
+            .node_config()
+            .db
+            .balstore_cache_size
+            .map(|distance| {
+                RocksDBBalStore::with_buffer_retention_distance(rocksdb_provider.clone(), distance)
+            })
+            .unwrap_or_else(|| RocksDBBalStore::new(rocksdb_provider.clone()));
+        let bal_store = BalStoreHandle::new(bal_store);
         let factory = ProviderFactory::new(
             self.right().clone(),
             self.chain_spec(),
             static_file_provider,
             rocksdb_provider,
+            self.task_executor().clone(),
         )?
-        .with_prune_modes(self.prune_modes())
-        .with_changeset_cache(changeset_cache);
+        .with_prune_modes(prune_config.segments)
+        .with_minimum_pruning_distance(prune_config.minimum_pruning_distance)
+        .with_overlay_manager(overlay_manager)
+        .with_bal_store(bal_store);
 
-        // Keep MDBX, static files, and RocksDB aligned. If any check fails, unwind to the
-        // earliest consistent block.
-        //
-        // Order matters:
-        // 1) heal static files (no pruning)
-        // 2) check RocksDB (needs static-file tx data)
-        // 3) check static-file checkpoints vs MDBX (may prune)
-        //
-        // Compute one unwind target and run a single unwind.
+        recover(&factory)?;
 
-        let provider_rw = factory.database_provider_rw()?;
+        // Check consistency between the database and static files, returning
+        // the unwind targets for each storage layer if inconsistencies are
+        // found.
+        let (rocksdb_unwind, static_file_unwind) = factory.check_consistency()?;
+        let provider_ro = factory.database_provider_ro()?;
+        // Finish is committed before Merkle during unwind, so this marker is authoritative when
+        // resuming an interrupted partial trie unwind.
+        let (partial_trie_unwind, has_persisted_partial_trie_unwind) =
+            get_partial_trie_unwind_marker(&provider_ro)?;
+        drop(provider_ro);
+        let persist_partial_trie_unwind =
+            !has_persisted_partial_trie_unwind && partial_trie_unwind.is_some();
+        let partial_trie_unwind_target =
+            partial_trie_unwind.map(|marker| marker.partial_state_trie);
+        // Recover the partial state trie first. Its unwind enables
+        // `walk_all_changed_branch_children`, which is more expensive than a normal unwind, so
+        // it only runs to the partial trie target. A lower storage-layer target is then unwound
+        // normally.
+        let storage_unwind = [rocksdb_unwind, static_file_unwind].into_iter().flatten().min();
+        let storage_unwind = storage_unwind.filter(|unwind_block| {
+            partial_trie_unwind_target.is_none_or(|partial_trie| *unwind_block < partial_trie)
+        });
 
-        // Step 1: heal file-level inconsistencies (no pruning)
-        factory.static_file_provider().check_file_consistency(&provider_rw)?;
-
-        factory.static_file_provider().recover_transaction_senders_hybrid_gap(&provider_rw)?;
-
-        // Step 2: RocksDB consistency check (needs static files tx data)
-        let rocksdb_unwind = factory.rocksdb_provider().check_consistency(&provider_rw)?;
-
-        // Step 3: Static file checkpoint consistency (may prune / reset stage checkpoints)
-        let static_file_unwind = factory
-            .static_file_provider()
-            .check_consistency(&provider_rw)?
-            .map(|target| match target {
-                PipelineTarget::Unwind(block) => block,
-                PipelineTarget::Sync(_) => unreachable!("check_consistency returns Unwind"),
-            });
-
-        // Persist checkpoint resets (e.g. SenderRecovery hybrid-gap recovery) and any
-        // consistency-driven stage checkpoint updates before unwinding or continuing startup.
-        provider_rw.commit()?;
-
-        // Take the minimum block number to ensure all storage layers are consistent.
-        let unwind_target = [rocksdb_unwind, static_file_unwind].into_iter().flatten().min();
-
-        if let Some(unwind_block) = unwind_target {
-            // Highly unlikely to happen, and given its destructive nature, it's better to panic
-            // instead. Unwinding to 0 would leave MDBX with a huge free list size.
-            let inconsistency_source = match (rocksdb_unwind, static_file_unwind) {
-                (Some(_), Some(_)) => "RocksDB and static file",
-                (Some(_), None) => "RocksDB",
-                (None, Some(_)) => "static file",
-                (None, None) => unreachable!(),
-            };
-            assert_ne!(
-                unwind_block, 0,
-                "A {} inconsistency was found that would trigger an unwind to block 0",
-                inconsistency_source
-            );
-
-            let unwind_target = PipelineTarget::Unwind(unwind_block);
-
-            info!(target: "reth::cli", %unwind_target, %inconsistency_source, "Executing unwind after consistency check.");
-
-            let (_tip_tx, tip_rx) = watch::channel(B256::ZERO);
-
-            // Builds an unwind-only pipeline
-            let pipeline = PipelineBuilder::default()
-                .add_stages(DefaultStages::new(
+        if partial_trie_unwind_target.is_some() || storage_unwind.is_some() {
+            let build_unwind_pipeline = |walk_all_changed_branch_children| {
+                let (_tip_tx, tip_rx) = watch::channel(B256::ZERO);
+                let mut stages = DefaultStages::new(
                     factory.clone(),
                     tip_rx,
                     Arc::new(NoopConsensus::default()),
@@ -697,26 +603,90 @@ where
                     self.toml_config().stages.clone(),
                     self.prune_modes(),
                     None,
-                ))
-                .build(
+                )
+                .builder()
+                .disable_all(disabled_stages);
+
+                if walk_all_changed_branch_children {
+                    // Partial trie recovery is not complete until Merkle has unwound.
+                    stages =
+                        stages.set(MerkleStage::new_unwind(true)).enable(StageId::MerkleUnwind);
+                }
+
+                PipelineBuilder::default().add_stages(stages).build(
                     factory.clone(),
                     StaticFileProducer::new(factory.clone(), self.prune_modes()),
-                );
+                )
+            };
+            let mut unwinds = Vec::with_capacity(2);
 
-            // Unwinds to block
+            if let Some(unwind_block) = partial_trie_unwind_target {
+                unwinds.push((
+                    PipelineTarget::Unwind(unwind_block),
+                    "partial state trie".to_owned(),
+                    build_unwind_pipeline(true),
+                    true,
+                ));
+            }
+
+            if let Some(unwind_block) = storage_unwind {
+                // Highly unlikely to happen, and given its destructive nature, it's better to
+                // panic instead. Unwinding to 0 would leave MDBX with a huge free list size.
+                let inconsistency_source = match (rocksdb_unwind, static_file_unwind) {
+                    (Some(_), Some(_)) => "RocksDB and static file",
+                    (Some(_), None) => "RocksDB",
+                    (None, Some(_)) => "static file",
+                    (None, None) => unreachable!(),
+                };
+                assert_ne!(
+                    unwind_block, 0,
+                    "A {inconsistency_source} inconsistency was found that would trigger an unwind to block 0"
+                );
+                unwinds.push((
+                    PipelineTarget::Unwind(unwind_block),
+                    inconsistency_source.to_owned(),
+                    build_unwind_pipeline(false),
+                    false,
+                ));
+            }
+
+            if persist_partial_trie_unwind {
+                // The marker must be durable before any unwind stage can commit.
+                let provider_rw = factory.database_provider_rw()?;
+                write_partial_trie_unwind_marker(
+                    &provider_rw,
+                    partial_trie_unwind.expect("partial trie unwind marker must exist"),
+                )?;
+                provider_rw.commit()?;
+            }
+
             let (tx, rx) = oneshot::channel();
+            let factory = factory.clone();
 
             // Pipeline should be run as blocking and panic if it fails.
-            self.task_executor().spawn_critical_blocking(
-                "pipeline task",
-                Box::pin(async move {
-                    let (_, result) = pipeline.run_as_fut(Some(unwind_target)).await;
-                    let _ = tx.send(result);
-                }),
-            );
-            rx.await?.inspect_err(|err| {
-                error!(target: "reth::cli", %unwind_target, %inconsistency_source, %err, "failed to run unwind")
-            })?;
+            self.task_executor().spawn_critical_blocking_task("pipeline task", async move {
+                let result: Result<(), reth_stages::PipelineError> = async {
+                    for (unwind_target, inconsistency_source, pipeline, clear_partial_trie_unwind) in
+                        unwinds
+                    {
+                        info!(target: "reth::cli", %unwind_target, %inconsistency_source, "Executing unwind after consistency check.");
+                        let (_, result) = pipeline.run_as_fut(Some(unwind_target)).await;
+                        result.inspect_err(|err| {
+                            error!(target: "reth::cli", %unwind_target, %inconsistency_source, %err, "failed to run unwind");
+                        })?;
+
+                        if clear_partial_trie_unwind {
+                            let provider_rw = factory.database_provider_rw()?;
+                            delete_partial_trie_unwind_marker(&provider_rw)?;
+                            provider_rw.commit()?;
+                        }
+                    }
+                    Ok(())
+                }
+                .await;
+                let _ = tx.send(result);
+            });
+            rx.await??;
         }
 
         Ok(factory)
@@ -725,13 +695,44 @@ where
     /// Creates a new [`ProviderFactory`] and attaches it to the launch context.
     pub async fn with_provider_factory<N, Evm>(
         self,
-        changeset_cache: ChangesetCache,
+        overlay_manager: OverlayManager<N::Primitives>,
+        rocksdb_provider: Option<RocksDBProvider>,
+        disabled_stages: &[StageId],
     ) -> eyre::Result<LaunchContextWith<Attached<WithConfigs<ChainSpec>, ProviderFactory<N>>>>
     where
         N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
         Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
     {
-        let factory = self.create_provider_factory::<N, Evm>(changeset_cache).await?;
+        self.with_provider_factory_and_recovery::<N, Evm>(
+            overlay_manager,
+            rocksdb_provider,
+            disabled_stages,
+            |_| Ok(()),
+        )
+        .await
+    }
+
+    /// Like [`Self::with_provider_factory`], but first runs `recover` to finish writes an earlier
+    /// run left half-committed, before the consistency check.
+    pub async fn with_provider_factory_and_recovery<N, Evm>(
+        self,
+        overlay_manager: OverlayManager<N::Primitives>,
+        rocksdb_provider: Option<RocksDBProvider>,
+        disabled_stages: &[StageId],
+        recover: impl FnOnce(&ProviderFactory<N>) -> eyre::Result<()>,
+    ) -> eyre::Result<LaunchContextWith<Attached<WithConfigs<ChainSpec>, ProviderFactory<N>>>>
+    where
+        N: ProviderNodeTypes<DB = DB, ChainSpec = ChainSpec>,
+        Evm: ConfigureEvm<Primitives = N::Primitives> + 'static,
+    {
+        let factory = self
+            .create_provider_factory_with_recovery::<N, Evm>(
+                overlay_manager,
+                rocksdb_provider,
+                disabled_stages,
+                recover,
+            )
+            .await?;
         let ctx = LaunchContextWith {
             inner: self.inner,
             attachment: self.attachment.map_right(|_| factory),
@@ -763,18 +764,36 @@ where
     /// This launches the prometheus endpoint.
     ///
     /// Convenience function to [`Self::start_prometheus_endpoint`]
-    pub async fn with_prometheus_server(self) -> eyre::Result<Self> {
+    pub async fn with_prometheus_server(self) -> eyre::Result<Self>
+    where
+        T::ChainSpec: EthereumHardforks,
+    {
         self.start_prometheus_endpoint().await?;
         Ok(self)
     }
 
     /// Starts the prometheus endpoint.
-    pub async fn start_prometheus_endpoint(&self) -> eyre::Result<()> {
+    pub async fn start_prometheus_endpoint(&self) -> eyre::Result<()>
+    where
+        T::ChainSpec: EthereumHardforks,
+    {
         // ensure recorder runs upkeep periodically
         install_prometheus_recorder().spawn_upkeep();
 
         let listen_addr = self.node_config().metrics.prometheus;
         if let Some(addr) = listen_addr {
+            let prune_config = self.prune_config();
+            let pruning_mode =
+                PruneConfigKind::from_config(&prune_config, self.chain_spec().as_ref()).as_str();
+            // On existing databases, stored settings are authoritative and already cached by the
+            // provider factory. Fresh databases do not have storage metadata until genesis is
+            // initialized, so report the configured setting during this pre-genesis startup window.
+            let storage_settings =
+                if self.provider_factory().get_stage_checkpoint(StageId::Headers)?.is_some() {
+                    self.provider_factory().cached_storage_settings()
+                } else {
+                    self.node_config().storage_settings()
+                };
             let config = MetricServerConfig::new(
                 addr,
                 VersionInfo {
@@ -790,6 +809,12 @@ where
                 metrics_hooks(self.provider_factory()),
                 self.data_dir().pprof_dumps(),
             )
+            .with_storage_settings_info(StorageSettingsInfo {
+                storage_v2: storage_settings.storage_v2,
+                pruning_mode,
+                prune_config: serde_json::to_string(&prune_config)
+                    .expect("serializing PruneConfig should not fail"),
+            })
             .with_push_gateway(
                 self.node_config().metrics.push_gateway_url.clone(),
                 self.node_config().metrics.push_gateway_interval,
@@ -803,7 +828,11 @@ where
 
     /// Convenience function to [`Self::init_genesis`]
     pub fn with_genesis(self) -> Result<Self, InitStorageError> {
-        init_genesis_with_settings(self.provider_factory(), self.node_config().storage_settings())?;
+        init_genesis_with_settings_and_validate(
+            self.provider_factory(),
+            self.node_config().storage_settings(),
+            !self.node_config().debug.skip_genesis_validation,
+        )?;
         Ok(self)
     }
 
@@ -827,7 +856,8 @@ where
 
         debug!(target: "reth::cli", "Spawning stages metrics listener task");
         let sync_metrics_listener = reth_stages::MetricsListener::new(metrics_receiver);
-        self.task_executor().spawn_critical("stages metrics listener task", sync_metrics_listener);
+        self.task_executor()
+            .spawn_critical_task("stages metrics listener task", sync_metrics_listener);
 
         LaunchContextWith {
             inner: self.inner,
@@ -967,6 +997,7 @@ where
             },
             node_adapter,
             head,
+            sender_recovery_cache: builder_ctx.sender_recovery_cache().cloned(),
         };
 
         let ctx = LaunchContextWith {
@@ -1029,6 +1060,11 @@ where
         &mut self.right_mut().node_adapter
     }
 
+    /// Returns the cache of recovered transaction senders shared by node components, if enabled.
+    pub const fn sender_recovery_cache(&self) -> Option<&SenderRecoveryCache> {
+        self.right().sender_recovery_cache.as_ref()
+    }
+
     /// Returns a reference to the blockchain provider.
     pub const fn blockchain_db(&self) -> &T::Provider {
         &self.node_adapter().provider
@@ -1039,11 +1075,14 @@ where
     /// This returns the configured `debug.tip` if set, otherwise it will check if backfill was
     /// previously interrupted and returns the block hash of the last checkpoint, see also
     /// [`Self::check_pipeline_consistency`]
-    pub fn initial_backfill_target(&self) -> ProviderResult<Option<B256>> {
+    pub fn initial_backfill_target(
+        &self,
+        disabled_stages: &[StageId],
+    ) -> ProviderResult<Option<B256>> {
         let mut initial_target = self.node_config().debug.tip;
 
         if initial_target.is_none() {
-            initial_target = self.check_pipeline_consistency()?;
+            initial_target = self.check_pipeline_consistency(disabled_stages)?;
         }
 
         Ok(initial_target)
@@ -1091,15 +1130,15 @@ where
     /// # Returns
     ///
     /// A target block hash if the pipeline is inconsistent, otherwise `None`.
-    pub fn check_pipeline_consistency(&self) -> ProviderResult<Option<B256>> {
-        if is_triedb_active() {
-            return self.check_pipeline_consistency_under_triedb();
-        }
-
+    pub fn check_pipeline_consistency(
+        &self,
+        disabled_stages: &[StageId],
+    ) -> ProviderResult<Option<B256>> {
         // We skip the era stage if it's not enabled
         let era_enabled = self.era_import_source().is_some();
-        let mut all_stages =
-            StageId::ALL.into_iter().filter(|id| era_enabled || id != &StageId::Era);
+        let mut all_stages = StageId::ALL
+            .into_iter()
+            .filter(|id| (era_enabled || id != &StageId::Era) && !disabled_stages.contains(id));
 
         // Get the expected first stage based on config.
         let first_stage = all_stages.next().expect("there must be at least one stage");
@@ -1111,36 +1150,6 @@ where
             .get_stage_checkpoint(first_stage)?
             .unwrap_or_default()
             .block_number;
-
-        if self.provider_factory().cached_storage_settings().use_hashed_state() {
-            let execution_checkpoint = self
-                .blockchain_db()
-                .get_stage_checkpoint(StageId::Execution)?
-                .unwrap_or_default()
-                .block_number;
-            let account_hashing_checkpoint = self
-                .blockchain_db()
-                .get_stage_checkpoint(StageId::AccountHashing)?
-                .unwrap_or_default()
-                .block_number;
-            let storage_hashing_checkpoint = self
-                .blockchain_db()
-                .get_stage_checkpoint(StageId::StorageHashing)?
-                .unwrap_or_default()
-                .block_number;
-
-            if execution_checkpoint == first_stage_checkpoint &&
-                (account_hashing_checkpoint < execution_checkpoint ||
-                    storage_hashing_checkpoint < execution_checkpoint)
-            {
-                return Err(ProviderError::Database(DatabaseError::Other(format!(
-                    "storage-v2 pipeline is inconsistent after execution completed: \
-                     execution={execution_checkpoint}, account_hashing={account_hashing_checkpoint}, \
-                     storage_hashing={storage_hashing_checkpoint}; refusing to advance hashing \
-                     stages by no-op because hashed state may have been partially unwound"
-                ))))
-            }
-        }
 
         // Compare all other stages against the first
         for stage_id in all_stages {
@@ -1178,127 +1187,6 @@ where
         Ok(None)
     }
 
-    /// Check if the pipeline is consistent under `TrieDB`.
-    pub fn check_pipeline_consistency_under_triedb(&self) -> ProviderResult<Option<B256>> {
-        // If no target was provided, check if the stages are congruent - check if the
-        // checkpoint of the last stage matches the checkpoint of the first.
-        let mut first_stage_checkpoint = self
-            .blockchain_db()
-            .get_stage_checkpoint(*StageId::ALL.first().unwrap())?
-            .unwrap_or_default()
-            .block_number;
-
-        let triedb = rust_eth_triedb::get_global_triedb();
-        let (triedb_checkpoint_block_number, triedb_checkpoint_state_root) =
-            triedb.latest_persist_state().unwrap();
-
-        // Skip the first stage as we've already retrieved it and comparing all other checkpoints
-        // against it.
-        for stage_id in &StageId::ALL {
-            let stage_checkpoint = self
-                .blockchain_db()
-                .get_stage_checkpoint(*stage_id)?
-                .unwrap_or_default()
-                .block_number;
-
-            // If the checkpoint of any stage is less than the checkpoint of the first stage,
-            // retrieve and return the block hash of the latest header and use it as the target.
-            if stage_checkpoint < first_stage_checkpoint {
-                if triedb_checkpoint_block_number > first_stage_checkpoint {
-                    info!(
-                        target: "consensus::engine",
-                        triedb_checkpoint_block_number,
-                        first_stage_checkpoint,
-                        "TrieDB checkpoint is ahead of the first stage checkpoint, using TrieDB checkpoint as the target"
-                    );
-                    first_stage_checkpoint = triedb_checkpoint_block_number;
-                }
-                info!(
-                    target: "consensus::engine",
-                    first_stage_checkpoint,
-                    inconsistent_stage_id = %stage_id,
-                    inconsistent_stage_checkpoint = stage_checkpoint,
-                    "Pipeline sync progress is inconsistent"
-                );
-                return self.blockchain_db().block_hash(first_stage_checkpoint);
-            }
-        }
-
-        info!(target: "consensus::engine", "Pipeline sync progress is consistent, will check live sync progress");
-
-        let last_persisted_block_number = self.blockchain_db().last_block_number()?;
-        let last_persisted_header = self
-            .blockchain_db()
-            .header_by_number(last_persisted_block_number)?
-            .ok_or_else(|| {
-                reth_provider::ProviderError::HeaderNotFound(alloy_eips::BlockHashOrNumber::Number(
-                    last_persisted_block_number,
-                ))
-            })?;
-        let last_persisted_state_root = last_persisted_header.state_root();
-
-        if last_persisted_block_number > triedb_checkpoint_block_number {
-            info!(target: "consensus::engine",
-            last_persisted_block_number,
-            last_persisted_state_root = ?last_persisted_state_root,
-            triedb_checkpoint_block_number,
-            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
-            "Last persisted state is ahead of the TrieDB state, start pipeline sync to align");
-            return self.blockchain_db().block_hash(last_persisted_block_number);
-        } else if last_persisted_block_number < triedb_checkpoint_block_number {
-            info!(target: "consensus::engine",
-            last_persisted_block_number,
-            last_persisted_state_root = ?last_persisted_state_root,
-            triedb_checkpoint_block_number,
-            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
-            "Last persisted state is behind of the TrieDB state, start pipeline sync to align");
-            return self.blockchain_db().block_hash(last_persisted_block_number);
-        }
-
-        info!(target: "consensus::engine",
-            last_persisted_block_number,
-            last_persisted_state_root = ?last_persisted_state_root,
-            triedb_checkpoint_block_number,
-            triedb_checkpoint_state_root = ?triedb_checkpoint_state_root,
-            "Last persisted state equal TrieDB state, start live sync");
-
-        Ok(None)
-    }
-    /// Expire the pre-merge transactions if the node is configured to do so and the chain has a
-    /// merge block.
-    ///
-    /// If the node is configured to prune pre-merge transactions and it has synced past the merge
-    /// block, it will delete the pre-merge transaction static files if they still exist.
-    pub fn expire_pre_merge_transactions(&self) -> eyre::Result<()>
-    where
-        T: FullNodeTypes<Provider: StaticFileProviderFactory>,
-    {
-        if self.node_config().pruning.bodies_pre_merge &&
-            let Some(merge_block) = self
-                .chain_spec()
-                .ethereum_fork_activation(EthereumHardfork::Paris)
-                .block_number()
-        {
-            let merge_block = BlockNumber::from(merge_block);
-            // Ensure we only expire transactions after we synced past the merge block.
-            let Some(latest) = self.blockchain_db().latest_header()? else { return Ok(()) };
-            if latest.number() > merge_block {
-                let provider = self.blockchain_db().static_file_provider();
-                if provider
-                    .get_lowest_range_end(StaticFileSegment::Transactions)
-                    .is_some_and(|lowest| lowest < merge_block)
-                {
-                    info!(target: "reth::cli", merge_block, "Expiring pre-merge transactions");
-                    provider
-                        .delete_segment_below_block(StaticFileSegment::Transactions, merge_block)?;
-                } else {
-                    debug!(target: "reth::cli", merge_block, "No pre-merge transactions to expire");
-                }
-            }
-        }
-
-        Ok(())
-    }
     /// Returns the metrics sender.
     pub fn sync_metrics_tx(&self) -> UnboundedSender<MetricEvent> {
         self.right().db_provider_container.metrics_sender.clone()
@@ -1310,7 +1198,7 @@ where
     }
 
     /// Launches ExEx (Execution Extensions) and returns the ExEx manager handle.
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub async fn launch_exex(
         &self,
         installed_exex: Vec<(
@@ -1332,7 +1220,7 @@ where
     ///     .launch()
     ///     .await
     /// ```
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub fn exex_launcher(
         &self,
         installed_exex: Vec<(
@@ -1370,7 +1258,6 @@ where
     /// Returns a stream that monitors consensus layer health if:
     /// - No debug tip is configured
     /// - Not running in dev mode
-    /// - The chain uses an external beacon/consensus client (not BSC Parlia)
     ///
     /// Otherwise returns an empty stream.
     pub fn consensus_layer_events(
@@ -1379,8 +1266,7 @@ where
     where
         T::Provider: reth_provider::CanonChainTracker,
     {
-        let chain = self.chain_spec();
-        if self.node_config().debug.tip.is_none() && !self.is_dev() && !chain.is_bsc() {
+        if self.node_config().debug.tip.is_none() && !self.is_dev() {
             Either::Left(
                 ConsensusLayerHealthEvents::new(Box::new(self.blockchain_db().clone()))
                     .map(Into::into),
@@ -1411,7 +1297,7 @@ where
         // If engine events are provided, spawn listener for new payload reporting
         let ethstats_for_events = ethstats.clone();
         let task_executor = self.task_executor().clone();
-        task_executor.spawn(Box::pin(async move {
+        task_executor.spawn_task(async move {
             while let Some(event) = engine_events.next().await {
                 use reth_engine_primitives::ConsensusEngineEvent;
                 match event {
@@ -1434,10 +1320,10 @@ where
                     }
                 }
             }
-        }));
+        });
 
         // Spawn main ethstats service
-        task_executor.spawn(Box::pin(async move { ethstats.run().await }));
+        task_executor.spawn_task(async move { ethstats.run().await });
 
         Ok(())
     }
@@ -1542,41 +1428,129 @@ where
     db_provider_container: WithMeteredProvider<NodeTypesWithDBAdapter<T::Types, T::DB>>,
     node_adapter: NodeAdapter<T, CB::Components>,
     head: Head,
+    /// Cache of recovered transaction senders shared by node components, if enabled.
+    sender_recovery_cache: Option<SenderRecoveryCache>,
 }
 
 /// Returns the metrics hooks for the node.
+///
+/// The storage hooks walk their backing store, which scales with the dataset, so they are
+/// registered as background hooks: metrics collection still refreshes them at most every 5
+/// minutes, but renders the values of the previous refresh instead of waiting for the walk.
 pub fn metrics_hooks<N: NodeTypesWithDB>(provider_factory: &ProviderFactory<N>) -> Hooks {
     Hooks::builder()
-        .with_hook({
+        .with_background_interval(Duration::from_secs(5 * 60))
+        .with_background_hook({
             let db = provider_factory.db_ref().clone();
-            move || throttle!(Duration::from_secs(5 * 60), || db.report_metrics())
+            move || db.report_metrics()
         })
-        .with_hook({
+        .with_background_hook({
             let sfp = provider_factory.static_file_provider();
             move || {
-                throttle!(Duration::from_secs(5 * 60), || {
-                    if let Err(error) = sfp.report_metrics() {
-                        error!(%error, "Failed to report metrics from static file provider");
-                    }
-                })
+                if let Err(error) = sfp.report_metrics() {
+                    error!(%error, "Failed to report metrics from static file provider");
+                }
             }
         })
-        .with_hook({
-            // RocksDB implements DatabaseMetrics (table_size / sst_size / wal_size) but was never
-            // hooked — Grafana Storage size then showed RocksDB as 0 while the datadir had GiB/TiB.
+        .with_background_hook({
             let rocksdb = provider_factory.rocksdb_provider();
-            move || throttle!(Duration::from_secs(5 * 60), || rocksdb.report_metrics())
+            move || rocksdb.report_metrics()
         })
         .build()
 }
 
+fn get_partial_trie_unwind_marker(
+    provider: &(impl MetadataProvider + StageCheckpointReader),
+) -> ProviderResult<(Option<PartialStateTrieUnwindMarker>, bool)> {
+    if let Some(marker) = provider.get_metadata(PARTIAL_STATE_TRIE_UNWIND_METADATA_KEY)? {
+        let marker = serde_json::from_slice::<PartialStateTrieUnwindMarker>(&marker)
+            .map_err(ProviderError::other)?;
+        if marker.partial_state_trie >= marker.finish_block_number {
+            return Err(ProviderError::other(std::io::Error::other(format!(
+                "partial state trie unwind target #{} is not below original Finish #{}",
+                marker.partial_state_trie, marker.finish_block_number,
+            ))))
+        }
+        return Ok((Some(marker), true))
+    }
+
+    let Some(finish_checkpoint) = provider.get_stage_checkpoint(StageId::Finish)? else {
+        return Ok((None, false))
+    };
+    let Some(partial_state_trie) =
+        finish_checkpoint.finish_stage_checkpoint().and_then(|finish| finish.partial_state_trie())
+    else {
+        return Ok((None, false))
+    };
+
+    if partial_state_trie > finish_checkpoint.block_number {
+        return Err(ProviderError::other(std::io::Error::other(format!(
+            "partial state trie frontier #{partial_state_trie} is ahead of Finish #{}",
+            finish_checkpoint.block_number,
+        ))))
+    }
+
+    Ok((
+        (partial_state_trie < finish_checkpoint.block_number).then_some(
+            PartialStateTrieUnwindMarker {
+                finish_block_number: finish_checkpoint.block_number,
+                partial_state_trie,
+            },
+        ),
+        false,
+    ))
+}
+
+/// Metadata key for a partial state trie unwind that has not completed yet.
+const PARTIAL_STATE_TRIE_UNWIND_METADATA_KEY: &str = "partial_state_trie_unwind";
+
+fn write_partial_trie_unwind_marker(
+    provider: &impl MetadataWriter,
+    marker: PartialStateTrieUnwindMarker,
+) -> ProviderResult<()> {
+    provider.write_metadata(
+        PARTIAL_STATE_TRIE_UNWIND_METADATA_KEY,
+        serde_json::to_vec(&marker).map_err(ProviderError::other)?,
+    )
+}
+
+fn delete_partial_trie_unwind_marker(provider: &impl MetadataWriter) -> ProviderResult<()> {
+    provider.delete_metadata(PARTIAL_STATE_TRIE_UNWIND_METADATA_KEY)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{LaunchContext, NodeConfig};
+    use super::{get_partial_trie_unwind_marker, LaunchContext, NodeConfig};
     use reth_config::Config;
+    use reth_db_api::models::PartialStateTrieUnwindMarker;
     use reth_node_core::args::PruningArgs;
+    use reth_provider::{MetadataProvider, ProviderResult, StageCheckpointReader};
+    use reth_stages::{FinishCheckpoint, StageCheckpoint, StageId};
 
     const EXTENSION: &str = "toml";
+
+    struct MockProvider(Option<Vec<u8>>, Option<StageCheckpoint>);
+
+    impl MetadataProvider for MockProvider {
+        fn get_metadata(&self, _: &str) -> ProviderResult<Option<Vec<u8>>> {
+            Ok(self.0.clone())
+        }
+    }
+
+    impl StageCheckpointReader for MockProvider {
+        fn get_stage_checkpoint(&self, id: StageId) -> ProviderResult<Option<StageCheckpoint>> {
+            assert_eq!(id, StageId::Finish);
+            Ok(self.1)
+        }
+
+        fn get_stage_checkpoint_progress(&self, _: StageId) -> ProviderResult<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        fn get_all_checkpoints(&self) -> ProviderResult<Vec<(String, StageCheckpoint)>> {
+            Ok(Vec::new())
+        }
+    }
 
     fn with_tempdir(filename: &str, proc: fn(&std::path::Path)) {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1614,6 +1588,7 @@ mod tests {
                     bodies_distance: None,
                     receipts_log_filter: None,
                     bodies_before: None,
+                    minimum_distance: None,
                 },
                 ..NodeConfig::test()
             };
@@ -1624,5 +1599,119 @@ mod tests {
 
             assert_eq!(reth_config, loaded_config);
         })
+    }
+
+    #[test]
+    fn get_partial_trie_unwind_marker_uses_partial_finish_checkpoint() {
+        let finish_checkpoint = StageCheckpoint::new(42)
+            .with_finish_stage_checkpoint(FinishCheckpoint { partial_state_trie: Some(21) });
+        let expected =
+            finish_checkpoint.finish_stage_checkpoint().unwrap().partial_state_trie().map(
+                |partial_state_trie| PartialStateTrieUnwindMarker {
+                    finish_block_number: finish_checkpoint.block_number,
+                    partial_state_trie,
+                },
+            );
+
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(None, Some(finish_checkpoint))).unwrap(),
+            (expected, false)
+        );
+
+        let genesis_checkpoint = StageCheckpoint::new(42)
+            .with_finish_stage_checkpoint(FinishCheckpoint { partial_state_trie: Some(0) });
+        let expected =
+            genesis_checkpoint.finish_stage_checkpoint().unwrap().partial_state_trie().map(
+                |partial_state_trie| PartialStateTrieUnwindMarker {
+                    finish_block_number: genesis_checkpoint.block_number,
+                    partial_state_trie,
+                },
+            );
+
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(None, Some(genesis_checkpoint))).unwrap(),
+            (expected, false)
+        );
+    }
+
+    #[test]
+    fn get_partial_trie_unwind_marker_resumes_persisted_unwind() {
+        let marker =
+            PartialStateTrieUnwindMarker { finish_block_number: 42, partial_state_trie: 21 };
+
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(
+                Some(serde_json::to_vec(&marker).unwrap()),
+                Some(StageCheckpoint::new(21)),
+            ),)
+            .unwrap(),
+            (Some(marker), true)
+        );
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(
+                Some(serde_json::to_vec(&marker).unwrap()),
+                None
+            ),)
+            .unwrap(),
+            (Some(marker), true)
+        );
+    }
+
+    #[test]
+    fn get_partial_trie_unwind_marker_ignores_non_lagging_or_missing_partial_checkpoint() {
+        let matching_finish_checkpoint = StageCheckpoint::new(42)
+            .with_finish_stage_checkpoint(FinishCheckpoint { partial_state_trie: Some(42) });
+        let ahead_finish_checkpoint = StageCheckpoint::new(42)
+            .with_finish_stage_checkpoint(FinishCheckpoint { partial_state_trie: Some(43) });
+        let missing_partial_finish_checkpoint = StageCheckpoint::new(42)
+            .with_finish_stage_checkpoint(FinishCheckpoint { partial_state_trie: None });
+
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(None, Some(matching_finish_checkpoint)),)
+                .unwrap(),
+            (None, false)
+        );
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(
+                None,
+                Some(missing_partial_finish_checkpoint)
+            ),)
+            .unwrap(),
+            (None, false)
+        );
+        assert_eq!(
+            get_partial_trie_unwind_marker(&MockProvider(None, None)).unwrap(),
+            (None, false)
+        );
+
+        let partial_frontier = ahead_finish_checkpoint
+            .finish_stage_checkpoint()
+            .and_then(|finish| finish.partial_state_trie());
+        let result =
+            get_partial_trie_unwind_marker(&MockProvider(None, Some(ahead_finish_checkpoint)));
+        if partial_frontier.is_some() {
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("ahead of Finish"), "unexpected error: {error}");
+        } else {
+            assert_eq!(result.unwrap(), (None, false));
+        }
+    }
+
+    #[test]
+    fn get_partial_trie_unwind_marker_rejects_invalid_persisted_marker() {
+        let marker =
+            PartialStateTrieUnwindMarker { finish_block_number: 42, partial_state_trie: 42 };
+        let error = get_partial_trie_unwind_marker(&MockProvider(
+            Some(serde_json::to_vec(&marker).unwrap()),
+            None,
+        ))
+        .unwrap_err();
+
+        assert!(error.to_string().contains("is not below original Finish"));
+    }
+
+    #[test]
+    fn get_partial_trie_unwind_marker_rejects_malformed_metadata() {
+        assert!(get_partial_trie_unwind_marker(&MockProvider(Some(vec![0xff]), None)).is_err());
     }
 }

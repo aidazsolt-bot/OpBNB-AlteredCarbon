@@ -51,14 +51,14 @@
 //! - Conversion from consensus to pooled always fails
 
 use crate::{
-    blobstore::{BlobStore, BlobStoreError},
+    blobstore::{BlobCellAvailability, BlobStore, BlobStoreError, PooledBlobSidecar},
     error::{InvalidPoolTransactionError, PoolError, PoolResult, RawPoolTransactionError},
     pool::{
         state::SubPool, BestTransactionFilter, NewTransactionEvent, TransactionEvents,
         TransactionListenerKind,
     },
     validate::{TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction},
-    AddedTransactionOutcome, AllTransactionsEvents,
+    AddedTransactionOutcome, AllTransactionsEvents, PriceBumpConfig,
 };
 use alloy_consensus::{
     error::ValueError, transaction::TxHashRef, BlockHeader, Signed, Transaction as _, Typed2718,
@@ -70,12 +70,12 @@ use alloy_eips::{
         env_settings::KzgSettings, BlobAndProofV1, BlobAndProofV2, BlobCellsAndProofsV1,
         BlobTransactionValidationError,
     },
-    eip7594::BlobTransactionSidecarVariant,
+    eip7594::{BlobCellMask, BlobTransactionSidecarVariant},
     eip7702::SignedAuthorization,
 };
 use alloy_primitives::{
     map::{AddressSet, B256Map},
-    Address, Bytes, TxHash, TxKind, B128, B256, U256,
+    Address, Bytes, TxHash, TxKind, B256, U256,
 };
 use futures_util::{ready, Stream};
 use reth_eth_wire_types::HandleMempoolData;
@@ -460,6 +460,16 @@ pub trait TransactionPool: Clone + Debug + Send + Sync {
     /// Consumer: RPC
     fn all_transactions(&self) -> AllPoolTransactions<Self::Transaction>;
 
+    /// Returns all transactions of the given sender that are currently in the pool, grouped by
+    /// whether they are ready for inclusion in the next block or not.
+    ///
+    /// Both groups are collected from one snapshot of the pool, so a transaction that is moved
+    /// between sub-pools concurrently shows up in exactly one of them.
+    ///
+    /// Consumer: RPC
+    fn all_transactions_by_sender(&self, sender: Address)
+        -> AllPoolTransactions<Self::Transaction>;
+
     /// Returns the _hashes_ of all transactions regardless of whether they can be propagated or
     /// not.
     ///
@@ -747,7 +757,7 @@ pub trait TransactionPool: Clone + Debug + Send + Sync {
     fn get_blobs_for_versioned_hashes_v4(
         &self,
         versioned_hashes: &[B256],
-        indices_bitarray: B128,
+        cell_mask: BlobCellMask,
     ) -> Result<Vec<Option<BlobCellsAndProofsV1>>, BlobStoreError>;
 
     /// Return whether each requested blob versioned hash is available.
@@ -1121,6 +1131,14 @@ pub trait BestTransactions: Iterator + Send {
     /// listen to pool updates.
     fn no_updates(&mut self);
 
+    /// Allows newly received transactions to be yielded even if their priority is higher than a
+    /// transaction that was already yielded.
+    ///
+    /// This is useful for long-lived consumers that prefer seeing every update over preserving
+    /// decreasing priority order. The default implementation leaves the iterator's ordering
+    /// behavior unchanged. Implementations must still preserve transaction dependency ordering.
+    fn allow_updates_out_of_order(&mut self) {}
+
     /// Convenience function for [`Self::no_updates`] that returns the iterator again.
     fn without_updates(mut self) -> Self
     where
@@ -1180,6 +1198,10 @@ where
 
     fn no_updates(&mut self) {
         (**self).no_updates();
+    }
+
+    fn allow_updates_out_of_order(&mut self) {
+        (**self).allow_updates_out_of_order();
     }
 
     fn skip_blobs(&mut self) {
@@ -1341,8 +1363,7 @@ pub trait PoolTransaction:
     fn try_from_consensus(
         tx: Recovered<Self::Consensus>,
     ) -> Result<Self, Self::TryFromConsensusError> {
-        let (tx, signer) = tx.into_parts();
-        Ok(Self::from_pooled(Recovered::new_unchecked(tx.try_into()?, signer)))
+        Ok(Self::from_pooled(tx.try_convert()?))
     }
 
     /// Clone the transaction into a consensus variant.
@@ -1350,6 +1371,13 @@ pub trait PoolTransaction:
     /// This method is preferred when the [`PoolTransaction`] already wraps the consensus variant.
     fn clone_into_consensus(&self) -> Recovered<Self::Consensus> {
         self.clone().into_consensus()
+    }
+
+    /// Returns the EIP-2718 encoded consensus transaction.
+    ///
+    /// Implementations that synthesize the consensus representation should override this method.
+    fn encoded_2718_consensus(&self) -> Bytes {
+        self.consensus_ref().encoded_2718().into()
     }
 
     /// Returns a reference to the consensus transaction with the recovered sender.
@@ -1377,35 +1405,77 @@ pub trait PoolTransaction:
         pooled.try_into_recovered().map(Self::from_pooled)
     }
 
+    /// Recovers and converts a pooled transaction using the provided sender recovery cache.
+    fn try_recover_with_cache(
+        pooled: Self::Pooled,
+        cache: &reth_evm::SenderRecoveryCache,
+    ) -> Result<Self, Self::Pooled> {
+        match cache.recover(&pooled) {
+            Ok(signer) => Ok(Self::from_pooled(Recovered::new_unchecked(pooled, signer))),
+            Err(_) => Err(pooled),
+        }
+    }
+
+    /// Recovers and converts a pooled transaction, using the sender recovery cache if provided.
+    ///
+    /// Delegates to [`Self::try_recover`] when no cache is configured.
+    fn try_recover_with_cache_opt(
+        pooled: Self::Pooled,
+        cache: Option<&reth_evm::SenderRecoveryCache>,
+    ) -> Result<Self, Self::Pooled> {
+        match cache {
+            Some(cache) => Self::try_recover_with_cache(pooled, cache),
+            None => Self::try_recover(pooled),
+        }
+    }
+
     /// Decodes and recovers a raw transaction into this pool transaction type.
     ///
     /// Implementations can override this to avoid constructing the pooled transaction as an
     /// intermediate value when the raw representation can be converted directly into `Self`.
+    /// RPC uses this hook when no sender recovery cache is configured. Override
+    /// [`Self::recover_raw_transaction_with_cache`] to specialize the cached path as well.
     fn recover_raw_transaction(data: &[u8]) -> Result<Self, RawPoolTransactionError> {
+        Self::try_recover(Self::decode_raw_transaction(data)?)
+            .map_err(|_| RawPoolTransactionError::InvalidTransactionSignature)
+    }
+
+    /// Decodes and recovers a raw pool transaction using the provided sender recovery cache.
+    ///
+    /// RPC uses this hook when a sender recovery cache is configured. Implementations can override
+    /// it to reuse the raw bytes or encoded length during recovery and construction. The default
+    /// implementation decodes and recovers separately; it does not call
+    /// [`Self::recover_raw_transaction`].
+    fn recover_raw_transaction_with_cache(
+        data: &[u8],
+        cache: &reth_evm::SenderRecoveryCache,
+    ) -> Result<Self, RawPoolTransactionError> {
+        Self::try_recover_with_cache(Self::decode_raw_transaction(data)?, cache)
+            .map_err(|_| RawPoolTransactionError::InvalidTransactionSignature)
+    }
+
+    /// Decodes a raw pooled transaction without recovering its sender.
+    ///
+    /// The entire input must be consumed; trailing bytes are rejected. Implementations can override
+    /// this to customize raw decoding independently of sender recovery.
+    fn decode_raw_transaction(data: &[u8]) -> Result<Self::Pooled, RawPoolTransactionError> {
         if data.is_empty() {
             return Err(RawPoolTransactionError::EmptyRawTransactionData);
         }
 
-        let transaction = Self::Pooled::decode_2718_exact(data)
-            .map_err(|_| RawPoolTransactionError::FailedToDecodeSignedTransaction)?;
-
-        Self::try_recover(transaction)
-            .map_err(|_| RawPoolTransactionError::InvalidTransactionSignature)
+        Self::Pooled::decode_2718_exact(data)
+            .map_err(|_| RawPoolTransactionError::FailedToDecodeSignedTransaction)
     }
 
     /// Tries to convert the `Consensus` type into the `Pooled` type.
     fn try_into_pooled(self) -> Result<Recovered<Self::Pooled>, Self::TryFromConsensusError> {
-        let consensus = self.into_consensus();
-        let (tx, signer) = consensus.into_parts();
-        Ok(Recovered::new_unchecked(tx.try_into()?, signer))
+        self.into_consensus().try_convert()
     }
 
     /// Clones the consensus transactions and tries to convert the `Consensus` type into the
     /// `Pooled` type.
     fn clone_into_pooled(&self) -> Result<Recovered<Self::Pooled>, Self::TryFromConsensusError> {
-        let consensus = self.clone_into_consensus();
-        let (tx, signer) = consensus.into_parts();
-        Ok(Recovered::new_unchecked(tx.try_into()?, signer))
+        self.clone_into_consensus().try_convert()
     }
 
     /// Converts the `Pooled` type into the `Consensus` type.
@@ -1453,6 +1523,27 @@ pub trait PoolTransaction:
         }
     }
 
+    /// Returns whether `replacement` is underpriced relative to this transaction.
+    ///
+    /// Called on the existing transaction when another transaction would replace it.
+    /// By default, delegates to [`PriceBumpConfig::is_replacement_underpriced`].
+    /// Implementations may override this to define transaction-specific replacement semantics.
+    fn is_replacement_underpriced(
+        &self,
+        replacement: &Self,
+        price_bumps: &PriceBumpConfig,
+    ) -> bool {
+        price_bumps.is_replacement_underpriced(self, replacement)
+    }
+
+    /// Whether the transaction's nonce must be below [`u64::MAX`] according to EIP-2681.
+    ///
+    /// Defaults to `true`. Transactions with alternative nonce semantics can override this
+    /// independently of the sender nonce check in [`Self::requires_nonce_check`].
+    fn requires_nonce_bound_check(&self) -> bool {
+        true
+    }
+
     /// Allows to communicate to the pool that the transaction doesn't require a nonce check.
     fn requires_nonce_check(&self) -> bool {
         true
@@ -1467,6 +1558,11 @@ pub trait PoolTransaction:
 pub trait EthPoolTransaction: PoolTransaction {
     /// Extracts the blob sidecar from the transaction.
     fn take_blob(&mut self) -> EthBlobTransactionSidecar;
+
+    /// Returns the shared blob cell availability, if this is a blob transaction.
+    fn blob_cell_availability(&self) -> Option<&BlobCellAvailability> {
+        None
+    }
 
     /// A specialization for the EIP-4844 transaction type.
     /// Tries to reattach the blob sidecar to the transaction.
@@ -1501,7 +1597,9 @@ pub trait EthPoolTransaction: PoolTransaction {
 ///
 /// - `cost`: Pre-calculated max cost (gas * price + value + blob costs)
 /// - `encoded_length`: Cached RLP encoding length for size limits
+/// - `in_memory_size`: Cached transaction size for subpool memory accounting
 /// - `blob_sidecar`: Blob data state (None/Missing/Present)
+/// - `blob_cell_availability`: Cached blob cell availability for eth/72 announcements
 ///
 /// This avoids recalculating these values repeatedly during pool operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1519,8 +1617,18 @@ pub struct EthPooledTransaction<T = TransactionSigned> {
     /// pool.
     pub encoded_length: usize,
 
+    /// Cached in-memory size of `transaction`, excluding the blob sidecar.
+    ///
+    /// Must be updated if `transaction` is modified or replaced.
+    pub in_memory_size: usize,
+
     /// The blob side car for this transaction
     pub blob_sidecar: EthBlobTransactionSidecar,
+
+    /// Cached blob cell availability for this transaction.
+    ///
+    /// This is shared with the blob sidecar so that availability updates are reflected here.
+    pub blob_cell_availability: Option<BlobCellAvailability>,
 }
 
 impl<T: SignedTransaction> EthPooledTransaction<T> {
@@ -1529,6 +1637,7 @@ impl<T: SignedTransaction> EthPooledTransaction<T> {
     /// Caution: In case of blob transactions, this marks the blob sidecar as
     /// [`EthBlobTransactionSidecar::Missing`]
     pub fn new(transaction: Recovered<T>, encoded_length: usize) -> Self {
+        let mut blob_cell_availability = None;
         let mut blob_sidecar = EthBlobTransactionSidecar::None;
 
         let gas_cost = U256::from(transaction.max_fee_per_gas())
@@ -1547,14 +1656,29 @@ impl<T: SignedTransaction> EthPooledTransaction<T> {
             // because the blob sidecar is not included in this transaction variant, mark it as
             // missing
             blob_sidecar = EthBlobTransactionSidecar::Missing;
+            // TODO: Initialize this with the actual mask once sparse sidecars are supported.
+            blob_cell_availability = Some(BlobCellAvailability::full());
         }
 
-        Self { transaction, cost, encoded_length, blob_sidecar }
+        let in_memory_size = transaction.size();
+        Self {
+            transaction,
+            cost,
+            encoded_length,
+            in_memory_size,
+            blob_sidecar,
+            blob_cell_availability,
+        }
     }
 
     /// Return the reference to the underlying transaction.
     pub const fn transaction(&self) -> &Recovered<T> {
         &self.transaction
+    }
+
+    /// Returns the shared blob cell availability, if this is a blob transaction.
+    pub const fn blob_cell_availability(&self) -> Option<&BlobCellAvailability> {
+        self.blob_cell_availability.as_ref()
     }
 }
 
@@ -1570,7 +1694,7 @@ impl PoolTransaction for EthPooledTransaction {
     }
 
     fn consensus_ref(&self) -> Recovered<&Self::Consensus> {
-        Recovered::new_unchecked(&*self.transaction, self.transaction.signer())
+        self.transaction.as_recovered_ref()
     }
 
     fn into_consensus(self) -> Recovered<Self::Consensus> {
@@ -1589,7 +1713,11 @@ impl PoolTransaction for EthPooledTransaction {
                 let tx = TransactionSigned::from(tx);
                 let tx = Recovered::new_unchecked(tx, signer);
                 let mut pooled = Self::new(tx, encoded_length);
-                pooled.blob_sidecar = EthBlobTransactionSidecar::Present(blob);
+                if let Some(availability) = pooled.blob_cell_availability.clone() {
+                    pooled.blob_sidecar = EthBlobTransactionSidecar::Present(
+                        PooledBlobSidecar::new(blob, availability),
+                    );
+                }
                 pooled
             }
             tx => {
@@ -1638,8 +1766,9 @@ impl<T: Typed2718> Typed2718 for EthPooledTransaction<T> {
 }
 
 impl<T: InMemorySize> InMemorySize for EthPooledTransaction<T> {
+    #[inline]
     fn size(&self) -> usize {
-        self.transaction.size()
+        self.in_memory_size
     }
 }
 
@@ -1722,15 +1851,17 @@ impl EthPoolTransaction for EthPooledTransaction {
         }
     }
 
+    fn blob_cell_availability(&self) -> Option<&BlobCellAvailability> {
+        Self::blob_cell_availability(self)
+    }
+
     fn try_into_pooled_eip4844(
         self,
         sidecar: Arc<BlobTransactionSidecarVariant>,
     ) -> Option<Recovered<Self::Pooled>> {
-        let (signed_transaction, signer) = self.into_consensus().into_parts();
-        let pooled_transaction =
-            signed_transaction.try_into_pooled_eip4844(Arc::unwrap_or_clone(sidecar)).ok()?;
-
-        Some(Recovered::new_unchecked(pooled_transaction, signer))
+        self.into_consensus()
+            .try_map(|tx| tx.try_into_pooled_eip4844(Arc::unwrap_or_clone(sidecar)))
+            .ok()
     }
 
     fn try_from_eip4844(
@@ -1782,14 +1913,14 @@ pub enum EthBlobTransactionSidecar {
     ///
     /// The sidecar is required for validating the transaction but is not included
     /// in blocks (only the blob hashes are included in the consensus format).
-    Present(BlobTransactionSidecarVariant),
+    Present(PooledBlobSidecar),
 }
 
 impl EthBlobTransactionSidecar {
     /// Returns the blob sidecar if it is present
     pub const fn maybe_sidecar(&self) -> Option<&BlobTransactionSidecarVariant> {
         match self {
-            Self::Present(sidecar) => Some(sidecar),
+            Self::Present(sidecar) => Some(sidecar.sidecar()),
             _ => None,
         }
     }
@@ -1920,6 +2051,7 @@ impl<Tx: PoolTransaction> Stream for NewSubpoolTransactionStream<Tx> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blobstore::BlobCellAvailability;
     use alloy_consensus::{
         EthereumTxEnvelope, SignableTransaction, TxEip1559, TxEip2930, TxEip4844, TxEip7702,
         TxEnvelope, TxLegacy,
@@ -1967,7 +2099,7 @@ mod tests {
     #[test]
     fn test_eth_pooled_transaction_new_legacy() {
         // Create a legacy transaction with specific parameters
-        let tx = TxEnvelope::Legacy(
+        let tx = EthereumTxEnvelope::<TxEip4844>::Legacy(
             TxLegacy {
                 gas_price: 10,
                 gas_limit: 1000,
@@ -1983,7 +2115,10 @@ mod tests {
         assert_eq!(pooled_tx.transaction, transaction);
         assert_eq!(pooled_tx.encoded_length, 200);
         assert_eq!(pooled_tx.blob_sidecar, EthBlobTransactionSidecar::None);
+        assert!(pooled_tx.blob_cell_availability.is_none());
+        assert_eq!(pooled_tx.blob_cell_availability().map(BlobCellAvailability::get), None);
         assert_eq!(pooled_tx.cost, U256::from(100) + U256::from(10 * 1000));
+        assert_eq!(pooled_tx.encoded_2718_consensus(), transaction.encoded_2718());
     }
 
     #[test]
@@ -2005,6 +2140,8 @@ mod tests {
         assert_eq!(pooled_tx.transaction, transaction);
         assert_eq!(pooled_tx.encoded_length, 200);
         assert_eq!(pooled_tx.blob_sidecar, EthBlobTransactionSidecar::None);
+        assert!(pooled_tx.blob_cell_availability.is_none());
+        assert_eq!(pooled_tx.blob_cell_availability().map(BlobCellAvailability::get), None);
         assert_eq!(pooled_tx.cost, expected_cost);
     }
 
@@ -2027,6 +2164,8 @@ mod tests {
         assert_eq!(pooled_tx.transaction, transaction);
         assert_eq!(pooled_tx.encoded_length, 200);
         assert_eq!(pooled_tx.blob_sidecar, EthBlobTransactionSidecar::None);
+        assert!(pooled_tx.blob_cell_availability.is_none());
+        assert_eq!(pooled_tx.blob_cell_availability().map(BlobCellAvailability::get), None);
         assert_eq!(pooled_tx.cost, U256::from(100) + U256::from(10 * 1000));
     }
 
@@ -2051,6 +2190,11 @@ mod tests {
         assert_eq!(pooled_tx.transaction, transaction);
         assert_eq!(pooled_tx.encoded_length, 300);
         assert_eq!(pooled_tx.blob_sidecar, EthBlobTransactionSidecar::Missing);
+        assert!(pooled_tx.blob_cell_availability.is_some());
+        assert_eq!(
+            pooled_tx.blob_cell_availability().map(BlobCellAvailability::get),
+            Some(BlobCellMask::from_bits(u128::MAX))
+        );
         let expected_cost =
             U256::from(100) + U256::from(10 * 1000) + U256::from(5 * DATA_GAS_PER_BLOB);
         assert_eq!(pooled_tx.cost, expected_cost);
@@ -2075,6 +2219,8 @@ mod tests {
         assert_eq!(pooled_tx.transaction, transaction);
         assert_eq!(pooled_tx.encoded_length, 200);
         assert_eq!(pooled_tx.blob_sidecar, EthBlobTransactionSidecar::None);
+        assert!(pooled_tx.blob_cell_availability.is_none());
+        assert_eq!(pooled_tx.blob_cell_availability().map(BlobCellAvailability::get), None);
         assert_eq!(pooled_tx.cost, U256::from(100) + U256::from(10 * 1000));
     }
 

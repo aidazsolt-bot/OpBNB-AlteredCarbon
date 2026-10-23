@@ -1,45 +1,9 @@
-use alloy_primitives::{map::HashMap, Address, B256, U256};
-use reth_primitives::parlia::Snapshot;
-use reth_primitives_traits::{Account, Bytecode};
+use alloc::sync::Arc;
+use alloy_primitives::{Address, B256, U256};
+use reth_primitives_traits::{Account, Block, Bytecode, RecoveredBlock};
 use revm::database::{states::BundleState, BundleAccount};
 
 pub use alloy_evm::block::BlockExecutionResult;
-
-/// A helper type for ethereum block inputs that consists of a block and the total difficulty.
-#[derive(Debug)]
-pub struct BlockExecutionInput<'a, Block, Header> {
-    /// The block to execute.
-    pub block: &'a Block,
-    /// The total difficulty of the block.
-    pub total_difficulty: U256,
-    /// The headers of the block's ancestor
-    pub ancestor_headers: Option<&'a HashMap<B256, Header>>,
-}
-
-impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
-    /// Creates a new input.
-    pub const fn new(
-        block: &'a Block,
-        total_difficulty: U256,
-        ancestor_headers: Option<&'a HashMap<B256, Header>>,
-    ) -> Self {
-        Self { block, total_difficulty, ancestor_headers }
-    }
-}
-
-impl<'a, Block, Header> From<(&'a Block, U256, Option<&'a HashMap<B256, Header>>)>
-    for BlockExecutionInput<'a, Block, Header>
-{
-    fn from(
-        (block, total_difficulty, ancestor_headers): (
-            &'a Block,
-            U256,
-            Option<&'a HashMap<B256, Header>>,
-        ),
-    ) -> Self {
-        Self::new(block, total_difficulty, ancestor_headers)
-    }
-}
 
 /// [`BlockExecutionResult`] combined with state.
 #[derive(
@@ -61,8 +25,6 @@ pub struct BlockExecutionOutput<T> {
     pub result: BlockExecutionResult<T>,
     /// The changed state of the block after execution.
     pub state: BundleState,
-    /// Parlia snapshot (BSC).
-    pub snapshot: Option<Snapshot>,
 }
 
 impl<T> BlockExecutionOutput<T> {
@@ -85,7 +47,7 @@ impl<T> BlockExecutionOutput<T> {
     ///
     /// This means that depending on status we can potentially return `U256::ZERO`.
     pub fn storage(&self, address: &Address, storage_key: U256) -> Option<U256> {
-        self.state.account(address).and_then(|a| a.storage_slot(storage_key))
+        self.state.storage(address, storage_key)
     }
 }
 
@@ -99,7 +61,40 @@ impl<T> Default for BlockExecutionOutput<T> {
                 blob_gas_used: 0,
             },
             state: Default::default(),
-            snapshot: None,
         }
+    }
+}
+
+/// A recovered block and its shared execution output.
+///
+/// The execution output contains the block's receipts.
+#[derive(Debug)]
+pub struct RecoveredBlockAndExecutionOutput<B: Block, R> {
+    block: Arc<RecoveredBlock<B>>,
+    execution_output: Arc<BlockExecutionOutput<R>>,
+}
+
+impl<B: Block, R> RecoveredBlockAndExecutionOutput<B, R> {
+    /// Creates a block with its execution output.
+    pub const fn new(
+        block: Arc<RecoveredBlock<B>>,
+        execution_output: Arc<BlockExecutionOutput<R>>,
+    ) -> Self {
+        Self { block, execution_output }
+    }
+
+    /// Returns the recovered block.
+    pub const fn block(&self) -> &Arc<RecoveredBlock<B>> {
+        &self.block
+    }
+
+    /// Returns the execution output.
+    pub const fn execution_output(&self) -> &Arc<BlockExecutionOutput<R>> {
+        &self.execution_output
+    }
+
+    /// Consumes the container and returns its shared parts.
+    pub fn into_parts(self) -> (Arc<RecoveredBlock<B>>, Arc<BlockExecutionOutput<R>>) {
+        (self.block, self.execution_output)
     }
 }

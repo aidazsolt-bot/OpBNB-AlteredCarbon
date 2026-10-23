@@ -11,23 +11,20 @@
 //! - [`update_leaves`]: Tests for `update_leaves`, including insert, modify, and remove
 //! - [`root`]: Tests for `root()` hash computation
 //! - [`take_updates`]: Tests for `take_updates`
-//! - [`changed_paths`]: Tests for retained changed node base paths
 //! - [`prune`]: Tests for `prune`
-//! - [`wipe_clear`]: Tests for `wipe` and `clear`
+//! - [`wipe_clear`]: Tests for `clear`
 //! - [`get_leaf_value`]: Tests for `get_leaf_value`
 //! - [`find_leaf`]: Tests for `find_leaf`
-//! - [`size_hint`]: Tests for `size_hint`
 //! - [`lifecycle`]: Integration tests exercising multiple methods together
 
-use alloy_primitives::{map::B256Map, B256, U256};
+use alloy_primitives::{keccak256, map::B256Map, B256, U256};
 use alloy_rlp::{encode_fixed_size, Decodable};
 use alloy_trie::EMPTY_ROOT_HASH;
 use reth_trie::test_utils::TrieTestHarness;
 use reth_trie_common::{Nibbles, ProofV2Target, TrieNodeV2};
-use reth_trie_sparse::{LeafLookup, LeafLookupError, LeafUpdate, SparseTrie};
+use reth_trie_sparse::{LeafLookup, LeafLookupError, LeafUpdate, SparseTrie, TrieNodeEpoch};
 use std::{collections::BTreeMap, iter::once};
 
-mod changed_paths;
 mod find_leaf;
 mod get_leaf_value;
 mod lifecycle;
@@ -35,10 +32,13 @@ mod prune;
 mod reveal_nodes;
 mod root;
 mod set_root;
-mod size_hint;
 mod take_updates;
 mod update_leaves;
 mod wipe_clear;
+
+const fn epoch(value: u64) -> TrieNodeEpoch {
+    TrieNodeEpoch::new(value)
+}
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -78,11 +78,8 @@ impl SuiteTestHarness {
         changes
             .iter()
             .map(|(&slot, &value)| {
-                let rlp_value = if value == U256::ZERO {
-                    Vec::new()
-                } else {
-                    encode_fixed_size(&value).to_vec()
-                };
+                let rlp_value =
+                    if value.is_zero() { Vec::new() } else { encode_fixed_size(&value).to_vec() };
                 (slot, LeafUpdate::Changed(rlp_value))
             })
             .collect()
@@ -98,8 +95,8 @@ impl SuiteTestHarness {
     ) {
         loop {
             let mut targets: Vec<ProofV2Target> = Vec::new();
-            trie.update_leaves(leaf_updates, |key, min_len| {
-                targets.push(ProofV2Target::new(key).with_min_len(min_len));
+            trie.update_leaves(leaf_updates, |key, parent| {
+                targets.push(ProofV2Target::new(key).with_parent(parent));
             })
             .expect("update_leaves should succeed");
 
@@ -191,7 +188,6 @@ macro_rules! sparse_trie_tests {
 // Re-export test functions from submodules for the macro
 // ---------------------------------------------------------------------------
 
-use changed_paths::*;
 use find_leaf::*;
 use get_leaf_value::*;
 use lifecycle::*;
@@ -199,7 +195,6 @@ use prune::*;
 use reveal_nodes::*;
 use root::*;
 use set_root::*;
-use size_hint::*;
 use take_updates::*;
 use update_leaves::*;
 use wipe_clear::*;
@@ -275,16 +270,11 @@ sparse_trie_tests! {
     test_take_updates_no_duplicate_updated_and_removed_nodes,
     test_take_updates_cross_cancellation_across_root_calls,
 
-    // changed_paths
-    test_changed_paths_record_base_paths_for_branches_and_leaves,
-    test_changed_paths_skip_dirty_ancestor_branch_when_descendant_changed,
-    test_changed_paths_record_branch_after_leaf_removal,
 
     // prune
-    test_prune_retains_specified_leaves,
+    test_prune_retains_recent_leaves,
+    test_prune_retains_structurally_modified_branch,
     test_prune_reduces_node_count,
-    test_prune_empty_retained_set,
-    test_prune_requires_computed_hashes,
     test_prune_then_update_and_recompute_root,
     test_prune_then_reveal_pruned_subtree,
     test_prune_mixed_embedded_and_hashed_nodes,
@@ -292,10 +282,8 @@ sparse_trie_tests! {
     test_prune_only_descends_into_branch_root,
     test_prune_handles_small_subtrie_root_nodes,
 
-    // wipe / clear
-    test_wipe_resets_to_empty_root,
+    // clear
     test_clear_resets_trie_but_preserves_update_tracking,
-    test_wipe_produces_wiped_updates,
     test_clear_then_reuse_trie,
 
     // get_leaf_value
@@ -311,12 +299,8 @@ sparse_trie_tests! {
     test_find_leaf_nonexistent_extension_divergence,
     test_find_leaf_nonexistent_leaf_divergence,
 
-    // size_hint
-    test_size_hint_reflects_leaf_count,
-
     // lifecycle (integration tests)
     test_full_lifecycle_update_root_take_updates,
-    test_multi_round_update_take_updates_prune_cycle,
     test_reveal_update_root_basic_lifecycle,
     test_incremental_reveal_and_update_with_retry,
     test_full_block_processing_lifecycle,
@@ -325,4 +309,5 @@ sparse_trie_tests! {
     test_get_leaf_value_for_storage_root_lookup,
     test_find_leaf_before_update_to_check_existence,
     test_prune_then_reuse_for_next_block,
+    test_repeated_prune_and_reveal_with_deep_subtries,
 }

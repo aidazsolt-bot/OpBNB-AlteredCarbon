@@ -3,7 +3,7 @@
 
 use crate::utils::{launch_http, launch_http_ws, launch_ws};
 use alloy_eips::{eip1898::LenientBlockNumberOrTag, BlockId, BlockNumberOrTag};
-use alloy_primitives::{hex_literal::hex, Address, Bytes, TxHash, B256, B64, U256, U64};
+use alloy_primitives::{bytes, Address, Bytes, TxHash, B256, B64, U256, U64};
 use alloy_rpc_types_eth::{
     transaction::TransactionRequest, Block, FeeHistory, Filter, Header, Index, Log,
     PendingTransactionFilterKind, SyncStatus, Transaction, TransactionReceipt,
@@ -35,6 +35,15 @@ fn is_unimplemented(err: jsonrpsee::core::client::Error) -> bool {
         jsonrpsee::core::client::Error::Call(error_obj) => {
             error_obj.code() == ErrorCode::InternalError.code() &&
                 error_obj.message() == "unimplemented"
+        }
+        _ => false,
+    }
+}
+
+fn is_invalid_params(err: &jsonrpsee::core::client::Error) -> bool {
+    match err {
+        jsonrpsee::core::client::Error::Call(error_obj) => {
+            error_obj.code() == ErrorCode::InvalidParams.code()
         }
         _ => false,
     }
@@ -125,21 +134,24 @@ async fn test_filter_calls<C>(client: &C)
 where
     C: ClientT + SubscriptionClientT + Sync,
 {
-    EthFilterApiClient::<Transaction>::new_filter(client, Filter::default()).await.unwrap();
-    EthFilterApiClient::<Transaction>::new_pending_transaction_filter(client, None).await.unwrap();
-    EthFilterApiClient::<Transaction>::new_pending_transaction_filter(
+    EthFilterApiClient::<Transaction, Log>::new_filter(client, Filter::default()).await.unwrap();
+    EthFilterApiClient::<Transaction, Log>::new_pending_transaction_filter(client, None)
+        .await
+        .unwrap();
+    EthFilterApiClient::<Transaction, Log>::new_pending_transaction_filter(
         client,
         Some(PendingTransactionFilterKind::Full),
     )
     .await
     .unwrap();
-    let id = EthFilterApiClient::<Transaction>::new_block_filter(client).await.unwrap();
-    EthFilterApiClient::<Transaction>::filter_changes(client, id.clone()).await.unwrap();
-    EthFilterApiClient::<Transaction>::logs(client, Filter::default()).await.unwrap();
-    let id =
-        EthFilterApiClient::<Transaction>::new_filter(client, Filter::default()).await.unwrap();
-    EthFilterApiClient::<Transaction>::filter_logs(client, id.clone()).await.unwrap();
-    EthFilterApiClient::<Transaction>::uninstall_filter(client, id).await.unwrap();
+    let id = EthFilterApiClient::<Transaction, Log>::new_block_filter(client).await.unwrap();
+    EthFilterApiClient::<Transaction, Log>::filter_changes(client, id.clone()).await.unwrap();
+    EthFilterApiClient::<Transaction, Log>::logs(client, Filter::default()).await.unwrap();
+    let id = EthFilterApiClient::<Transaction, Log>::new_filter(client, Filter::default())
+        .await
+        .unwrap();
+    EthFilterApiClient::<Transaction, Log>::filter_logs(client, id.clone()).await.unwrap();
+    EthFilterApiClient::<Transaction, Log>::uninstall_filter(client, id).await.unwrap();
 }
 
 async fn test_basic_admin_calls<C>(client: &C)
@@ -170,9 +182,7 @@ where
     let call_request = TransactionRequest::default();
     let transaction_request = TransactionRequest::default();
     let bytes = Bytes::default();
-    let tx = Bytes::from(hex!(
-        "02f871018303579880850555633d1b82520894eee27662c2b8eba3cd936a23f039f3189633e4c887ad591c62bdaeb180c080a07ea72c68abfb8fca1bd964f0f99132ed9280261bdca3e549546c0205e800f7d0a05b4ef3039e9c9b9babc179a1878fb825b5aaf5aed2fa8744854150157b08d6f3"
-    ));
+    let tx = bytes!("02f871018303579880850555633d1b82520894eee27662c2b8eba3cd936a23f039f3189633e4c887ad591c62bdaeb180c080a07ea72c68abfb8fca1bd964f0f99132ed9280261bdca3e549546c0205e800f7d0a05b4ef3039e9c9b9babc179a1878fb825b5aaf5aed2fa8744854150157b08d6f3");
     let typed_data = serde_json::from_str(
         r#"{
         "types": {
@@ -381,6 +391,18 @@ where
     )
     .await
     .unwrap();
+    let proofs = EthApiClient::<
+        TransactionRequest,
+        Transaction,
+        Block,
+        Receipt,
+        Header,
+        TransactionSigned,
+    >::get_multi_proof(client, vec![(address, vec![B256::ZERO])], None)
+    .await
+    .unwrap();
+    assert_eq!(proofs.len(), 1);
+    assert_eq!(proofs[0].address, address);
 
     // Unimplemented
     assert!(
@@ -450,7 +472,7 @@ async fn test_basic_debug_calls<C>(client: &C)
 where
     C: ClientT + SubscriptionClientT + Sync,
 {
-    let block_id = BlockId::Number(BlockNumberOrTag::default());
+    let block_id = BlockId::latest();
 
     DebugApiClient::<TransactionRequest>::raw_header(client, block_id).await.unwrap_err();
     DebugApiClient::<TransactionRequest>::raw_block(client, block_id).await.unwrap_err();
@@ -474,6 +496,28 @@ where
     )
     .await
     .unwrap_err();
+
+    for block_id in [
+        BlockId::number(0),
+        BlockId::latest(),
+        BlockId::hash(B256::ZERO),
+        BlockId::hash_canonical(B256::ZERO),
+    ] {
+        let err =
+            DebugApiClient::<TransactionRequest>::debug_execution_witness(client, block_id, None)
+                .await
+                .unwrap_err();
+        assert!(!is_invalid_params(&err));
+    }
+
+    let err = DebugApiClient::<TransactionRequest>::debug_execution_witness_by_block_hash(
+        client,
+        B256::ZERO,
+        Some(Default::default()),
+    )
+    .await
+    .unwrap_err();
+    assert!(!is_invalid_params(&err));
 }
 
 async fn test_basic_net_calls<C>(client: &C)
@@ -489,16 +533,8 @@ async fn test_basic_trace_calls<C>(client: &C)
 where
     C: ClientT + SubscriptionClientT + Sync,
 {
-    let block_id = BlockId::Number(BlockNumberOrTag::default());
-    let trace_filter = TraceFilter {
-        from_block: Default::default(),
-        to_block: Default::default(),
-        from_address: Default::default(),
-        to_address: Default::default(),
-        mode: Default::default(),
-        after: None,
-        count: None,
-    };
+    let block_id = BlockId::latest();
+    let trace_filter = TraceFilter::default();
 
     TraceApiClient::<TransactionRequest>::trace_raw_transaction(
         client,
@@ -508,21 +544,17 @@ where
     )
     .await
     .unwrap_err();
-    TraceApiClient::<TransactionRequest>::trace_call_many(
-        client,
-        vec![],
-        Some(BlockNumberOrTag::Latest.into()),
-    )
-    .await
-    .unwrap_err();
-    TraceApiClient::<TransactionRequest>::replay_transaction(
+    TraceApiClient::<TransactionRequest>::trace_call_many(client, vec![], Some(BlockId::latest()))
+        .await
+        .unwrap_err();
+    assert!(TraceApiClient::<TransactionRequest>::replay_transaction(
         client,
         B256::default(),
         HashSet::default(),
     )
     .await
-    .err()
-    .unwrap();
+    .unwrap()
+    .is_none());
     TraceApiClient::<TransactionRequest>::trace_block(client, block_id).await.unwrap_err();
     assert!(TraceApiClient::<TransactionRequest>::replay_block_transactions(
         client,

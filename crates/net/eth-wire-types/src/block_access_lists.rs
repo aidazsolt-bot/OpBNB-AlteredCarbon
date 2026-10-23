@@ -53,15 +53,12 @@ impl Encodable for BlockAccessLists {
 
 impl Decodable for BlockAccessLists {
     fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
-        let header = Header::decode(buf)?;
-        if !header.list {
-            return Err(alloy_rlp::Error::UnexpectedString);
+        let Header { list, payload_length } = Header::decode(buf)?;
+        if !list {
+            return Err(alloy_rlp::Error::UnexpectedString)
         }
-        if buf.len() < header.payload_length {
-            return Err(alloy_rlp::Error::InputTooShort);
-        }
-
-        let (mut payload, rest) = buf.split_at(header.payload_length);
+        // Payload length checked by Header::decode.
+        let (mut payload, rest) = buf.split_at(payload_length);
         *buf = rest;
         let mut bals = Vec::new();
 
@@ -71,14 +68,14 @@ impl Decodable for BlockAccessLists {
             let header_length = item_start.len() - payload.len();
             let item_length = header_length + item_header.payload_length;
             if item_length > item_start.len() {
-                return Err(alloy_rlp::Error::InputTooShort);
+                return Err(alloy_rlp::Error::InputTooShort)
             }
             if item_header.list {
                 bals.push(Some(Bytes::copy_from_slice(&item_start[..item_length])));
             } else if item_start[..item_length] == [EMPTY_STRING_CODE] {
                 bals.push(None);
             } else {
-                return Err(alloy_rlp::Error::UnexpectedString);
+                return Err(alloy_rlp::Error::UnexpectedString)
             }
 
             payload = &payload[item_header.payload_length..];
@@ -117,7 +114,7 @@ mod tests {
     fn elaborate_account_changes(seed: u8) -> Vec<AccountChanges> {
         vec![
             AccountChanges {
-                address: Address::from([seed; 20]),
+                address: Address::repeat_byte(seed),
                 storage_changes: vec![SlotChanges::new(
                     U256::from_be_bytes([seed.wrapping_add(1); 32]),
                     vec![
@@ -149,7 +146,7 @@ mod tests {
                 )],
             },
             AccountChanges {
-                address: Address::from([seed.wrapping_add(9); 20]),
+                address: Address::repeat_byte(seed.wrapping_add(9)),
                 storage_changes: Vec::new(),
                 storage_reads: vec![U256::from_be_bytes([seed.wrapping_add(10); 32])],
                 balance_changes: vec![BalanceChange::new(

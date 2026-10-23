@@ -1,21 +1,22 @@
 use crate::stages::MERKLE_STAGE_DEFAULT_INCREMENTAL_THRESHOLD;
 use alloy_consensus::BlockHeader;
+use alloy_eip7928::bal::Bal;
 use alloy_primitives::BlockNumber;
 use num_traits::Zero;
 use reth_chainspec::{ChainSpecProvider, EthereumHardforks};
 use reth_config::config::ExecutionConfig;
 use reth_consensus::FullConsensus;
 use reth_db::{static_file::HeaderMask, tables};
-use reth_db_api::DatabaseError;
 use reth_evm::{execute::Executor, metrics::ExecutorMetrics, ConfigureEvm};
 use reth_execution_types::Chain;
 use reth_exex::{ExExManagerHandle, ExExNotification, ExExNotificationSource};
-use reth_primitives_traits::{format_gas_throughput, BlockBody, NodePrimitives, RecoveredBlock};
+use reth_primitives_traits::{format_gas_throughput, BlockBody, NodePrimitives};
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileWriter},
-    BlockHashReader, BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HeaderProvider,
-    LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriteConfig, StateWriter,
-    StaticFileProviderFactory, StatsReader, StoragePath, StorageSettingsCache, TransactionVariant,
+    BlockReader, DBProvider, EitherWriter, ExecutionOutcome, HashedPostStateProvider,
+    HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateProvider,
+    StateWriteConfig, StateWriter, StaticFileProviderFactory, StatsReader, StoragePath,
+    StorageSettingsCache, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
@@ -24,9 +25,6 @@ use reth_stages_api::{
     UnwindInput, UnwindOutput,
 };
 use reth_static_file_types::StaticFileSegment;
-use reth_storage_errors::provider::ProviderResult;
-use reth_trie_common::{HashedPostState, KeccakKeyHasher};
-use rust_eth_triedb::{get_global_triedb, triedb_manager::is_triedb_active};
 use std::{
     cmp::{max, Ordering},
     collections::BTreeMap,
@@ -39,12 +37,9 @@ use tracing::*;
 
 use super::missing_static_data_error;
 
-mod slot_preimages;
-
-/// Maximum number of blocks the fetch/decode prefetch thread is allowed to run ahead of the
-/// executing thread in [`ExecutionStage::execute`]. Bounds memory usage of the pipeline while
-/// still overlapping disk I/O with EVM execution.
-const EXECUTION_FETCH_PIPELINE_DEPTH: usize = 4;
+/// Slot-preimage database for recovering plain storage keys from hashed keys during
+/// pre-Cancun `SELFDESTRUCT` handling.
+pub mod slot_preimages;
 
 /// The execution stage executes all transactions and
 /// update history indexes.
@@ -198,11 +193,7 @@ where
         unwind_to: Option<u64>,
     ) -> Result<(), StageError>
     where
-        Provider: StaticFileProviderFactory
-            + DBProvider
-            + BlockReader
-            + HeaderProvider
-            + StorageSettingsCache,
+        Provider: StaticFileProviderFactory + DBProvider + BlockReader + StorageSettingsCache,
     {
         // On old nodes, if there's any receipts pruning configured, receipts are written directly
         // to database and inconsistencies are expected.
@@ -277,14 +268,10 @@ where
         > + StaticFileProviderFactory<
             Primitives: NodePrimitives<BlockHeader: reth_db_api::table::Value>,
         > + StatsReader
-        + BlockHashReader
         + StateWriter<Receipt = <E::Primitives as NodePrimitives>::Receipt>
         + StorageSettingsCache
         + StoragePath
-        + ChainSpecProvider<ChainSpec: EthereumHardforks>
-        // Required so a dedicated prefetch thread can read blocks (I/O + decode) ahead of
-        // the executing thread while sharing the same read-only provider/transaction.
-        + Sync,
+        + ChainSpecProvider<ChainSpec: EthereumHardforks>,
 {
     /// Return the id of the stage
     fn id(&self) -> StageId {
@@ -313,7 +300,8 @@ where
 
         self.ensure_consistency(provider, input.checkpoint().block_number, None)?;
 
-        let db = StateProviderDatabase(LatestStateProviderRef::new(provider));
+        let db =
+            StateProviderDatabase(LatestStateProviderRef::new(provider).into_evm_state_provider());
         let mut executor = self.evm_config.batch_executor(db);
 
         // Progress tracking
@@ -342,123 +330,98 @@ where
 
         let mut blocks = Vec::new();
         let mut results = Vec::new();
+        // Reused across blocks for BAL hash encoding.
+        let mut bal_buf = Vec::new();
+        for block_number in start_block..=max_block {
+            // Fetch the block
+            let fetch_block_start = Instant::now();
 
-        // Fetch/execute pipeline: fetching a block from disk (block body, transactions,
-        // sender recovery) is pure I/O + decode work that doesn't touch the account/storage
-        // state tables the executor reads and writes. We therefore fetch blocks ahead of the
-        // block currently being executed on a dedicated thread, so disk I/O for block N+1..N+k
-        // overlaps with EVM execution of block N instead of happening serially before it.
-        //
-        // The channel is bounded so the prefetch thread can only run a fixed number of blocks
-        // ahead of the executor (backpressure), keeping memory bounded. If the executor stops
-        // early (batch threshold reached or an error), the receiver is dropped when the scope
-        // ends, the prefetch thread's next `send` fails, and it exits promptly.
-        let prefetch_result: Result<(), StageError> = std::thread::scope(|scope| {
-            let (block_tx, block_rx) = std::sync::mpsc::sync_channel::<
-                ProviderResult<Option<RecoveredBlock<<E::Primitives as NodePrimitives>::Block>>>,
-            >(EXECUTION_FETCH_PIPELINE_DEPTH);
+            // we need the block's transactions but we don't need the transaction hashes
+            let block = provider
+                .recovered_block(block_number.into(), TransactionVariant::NoHash)?
+                .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
 
-            scope.spawn(move || {
-                for block_number in start_block..=max_block {
-                    let result =
-                        provider.recovered_block(block_number.into(), TransactionVariant::NoHash);
-                    if block_tx.send(result).is_err() {
-                        // Executor stopped consuming (batch threshold/error) - stop fetching.
-                        break
-                    }
-                }
-            });
+            fetch_block_duration += fetch_block_start.elapsed();
 
-            for block_number in start_block..=max_block {
-                // Fetch the block (comes from the prefetch thread above)
-                let fetch_block_start = Instant::now();
+            cumulative_gas += block.header().gas_used();
 
-                // we need the block's transactions but we don't need the transaction hashes
-                let block = block_rx
-                    .recv()
-                    .map_err(|_| {
-                        StageError::Fatal(Box::new(std::io::Error::other(
-                            "execution fetch pipeline thread terminated unexpectedly",
-                        )))
-                    })??
-                    .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
+            // Configure the executor to use the current state.
+            trace!(target: "sync::stages::execution", number = block_number, txs = block.body().transactions().len(), "Executing block");
 
-                fetch_block_duration += fetch_block_start.elapsed();
+            // Execute the block
+            let execute_start = Instant::now();
 
-                cumulative_gas += block.header().gas_used();
+            let result = self.metrics.metered_one(&block, |input| {
+                executor.execute_one(input).map_err(|error| StageError::Block {
+                    block: Box::new(block.block_with_parent()),
+                    error: BlockErrorKind::Execution(error),
+                })
+            })?;
 
-                // Configure the executor to use the current state.
-                trace!(target: "sync::stages::execution", number = block_number, txs = block.body().transactions().len(), "Executing block");
+            let built_bal = executor.take_bal().map(Bal::from);
+            if let Some(bal) = &built_bal &&
+                let Err(err) = bal.validate_gas_limit(block.header().gas_limit())
+            {
+                return Err(StageError::Block {
+                    block: Box::new(block.block_with_parent()),
+                    error: BlockErrorKind::Validation(err.into()),
+                })
+            }
+            let bal_hash = built_bal.as_ref().map(|bal| bal.compute_hash_with_buf(&mut bal_buf));
 
-                // Execute the block
-                let execute_start = Instant::now();
+            if let Err(err) =
+                self.consensus.validate_block_post_execution(&block, &result, None, bal_hash)
+            {
+                return Err(StageError::Block {
+                    block: Box::new(block.block_with_parent()),
+                    error: BlockErrorKind::Validation(err),
+                })
+            }
+            results.push(result);
 
-                let result = self.metrics.metered_one(&block, |input| {
-                    executor.execute_one(input).map_err(|error| StageError::Block {
-                        block: Box::new(block.block_with_parent()),
-                        error: BlockErrorKind::Execution(error),
-                    })
-                })?;
+            execution_duration += execute_start.elapsed();
 
-                if let Err(err) =
-                    self.consensus.validate_block_post_execution(&block, &result, None, None)
-                {
-                    return Err(StageError::Block {
-                        block: Box::new(block.block_with_parent()),
-                        error: BlockErrorKind::Validation(err),
-                    })
-                }
-                results.push(result);
+            // Log execution throughput
+            if last_log_instant.elapsed() >= log_duration {
+                info!(
+                    target: "sync::stages::execution",
+                    start = last_block,
+                    end = block_number,
+                    throughput = format_gas_throughput(cumulative_gas - last_cumulative_gas, execution_duration - last_execution_duration),
+                    "Executed block range"
+                );
 
-                execution_duration += execute_start.elapsed();
-
-                // Log execution throughput
-                if last_log_instant.elapsed() >= log_duration {
-                    info!(
-                        target: "sync::stages::execution",
-                        start = last_block,
-                        end = block_number,
-                        throughput = format_gas_throughput(cumulative_gas - last_cumulative_gas, execution_duration - last_execution_duration),
-                        "Executed block range"
-                    );
-
-                    last_block = block_number + 1;
-                    last_execution_duration = execution_duration;
-                    last_cumulative_gas = cumulative_gas;
-                    last_log_instant = Instant::now();
-                }
-
-                stage_progress = block_number;
-                stage_checkpoint.progress.processed += block.header().gas_used();
-
-                // If we have ExExes we need to save the block in memory for later
-                if self.exex_manager_handle.has_exexs() {
-                    blocks.push(block);
-                }
-
-                // Check if we should commit now
-                if self.thresholds.is_end_of_batch(
-                    block_number - start_block,
-                    executor.size_hint() as u64,
-                    cumulative_gas,
-                    batch_start.elapsed(),
-                ) {
-                    break
-                }
+                last_block = block_number + 1;
+                last_execution_duration = execution_duration;
+                last_cumulative_gas = cumulative_gas;
+                last_log_instant = Instant::now();
             }
 
-            Ok(())
-        });
-        prefetch_result?;
+            stage_progress = block_number;
+            stage_checkpoint.progress.processed += block.header().gas_used();
+
+            // If we have ExExes we need to save the block in memory for later
+            if self.exex_manager_handle.has_exexs() {
+                blocks.push(block);
+            }
+
+            // Check if we should commit now
+            if self.thresholds.is_end_of_batch(
+                block_number - start_block,
+                executor.size_hint() as u64,
+                cumulative_gas,
+                batch_start.elapsed(),
+            ) {
+                break
+            }
+        }
 
         // prepare execution output for writing
         let time = Instant::now();
-        let snapshots = executor.take_parlia_snapshots();
-        let mut state = ExecutionOutcome::from_blocks_with_snapshots(
+        let mut state = ExecutionOutcome::from_blocks(
             start_block,
             executor.into_state().take_bundle(),
             results,
-            snapshots,
         );
         let write_preparation_duration = time.elapsed();
 
@@ -471,30 +434,21 @@ where
             "Finished executing block range"
         );
 
-        // Prepare the input for post execute commit hook, where an `ExExNotification` will be sent.
-        //
-        // Note: Since we only write to `blocks` if there are any ExExes, we don't need to perform
-        // the `has_exexs` check here as well
-        if !blocks.is_empty() {
-            let previous_input = self.post_execute_commit_input.replace(Chain::new(
-                blocks,
-                state.clone(),
-                BTreeMap::new(),
-            ));
-
-            if previous_input.is_some() {
-                // Not processing the previous post execute commit input is a critical error, as it
-                // means that we didn't send the notification to ExExes
-                return Err(StageError::PostExecuteCommit(
-                    "Previous post execute commit input wasn't processed",
-                ))
-            }
-        }
+        // The ExEx notification must carry the outcome as executed, so a copy is only taken if the
+        // state is modified below before it is written.
+        let mut exex_state = None;
 
         let time = Instant::now();
 
         if self.can_prune_changesets(provider, start_block, max_block)? {
             let prune_modes = provider.prune_modes_ref();
+
+            if !blocks.is_empty() &&
+                prune_modes.account_history.is_some() &&
+                prune_modes.storage_history.is_some()
+            {
+                exex_state = Some(state.clone());
+            }
 
             // Iterate over all reverts and clear them if pruning is configured.
             for block_number in start_block..=max_block {
@@ -530,23 +484,25 @@ where
                 .ok_or_else(|| ProviderError::HeaderNotFound(start_block.into()))?;
 
             let path = provider.storage_path().join("preimage");
-            if provider.chain_spec().is_cancun_active_at_timestamp(start_header.timestamp()) {
-                // Post-Cancun: no more self-destructs, preimage db is no longer needed.
-                if path.exists() {
-                    let _ = std::fs::remove_dir_all(&path);
+            if !provider.chain_spec().is_cancun_active_at_timestamp(start_header.timestamp()) {
+                if !blocks.is_empty() && exex_state.is_none() {
+                    exex_state = Some(state.clone());
                 }
-            } else {
                 slot_preimages::inject_plain_wipe_slots(&path, provider, &mut state)?;
+            } else if path.exists() {
+                // Post-Cancun: no more self-destructs, preimage db is no longer needed.
+                let _ = std::fs::remove_dir_all(&path);
             }
         }
 
-        // write output
+        // Write output. When `use_hashed_state` is enabled, `write_state` skips writing to
+        // plain account/storage tables and only writes bytecodes and changesets. The hashed
+        // state is then written separately below.
         provider.write_state(&state, OriginalValuesKnown::Yes, StateWriteConfig::default())?;
 
-        // In storage.v2 hashed state is canonical, so keep it in sync with the plain-state
-        // changes written above. The hashing stages intentionally skip this work in that mode.
         if provider.cached_storage_settings().use_hashed_state() {
-            let hashed_state = state.hash_state_slow::<KeccakKeyHasher>();
+            let hashed_state =
+                LatestStateProviderRef::new(provider).hashed_post_state(&state.bundle)?;
             provider.write_hashed_state(&hashed_state.into_sorted())?;
         }
 
@@ -560,85 +516,23 @@ where
             "Execution time"
         );
 
-        if is_triedb_active() {
-            let merkle_time = Instant::now();
+        // Prepare the input for post execute commit hook, where an `ExExNotification` will be sent.
+        //
+        // Note: Since we only write to `blocks` if there are any ExExes, we don't need to perform
+        // the `has_exexs` check here as well
+        if !blocks.is_empty() {
+            let previous_input = self.post_execute_commit_input.replace(Chain::new(
+                blocks,
+                exex_state.unwrap_or(state),
+                BTreeMap::new(),
+            ));
 
-            let mut triedb = get_global_triedb();
-            let (latest_block_number, latest_state_root) =
-                triedb.latest_persist_state().map_err(|e| StageError::Fatal(Box::new(e)))?;
-
-            // Check for gap between triedb checkpoint and execution start block.
-            // If triedb is behind where we're starting execution, we can't compute
-            // correct state roots. Trigger an unwind to the triedb checkpoint.
-            if start_block > 0 && latest_block_number < start_block - 1 {
-                warn!(target: "sync::stages::execution",
-                    "TrieDB is behind execution stage: triedb_block={}, execution_start_block={}. \
-                    This indicates a gap that requires unwinding to triedb checkpoint.",
-                    latest_block_number, start_block);
-                return Err(StageError::TrieDBBehind {
-                    triedb_block: latest_block_number,
-                    execution_start_block: start_block,
-                });
-            }
-
-            if latest_block_number < stage_progress {
-                let root_hash = if start_block == 0 {
-                    alloy_trie::EMPTY_ROOT_HASH
-                } else {
-                    // latest_block_number == start_block - 1 (guaranteed by check above)
-                    // use the latest state root as parent for computing new states
-                    latest_state_root
-                };
-
-                let validate_root = if stage_progress == 0 {
-                    alloy_trie::EMPTY_ROOT_HASH
-                } else {
-                    let block_number = stage_progress;
-                    let block = provider
-                        .recovered_block(block_number.into(), TransactionVariant::NoHash)?
-                        .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
-                    block.header().state_root()
-                };
-
-                let hashed_post_state =
-                    HashedPostState::from_bundle_state::<KeccakKeyHasher>(state.bundle.state());
-                let triedb_hashed_post_state = hashed_post_state.to_triedb_hashed_post_state();
-
-                info!(target: "sync::stages::execution",
-                    "Begin update triedb, start={}, end={}, parent_root={:?}, target_root={:?}, accounts={}, storages={}",
-                    start_block,
-                    stage_progress,
-                    root_hash,
-                    validate_root,
-                    hashed_post_state.accounts.len(),
-                    hashed_post_state.storages.len(),
-                );
-
-                let (new_root, difflayer) = triedb
-                    .intermediate_and_commit_hashed_post_state(
-                        root_hash,
-                        None,
-                        &triedb_hashed_post_state,
-                        None,
-                    )
-                    .map_err(|e| StageError::Fatal(Box::new(e)))?;
-
-                if new_root != validate_root {
-                    return Err(StageError::Fatal(Box::new(ProviderError::Database(DatabaseError::Other(format!("execution update triedb, start={}, end={}, new_root({:?}) != validate_root({:?})", start_block, stage_progress, new_root, validate_root))))));
-                }
-                triedb
-                    .flush(stage_progress, new_root, &Some(difflayer))
-                    .map_err(|e| StageError::Fatal(Box::new(e)))?;
-
-                info!(target: "sync::stages::execution",
-                    "End update triedb, start={}, end={}, parent_root={:?}, validate_root={:?}, update_triedb_time={:?}",
-                    start_block,
-                    stage_progress,
-                    root_hash,
-                    validate_root,
-                    merkle_time.elapsed());
-            } else {
-                info!(target: "sync::stages::execution", "latest_block_number >= stage_progress skip update triedb, latest_block_number={}, stage_progress={}", latest_block_number, stage_progress);
+            if previous_input.is_some() {
+                // Not processing the previous post execute commit input is a critical error, as it
+                // means that we didn't send the notification to ExExes
+                return Err(StageError::PostExecuteCommit(
+                    "Previous post execute commit input wasn't processed",
+                ))
             }
         }
 
@@ -685,53 +579,6 @@ where
         //
         // This also updates `PlainStorageState` and `PlainAccountState`.
         let bundle_state_with_receipts = provider.take_state_above(unwind_to)?;
-
-        if is_triedb_active() {
-            let mut triedb = get_global_triedb();
-            let (latest_block_number, latest_state_root) =
-                triedb.latest_persist_state().map_err(|e| StageError::Fatal(Box::new(e)))?;
-
-            if latest_block_number > unwind_to {
-                let hashed_post_state = HashedPostState::from_bundle_state_to_unwind::<
-                    KeccakKeyHasher,
-                >(bundle_state_with_receipts.bundle.state());
-
-                let triedb_hashed_post_state = hashed_post_state.to_triedb_hashed_post_state();
-                let validate_root = if unwind_to == 0 {
-                    alloy_trie::EMPTY_ROOT_HASH
-                } else {
-                    let block_number = unwind_to;
-                    let block = provider
-                        .recovered_block(block_number.into(), TransactionVariant::NoHash)?
-                        .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
-                    block.header().state_root()
-                };
-
-                info!(target: "sync::stages::execution", "Begin unwind execution update triedb, latest_block_number={}, unwind_to={}, latest_state_root={:?}, target_root={:?}, accounts={}, storages={}", latest_block_number, unwind_to, latest_state_root, validate_root, hashed_post_state.accounts.len(), hashed_post_state.storages.len());
-                let (new_root, difflayer) = triedb
-                    .intermediate_and_commit_hashed_post_state(
-                        latest_state_root,
-                        None,
-                        &triedb_hashed_post_state,
-                        None,
-                    )
-                    .map_err(|e| StageError::Fatal(Box::new(e)))?;
-                info!(target: "sync::stages::execution", "End unwind execution update triedb, new_root={:?}, target_root={:?}", new_root, validate_root);
-
-                if new_root != validate_root {
-                    return Err(StageError::Fatal(Box::new(ProviderError::Database(DatabaseError::Other(format!("unwind execution update triedb, unwind_to={}, new_root({:?}) != validate_root({:?}), hashed_post_state={:?}", unwind_to, new_root, validate_root, hashed_post_state))))));
-                }
-
-                triedb
-                    .flush(latest_block_number, new_root, &Some(difflayer))
-                    .map_err(|e| StageError::Fatal(Box::new(e)))?;
-            } else {
-                warn!(
-                    "latest_block_number <= unwind_to, latest_triedb_block_number={}, unwind_to={}",
-                    latest_block_number, unwind_to
-                );
-            }
-        }
 
         // Prepare the input for post unwind commit hook, where an `ExExNotification` will be sent.
         if self.exex_manager_handle.has_exexs() {
@@ -930,7 +777,7 @@ mod tests {
     use alloy_primitives::{address, hex_literal::hex, keccak256, Address, B256, U256};
     use alloy_rlp::Decodable;
     use assert_matches::assert_matches;
-    use reth_chainspec::ChainSpecBuilder;
+    use reth_chainspec::{ChainSpecBuilder, EthereumHardfork, ForkCondition};
     use reth_db_api::{
         models::{metadata::StorageSettings, AccountBeforeTx},
         transaction::{DbTx, DbTxMut},
@@ -938,13 +785,15 @@ mod tests {
     use reth_ethereum_consensus::EthBeaconConsensus;
     use reth_ethereum_primitives::Block;
     use reth_evm_ethereum::EthEvmConfig;
-    use reth_primitives_traits::{Account, Bytecode, SealedBlock, StorageEntry};
+    use reth_primitives_traits::{Account, Block as _, Bytecode, SealedBlock, StorageEntry};
     use reth_provider::{
-        test_utils::create_test_provider_factory, AccountReader, BlockWriter,
-        DatabaseProviderFactory, ReceiptProvider, StaticFileProviderFactory,
+        test_utils::{create_test_provider_factory, create_test_provider_factory_with_chain_spec},
+        AccountReader, BlockWriter, DatabaseProviderFactory, ReceiptProvider,
+        StaticFileProviderFactory,
     };
     use reth_prune::PruneModes;
     use reth_prune_types::{PruneMode, ReceiptsLogPruneConfig};
+    use reth_revm::revm::database::{AccountStatus, BundleAccount};
     use reth_stages_api::StageUnitCheckpoint;
     use reth_testing_utils::generators;
     use std::collections::BTreeMap;
@@ -967,6 +816,49 @@ mod tests {
             MERKLE_STAGE_DEFAULT_REBUILD_THRESHOLD,
             ExExManagerHandle::empty(),
         )
+    }
+
+    #[test]
+    fn destroyed_storage_is_materialized_without_reverts() {
+        let factory = create_test_provider_factory();
+        let provider = factory.database_provider_rw().unwrap();
+        let address = Address::repeat_byte(0x11);
+        let hashed_address = keccak256(address);
+        let first_slot = B256::repeat_byte(0x22);
+        let second_slot = B256::repeat_byte(0x33);
+
+        provider
+            .tx_ref()
+            .put::<tables::HashedStorages>(
+                hashed_address,
+                StorageEntry { key: first_slot, value: U256::from(2) },
+            )
+            .unwrap();
+        provider
+            .tx_ref()
+            .put::<tables::HashedStorages>(
+                hashed_address,
+                StorageEntry { key: second_slot, value: U256::from(3) },
+            )
+            .unwrap();
+
+        let mut state = ExecutionOutcome::<()>::default();
+        state.bundle.state.insert(
+            address,
+            BundleAccount::new(
+                Some(Default::default()),
+                None,
+                Default::default(),
+                AccountStatus::Destroyed,
+            ),
+        );
+
+        let hashed_state = provider.latest().hashed_post_state(&state.bundle).unwrap();
+
+        let storage = &hashed_state.storages[&hashed_address];
+        assert_eq!(storage.storage[&first_slot], U256::ZERO);
+        assert_eq!(storage.storage[&second_slot], U256::ZERO);
+        assert!(state.bundle.reverts.is_empty());
     }
 
     #[test]
@@ -1147,16 +1039,13 @@ mod tests {
         db_tx
             .put::<tables::PlainAccountState>(
                 acc1,
-                Account { nonce: 0, balance: U256::ZERO, bytecode_hash: Some(code_hash) },
+                Account { bytecode_hash: Some(code_hash), ..Default::default() },
             )
             .unwrap();
         db_tx
-            .put::<tables::PlainAccountState>(
-                acc2,
-                Account { nonce: 0, balance, bytecode_hash: None },
-            )
+            .put::<tables::PlainAccountState>(acc2, Account { balance, ..Default::default() })
             .unwrap();
-        db_tx.put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.to_vec().into())).unwrap();
+        db_tx.put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.into())).unwrap();
         provider.commit().unwrap();
 
         // execute
@@ -1201,41 +1090,43 @@ mod tests {
                 done: true
             } if processed == total && total == block.gas_used);
 
-            let provider = factory.provider().unwrap();
+            {
+                let provider = factory.provider().unwrap();
 
-            // check post state
-            let account1 = address!("0x1000000000000000000000000000000000000000");
-            let account1_info =
-                Account { balance: U256::ZERO, nonce: 0x00, bytecode_hash: Some(code_hash) };
-            let account2 = address!("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
-            let account2_info = Account {
-                balance: U256::from(0x1bc16d674ece94bau128),
-                nonce: 0x00,
-                bytecode_hash: None,
-            };
-            let account3 = address!("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b");
-            let account3_info = Account {
-                balance: U256::from(0x3635c9adc5de996b46u128),
-                nonce: 0x01,
-                bytecode_hash: None,
-            };
+                // check post state
+                let account1 = address!("0x1000000000000000000000000000000000000000");
+                let account1_info =
+                    Account { bytecode_hash: Some(code_hash), ..Default::default() };
+                let account2 = address!("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
+                let account2_info =
+                    Account { balance: U256::from(0x1bc16d674ece94bau128), ..Default::default() };
+                let account3 = address!("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b");
+                let account3_info = Account {
+                    balance: U256::from(0x3635c9adc5de996b46u128),
+                    nonce: 0x01,
+                    ..Default::default()
+                };
 
-            // assert accounts
-            assert!(
-                matches!(provider.basic_account(&account1), Ok(Some(acc)) if acc == account1_info)
-            );
-            assert!(
-                matches!(provider.basic_account(&account2), Ok(Some(acc)) if acc == account2_info)
-            );
-            assert!(
-                matches!(provider.basic_account(&account3), Ok(Some(acc)) if acc == account3_info)
-            );
-            // assert storage
-            // Get on dupsort would return only first value. This is good enough for this test.
-            assert!(matches!(
-                provider.tx_ref().get::<tables::PlainStorageState>(account1),
-                Ok(Some(entry)) if entry.key == B256::with_last_byte(1) && entry.value == U256::from(2)
-            ));
+                // assert accounts
+                assert!(matches!(
+                    provider.basic_account(&account1),
+                    Ok(Some(acc)) if acc == account1_info
+                ));
+                assert!(matches!(
+                    provider.basic_account(&account2),
+                    Ok(Some(acc)) if acc == account2_info
+                ));
+                assert!(matches!(
+                    provider.basic_account(&account3),
+                    Ok(Some(acc)) if acc == account3_info
+                ));
+                // assert storage
+                // Get on dupsort would return only first value. This is good enough for this test.
+                assert!(matches!(
+                    provider.tx_ref().get::<tables::PlainStorageState>(account1),
+                    Ok(Some(entry)) if entry.key == B256::with_last_byte(1) && entry.value == U256::from(2)
+                ));
+            }
 
             let mut provider = factory.database_provider_rw().unwrap();
             let mut stage = stage();
@@ -1252,6 +1143,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::clone_on_copy)]
     async fn sanity_execute_unwind() {
         let factory = create_test_provider_factory();
         let provider = factory.provider_rw().unwrap();
@@ -1286,13 +1178,13 @@ mod tests {
 
         let db_tx = provider.tx_ref();
         let acc1 = address!("0x1000000000000000000000000000000000000000");
-        let acc1_info = Account { nonce: 0, balance: U256::ZERO, bytecode_hash: Some(code_hash) };
+        let acc1_info = Account { bytecode_hash: Some(code_hash), ..Default::default() };
         let acc2 = address!("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b");
-        let acc2_info = Account { nonce: 0, balance, bytecode_hash: None };
+        let acc2_info = Account { balance, ..Default::default() };
 
-        db_tx.put::<tables::PlainAccountState>(acc1, acc1_info).unwrap();
-        db_tx.put::<tables::PlainAccountState>(acc2, acc2_info).unwrap();
-        db_tx.put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.to_vec().into())).unwrap();
+        db_tx.put::<tables::PlainAccountState>(acc1, acc1_info.clone()).unwrap();
+        db_tx.put::<tables::PlainAccountState>(acc2, acc2_info.clone()).unwrap();
+        db_tx.put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.into())).unwrap();
         provider.commit().unwrap();
 
         // execute
@@ -1323,7 +1215,7 @@ mod tests {
             // Test Unwind
             provider = factory.database_provider_rw().unwrap();
             let mut stage = stage();
-            provider.set_prune_modes(mode.clone().unwrap_or_default());
+            provider.set_prune_modes(mode.unwrap_or_default());
 
             let result = stage
                 .unwind(
@@ -1361,7 +1253,77 @@ mod tests {
         }
     }
 
+    #[test]
+    fn unwind_from_cancun_to_pre_cancun_is_rejected() {
+        let chain_spec = Arc::new(
+            ChainSpecBuilder::mainnet()
+                .berlin_activated()
+                .with_fork(EthereumHardfork::Cancun, ForkCondition::Timestamp(15))
+                .build(),
+        );
+        let factory = create_test_provider_factory_with_chain_spec(chain_spec);
+        let provider = factory.database_provider_rw().unwrap();
+
+        let mut rng = generators::rng();
+        let mut genesis = generators::random_block(
+            &mut rng,
+            0,
+            generators::BlockParams { tx_count: Some(0), ..Default::default() },
+        )
+        .unseal();
+        genesis.header.timestamp = 0;
+        let genesis = genesis.seal_slow();
+
+        let mut block_1 = generators::random_block(
+            &mut rng,
+            1,
+            generators::BlockParams {
+                parent: Some(genesis.hash()),
+                tx_count: Some(0),
+                ..Default::default()
+            },
+        )
+        .unseal();
+        block_1.header.timestamp = 10;
+        let block_1 = block_1.seal_slow();
+
+        let mut block_2 = generators::random_block(
+            &mut rng,
+            2,
+            generators::BlockParams {
+                parent: Some(block_1.hash()),
+                tx_count: Some(0),
+                ..Default::default()
+            },
+        )
+        .unseal();
+        block_2.header.timestamp = 20;
+        let block_2 = block_2.seal_slow();
+
+        provider.insert_block(&genesis.try_recover().unwrap()).unwrap();
+        provider.insert_block(&block_1.try_recover().unwrap()).unwrap();
+        provider.insert_block(&block_2.try_recover().unwrap()).unwrap();
+        provider
+            .static_file_provider()
+            .latest_writer(StaticFileSegment::Headers)
+            .unwrap()
+            .commit()
+            .unwrap();
+
+        let mut execution_stage = stage();
+        let err = execution_stage
+            .unwind(
+                &provider,
+                UnwindInput { checkpoint: StageCheckpoint::new(2), unwind_to: 1, bad_block: None },
+            )
+            .unwrap_err();
+
+        assert_matches!(err, StageError::Fatal(_));
+        assert!(err.to_string().contains("across Cancun activation boundary"));
+    }
+
     #[tokio::test]
+    #[allow(clippy::clone_on_copy)]
     async fn test_selfdestruct() {
         let test_db = TestStageDB::default();
         let provider = test_db.factory.database_provider_rw().unwrap();
@@ -1397,20 +1359,22 @@ mod tests {
         let code_hash = keccak256(code);
 
         // pre state
-        let caller_info = Account { nonce: 0, balance, bytecode_hash: None };
-        let destroyed_info =
-            Account { nonce: 0, balance: U256::ZERO, bytecode_hash: Some(code_hash) };
+        let caller_info = Account { balance, ..Default::default() };
+        let destroyed_info = Account { bytecode_hash: Some(code_hash), ..Default::default() };
 
         // set account
         let provider = test_db.factory.provider_rw().unwrap();
-        provider.tx_ref().put::<tables::PlainAccountState>(caller_address, caller_info).unwrap();
         provider
             .tx_ref()
-            .put::<tables::PlainAccountState>(destroyed_address, destroyed_info)
+            .put::<tables::PlainAccountState>(caller_address, caller_info.clone())
             .unwrap();
         provider
             .tx_ref()
-            .put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.to_vec().into()))
+            .put::<tables::PlainAccountState>(destroyed_address, destroyed_info.clone())
+            .unwrap();
+        provider
+            .tx_ref()
+            .put::<tables::Bytecodes>(code_hash, Bytecode::new_raw(code.into()))
             .unwrap();
         // set storage to check when account gets destroyed.
         provider
@@ -1424,7 +1388,7 @@ mod tests {
             .tx_ref()
             .put::<tables::PlainStorageState>(
                 destroyed_address,
-                StorageEntry { key: B256::with_last_byte(1), value: U256::from(1u64) },
+                StorageEntry { key: B256::with_last_byte(1), value: U256::ONE },
             )
             .unwrap();
 
@@ -1454,18 +1418,14 @@ mod tests {
             vec![
                 (
                     beneficiary_address,
-                    Account {
-                        nonce: 0,
-                        balance: U256::from(0x1bc16d674eca30a0u64),
-                        bytecode_hash: None
-                    }
+                    Account { balance: U256::from(0x1bc16d674eca30a0u64), ..Default::default() }
                 ),
                 (
                     caller_address,
                     Account {
                         nonce: 1,
                         balance: U256::from(0xde0b6b3a761cf60u64),
-                        bytecode_hash: None
+                        ..Default::default()
                     }
                 )
             ]
@@ -1499,7 +1459,7 @@ mod tests {
                 ),
                 (
                     (block.number, destroyed_address).into(),
-                    StorageEntry { key: B256::with_last_byte(1), value: U256::from(1u64) }
+                    StorageEntry { key: B256::with_last_byte(1), value: U256::ONE }
                 )
             ]
         );
@@ -1512,9 +1472,7 @@ mod tests {
         // but no receipt data is written.
 
         let factory = create_test_provider_factory();
-        factory.set_storage_settings_cache(
-            StorageSettings::legacy().with_receipts_in_static_files(true),
-        );
+        factory.set_storage_settings_cache(StorageSettings::v2());
 
         // Setup with block 1
         let provider_rw = factory.database_provider_rw().unwrap();

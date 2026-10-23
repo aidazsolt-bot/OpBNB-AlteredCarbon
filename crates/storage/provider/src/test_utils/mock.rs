@@ -1,40 +1,44 @@
 use crate::{
     traits::{BlockSource, ReceiptProvider},
-    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
-    ChainSpecProvider, ChangeSetReader, HeaderProvider, PruneCheckpointReader,
-    ReceiptProviderIdExt, StateProvider, StateProviderBox, StateProviderFactory, StateReader,
-    StateRootProvider, TransactionVariant, TransactionsProvider,
+    AccountReader, BalProvider, BalStoreHandle, BlockHashReader, BlockIdReader, BlockNumReader,
+    BlockReader, BlockReaderIdExt, ChainSpecProvider, ChangeSetReader, HeaderProvider,
+    PruneCheckpointReader, RangeEnd, RangeResponse, RangeResult, ReceiptProviderIdExt,
+    StateProvider, StateProviderBox, StateProviderFactory, StateRangeProvider,
+    StateRangeProviderFactory, StateRangeView, StateReader, StateRootProvider, StorageRangeResult,
+    TransactionVariant, TransactionsProvider,
 };
 use alloy_consensus::{
     constants::EMPTY_ROOT_HASH,
     transaction::{TransactionMeta, TxHashRef},
     BlockHeader,
 };
-use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
+use alloy_eips::{BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag};
 use alloy_primitives::{
-    keccak256, map::HashMap, Address, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue,
-    TxHash, TxNumber, B256, U256,
+    keccak256,
+    map::{AddressMap, B256Map, HashMap},
+    Address, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber, B256, U256,
 };
 use parking_lot::Mutex;
-use reth_chain_state::{CanonStateNotifications, CanonStateSubscriptions};
+use reth_chain_state::{CanonStateNotifications, CanonStateSubscriptions, ExecutedBlock};
 use reth_chainspec::{ChainInfo, EthChainSpec};
 use reth_db::transaction::DbTx;
 use reth_db_api::{
     mock::{DatabaseMock, TxMock},
-    models::{AccountBeforeTx, StoredBlockBodyIndices},
+    models::{AccountBeforeTx, StorageSettings, StoredBlockBodyIndices},
 };
 use reth_ethereum_primitives::EthPrimitives;
-use reth_execution_types::ExecutionOutcome;
+use reth_execution_types::{ExecutionOutcome, RecoveredBlockAndExecutionOutput};
 use reth_primitives_traits::{
     Account, Block, BlockBody, Bytecode, GotExpected, NodePrimitives, RecoveredBlock, SealedHeader,
-    SignerRecoverable,
+    SignerRecoverable, StorageEntry,
 };
 use reth_prune_types::{PruneCheckpoint, PruneModes, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_api::{
-    BlockBodyIndicesProvider, BytecodeReader, DBProvider, DatabaseProviderFactory,
-    HashedPostStateProvider, NodePrimitivesProvider, StageCheckpointReader, StateProofProvider,
-    StorageRootProvider,
+    BlockBodyIndicesProvider, BytecodeReader, DBProvider, DatabaseProviderFactory, DbTxProvider,
+    HashedPostStateProvider, HistoryInfo, HistoryReader, NodePrimitivesProvider,
+    StageCheckpointReader, StateProofProvider, StorageChangeSetReader, StorageRootProvider,
+    StorageSettingsCache,
 };
 use reth_storage_errors::provider::{ConsistentViewError, ProviderError, ProviderResult};
 use reth_trie::{
@@ -42,10 +46,13 @@ use reth_trie::{
     MultiProofTargets, StorageMultiProof, StorageProof, TrieInput,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     fmt::Debug,
     ops::{RangeBounds, RangeInclusive},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::broadcast;
 
@@ -54,22 +61,63 @@ use tokio::sync::broadcast;
 pub struct MockEthProvider<T: NodePrimitives = EthPrimitives, ChainSpec = reth_chainspec::ChainSpec>
 {
     ///local block store
-    pub blocks: Arc<Mutex<HashMap<B256, T::Block>>>,
+    pub blocks: Arc<Mutex<B256Map<T::Block>>>,
     /// Local header store
-    pub headers: Arc<Mutex<HashMap<B256, <T::Block as Block>::Header>>>,
+    pub headers: Arc<Mutex<B256Map<<T::Block as Block>::Header>>>,
     /// Local receipt store indexed by block number
     pub receipts: Arc<Mutex<HashMap<BlockNumber, Vec<T::Receipt>>>>,
     /// Local account store
-    pub accounts: Arc<Mutex<HashMap<Address, ExtendedAccount>>>,
+    pub accounts: Arc<Mutex<AddressMap<ExtendedAccount>>>,
     /// Local chain spec
     pub chain_spec: Arc<ChainSpec>,
     /// Local state roots
     pub state_roots: Arc<Mutex<Vec<B256>>>,
     /// Local block body indices store
     pub block_body_indices: Arc<Mutex<HashMap<BlockNumber, StoredBlockBodyIndices>>>,
+    /// Local stage checkpoints
+    stage_checkpoints: Arc<Mutex<HashMap<StageId, StageCheckpoint>>>,
+    /// The engine's pending block, if any
+    pending_block_num_hash: Arc<Mutex<Option<BlockNumHash>>>,
+    /// Local BAL store handle
+    pub bal_store: BalStoreHandle,
+    /// Whether database provider creation succeeds.
+    database_provider_available: Arc<AtomicBool>,
+    /// Whether snap state reads should fail for handler error-path tests.
+    snap_state_reads_fail: Arc<AtomicBool>,
+    /// Whether a snap state range view is available.
+    snap_state_range_available: Arc<AtomicBool>,
+    /// Number of snap state range view resolutions.
+    snap_state_range_resolutions: Arc<AtomicUsize>,
+    /// Account range returned to snap handler tests.
+    snap_account_range: Arc<Mutex<MockAccountRange>>,
+    /// Storage roots returned to snap handler tests, keyed by hashed address.
+    snap_storage_roots: Arc<Mutex<B256Map<B256>>>,
+    /// Storage ranges returned to snap handler tests.
+    snap_storage_ranges: Arc<Mutex<VecDeque<MockStorageRangeOutcome>>>,
+    /// Storage range requests observed by snap handler tests.
+    snap_storage_range_requests: Arc<Mutex<Vec<MockStorageRangeRequest>>>,
+    /// Account proof returned to snap handler tests.
+    snap_account_proof: Arc<Mutex<Option<Vec<Bytes>>>>,
+    /// Storage proof returned to snap handler tests.
+    snap_storage_proof: Arc<Mutex<Option<Vec<Bytes>>>>,
     tx: TxMock,
     prune_modes: Arc<PruneModes>,
 }
+
+/// Optional mock account entries paired with why the range ended.
+type MockAccountRange = Option<(Vec<(B256, Account)>, RangeEnd)>;
+/// Outcome of a queued mock `storage_range` call.
+#[derive(Debug, Clone)]
+enum MockStorageRangeOutcome {
+    /// The provider fails this call (e.g. simulating a database error).
+    Error,
+    /// The requested account isn't present in the pinned state.
+    AccountMissing,
+    /// The account is present; these are its slots and why the range ended.
+    Found(Vec<(B256, U256)>, RangeEnd),
+}
+/// Hashed address, origin, limit, and byte budget of a mock storage range request.
+type MockStorageRangeRequest = (B256, B256, B256, usize);
 
 impl<T: NodePrimitives, ChainSpec> Clone for MockEthProvider<T, ChainSpec>
 where
@@ -84,6 +132,19 @@ where
             chain_spec: self.chain_spec.clone(),
             state_roots: self.state_roots.clone(),
             block_body_indices: self.block_body_indices.clone(),
+            stage_checkpoints: self.stage_checkpoints.clone(),
+            pending_block_num_hash: self.pending_block_num_hash.clone(),
+            bal_store: self.bal_store.clone(),
+            database_provider_available: self.database_provider_available.clone(),
+            snap_state_reads_fail: self.snap_state_reads_fail.clone(),
+            snap_state_range_available: self.snap_state_range_available.clone(),
+            snap_state_range_resolutions: self.snap_state_range_resolutions.clone(),
+            snap_account_range: self.snap_account_range.clone(),
+            snap_storage_roots: self.snap_storage_roots.clone(),
+            snap_storage_ranges: self.snap_storage_ranges.clone(),
+            snap_storage_range_requests: self.snap_storage_range_requests.clone(),
+            snap_account_proof: self.snap_account_proof.clone(),
+            snap_storage_proof: self.snap_storage_proof.clone(),
             tx: self.tx.clone(),
             prune_modes: self.prune_modes.clone(),
         }
@@ -101,6 +162,19 @@ impl<T: NodePrimitives> MockEthProvider<T, reth_chainspec::ChainSpec> {
             chain_spec: Arc::new(reth_chainspec::ChainSpecBuilder::mainnet().build()),
             state_roots: Default::default(),
             block_body_indices: Default::default(),
+            stage_checkpoints: Default::default(),
+            pending_block_num_hash: Default::default(),
+            bal_store: Default::default(),
+            database_provider_available: Default::default(),
+            snap_state_reads_fail: Default::default(),
+            snap_state_range_available: Default::default(),
+            snap_state_range_resolutions: Default::default(),
+            snap_account_range: Default::default(),
+            snap_storage_roots: Default::default(),
+            snap_storage_ranges: Default::default(),
+            snap_storage_range_requests: Default::default(),
+            snap_account_proof: Default::default(),
+            snap_storage_proof: Default::default(),
             tx: Default::default(),
             prune_modes: Default::default(),
         }
@@ -108,6 +182,77 @@ impl<T: NodePrimitives> MockEthProvider<T, reth_chainspec::ChainSpec> {
 }
 
 impl<T: NodePrimitives, ChainSpec> MockEthProvider<T, ChainSpec> {
+    /// Allows database provider creation to return this mock.
+    pub fn enable_database_provider(&self) {
+        self.database_provider_available.store(true, Ordering::Relaxed);
+    }
+
+    /// Makes snap state reads return provider errors when `fail` is true.
+    pub fn set_snap_state_reads_fail(&self, fail: bool) {
+        self.snap_state_reads_fail.store(fail, Ordering::Relaxed);
+    }
+
+    /// Sets the available account range returned to snap handler tests.
+    pub fn set_snap_account_range(&self, accounts: Vec<(B256, Account)>, end: RangeEnd) {
+        self.snap_state_range_available.store(true, Ordering::Relaxed);
+        *self.snap_account_range.lock() = Some((accounts, end));
+    }
+
+    /// Sets an account's storage root for snap handler tests.
+    pub fn set_snap_storage_root(&self, hashed_address: B256, storage_root: B256) {
+        self.snap_storage_roots.lock().insert(hashed_address, storage_root);
+    }
+
+    /// Adds an available storage range for the next snap handler call.
+    pub fn push_snap_storage_range(&self, slots: Vec<(B256, U256)>, end: RangeEnd) {
+        self.snap_state_range_available.store(true, Ordering::Relaxed);
+        self.snap_storage_ranges.lock().push_back(MockStorageRangeOutcome::Found(slots, end));
+    }
+
+    /// Marks the account for the next snap handler call as absent from the pinned state.
+    pub fn push_missing_snap_storage_account(&self) {
+        self.snap_state_range_available.store(true, Ordering::Relaxed);
+        self.snap_storage_ranges.lock().push_back(MockStorageRangeOutcome::AccountMissing);
+    }
+
+    /// Adds an unavailable storage range for the next snap handler call.
+    pub fn push_unavailable_snap_storage_range(&self) {
+        self.snap_state_range_available.store(true, Ordering::Relaxed);
+        self.snap_storage_ranges.lock().push_back(MockStorageRangeOutcome::Error);
+    }
+
+    /// Returns the number of queued storage ranges for snap handler tests.
+    pub fn snap_storage_ranges_remaining(&self) -> usize {
+        self.snap_storage_ranges.lock().len()
+    }
+
+    /// Returns the storage range requests observed by snap handler tests.
+    pub fn snap_storage_range_requests(&self) -> Vec<(B256, B256, B256, usize)> {
+        self.snap_storage_range_requests.lock().clone()
+    }
+
+    /// Returns the number of snap state range view resolutions.
+    pub fn snap_state_range_resolutions(&self) -> usize {
+        self.snap_state_range_resolutions.load(Ordering::Relaxed)
+    }
+
+    /// Sets the account proof returned to snap handler tests.
+    pub fn set_snap_account_proof(&self, proof: Option<Vec<Bytes>>) {
+        *self.snap_account_proof.lock() = proof;
+    }
+
+    /// Sets the storage proof returned to snap handler tests.
+    pub fn set_snap_storage_proof(&self, proof: Option<Vec<Bytes>>) {
+        *self.snap_storage_proof.lock() = proof;
+    }
+
+    fn ensure_snap_state_reads_succeed(&self) -> ProviderResult<()> {
+        if self.snap_state_reads_fail.load(Ordering::Relaxed) {
+            return Err(ProviderError::BestBlockNotFound)
+        }
+        Ok(())
+    }
+
     /// Add block to local block store
     pub fn add_block(&self, hash: B256, block: T::Block) {
         self.add_header(hash, block.header().clone());
@@ -169,6 +314,16 @@ impl<T: NodePrimitives, ChainSpec> MockEthProvider<T, ChainSpec> {
         self.block_body_indices.lock().insert(block_number, indices);
     }
 
+    /// Adds a stage checkpoint to the local store.
+    pub fn add_stage_checkpoint(&self, id: StageId, checkpoint: StageCheckpoint) {
+        self.stage_checkpoints.lock().insert(id, checkpoint);
+    }
+
+    /// Sets the pending block the engine holds
+    pub fn set_pending_block_num_hash(&self, num_hash: Option<BlockNumHash>) {
+        *self.pending_block_num_hash.lock() = num_hash;
+    }
+
     /// Add state root to local state root store
     pub fn add_state_root(&self, state_root: B256) {
         self.state_roots.lock().push(state_root);
@@ -184,15 +339,125 @@ impl<T: NodePrimitives, ChainSpec> MockEthProvider<T, ChainSpec> {
             chain_spec: Arc::new(chain_spec),
             state_roots: self.state_roots,
             block_body_indices: self.block_body_indices,
+            stage_checkpoints: self.stage_checkpoints,
+            pending_block_num_hash: self.pending_block_num_hash,
+            bal_store: self.bal_store,
+            database_provider_available: self.database_provider_available,
+            snap_state_reads_fail: self.snap_state_reads_fail,
+            snap_state_range_available: self.snap_state_range_available,
+            snap_state_range_resolutions: self.snap_state_range_resolutions,
+            snap_account_range: self.snap_account_range,
+            snap_storage_roots: self.snap_storage_roots,
+            snap_storage_ranges: self.snap_storage_ranges,
+            snap_storage_range_requests: self.snap_storage_range_requests,
+            snap_account_proof: self.snap_account_proof,
+            snap_storage_proof: self.snap_storage_proof,
             tx: self.tx,
             prune_modes: self.prune_modes,
         }
+    }
+
+    /// Adds the genesis block from the chain spec to the provider.
+    ///
+    /// This is useful for tests that require a valid latest block (e.g., transaction validation).
+    pub fn with_genesis_block(self) -> Self
+    where
+        ChainSpec: EthChainSpec<Header = <T::Block as Block>::Header>,
+        <T::Block as Block>::Body: Default,
+    {
+        let genesis_hash = self.chain_spec.genesis_hash();
+        let genesis_header = self.chain_spec.genesis_header().clone();
+        let genesis_block = T::Block::new(genesis_header, Default::default());
+        self.add_block(genesis_hash, genesis_block);
+        self
     }
 }
 
 impl Default for MockEthProvider {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T: NodePrimitives, ChainSpec> BalProvider for MockEthProvider<T, ChainSpec> {
+    fn bal_store(&self) -> &BalStoreHandle {
+        &self.bal_store
+    }
+}
+
+impl<T, ChainSpec> StateRangeProviderFactory for MockEthProvider<T, ChainSpec>
+where
+    T: NodePrimitives,
+    T::Block: Clone,
+    ChainSpec: Send + Sync + 'static,
+{
+    fn state_range_provider(&self, _state_root: B256) -> ProviderResult<Option<StateRangeView>> {
+        self.snap_state_range_resolutions.fetch_add(1, Ordering::Relaxed);
+        self.ensure_snap_state_reads_succeed()?;
+        if !self.snap_state_range_available.load(Ordering::Relaxed) {
+            return Ok(None)
+        }
+        Ok(Some(Box::new(self.clone())))
+    }
+}
+
+impl<T: NodePrimitives, ChainSpec> StateRangeProvider for MockEthProvider<T, ChainSpec> {
+    fn account_range(
+        &self,
+        _start: B256,
+        _limit: B256,
+        _response_bytes: usize,
+    ) -> RangeResult<(B256, Account)> {
+        self.ensure_snap_state_reads_succeed()?;
+        let (items, end) =
+            self.snap_account_range.lock().clone().ok_or(ProviderError::BestBlockNotFound)?;
+        Ok(RangeResponse { items, end })
+    }
+
+    fn storage_root_by_hash(&self, hashed_address: B256) -> ProviderResult<B256> {
+        self.ensure_snap_state_reads_succeed()?;
+        self.snap_storage_roots
+            .lock()
+            .get(&hashed_address)
+            .copied()
+            .ok_or(ProviderError::BestBlockNotFound)
+    }
+
+    fn storage_range(
+        &self,
+        hashed_address: B256,
+        start: B256,
+        limit: B256,
+        response_bytes: usize,
+    ) -> StorageRangeResult {
+        self.ensure_snap_state_reads_succeed()?;
+        self.snap_storage_range_requests.lock().push((
+            hashed_address,
+            start,
+            limit,
+            response_bytes,
+        ));
+        let outcome =
+            self.snap_storage_ranges.lock().pop_front().ok_or(ProviderError::BestBlockNotFound)?;
+        match outcome {
+            MockStorageRangeOutcome::Error => Err(ProviderError::BestBlockNotFound),
+            MockStorageRangeOutcome::AccountMissing => Ok(None),
+            MockStorageRangeOutcome::Found(items, end) => Ok(Some(RangeResponse { items, end })),
+        }
+    }
+
+    fn account_range_proof(&self, _keys: &[B256]) -> ProviderResult<Vec<Bytes>> {
+        self.ensure_snap_state_reads_succeed()?;
+        self.snap_account_proof.lock().clone().ok_or(ProviderError::BestBlockNotFound)
+    }
+
+    fn storage_range_proof(
+        &self,
+        _hashed_address: B256,
+        _keys: &[B256],
+    ) -> ProviderResult<Vec<Bytes>> {
+        self.ensure_snap_state_reads_succeed()?;
+        self.snap_storage_proof.lock().clone().ok_or(ProviderError::BestBlockNotFound)
     }
 }
 
@@ -208,7 +473,7 @@ impl ExtendedAccount {
     /// Create new instance of extended account
     pub fn new(nonce: u64, balance: U256) -> Self {
         Self {
-            account: Account { nonce, balance, bytecode_hash: None },
+            account: Account { nonce, balance, ..Default::default() },
             bytecode: None,
             storage: Default::default(),
         }
@@ -231,6 +496,16 @@ impl ExtendedAccount {
         self.storage.extend(storage);
         self
     }
+
+    /// Sets the account extension.
+    #[cfg(feature = "account-ext")]
+    pub fn with_extension(
+        mut self,
+        extension: impl Into<reth_primitives_traits::AccountExtension>,
+    ) -> Self {
+        self.account.extension = extension.into();
+        self
+    }
 }
 
 impl<T: NodePrimitives, ChainSpec: EthChainSpec + Clone + 'static> DatabaseProviderFactory
@@ -241,23 +516,58 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + Clone + 'static> DatabaseProvi
     type ProviderRW = Self;
 
     fn database_provider_ro(&self) -> ProviderResult<Self::Provider> {
-        Err(ConsistentViewError::Syncing { best_block: GotExpected::new(0, 0) }.into())
+        if self.database_provider_available.load(Ordering::Relaxed) {
+            Ok(self.clone())
+        } else {
+            Err(ConsistentViewError::Syncing { best_block: GotExpected::new(0, 0) }.into())
+        }
     }
 
     fn database_provider_rw(&self) -> ProviderResult<Self::ProviderRW> {
-        Err(ConsistentViewError::Syncing { best_block: GotExpected::new(0, 0) }.into())
+        if self.database_provider_available.load(Ordering::Relaxed) {
+            Ok(self.clone())
+        } else {
+            Err(ConsistentViewError::Syncing { best_block: GotExpected::new(0, 0) }.into())
+        }
+    }
+}
+
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> HistoryReader
+    for MockEthProvider<T, ChainSpec>
+{
+    fn account_history_info(
+        &self,
+        _address: Address,
+        _block_number: BlockNumber,
+        _lowest_available_block_number: Option<BlockNumber>,
+    ) -> ProviderResult<HistoryInfo> {
+        Ok(HistoryInfo::InPlainState)
+    }
+
+    fn storage_history_info(
+        &self,
+        _address: Address,
+        _storage_key: B256,
+        _block_number: BlockNumber,
+        _lowest_available_block_number: Option<BlockNumber>,
+    ) -> ProviderResult<HistoryInfo> {
+        Ok(HistoryInfo::InPlainState)
+    }
+}
+
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> DbTxProvider
+    for MockEthProvider<T, ChainSpec>
+{
+    type Tx = TxMock;
+
+    fn tx(&self) -> &Self::Tx {
+        &self.tx
     }
 }
 
 impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> DBProvider
     for MockEthProvider<T, ChainSpec>
 {
-    type Tx = TxMock;
-
-    fn tx_ref(&self) -> &Self::Tx {
-        &self.tx
-    }
-
     fn tx_mut(&mut self) -> &mut Self::Tx {
         &mut self.tx
     }
@@ -275,7 +585,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> DBProvider
     }
 }
 
-impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> HeaderProvider
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> HeaderProvider
     for MockEthProvider<T, ChainSpec>
 {
     type Header = <T::Block as Block>::Header;
@@ -327,7 +637,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> HeaderP
 impl<T, ChainSpec> ChainSpecProvider for MockEthProvider<T, ChainSpec>
 where
     T: NodePrimitives,
-    ChainSpec: EthChainSpec + 'static + Debug + Send + Sync,
+    ChainSpec: EthChainSpec + 'static,
 {
     type ChainSpec = ChainSpec;
 
@@ -414,7 +724,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> TransactionsProvider
     ) -> ProviderResult<Vec<Vec<Self::Transaction>>> {
         // init btreemap so we can return in order
         let mut map = BTreeMap::new();
-        for (_, block) in self.blocks.lock().iter() {
+        for block in self.blocks.lock().values() {
             if range.contains(&block.header().number()) {
                 map.insert(block.header().number(), block.body().clone_transactions());
             }
@@ -595,11 +905,11 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync + 'static> BlockNumReader
     }
 }
 
-impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> BlockIdReader
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> BlockIdReader
     for MockEthProvider<T, ChainSpec>
 {
     fn pending_block_num_hash(&self) -> ProviderResult<Option<alloy_eips::BlockNumHash>> {
-        Ok(None)
+        Ok(*self.pending_block_num_hash.lock())
     }
 
     fn safe_block_num_hash(&self) -> ProviderResult<Option<alloy_eips::BlockNumHash>> {
@@ -612,7 +922,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> BlockId
 }
 
 //look
-impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> BlockReader
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> BlockReader
     for MockEthProvider<T, ChainSpec>
 {
     type Block = T::Block;
@@ -635,30 +945,32 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> BlockRe
         }
     }
 
-    fn pending_block(&self) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
+    fn pending_block(&self) -> ProviderResult<Option<Arc<RecoveredBlock<Self::Block>>>> {
         Ok(None)
     }
 
     fn pending_block_and_receipts(
         &self,
-    ) -> ProviderResult<Option<(RecoveredBlock<Self::Block>, Vec<T::Receipt>)>> {
+    ) -> ProviderResult<Option<RecoveredBlockAndExecutionOutput<Self::Block, T::Receipt>>> {
         Ok(None)
     }
 
     fn recovered_block(
         &self,
-        _id: BlockHashOrNumber,
+        id: BlockHashOrNumber,
         _transaction_kind: TransactionVariant,
     ) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
-        Ok(None)
+        self.block(id)?
+            .map(|block| block.try_into_recovered().map_err(ProviderError::other))
+            .transpose()
     }
 
     fn sealed_block_with_senders(
         &self,
-        _id: BlockHashOrNumber,
-        _transaction_kind: TransactionVariant,
+        id: BlockHashOrNumber,
+        transaction_kind: TransactionVariant,
     ) -> ProviderResult<Option<RecoveredBlock<Self::Block>>> {
-        Ok(None)
+        self.recovered_block(id, transaction_kind)
     }
 
     fn block_range(&self, range: RangeInclusive<BlockNumber>) -> ProviderResult<Vec<Self::Block>> {
@@ -695,7 +1007,7 @@ impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> BlockRe
 
 impl<T, ChainSpec> BlockReaderIdExt for MockEthProvider<T, ChainSpec>
 where
-    ChainSpec: EthChainSpec + Send + Sync + 'static,
+    ChainSpec: EthChainSpec + 'static,
     T: NodePrimitives,
 {
     fn block_by_id(&self, id: BlockId) -> ProviderResult<Option<T::Block>> {
@@ -718,13 +1030,6 @@ where
             Some(block) => Ok(Some(block.into_header())),
         }
     }
-
-    fn ommers_by_id(
-        &self,
-        _id: BlockId,
-    ) -> ProviderResult<Option<Vec<<T::Block as Block>::Header>>> {
-        Ok(None)
-    }
 }
 
 impl<T: NodePrimitives, ChainSpec: Send + Sync> AccountReader for MockEthProvider<T, ChainSpec> {
@@ -736,8 +1041,8 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync> AccountReader for MockEthProvide
 impl<T: NodePrimitives, ChainSpec: Send + Sync> StageCheckpointReader
     for MockEthProvider<T, ChainSpec>
 {
-    fn get_stage_checkpoint(&self, _id: StageId) -> ProviderResult<Option<StageCheckpoint>> {
-        Ok(None)
+    fn get_stage_checkpoint(&self, id: StageId) -> ProviderResult<Option<StageCheckpoint>> {
+        Ok(self.stage_checkpoints.lock().get(&id).copied())
     }
 
     fn get_stage_checkpoint_progress(&self, _id: StageId) -> ProviderResult<Option<Vec<u8>>> {
@@ -745,7 +1050,12 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync> StageCheckpointReader
     }
 
     fn get_all_checkpoints(&self) -> ProviderResult<Vec<(String, StageCheckpoint)>> {
-        Ok(vec![])
+        Ok(self
+            .stage_checkpoints
+            .lock()
+            .iter()
+            .map(|(id, checkpoint)| (id.to_string(), *checkpoint))
+            .collect())
     }
 }
 
@@ -848,6 +1158,14 @@ where
         Ok(MultiProof::default())
     }
 
+    fn multiproof_v2(
+        &self,
+        _targets: reth_trie::MultiProofTargetsV2,
+        _requires_masks: bool,
+    ) -> ProviderResult<reth_trie::DecodedMultiProofV2> {
+        Ok(reth_trie::DecodedMultiProofV2::default())
+    }
+
     fn witness(
         &self,
         _input: TrieInput,
@@ -861,15 +1179,18 @@ where
 impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> HashedPostStateProvider
     for MockEthProvider<T, ChainSpec>
 {
-    fn hashed_post_state(&self, _state: &revm::database::BundleState) -> HashedPostState {
-        HashedPostState::default()
+    fn hashed_post_state(
+        &self,
+        _bundle_state: &revm::database::BundleState,
+    ) -> ProviderResult<HashedPostState> {
+        Ok(HashedPostState::default())
     }
 }
 
 impl<T, ChainSpec> StateProvider for MockEthProvider<T, ChainSpec>
 where
     T: NodePrimitives,
-    ChainSpec: EthChainSpec + Send + Sync + 'static,
+    ChainSpec: EthChainSpec + 'static,
 {
     fn storage(
         &self,
@@ -899,11 +1220,32 @@ where
     }
 }
 
-impl<T: NodePrimitives, ChainSpec: EthChainSpec + Send + Sync + 'static> StateProviderFactory
+impl<T: NodePrimitives, ChainSpec: Send + Sync> StorageSettingsCache
     for MockEthProvider<T, ChainSpec>
 {
+    fn cached_storage_settings(&self) -> StorageSettings {
+        StorageSettings::default()
+    }
+
+    fn set_storage_settings_cache(&self, _settings: StorageSettings) {}
+}
+
+impl<T: NodePrimitives, ChainSpec: EthChainSpec + 'static> StateProviderFactory
+    for MockEthProvider<T, ChainSpec>
+{
+    type Primitives = T;
+
     fn latest(&self) -> ProviderResult<StateProviderBox> {
+        self.ensure_snap_state_reads_succeed()?;
         Ok(Box::new(self.clone()))
+    }
+
+    fn state_with_block_appended(
+        &self,
+        _parent_hash: BlockHash,
+        _block: ExecutedBlock<T>,
+    ) -> ProviderResult<StateProviderBox> {
+        Err(ProviderError::UnsupportedProvider)
     }
 
     fn state_by_block_number_or_tag(
@@ -995,9 +1337,32 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync> ChangeSetReader for MockEthProvi
     ) -> ProviderResult<Vec<(BlockNumber, AccountBeforeTx)>> {
         Ok(Vec::default())
     }
+}
 
-    fn account_changeset_count(&self) -> ProviderResult<usize> {
-        Ok(0)
+impl<T: NodePrimitives, ChainSpec: Send + Sync> StorageChangeSetReader
+    for MockEthProvider<T, ChainSpec>
+{
+    fn storage_changeset(
+        &self,
+        _block_number: BlockNumber,
+    ) -> ProviderResult<Vec<(reth_db_api::models::BlockNumberAddress, StorageEntry)>> {
+        Ok(Vec::default())
+    }
+
+    fn get_storage_before_block(
+        &self,
+        _block_number: BlockNumber,
+        _address: Address,
+        _storage_key: B256,
+    ) -> ProviderResult<Option<StorageEntry>> {
+        Ok(None)
+    }
+
+    fn storage_changesets_range(
+        &self,
+        _range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<(reth_db_api::models::BlockNumberAddress, StorageEntry)>> {
+        Ok(Vec::default())
     }
 }
 
@@ -1015,6 +1380,8 @@ impl<T: NodePrimitives, ChainSpec: Send + Sync> StateReader for MockEthProvider<
 impl<T: NodePrimitives, ChainSpec: Send + Sync> CanonStateSubscriptions
     for MockEthProvider<T, ChainSpec>
 {
+    type Primitives = T;
+
     fn subscribe_to_canonical_state(&self) -> CanonStateNotifications<T> {
         broadcast::channel(1).1
     }

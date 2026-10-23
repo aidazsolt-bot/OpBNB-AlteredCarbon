@@ -2,14 +2,14 @@ use alloy_consensus::BlockHeader;
 use alloy_eips::BlockHashOrNumber;
 use alloy_primitives::{BlockHash, BlockNumber, Sealable, B256};
 use async_compression::tokio::bufread::GzipDecoder;
-use futures::Future;
+use futures::{future, Future};
 use itertools::{Either, Itertools};
 use reth_consensus::{Consensus, ConsensusError};
 use reth_network_p2p::{
-    bodies::client::{BodiesClient, BodiesFut},
+    bodies::client::BodiesClient,
     download::DownloadClient,
-    error::RequestError,
-    headers::client::{HeadersClient, HeadersDirection, HeadersFut, HeadersRequest},
+    error::{PeerRequestResult, RequestError},
+    headers::client::{HeadersClient, HeadersDirection, HeadersRequest},
     priority::Priority,
     BlockClient,
 };
@@ -161,7 +161,7 @@ impl<B: FullBlock> FileClient<B> {
     /// Returns true if all blocks are canonical (no gaps)
     pub fn has_canonical_blocks(&self) -> bool {
         if self.headers.is_empty() {
-            return true;
+            return true
         }
         let (min, max) = self.headers.keys().minmax().into_option().expect("not empty");
         // Contiguous range from min to max means no gaps
@@ -266,7 +266,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                             "partial block returned from decoding chunk"
                         );
                         remaining_bytes = bytes;
-                        break;
+                        break
                     }
                     Err(err) => return Err(err),
                 };
@@ -287,7 +287,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                     });
                 if let Err(err) = validation {
                     if !self.skip_invalid_blocks {
-                        return Err(err.into());
+                        return Err(err.into())
                     }
                     warn!(target: "downloaders::file",
                         block_number = block.number(),
@@ -295,7 +295,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
                         %err,
                         "skipping invalid block while decoding file"
                     );
-                    continue;
+                    continue
                 }
                 if parent_header.is_some() {
                     parent_header = Some(block.sealed_header().clone());
@@ -338,7 +338,7 @@ impl<B: FullBlock<Header: reth_primitives_traits::BlockHeader>> FromReader
 
 impl<B: FullBlock> HeadersClient for FileClient<B> {
     type Header = B::Header;
-    type Output = HeadersFut<B::Header>;
+    type Output = future::Ready<PeerRequestResult<Vec<B::Header>>>;
 
     fn get_headers_with_priority(
         &self,
@@ -354,7 +354,7 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(num) => *num,
                 None => {
                     warn!(%hash, "Could not find starting block number for requested header hash");
-                    return Box::pin(async move { Err(RequestError::BadResponse) });
+                    return future::ready(Err(RequestError::BadResponse))
                 }
             },
             BlockHashOrNumber::Number(num) => num,
@@ -378,18 +378,18 @@ impl<B: FullBlock> HeadersClient for FileClient<B> {
                 Some(header) => headers.push(header),
                 None => {
                     warn!(number=%block_number, "Could not find header");
-                    return Box::pin(async move { Err(RequestError::BadResponse) });
+                    return future::ready(Err(RequestError::BadResponse))
                 }
             }
         }
 
-        Box::pin(async move { Ok((PeerId::default(), headers).into()) })
+        future::ready(Ok((PeerId::default(), headers).into()))
     }
 }
 
 impl<B: FullBlock> BodiesClient for FileClient<B> {
     type Body = B::Body;
-    type Output = BodiesFut<B::Body>;
+    type Output = future::Ready<PeerRequestResult<Vec<B::Body>>>;
 
     fn get_block_bodies_with_priority_and_range_hint(
         &self,
@@ -405,11 +405,11 @@ impl<B: FullBlock> BodiesClient for FileClient<B> {
         for hash in hashes {
             match self.bodies.get(&hash).cloned() {
                 Some(body) => bodies.push(body),
-                None => return Box::pin(async move { Err(RequestError::BadResponse) }),
+                None => return future::ready(Err(RequestError::BadResponse)),
             }
         }
 
-        Box::pin(async move { Ok((PeerId::default(), bodies).into()) })
+        future::ready(Ok((PeerId::default(), bodies).into()))
     }
 }
 
@@ -481,7 +481,7 @@ impl FileReader {
 
         if *remaining_bytes == 0 && chunk.is_empty() {
             // eof
-            return Ok(None);
+            return Ok(None)
         }
 
         let chunk_target_len = chunk_byte_len.min(*remaining_bytes + chunk.len() as u64);
@@ -524,14 +524,14 @@ impl FileReader {
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
             if chunk.len() >= chunk_byte_len as usize {
-                return Ok(true);
+                return Ok(true)
             }
 
             match self.read(&mut buffer).await {
                 Ok(0) => {
                     let Self::Gzip { eof, .. } = self else { unreachable!() };
                     *eof = true;
-                    return Ok(!chunk.is_empty());
+                    return Ok(!chunk.is_empty())
                 }
                 Ok(n) => {
                     chunk.extend_from_slice(&buffer[..n]);
@@ -628,7 +628,7 @@ impl ChunkedFileReader {
                 .await?;
 
         if self.file.is_eof() && !remaining_bytes.is_empty() {
-            return Err(FileClientError::Rlp(alloy_rlp::Error::InputTooShort, remaining_bytes));
+            return Err(FileClientError::Rlp(alloy_rlp::Error::InputTooShort, remaining_bytes))
         }
 
         // save left over bytes
@@ -649,7 +649,7 @@ impl ChunkedFileReader {
             })
         })?
         else {
-            return Ok(None);
+            return Ok(None)
         };
 
         // make new file client from chunk
@@ -701,10 +701,7 @@ pub struct DecodedFileChunk<T> {
 mod tests {
     use super::*;
     use crate::{
-        bodies::{
-            bodies::BodiesDownloaderBuilder,
-            test_utils::{insert_headers, zip_blocks},
-        },
+        bodies::{bodies::BodiesDownloaderBuilder, test_utils::zip_blocks},
         headers::{reverse_headers::ReverseHeadersDownloaderBuilder, test_utils::child_header},
         test_utils::{generate_bodies, generate_bodies_file},
     };
@@ -718,7 +715,7 @@ mod tests {
         bodies::downloader::BodyDownloader,
         headers::downloader::{HeaderDownloader, SyncTarget},
     };
-    use reth_provider::test_utils::create_test_provider_factory;
+    use reth_provider::test_utils::{create_test_provider_factory, insert_headers};
     use std::sync::Arc;
     use tokio::{
         fs::File,

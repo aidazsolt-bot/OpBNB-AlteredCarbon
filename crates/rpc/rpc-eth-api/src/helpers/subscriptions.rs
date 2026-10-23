@@ -1,12 +1,11 @@
 //! Streams subscriptions providers for `eth_subscribe`.
 
-use crate::{EthApiTypes, RpcConvert, RpcNodeCore, RpcReceipt};
+use crate::{EthApiTypes, RpcConvert, RpcLog, RpcNodeCore, RpcReceipt};
 use alloy_consensus::{transaction::TxHashRef, BlockHeader, TxReceipt};
-use alloy_eips::BlockNumHash;
-use alloy_rpc_types_eth::{pubsub::TransactionReceiptsParams, Filter, Log};
+use alloy_rpc_types_eth::{pubsub::TransactionReceiptsParams, Filter};
 use futures::StreamExt;
 use reth_chain_state::CanonStateSubscriptions;
-use reth_primitives_traits::{SignedTransaction, TransactionMeta};
+use reth_primitives_traits::TransactionMeta;
 use reth_rpc_convert::{transaction::ConvertReceiptInput, RpcHeader};
 use reth_rpc_eth_types::logs_utils;
 use tracing::error;
@@ -18,7 +17,11 @@ pub trait EthSubscriptions:
     RpcNodeCore + EthApiTypes<RpcConvert: RpcConvert<Primitives = Self::Primitives>>
 {
     /// Returns a stream that yields matching logs from canonical chain updates.
-    fn log_stream(&self, filter: Filter) -> impl futures::Stream<Item = Log> + Send + Unpin {
+    fn log_stream(
+        &self,
+        filter: Filter,
+    ) -> impl futures::Stream<Item = RpcLog<Self::NetworkTypes>> + Send + Unpin {
+        let converter = self.converter();
         self.provider().canonical_state_stream().flat_map(move |canon_state| {
             let reverted_chains = canon_state.reverted();
             let committed_chain = canon_state.committed();
@@ -31,18 +34,22 @@ pub trait EthSubscriptions:
             let mut all_logs = Vec::new();
 
             for (block, receipts, removed) in reverted.chain(committed) {
-                let block_num_hash = BlockNumHash { number: block.number(), hash: block.hash() };
-                let logs = logs_utils::matching_block_logs_with_tx_hashes(
+                let result = logs_utils::matching_block_logs_with_tx_hashes(
+                    converter,
                     &filter,
-                    block_num_hash,
-                    block.timestamp(),
+                    block.sealed_header(),
                     block
                         .transactions_recovered()
                         .zip(receipts.iter())
                         .map(|(tx, receipt)| (*tx.tx_hash(), receipt)),
                     removed,
                 );
-                all_logs.extend(logs);
+                match result {
+                    Ok(logs) => all_logs.extend(logs),
+                    Err(err) => {
+                        error!(target = "rpc", %err, "Failed to convert logs");
+                    }
+                }
             }
 
             futures::stream::iter(all_logs)
@@ -59,11 +66,12 @@ pub trait EthSubscriptions:
                 .committed()
                 .blocks_iter()
                 .filter_map(|block| {
-                    match converter.convert_header(block.clone_sealed_header(), block.rlp_length())
+                    match converter
+                        .convert_header(block.clone_sealed_header(), Some(block.rlp_length()))
                     {
                         Ok(header) => Some(header),
                         Err(err) => {
-                            error!(target: "rpc", %err, "Failed to convert header");
+                            error!(target = "rpc", %err, "Failed to convert header");
                             None
                         }
                     }
@@ -135,7 +143,7 @@ pub trait EthSubscriptions:
                     match converter.convert_receipts_with_block(inputs, block.sealed_block()) {
                         Ok(rpc_receipts) => Some(rpc_receipts),
                         Err(err) => {
-                            error!(target: "rpc", %err, "Failed to convert receipts");
+                            error!(target = "rpc", %err, "Failed to convert receipts");
                             None
                         }
                     }
@@ -145,9 +153,4 @@ pub trait EthSubscriptions:
             futures::stream::iter(results)
         })
     }
-}
-
-impl<T> EthSubscriptions for T where
-    T: RpcNodeCore + EthApiTypes<RpcConvert: RpcConvert<Primitives = Self::Primitives>>
-{
 }

@@ -435,14 +435,15 @@ impl<N: NetworkPrimitives> NetworkState<N> {
         self.peers_manager.add_trusted_peer_node(trusted)
     }
 
-    /// Adds a peer and its address with the given kind to the peerset.
+    /// Adds a peer and its address with the given kind to the peerset and dials it if there's an
+    /// outbound slot.
     pub(crate) fn add_peer_kind(
         &mut self,
         peer_id: PeerId,
         kind: Option<PeerKind>,
         addr: PeerAddr,
     ) {
-        self.peers_manager.add_peer_kind(peer_id, kind, addr, None)
+        self.peers_manager.add_requested_peer(peer_id, kind, addr)
     }
 
     /// Connects a peer and its address with the given kind
@@ -565,7 +566,7 @@ impl<N: NetworkPrimitives> NetworkState<N> {
                 }
                 BlockRequest::GetSnap(request) => {
                     let (response, rx) = oneshot::channel();
-                    let request = PeerRequest::GetSnap { request, response };
+                    let request = PeerRequest::GetSnap { request: *request, response };
                     let response = PeerResponse::Snap { response: rx };
                     (request, response)
                 }

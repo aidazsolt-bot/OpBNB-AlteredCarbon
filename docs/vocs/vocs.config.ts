@@ -7,9 +7,9 @@ export default defineConfig({
   description: 'Reth is a secure, performant, and modular Ethereum execution client built in Rust.',
   accentColor: 'light-dark(#1f1f1f, #ffffff)',
   srcDir: 'docs',
-  logoUrl: '/logo.jpg',
-  iconUrl: '/logo.jpg',
-  ogImageUrl: '/logo.jpg',
+  logoUrl: '/logo.png',
+  iconUrl: '/logo.png',
+  ogImageUrl: '/reth-prod.png',
   outDir: 'docs/dist',
   renderStrategy: 'full-static',
   sidebar,
@@ -23,11 +23,15 @@ export default defineConfig({
     { text: 'Rustdocs', link: '/docs' },
     { text: 'GitHub', link: 'https://github.com/paradigmxyz/reth' },
     {
-      text: 'v2.4.1',
+      text: 'v2.8.0',
       items: [
         {
           text: 'Releases',
           link: 'https://github.com/paradigmxyz/reth/releases'
+        },
+        {
+          text: 'Contributing',
+          link: 'https://github.com/paradigmxyz/reth/blob/main/CONTRIBUTING.md'
         }
       ]
     }

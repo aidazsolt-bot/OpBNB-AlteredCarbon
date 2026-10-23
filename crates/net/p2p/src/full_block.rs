@@ -14,11 +14,9 @@ use alloy_primitives::{Bytes, Sealable, B256};
 use core::marker::PhantomData;
 use futures::FutureExt;
 use reth_consensus::Consensus;
-use reth_eth_wire_types::{
-    BlockAccessLists, EthNetworkPrimitives, HeadersDirection, NetworkPrimitives,
-};
+use reth_eth_wire_types::{BlockAccessLists, EthNetworkPrimitives, NetworkPrimitives};
 use reth_network_peers::{PeerId, WithPeerId};
-use reth_primitives_traits::{Block, SealedBlock, SealedHeader};
+use reth_primitives_traits::{Block, SealedBlock, SealedBlockWith, SealedHeader};
 use std::{
     cmp::Reverse,
     collections::{HashMap, VecDeque},
@@ -30,48 +28,6 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tracing::{debug, trace};
-
-/// A sealed block with associated data.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SealedBlockWith<B: Block, T = Option<RawBal>> {
-    block: SealedBlock<B>,
-    data: T,
-}
-
-impl<B: Block, T> SealedBlockWith<B, T> {
-    /// Creates a sealed block with associated data.
-    pub const fn new(block: SealedBlock<B>, data: T) -> Self {
-        Self { block, data }
-    }
-
-    /// Returns the sealed block.
-    pub const fn block(&self) -> &SealedBlock<B> {
-        &self.block
-    }
-
-    /// Returns the associated data.
-    pub const fn data(&self) -> &T {
-        &self.data
-    }
-
-    /// Consumes the wrapper and returns its parts.
-    pub fn into_parts(self) -> (SealedBlock<B>, T) {
-        (self.block, self.data)
-    }
-}
-
-impl<B: Block> SealedBlockWithAccessList<B> {
-    /// Creates a full block response without block access-list data.
-    pub const fn from_block(block: SealedBlock<B>) -> Self {
-        Self::new(block, None)
-    }
-}
-
-impl<B: Block> From<SealedBlock<B>> for SealedBlockWith<B> {
-    fn from(block: SealedBlock<B>) -> Self {
-        Self::new(block, None)
-    }
-}
 
 /// A sealed block with optional validated raw block access-list data.
 pub type SealedBlockWithAccessList<B> = SealedBlockWith<B, Option<RawBal>>;
@@ -121,8 +77,8 @@ where
     /// Note: this future is cancel safe.
     ///
     /// Caution: This does no validation of body (transactions) responses but guarantees that
-    /// the starting [`SealedHeader`] matches the requested hash, and that the number of headers and
-    /// bodies received matches the requested limit.
+    /// the headers form a valid range starting at the requested hash, and that the number of
+    /// headers and bodies received matches the requested limit.
     ///
     /// The returned future yields bodies in falling order, i.e. with descending block numbers.
     pub fn get_full_block_range(
@@ -275,7 +231,7 @@ where
     /// Returns the [`SealedBlock`] if the request is complete and valid.
     fn take_block(&mut self) -> Option<SealedBlock<Client::Block>> {
         if self.header.is_none() || self.body.is_none() {
-            return None;
+            return None
         }
 
         let header = self.header.take().unwrap();
@@ -290,7 +246,7 @@ where
                     self.client.report_bad_message(resp.peer_id());
                     self.header = Some(header);
                     self.request.body = Some(self.client.get_block_body(self.hash));
-                    return None;
+                    return None
                 }
                 Some(SealedBlock::from_sealed_parts(header, resp.into_data()))
             }
@@ -302,10 +258,10 @@ where
             if let Err(err) = self.consensus.validate_body_against_header(resp.data(), header) {
                 debug!(target: "downloaders", %err, hash=?header.hash(), "Received wrong body");
                 self.client.report_bad_message(resp.peer_id());
-                return;
+                return
             }
             self.body = Some(BodyResponse::Validated(resp.into_data()));
-            return;
+            return
         }
         self.body = Some(BodyResponse::PendingValidation(resp));
     }
@@ -369,7 +325,7 @@ where
             }
 
             if let Some(res) = this.take_block() {
-                return Poll::Ready(res);
+                return Poll::Ready(res)
             }
 
             // ensure we still have enough budget for another iteration
@@ -377,7 +333,7 @@ where
             if budget == 0 {
                 // make sure we're woken up again
                 cx.waker().wake_by_ref();
-                return Poll::Pending;
+                return Poll::Pending
             }
         }
     }
@@ -502,7 +458,7 @@ where
         ready!(this.poll_bal_request(cx));
 
         if let Some(res) = this.take_block_and_access_lists() {
-            return Poll::Ready(res);
+            return Poll::Ready(res)
         }
 
         Poll::Pending
@@ -616,7 +572,7 @@ where
     /// Returns the block range once blocks and the optional BAL lookup are both complete.
     fn take_response(&mut self) -> Option<Vec<SealedBlockWithAccessList<Client::Block>>> {
         let OptionalBlockAccessListsState::Ready(access_lists) = &mut self.access_lists else {
-            return None;
+            return None
         };
 
         let blocks = self.block_result.take()?;
@@ -646,7 +602,7 @@ where
         this.poll_access_lists(cx);
 
         if let Some(response) = this.take_response() {
-            return Poll::Ready(response);
+            return Poll::Ready(response)
         }
 
         Poll::Pending
@@ -696,14 +652,14 @@ where
             let Poll::Ready(res) = fut.poll(cx)
         {
             self.header = None;
-            return Poll::Ready(ResponseResult::Header(res));
+            return Poll::Ready(ResponseResult::Header(res))
         }
 
         if let Some(fut) = Pin::new(&mut self.body).as_pin_mut() &&
             let Poll::Ready(res) = fut.poll(cx)
         {
             self.body = None;
-            return Poll::Ready(ResponseResult::Body(res));
+            return Poll::Ready(ResponseResult::Body(res))
         }
 
         Poll::Pending
@@ -802,7 +758,7 @@ where
     fn take_blocks(&mut self) -> Option<Vec<SealedBlock<Client::Block>>> {
         if !self.is_bodies_complete() {
             // not done with bodies yet
-            return None;
+            return None
         }
 
         let headers = self.headers.take()?;
@@ -825,7 +781,7 @@ where
                             // get body that doesn't match, put back into vecdeque, and retry it
                             self.pending_headers.push_back(header.clone());
                             needs_retry = true;
-                            continue;
+                            continue
                         }
 
                         resp.into_data()
@@ -851,7 +807,7 @@ where
             // create response for failing bodies
             let hashes = self.remaining_bodies_hashes();
             self.request.bodies = Some(self.client.get_block_bodies(hashes));
-            return None;
+            return None
         }
 
         Some(valid_responses)
@@ -873,6 +829,7 @@ where
                 if let Err(err) = self.consensus.validate_header_range(&headers_rising) {
                     debug!(target: "downloaders", %err, ?self.start_hash, "Received bad header response");
                     self.client.report_bad_message(peer);
+                    return
                 }
 
                 // get the bodies request so it can be polled later
@@ -944,11 +901,9 @@ where
 
                     if this.headers.is_none() {
                         // did not receive a correct response yet, retry
-                        this.request.headers = Some(this.client.get_headers(HeadersRequest {
-                            start: this.start_hash.into(),
-                            limit: this.count,
-                            direction: HeadersDirection::Falling,
-                        }));
+                        this.request.headers = Some(this.client.get_headers(
+                            HeadersRequest::falling(this.start_hash.into(), this.count),
+                        ));
                     }
                 }
                 // This branch handles block body responses from peers - it first inserts the
@@ -1003,7 +958,7 @@ where
             }
 
             if let Some(res) = this.take_blocks() {
-                return Poll::Ready(res);
+                return Poll::Ready(res)
             }
         }
     }
@@ -1032,14 +987,14 @@ where
             let Poll::Ready(res) = fut.poll(cx)
         {
             self.headers = None;
-            return Poll::Ready(RangeResponseResult::Header(res));
+            return Poll::Ready(RangeResponseResult::Header(res))
         }
 
         if let Some(fut) = Pin::new(&mut self.bodies).as_pin_mut() &&
             let Poll::Ready(res) = fut.poll(cx)
         {
             self.bodies = None;
-            return Poll::Ready(RangeResponseResult::Body(res));
+            return Poll::Ready(RangeResponseResult::Body(res))
         }
 
         Poll::Pending
@@ -1186,19 +1141,17 @@ fn seal_block_access_list_for_block<B: Block>(
     let (peer, bal) = bal.split();
     let Some(bal) = bal else { return Ok(None) };
     let raw_bal = RawBal::new(bal);
-    let computed = raw_bal.hash();
-    if computed == expected {
-        return Ok(Some(raw_bal));
-    }
-
-    debug!(
-        target: "downloaders",
-        block_hash = ?block.hash(),
-        ?computed,
-        ?expected,
-        "Received block access list with wrong hash",
-    );
-    Err(peer)
+    raw_bal.ensure_hash(expected).map_err(|error| {
+        debug!(
+            target: "downloaders",
+            block_hash = ?block.hash(),
+            computed = ?error.computed,
+            expected = ?error.expected,
+            "Received block access list with wrong hash",
+        );
+        peer
+    })?;
+    Ok(Some(raw_bal))
 }
 
 /// Wraps a block range with validated block access-list entries.
@@ -1216,7 +1169,7 @@ where
     Client: BlockClient,
 {
     let Some(access_lists) = access_lists else {
-        return blocks.into_iter().map(SealedBlockWith::from_block).collect();
+        return blocks.into_iter().map(SealedBlockWith::from_block).collect()
     };
 
     let (peer, access_lists) = access_lists.split();
@@ -1230,7 +1183,7 @@ where
             received,
             "Ignoring overlong access list range response",
         );
-        return blocks.into_iter().map(SealedBlockWith::from_block).collect();
+        return blocks.into_iter().map(SealedBlockWith::from_block).collect()
     }
 
     let mut access_lists = access_lists.0.into_iter();
@@ -1242,7 +1195,7 @@ where
             // Short BAL responses are valid; the current block and all remaining blocks are
             // returned without access-list data below.
             response.push(SealedBlockWith::from_block(block));
-            break;
+            break
         };
 
         match seal_block_access_list_for_block(&block, WithPeerId::new(peer, bal)) {
@@ -1252,7 +1205,7 @@ where
                 // later positional entries and return the rest of the range without BAL data.
                 client.report_bad_message(peer);
                 response.push(SealedBlockWith::from_block(block));
-                break;
+                break
             }
         }
     }
@@ -1657,7 +1610,7 @@ mod tests {
             if self.pending_polls > 0 {
                 self.pending_polls -= 1;
                 cx.waker().wake_by_ref();
-                return Poll::Pending;
+                return Poll::Pending
             }
 
             Poll::Ready(self.response.take().expect("future polled after completion"))
@@ -1681,14 +1634,14 @@ mod tests {
                 return MaybePendingAccessLists::new(
                     Err(RequestError::UnsupportedCapability),
                     pending_polls,
-                );
+                )
             }
 
             if self.empty_first_response.swap(false, Ordering::SeqCst) {
                 return MaybePendingAccessLists::new(
                     Ok(WithPeerId::new(PeerId::random(), BlockAccessLists(Vec::new()))),
                     pending_polls,
-                );
+                )
             }
 
             let mut access_lists: Vec<_> = hashes
@@ -1759,7 +1712,7 @@ mod tests {
         ) -> Self::Output {
             let attempt = self.body_requests.fetch_add(1, Ordering::SeqCst);
             if attempt == self.fail_on {
-                return futures::future::ready(Err(RequestError::Timeout));
+                return futures::future::ready(Err(RequestError::Timeout))
             }
 
             self.inner.get_block_bodies_with_priority_and_range_hint(hashes, priority, range_hint)
@@ -1930,7 +1883,7 @@ mod tests {
                 .enumerate()
                 .map(|(idx, block)| {
                     if idx >= 2 {
-                        return None;
+                        return None
                     }
 
                     let bal = bals.get(&block.block().hash()).cloned().expect("access list exists");
@@ -1966,7 +1919,7 @@ mod tests {
                 .iter()
                 .map(|block| {
                     if block.block().hash() == header.hash() {
-                        return None;
+                        return None
                     }
 
                     let bal = bals.get(&block.block().hash()).cloned().expect("access list exists");
@@ -2069,22 +2022,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn download_full_block_range_with_invalid_header() {
+    async fn download_full_block_range_rejects_invalid_headers() {
         let client = TestFullBlockClient::default();
-        let range_length: usize = 3;
-        let (header, _) = insert_headers_into_client(&client, 0..range_length);
+        let (header, _) = insert_headers_into_client(&client, 0..3);
+        let consensus = reth_consensus::test_utils::TestConsensus::default();
+        consensus.set_fail_validation(true);
+        let client = FullBlockClient::new(client, Arc::new(consensus));
+        let mut request = client.get_full_block_range(header.hash(), 3);
+        let headers = client
+            .client
+            .get_headers(HeadersRequest::falling(header.hash().into(), 3))
+            .await
+            .unwrap();
 
-        let test_consensus = reth_consensus::test_utils::TestConsensus::default();
-        test_consensus.set_fail_validation(true);
-        test_consensus.set_fail_body_against_header(false);
-        let client = FullBlockClient::new(client, Arc::new(test_consensus));
+        request.on_headers_response(headers);
 
-        let received = client.get_full_block_range(header.hash(), range_length as u64).await;
-
-        assert_eq!(received.len(), range_length);
-        for (i, block) in received.iter().enumerate() {
-            let expected_number = header.number - i as u64;
-            assert_eq!(block.number, expected_number);
-        }
+        assert!(request.headers.is_none());
+        assert!(request.pending_headers.is_empty());
+        assert!(request.request.bodies.is_none());
     }
 }
