@@ -151,6 +151,32 @@ members = [
     "testing/testing-utils",
     "testing/runner",
     "crates/tracing-otlp",
+    # opBNB / OP-Stack crates kept from port (removed upstream in v2.8.0 mono-repo)
+    "crates/optimism/alloy-op-evm/",
+    "crates/optimism/alloy-op-hardforks/",
+    "crates/optimism/bin/",
+    "crates/optimism/chainspec/",
+    "crates/optimism/cli/",
+    "crates/optimism/consensus/",
+    "crates/optimism/evm/",
+    "crates/optimism/flashblocks/",
+    "crates/optimism/hardforks/",
+    "crates/optimism/node/",
+    "crates/optimism/op-alloy/consensus/",
+    "crates/optimism/op-alloy/network/",
+    "crates/optimism/op-alloy/op-alloy/",
+    "crates/optimism/op-alloy/provider/",
+    "crates/optimism/op-alloy/rpc-jsonrpsee/",
+    "crates/optimism/op-alloy/rpc-types/",
+    "crates/optimism/op-alloy/rpc-types-engine/",
+    "crates/optimism/op-revm/",
+    "crates/optimism/payload/",
+    "crates/optimism/post-exec-replay/",
+    "crates/optimism/primitives/",
+    "crates/optimism/rpc/",
+    "crates/optimism/storage/",
+    "crates/optimism/txpool/",
+
 ]
 default-members = ["bin/reth"]
 exclude = ["docs/cli"]
@@ -262,21 +288,6 @@ too_long_first_doc_paragraph = "allow"
 # Speed up compilation time for dev builds by reducing emitted debug info.
 # NOTE: Debuggers may provide less useful information with this setting.
 # Uncomment this section if you're using a debugger.
-op-alloy-consensus = { path = "crates/optimism/op-alloy/consensus", default-features = false }
-op-alloy-rpc-types = { path = "crates/optimism/op-alloy/rpc-types", default-features = false }
-op-alloy-rpc-types-engine = { path = "crates/optimism/op-alloy/rpc-types-engine", default-features = false }
-op-alloy-network = { path = "crates/optimism/op-alloy/network", default-features = false }
-# --- opBNB port extras (kept across rebase onto v2.8.0) ---
-op-reth = { path = "crates/optimism/bin" }
-op-revm = { path = "crates/optimism/op-revm", default-features = false }
-alloy-op-evm = { path = "crates/optimism/alloy-op-evm", default-features = false }
-alloy-op-hardforks = { path = "crates/optimism/alloy-op-hardforks", default-features = false }
-# opBNB Fermat/Haber precompiles (ported from bnb-chain/reth-bsc / bnb-chain/revm)
-bls_on_arkworks = "0.3.0"
-cometbft = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
-cometbft-light-client-verifier = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
-cometbft-proto = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
-cometbft-light-client = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
 
 [profile.dev]
 # https://davidlattimore.github.io/posts/2024/02/04/speeding-up-the-rust-edit-build-run-cycle.html
@@ -687,3 +698,35 @@ vergen-git2 = "10.0.1"
 
 # networking
 ipnet = "2.11"
+
+# --- opBNB port extras (v2.8.0 rebase; optimism kept in-tree) ---
+op-reth = { path = "crates/optimism/bin" }
+op-revm = { path = "crates/optimism/op-revm", default-features = false }
+alloy-op-evm = { path = "crates/optimism/alloy-op-evm", default-features = false }
+alloy-op-hardforks = { path = "crates/optimism/alloy-op-hardforks", default-features = false }
+bls_on_arkworks = "0.3.0"
+cometbft = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-light-client-verifier = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-proto = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+cometbft-light-client = { git = "https://github.com/bnb-chain/greenfield-cometbft-rs.git", rev = "1282547" }
+op-alloy-consensus = { path = "crates/optimism/op-alloy/consensus", default-features = false }
+op-alloy = { path = "crates/optimism/op-alloy/op-alloy", default-features = false }
+op-alloy-provider = { path = "crates/optimism/op-alloy/provider", default-features = false }
+op-alloy-flz = { version = "0.13.1", default-features = false }
+op-alloy-network = { path = "crates/optimism/op-alloy/network", default-features = false }
+op-alloy-rpc-jsonrpsee = { path = "crates/optimism/op-alloy/rpc-jsonrpsee", default-features = false }
+op-alloy-rpc-types = { path = "crates/optimism/op-alloy/rpc-types", default-features = false }
+op-alloy-rpc-types-engine = { path = "crates/optimism/op-alloy/rpc-types-engine", default-features = false }
+reth-optimism-chainspec = { path = "crates/optimism/chainspec" }
+reth-optimism-cli = { path = "crates/optimism/cli" }
+reth-optimism-consensus = { path = "crates/optimism/consensus" }
+reth-optimism-evm = { path = "crates/optimism/evm" }
+reth-optimism-forks = { path = "crates/optimism/hardforks" }
+reth-optimism-node = { path = "crates/optimism/node" }
+reth-optimism-flashblocks = { path = "crates/optimism/flashblocks" }
+reth-optimism-payload-builder = { path = "crates/optimism/payload" }
+reth-optimism-post-exec-replay = { path = "crates/optimism/post-exec-replay" }
+reth-optimism-primitives = { path = "crates/optimism/primitives" }
+reth-optimism-rpc = { path = "crates/optimism/rpc" }
+reth-optimism-storage = { path = "crates/optimism/storage" }
+reth-optimism-txpool = { path = "crates/optimism/txpool" }

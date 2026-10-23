@@ -37,3 +37,16 @@
 1. `cargo check -p reth-optimism-cli` / `make build-op` in this dest.
 2. Re-port FLOW-E03/H06/H07 engine hooks onto v2.8.0 tree API.
 3. Live archive stays on v2.4.1 tree until Tip-DoD + green check here.
+
+
+## Structural note (v2.8.0)
+
+Upstream `paradigmxyz/reth` **v2.8.0 removed `crates/optimism` from the mono-repo**
+(OP Stack lives elsewhere / was extracted). This dest **kept** our in-tree
+`crates/optimism/**` as workspace members and re-added port `workspace.dependencies`
+(cometbft/bls/op-alloy paths).
+
+Also expect further layout drift vs v2.4.1 (`crates/primitives`, alloy/revm bumps,
+engine BAL APIs). First `cargo metadata` errors are expected until those are
+reconciled.
+
