@@ -15,11 +15,16 @@ on:
       - Cargo.lock
       - Makefile
       - crates/**
+      - .cargo/**
       - .github/workflows/op-reth-build-smoke.yml
+
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Never inherit a host/dev absolute CARGO_TARGET_DIR on the runner.
+  CARGO_TARGET_DIR: target
   # Block 10_000_000 on opbnb-mainnet (eth_getBlockByNumber).
   # Proven GHA success (~45G, ~3h). 12M timed out mid-Exec (+ disk 99%); 15/20M failed.
   OPBNB_SMOKE_TIP_HASH: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
@@ -28,6 +33,8 @@ env:
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # Build (~10–25m) + sync genesis→10M. GitHub-hosted job cap is 6h (360m).
     timeout-minutes: 360
     strategy:
@@ -52,7 +59,25 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Guard against host-absolute cargo target-dir
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Local dev may set CARGO_TARGET_DIR in the shell; CI must never ship
+          # absolute host paths via .cargo/config.toml (breaks GH runners).
+          if [ -f .cargo/config.toml ]; then
+            if grep -E '^[[:space:]]*target-dir[[:space:]]*=' .cargo/config.toml | grep -E '=["'"'"']?/'; then
+              echo "::error::.cargo/config.toml must not set an absolute target-dir; use env CARGO_TARGET_DIR locally"
+              grep -n 'target-dir' .cargo/config.toml || true
+              exit 1
+            fi
+          fi
+          echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
+          echo "cargo target-dir ok (workspace-relative / unset in config)"
 
       - name: Log runner hardware specs
         shell: bash
@@ -96,13 +121,13 @@ jobs:
             || echo "imds_unavailable"
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master @ 1.99.1 patch note
         with:
           toolchain: 1.96.0
 
       - name: Cache cargo artifacts
         id: rust-cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             .
@@ -112,32 +137,42 @@ jobs:
 
       - name: Note cargo cache status
         shell: bash
+        env:
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
         run: |
-          echo "rust-cache cache-hit=${{ steps.rust-cache.outputs.cache-hit }}"
+          echo "rust-cache cache-hit=${CACHE_HIT}"
           echo "Cold maxperf Fat-LTO is typically ~20-25m; a cache hit can drop wall time to ~10-15m."
 
       - name: Build op-reth (${{ matrix.profile }})
         shell: bash
+        env:
+          MATRIX_RUSTFLAGS: ${{ matrix.rustflags }}
+          MATRIX_BUILD_ARGS: ${{ matrix.build_args }}
         run: |
           set -euo pipefail
-          if [ -n "${{ matrix.rustflags }}" ]; then
-            export RUSTFLAGS="${{ matrix.rustflags }}"
+          if [ -n "${MATRIX_RUSTFLAGS}" ]; then
+            export RUSTFLAGS="${MATRIX_RUSTFLAGS}"
           fi
           echo "RUSTFLAGS=${RUSTFLAGS:-}"
+          echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
           start=$(date +%s)
-          cargo build ${{ matrix.build_args }}
+          # intentionally unquoted: build_args is a whitespace-separated flag list
+          # shellcheck disable=SC2086
+          cargo build ${MATRIX_BUILD_ARGS}
           end=$(date +%s)
           echo "cargo_wall_sec=$((end - start))"
 
       - name: Free disk for tip smoke (cargo/target cleanup)
         shell: bash
+        env:
+          BIN_SRC: ${{ matrix.binary }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           # Cargo home, workspace target/, and $RUNNER_TEMP datadir all live on the
           # same GitHub-hosted root FS (/dev/root ~145G). 10M smoke used ~45G datadir
           # with ~37G free left; 12/15/20M failed — default tip is proven 10M + cleanup.
-          BIN_SRC="${{ matrix.binary }}"
-          BIN_DST="$RUNNER_TEMP/op-reth-${{ matrix.profile }}"
+          BIN_DST="$RUNNER_TEMP/op-reth-${PROFILE}"
           CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 
           echo "===== pre-cleanup disk ====="
@@ -164,15 +199,16 @@ jobs:
         shell: bash
         env:
           TIP_HASH: ${{ github.event.inputs.tip_hash != '' && github.event.inputs.tip_hash || env.OPBNB_SMOKE_TIP_HASH }}
+          PROFILE: ${{ matrix.profile }}
+          TIP_BLOCK: ${{ env.OPBNB_SMOKE_TIP_BLOCK }}
         run: |
           set -euo pipefail
 
-          BIN="${BIN_DST:-$RUNNER_TEMP/op-reth-${{ matrix.profile }}}"
-          JWT_SECRET="$RUNNER_TEMP/jwt-${{ matrix.profile }}.hex"
-          DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${{ matrix.profile }}"
-          LOG_DIR="$RUNNER_TEMP/opbnb-logs-${{ matrix.profile }}"
-          IPC_PATH="$RUNNER_TEMP/opbnb-${{ matrix.profile }}.ipc"
-          TIP_BLOCK="${OPBNB_SMOKE_TIP_BLOCK}"
+          BIN="${BIN_DST:-$RUNNER_TEMP/op-reth-${PROFILE}}"
+          JWT_SECRET="$RUNNER_TEMP/jwt-${PROFILE}.hex"
+          DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${PROFILE}"
+          LOG_DIR="$RUNNER_TEMP/opbnb-logs-${PROFILE}"
+          IPC_PATH="$RUNNER_TEMP/opbnb-${PROFILE}.ipc"
 
           test -x "$BIN"
           mkdir -p "$DATA_DIR" "$LOG_DIR"
@@ -184,6 +220,7 @@ jobs:
           echo "binary=$BIN"
           df -hT "$DATA_DIR"
 
+          # shellcheck disable=SC2317 # invoked via trap EXIT
           cleanup() {
             if [ -n "${NODE_PID:-}" ] && kill -0 "$NODE_PID" 2>/dev/null; then
               kill -TERM "$NODE_PID" 2>/dev/null || true
@@ -213,7 +250,7 @@ jobs:
             --debug.tip "$TIP_HASH" \
             --debug.terminate &
           NODE_PID=$!
-          echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${{ matrix.profile }}.pid"
+          echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${PROFILE}.pid"
           wait "$NODE_PID"
           status=$?
           set -e

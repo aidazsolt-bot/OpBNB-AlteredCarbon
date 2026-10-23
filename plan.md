@@ -41,7 +41,7 @@ Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht akti
 > **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · `rebase/reth-v2.8.0` → trail `main`.
 > **Tip-DoD:** Finish≈Tip ✅ · Binary `d5b7a7bd` v2.8.0 maxperf · `el-trigger.gap 120`.
 > **Grafana hero:** `assets/logo.png` = Reth-Dash **2026-08-10→now** (Instance anonym `opbnb-archive:6060`).
-> **Cargo target:** via env `CARGO_TARGET_DIR` (kein hardcoded `target-dir` in `.cargo/config.toml`)
+> **Cargo target:** via env `CARGO_TARGET_DIR` (kein hardcoded `target-dir` in `.cargo/config.toml`); Smoke-CI Guard + `CARGO_TARGET_DIR=target` + gepinnte Actions
 
 | Thema | Lage |
 | --- | --- |
