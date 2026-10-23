@@ -36,6 +36,13 @@ pub enum StaticFileSegment {
     Transactions,
     /// Static File segment responsible for the `Receipts` table.
     Receipts,
+    /// Legacy BSC blob-sidecar segment.
+    ///
+    /// Kept at discriminant **3** for on-disk `SegmentHeader` compatibility with datadirs
+    /// written by this fork's v2.4.x line (where `StorageChangeSets` is index **6**). Upstream
+    /// reth removed this variant and shifted later segments down; opening those jars then fails
+    /// with `integer 6, expected variant index 0 <= i < 6`. Not produced for opBNB.
+    Sidecars,
     /// Static File segment responsible for the `TransactionSenders` table.
     TransactionSenders,
     /// Static File segment responsible for the `AccountChangeSets` table.
@@ -75,6 +82,7 @@ impl StaticFileSegment {
             Self::Headers => "headers",
             Self::Transactions => "transactions",
             Self::Receipts => "receipts",
+            Self::Sidecars => "sidecars",
             Self::TransactionSenders => "transaction-senders",
             Self::AccountChangeSets => "account-change-sets",
             Self::StorageChangeSets => "storage-change-sets",
@@ -89,15 +97,17 @@ impl StaticFileSegment {
             Self::Headers => "headers",
             Self::Transactions => "transactions",
             Self::Receipts => "receipts",
+            Self::Sidecars => "sidecars",
             Self::TransactionSenders => "tx-senders",
             Self::AccountChangeSets => "account-changes",
             Self::StorageChangeSets => "storage-changes",
         }
     }
 
-    /// Returns an iterator over all segments.
+    /// Returns an iterator over all **active** segments (excludes legacy [`Self::Sidecars`]).
     pub fn iter() -> impl Iterator<Item = Self> {
         // The order of segments is significant and must be maintained to ensure correctness.
+        // Sidecars is omitted: discriminant-only legacy slot; not produced or healed.
         [
             Self::Headers,
             Self::Transactions,
@@ -118,6 +128,7 @@ impl StaticFileSegment {
     pub const fn columns(&self) -> usize {
         match self {
             Self::Headers => 3,
+            Self::Sidecars => 2,
             Self::Transactions |
             Self::Receipts |
             Self::TransactionSenders |
@@ -184,7 +195,10 @@ impl StaticFileSegment {
     pub const fn is_tx_based(&self) -> bool {
         match self {
             Self::Receipts | Self::Transactions | Self::TransactionSenders => true,
-            Self::Headers | Self::AccountChangeSets | Self::StorageChangeSets => false,
+            Self::Headers |
+            Self::Sidecars |
+            Self::AccountChangeSets |
+            Self::StorageChangeSets => false,
         }
     }
 
@@ -192,14 +206,18 @@ impl StaticFileSegment {
     pub const fn is_change_based(&self) -> bool {
         match self {
             Self::AccountChangeSets | Self::StorageChangeSets => true,
-            Self::Receipts | Self::Transactions | Self::Headers | Self::TransactionSenders => false,
+            Self::Receipts |
+            Self::Transactions |
+            Self::Headers |
+            Self::Sidecars |
+            Self::TransactionSenders => false,
         }
     }
 
     /// Returns `true` if a segment row is linked to a block.
     pub const fn is_block_based(&self) -> bool {
         match self {
-            Self::Headers => true,
+            Self::Headers | Self::Sidecars => true,
             Self::Receipts |
             Self::Transactions |
             Self::TransactionSenders |
@@ -217,7 +235,7 @@ impl StaticFileSegment {
     /// Maps this segment to the [`StageId`] responsible for it.
     pub const fn to_stage_id(&self) -> StageId {
         match self {
-            Self::Headers => StageId::Headers,
+            Self::Headers | Self::Sidecars => StageId::Headers,
             Self::Transactions => StageId::Bodies,
             Self::Receipts | Self::AccountChangeSets | Self::StorageChangeSets => {
                 StageId::Execution
@@ -835,6 +853,7 @@ mod tests {
                 StaticFileSegment::Headers => "headers",
                 StaticFileSegment::Transactions => "transactions",
                 StaticFileSegment::Receipts => "receipts",
+                StaticFileSegment::Sidecars => "sidecars",
                 StaticFileSegment::TransactionSenders => "transaction-senders",
                 StaticFileSegment::AccountChangeSets => "account-change-sets",
                 StaticFileSegment::StorageChangeSets => "storage-change-sets",
@@ -854,12 +873,26 @@ mod tests {
                 StaticFileSegment::Headers => "Headers",
                 StaticFileSegment::Transactions => "Transactions",
                 StaticFileSegment::Receipts => "Receipts",
+                StaticFileSegment::Sidecars => "Sidecars",
                 StaticFileSegment::TransactionSenders => "TransactionSenders",
                 StaticFileSegment::AccountChangeSets => "AccountChangeSets",
                 StaticFileSegment::StorageChangeSets => "StorageChangeSets",
             };
             assert_eq!(ser, format!("\"{expected_str}\""));
         }
+    }
+
+    /// On-disk `SegmentHeader` from v2.4.x datadirs encodes `StorageChangeSets` as discriminant 6
+    /// (Sidecars occupies 3). Must not regress or archive nodes fail to open static files.
+    #[test]
+    fn test_storage_changesets_bincode_discriminant_is_six() {
+        let encoded = bincode::serialize(&StaticFileSegment::StorageChangeSets).unwrap();
+        assert_eq!(encoded, [6u8, 0, 0, 0]);
+        let decoded: StaticFileSegment = bincode::deserialize(&encoded).unwrap();
+        assert_eq!(decoded, StaticFileSegment::StorageChangeSets);
+
+        let sidecars = bincode::serialize(&StaticFileSegment::Sidecars).unwrap();
+        assert_eq!(sidecars, [3u8, 0, 0, 0]);
     }
 
     #[test]

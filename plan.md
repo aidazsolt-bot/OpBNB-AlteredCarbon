@@ -35,19 +35,19 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-23 ~09:30 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-23 ~14:46 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **Upgrade:** `paradigmxyz/reth` **v2.8.0** merge started in **extra dest** (live v2.4.1 tree untouched).
-> **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · branch `rebase/reth-v2.8.0` · see `files/UPGRADE-v2.8.0.md`.
-> **Offene Gates (live v2.4.1):** `PORT-FLOW-E03` Tip-DoD · `FLOW-H07` · `PORT-PIPE-009`.
-> **Offene Gates (v2.8.0 dest):** re-apply HeaderSeed/E03/TrieDB after merge; `cargo check` / `build-op`.
+> **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · `rebase/reth-v2.8.0`.
+> **FLOW-E03** + Payload/RPC/CLI align ✅ · **FLOW-S01:** restore `StaticFileSegment::Sidecars` @ disc. 3 (v2.4 datadir; StorageChangeSets=6).
+> **Deploy:** release `op-reth` → archive CT `BlockChain.service` **active** · Finish@198 509 580 · Tip-DoD open.
+> **Cargo target:** `/usr/src/Erigon/Cargo/target-reth-v2.8.0`
 
 | Thema | Lage |
 | --- | --- |
-| **Live binary (v2.4.1 tree)** | unchanged — IndexAccountHistory catch-up @~198.47M |
-| **v2.8.0 dest** | merge commit pending; conflicts resolved (engine=upstream, H07/nat=ours) |
-| **Cargo target** | `/usr/src/Erigon/Cargo/target-reth-v2.8.0` |
+| **Live** | v2.8.0 binary running · Finish 100% @198.5M · peers≈4 |
+| **SF enum** | Sidecars legacy slot ✅ (not in `iter()`) |
+| **Next** | Tip-DoD (engine catch-up) |
 
 ---
 

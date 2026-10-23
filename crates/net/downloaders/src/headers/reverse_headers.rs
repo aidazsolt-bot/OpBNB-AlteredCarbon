@@ -612,8 +612,18 @@ where
         ));
     }
 
-    /// Returns true when the sync tip is above every connected peer's Status best number.
+    /// Returns true when a **number-only** working tip is above every peer's Status best.
+    ///
+    /// Never Cap when the active (or eventual) tip already has a **hash** — that is the CL /
+    /// HeaderSeed tip (FLOW-E03). eth/68 soft HeadersAtLeast allows Falling above Status best;
+    /// Cap-to-`Number(max_peer_best)` replaces the seeded tip with a blind number fetch and
+    /// stalls after flushing a single tip (Tip-DoD live: `Received headers total=1`, `flushed=1`).
     fn should_cap_working_tip(&self, tip_number: u64) -> bool {
+        if self.sync_target.as_ref().and_then(|t| t.hash()).is_some() ||
+            self.eventual_sync_target.as_ref().and_then(|t| t.hash()).is_some()
+        {
+            return false;
+        }
         let Some(reachable) = self.client.max_peer_best_number() else {
             return false;
         };
@@ -621,7 +631,9 @@ where
         reachable > local && tip_number > reachable
     }
 
-    /// Drop the active working tip to `max_peer_best`, keeping the CL tip as eventual target.
+    /// Drop a number-only working tip to `max_peer_best`, keeping an eventual hashed tip if any.
+    ///
+    /// Not used for HeaderSeed-bound Tip(hash) — see [`Self::should_cap_working_tip`].
     fn apply_working_tip_cap(&mut self, eventual_hash: B256, eventual_number: u64) {
         let reachable = self.client.max_peer_best_number().expect("should_cap checked");
         // Always track the latest CL tip — Tip churn while capped must not lose the eventual hash.
@@ -880,12 +892,9 @@ where
                             "Bound Tip(hash) from HeaderSeed"
                         );
                         self.metrics.out_of_order_requests.increment(1);
-                        if self.should_cap_working_tip(target.number()) {
-                            // FLOW-H07: do not clear `sync_target_request` first — Cap may
-                            // early-return when already at peer best; clearing then stalls.
-                            self.apply_working_tip_cap(target.hash(), target.number());
-                            return;
-                        }
+                        // FLOW-H07 Tip-DoD: never Cap a seeded Tip to Number(peer_best). We already
+                        // have hash+number from NewPayload; Falling requests use soft eth/68 peer
+                        // selection above Status best. Cap was the live stall (total=1 / flushed=1).
                         self.eventual_sync_target = None;
                         self.sync_target_request = None;
                         let parent_block_number = target.number().saturating_sub(1);
@@ -1748,8 +1757,10 @@ mod tests {
         assert!(downloader.next().await.is_none());
     }
 
+    /// FLOW-H07 Tip-DoD: seeded Tip above peer Status best must Falling from the seed, not Cap
+    /// to `Number(peer_best)` (live stall: only tip flushed).
     #[tokio::test]
-    async fn caps_working_tip_to_max_peer_best() {
+    async fn seeded_tip_above_peer_best_falls_from_seed_not_cap() {
         reth_tracing::init_test_tracing();
         let p3 = SealedHeader::default();
         let p2 = child_header(&p3);
@@ -1757,63 +1768,52 @@ mod tests {
         let p0 = child_header(&p1);
 
         let client = Arc::new(TestHeadersClient::default());
-        // Peers only have up to p1 — tip p0 is not reachable over P2P.
+        // Status tip lags the CL seed (opBNB eth/68); soft HeadersAtLeast still serves Falling.
         client.set_max_peer_best(Some(p1.number()));
 
+        // request_limit=1: TestHeadersClient drains FIFO without respecting start number; a
+        // larger limit would HeadersResponseTooShort-loop forever.
         let mut downloader = ReverseHeadersDownloaderBuilder::default()
             .stream_batch_size(10)
-            .request_limit(10)
+            .request_limit(1)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
         client.seed_header(&p0);
         downloader.update_local_head(p3.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        // After Cap, Number(p1) tip fetch then parents for reverse fill.
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.hash()), Some(p0.hash()));
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p0.number()));
+        assert!(
+            downloader.queued_validated_headers.iter().any(|h| h.hash() == p0.hash()),
+            "seeded tip must be queued for Falling"
+        );
+        assert!(downloader.sync_target_request.is_none());
+        assert!(downloader.eventual_sync_target.is_none());
+
+        // Peer Status lag must not Cap away the seeded tip on recap.
+        downloader.maybe_recap_working_tip();
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.hash()), Some(p0.hash()));
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p0.number()));
+
+        // Tip already queued from seed — only parents for Falling (high→low).
         client
-            .extend(vec![
-                p1.as_ref().clone(),
-                p2.as_ref().clone(),
-                p3.as_ref().clone(),
-            ])
+            .extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()])
             .await;
 
-        let mut headers = downloader.next().await.unwrap().unwrap();
-        // Working tip capped to p1 — must not include unreachable p0.
-        assert!(!headers.iter().any(|h| h.hash() == p0.hash()));
-        assert!(headers.iter().any(|h| h.hash() == p1.hash()));
-        assert_eq!(
-            downloader.eventual_sync_target.as_ref().and_then(|t| t.number()),
-            Some(p0.number())
-        );
-        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p1.number()));
-
-        // Poll again: eventual CL tip staying above peer best must not re-cap / wipe progress.
-        let before_tip = downloader.sync_target.as_ref().and_then(|t| t.number());
-        let before_queued = downloader.queued_validated_headers.len();
-        downloader.maybe_recap_working_tip();
-        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), before_tip);
-        assert_eq!(downloader.queued_validated_headers.len(), before_queued);
-        assert!(downloader.sync_target_request.is_none());
-
-        // Cap Number tip must prime Falling (regression: only tip flushed, then stall).
-        if !headers.iter().any(|h| h.hash() == p2.hash() || h.hash() == p3.hash()) {
-            let more = downloader.next().await.unwrap().unwrap();
-            headers.extend(more);
-        }
-        assert!(headers.iter().any(|h| h.hash() == p2.hash() || h.hash() == p3.hash()));
+        let headers = downloader.next().await.unwrap().unwrap();
+        assert!(headers.iter().any(|h| h.hash() == p0.hash()), "must keep seeded tip");
+        assert!(headers.iter().any(|h| h.hash() == p1.hash() || h.hash() == p2.hash()));
     }
 
-    /// FLOW-H07: advancing seeded Tips above a fixed peer best must not wipe the Cap Number
-    /// request (live: Cap then hours of Headers `target=None` with no Writing headers).
+    /// FLOW-H07: Tip churn while Falling from a seeded tip must rebind to the new seed, not Cap.
     #[tokio::test]
-    async fn tip_churn_while_capped_keeps_number_request() {
+    async fn tip_churn_seeded_rebinds_without_cap() {
         reth_tracing::init_test_tracing();
         let p4 = SealedHeader::default();
         let p3 = child_header(&p4);
         let p2 = child_header(&p3);
         let p1 = child_header(&p2);
         let p0 = child_header(&p1);
-        // Newer CL tip above peer best (same reachable height as p0).
         let p_newer = child_header(&p0);
 
         let client = Arc::new(TestHeadersClient::default());
@@ -1821,41 +1821,30 @@ mod tests {
 
         let mut downloader = ReverseHeadersDownloaderBuilder::default()
             .stream_batch_size(10)
-            .request_limit(10)
+            .request_limit(1)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
         client.seed_header(&p0);
         downloader.update_local_head(p4.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p1.number()));
-        assert!(downloader.sync_target_request.is_some());
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.hash()), Some(p0.hash()));
+        assert!(downloader.sync_target_request.is_none());
 
-        // Second Tip above the same peer best — must keep Cap request, not clear it.
         client.seed_header(&p_newer);
         downloader.update_sync_target(SyncTarget::Tip(p_newer.hash()));
 
-        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p1.number()));
-        assert!(
-            downloader.sync_target_request.is_some(),
-            "Tip churn while capped must not leave sync_target_request=None"
-        );
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.hash()), Some(p_newer.hash()));
         assert_eq!(
-            downloader.eventual_sync_target.as_ref().and_then(|t| t.number()),
+            downloader.sync_target.as_ref().and_then(|t| t.number()),
             Some(p_newer.number())
         );
-
-        client
-            .extend(vec![
-                p1.as_ref().clone(),
-                p2.as_ref().clone(),
-                p3.as_ref().clone(),
-                p4.as_ref().clone(),
-            ])
-            .await;
-
-        let headers = downloader.next().await.unwrap().unwrap();
-        assert!(headers.iter().any(|h| h.hash() == p1.hash()));
-        assert!(!headers.iter().any(|h| h.hash() == p0.hash() || h.hash() == p_newer.hash()));
+        assert!(
+            downloader.queued_validated_headers.iter().any(|h| h.hash() == p_newer.hash()),
+            "churn must queue the new seeded tip"
+        );
+        assert!(downloader.sync_target_request.is_none());
+        // Falling from the new seed is covered by `seeded_tip_above_peer_best_falls_from_seed_not_cap`.
+        let _ = (p0, p1, p2, p3, p4);
     }
 
     #[test]
