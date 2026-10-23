@@ -35,19 +35,22 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-23 ~14:46 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-23 ~19:47 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · `rebase/reth-v2.8.0`.
-> **FLOW-E03** + Payload/RPC/CLI align ✅ · **FLOW-S01:** restore `StaticFileSegment::Sidecars` @ disc. 3 (v2.4 datadir; StorageChangeSets=6).
-> **Deploy:** release `op-reth` → archive CT `BlockChain.service` **active** · Finish@198 509 580 · Tip-DoD open.
+> **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · `rebase/reth-v2.8.0` → trail `main`.
+> **Tip-DoD:** Finish≈Tip ✅ · Binary `d5b7a7bd` v2.8.0 maxperf · `el-trigger.gap 120`.
+> **Grafana hero:** `assets/logo.png` = Reth-Dash **2026-08-10→now** (Instance anonym `opbnb-archive:6060`).
 > **Cargo target:** `/usr/src/Erigon/Cargo/target-reth-v2.8.0`
 
 | Thema | Lage |
 | --- | --- |
-| **Live** | v2.8.0 binary running · Finish 100% @198.5M · peers≈4 |
+| **Live** | Pipeline idle @**198 642 442** (alle Stages 100%) · peers **5** · Total storage **~3.69 TiB** |
+| **Tip-DoD** | ✅ tip-following (Abnahme); Point-4 Header-`stateRoot` ≠ EVM-perfect claim |
 | **SF enum** | Sidecars legacy slot ✅ (not in `iter()`) |
-| **Next** | Tip-DoD (engine catch-up) |
+| **Next** | offen: `PORT-FLOW-X03` / `PORT-FLOW-S02` · Snap `PORT-FLOW-SNAP-*` |
+
+**Migrations-Gate (nächste Stage):** PIPE ohne offenes Tip-Backfill; Rest-FLOW = Persistenz/Prune (`X03`/`S02`) + optional Snap.
 
 ---
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="opBNB AlteredCarbon Reth archive — Grafana Aug–Oct 2026 (storage ~3.3 TiB growth, stages ~197.2 M, peers)" width="900">
+  <img src="assets/logo.png" alt="opBNB AlteredCarbon Reth archive — Grafana Aug–Oct 2026 (v2.8.0 maxperf tip-following, storage ~3.69 TiB, stages ~198.64 M, peers 5)" width="900">
 </p>
 
 # ‼️ Project Notice — Read Before Use ‼️
