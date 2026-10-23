@@ -152,6 +152,12 @@ zuverlässig startet und dauerhaft läuft.
 3. **Deploy:** maxperf `op-reth-bnb` gebaut + Archive-Restart ~12:03 CEST → Labels Wright→Finish; danach CL Tip-Stream + Pipeline-Backfill Headers/Bodies bis Horizon.
 4. **Rest-DoD:** Finish/Execution bis Horizon; Gap public ≪32; dann H07 Live-DoD abschließen.
 
+### FLOW-E03 Backfill-Semantik-Fix (2026-10-22)
+
+**Regression:** OP `backfill_target_hash → head` + post-Finish Re-Arm trotz `finalized=0` → Pipeline nie Idle → Buffer=64 / `newPayload_valid=0`.
+
+**Fix (an `bnb-chain/reth-bsc-trail`):** `backfill_target_hash` wieder **finalized**; bei `finalized=0` nach Finish **Idle** + `try_connect` (kein sofortiger Head-Re-Arm). `advance_op_safe_*` bleibt. FCU Tip-buffered Start mit Optimistic-Head-Fallback bleibt für Catch-up. Deploy/Live-Verify ausstehend.
+
 ### Archive-Verify vs Public Archive (2026-10-19 ~16:15 CEST)
 
 **Referenz:** local IPC `op-reth` vs **NodeReal** `opbnb-mainnet.nodereal.io` (historische State OK).  
@@ -276,7 +282,7 @@ Dashboard: [op-node / opBNB](https://gra.zsolttech.com/d/opbnb-op-node-dash/op-n
 | **STOR-TRIE-001** | ✅ live |
 | **FLOW-H06** | ✅ live — HeaderSeed Tip-Bind; Catch-up-Wellen bis Finish **197 256 674** |
 | **FLOW-H07** | 🔧 Code 2026-10-21: Tip-Churn während Cap wischte `sync_target_request` → Headers `target=None` Stall; Fix + Unit. Deploy/Live offen |
-| **FLOW-E03 / ENGINE-EL** | ✅ Label-Advance deployed · Labels nicht mehr Wright · `newPayload` fließt · Pipeline-Catch-up aktiv · Rest: Finish→Horizon + Gap≪32 |
+| **FLOW-E03 / ENGINE-EL** | ✅ Label-Advance bleibt · 🔧 2026-10-22: OP Head-Chase Re-Arm reverted (upstream Finalized/Idle bei `finalized=0`) — Live-DoD Tip-Follow offen |
 | **METRICS-RDB-001** | ✅ live — RocksDB Size **~384 GiB** in Mimir |
 
 ### Nächste Schritte

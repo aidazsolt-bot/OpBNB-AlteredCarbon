@@ -1956,8 +1956,13 @@ where
         else {
             return Ok(())
         };
-        if !self.engine_kind.is_opstack() && sync_target_state.finalized_block_hash.is_zero() {
-            // no finalized block, can't check distance on non-OP Stack chains
+        // Match upstream `bnb-chain/reth-bsc-trail` / optimistic-CL semantics: when the CL has not
+        // set a finalized hash, do **not** immediately re-arm pipeline to `head`. That left
+        // `backfill_sync_state` Active forever (buffer=64, newPayload valid=0). Stay Idle so the
+        // live insert path can run; FCU may still start backfill when the tip is buffered and the
+        // gap exceeds the threshold.
+        if sync_target_state.finalized_block_hash.is_zero() {
+            self.try_connect_buffered_blocks(self.state.tree_state.current_canonical_head)?;
             return Ok(())
         }
         let target_hash = self.backfill_target_hash(sync_target_state);
@@ -2655,17 +2660,12 @@ where
 
     /// Returns the block hash that backfill should target.
     ///
-    /// Defaults to the finalized block hash. On OP Stack, the CL finalizes in large batches and the
-    /// finalized hash can lag the canonical tip by a wide margin, so backfill targets the head.
-    ///
-    /// The zero-finalized optimistic-sync fallback for non-OP Stack chains is handled by
-    /// [`Self::backfill_sync_target`].
+    /// Defaults to the finalized block hash (same for Ethereum and OP Stack). The zero-finalized
+    /// optimistic-sync fallback to `head` is handled by [`Self::backfill_sync_target`] and the FCU
+    /// missing-block path — not by always chasing tip on OP (that starved the live Engine path).
+    #[allow(clippy::unused_self)] // engine_kind no longer branches; kept for call-site symmetry
     const fn backfill_target_hash(&self, state: ForkchoiceState) -> B256 {
-        if self.engine_kind.is_opstack() {
-            state.head_block_hash
-        } else {
-            state.finalized_block_hash
-        }
+        state.finalized_block_hash
     }
 
     /// On OP Stack, advance persisted `safe`/`finalized` labels to the local tip when they lag by
