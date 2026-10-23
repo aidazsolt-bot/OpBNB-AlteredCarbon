@@ -9,6 +9,7 @@ exclude = [".github/"]
 
 [workspace]
 members = [
+
     "bin/reth-bb/",
     "bin/reth/",
     "crates/storage/rpc-provider/",
@@ -120,7 +121,6 @@ members = [
     "crates/trie/trie",
     "examples/beacon-api-sidecar-fetcher/",
     "examples/beacon-api-sse/",
-    "examples/bsc-p2p",
     "examples/custom-dev-node/",
     "examples/custom-state-root/",
     "examples/custom-engine-types/",
@@ -177,6 +177,9 @@ members = [
     "crates/optimism/storage/",
     "crates/optimism/txpool/",
 
+    # Kept from v2.4.1 port (upstream publishes primitives-traits on crates.io)
+    "crates/primitives/",
+    "crates/primitives-traits/",
 ]
 default-members = ["bin/reth"]
 exclude = ["docs/cli"]
@@ -427,7 +430,7 @@ reth-payload-builder-primitives = { path = "crates/payload/builder-primitives" }
 reth-payload-primitives = { path = "crates/payload/primitives" }
 reth-payload-validator = { path = "crates/payload/validator" }
 reth-primitives = { path = "crates/primitives", default-features = false, features = ["std"] }
-reth-primitives-traits = { version = "0.8.2", default-features = false }
+reth-primitives-traits = { path = "crates/primitives-traits", default-features = false }
 reth-provider = { path = "crates/storage/provider" }
 reth-prune = { path = "crates/prune/prune" }
 reth-prune-types = { path = "crates/prune/types", default-features = false }
@@ -730,3 +733,19 @@ reth-optimism-primitives = { path = "crates/optimism/primitives" }
 reth-optimism-rpc = { path = "crates/optimism/rpc" }
 reth-optimism-storage = { path = "crates/optimism/storage" }
 reth-optimism-txpool = { path = "crates/optimism/txpool" }
+c-kzg = "2.1.8"
+
+# --- missing workspace deps referenced by in-tree crates (from v2.4.1 port) ---
+alloy-network-primitives = { version = "2.1.1", default-features = false }
+alloy-transport-http = { version = "2.1.1", features = ["reqwest-rustls-tls"], default-features = false }
+arbtest = "0.3.2"
+prost = { version = "0.12.6" }
+reth-beacon-consensus = { path = "crates/consensus/beacon" }
+reth-blockchain-tree-api = { path = "crates/blockchain-tree-api" }
+reth-payload-util = { path = "crates/payload/util" }
+reth-trie-prefetch = { path = "crates/trie/prefetch" }
+rstest = "0.26.1"
+rust-eth-triedb = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", tag = "v0.0.2" }
+rust-eth-triedb-state-trie = { git = "https://github.com/bnb-chain/reth-bsc-triedb.git", tag = "v0.0.2", package = "rust-eth-triedb-state-trie" }
+rustls = { version = "0.23", default-features = false }
+shellexpand = "3.0.0"
