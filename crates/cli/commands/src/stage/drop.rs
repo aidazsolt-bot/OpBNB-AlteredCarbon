@@ -16,6 +16,7 @@ use reth_node_api::{HeaderTy, ReceiptTy, TxTy};
 use reth_node_core::args::StageEnum;
 use reth_provider::{
     DBProvider, DatabaseProviderFactory, StaticFileProviderFactory, StaticFileWriter,
+    StorageSettingsCache,
 };
 use reth_prune::PruneSegment;
 use reth_stages::StageId;
@@ -135,8 +136,15 @@ impl<C: ChainSpecParser> Command<C> {
                 reset_stage_checkpoint(tx, StageId::SenderRecovery)?;
             }
             StageEnum::Execution => {
-                tx.clear::<tables::PlainAccountState>()?;
-                tx.clear::<tables::PlainStorageState>()?;
+                if provider_rw.cached_storage_settings().use_hashed_state() {
+                    tx.clear::<tables::HashedAccounts>()?;
+                    tx.clear::<tables::HashedStorages>()?;
+                    reset_stage_checkpoint(tx, StageId::AccountHashing)?;
+                    reset_stage_checkpoint(tx, StageId::StorageHashing)?;
+                } else {
+                    tx.clear::<tables::PlainAccountState>()?;
+                    tx.clear::<tables::PlainStorageState>()?;
+                }
                 tx.clear::<tables::AccountChangeSets>()?;
                 tx.clear::<tables::StorageChangeSets>()?;
                 tx.clear::<tables::Bytecodes>()?;

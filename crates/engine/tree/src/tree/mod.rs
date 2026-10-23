@@ -517,6 +517,8 @@ where
             runtime,
             header_seed,
         );
+        // Unblock op-node FindL2Heads after archive pipeline catch-up with stale labels.
+        task.advance_op_safe_finalized_if_stale();
         let incoming = task.incoming_tx.clone();
         spawn_os_thread("engine", || {
             increase_thread_priority();
@@ -1377,6 +1379,10 @@ where
         &self,
         state: ForkchoiceState,
     ) -> ProviderResult<TreeOutcome<OnForkChoiceUpdated>> {
+        // OP: while tip-chasing, keep safe/finalized labels near the local tip so a CL restart
+        // does not walk L2 from tip back to a multi-month-stale finalized (FLOW-E03).
+        self.advance_op_safe_finalized_if_stale();
+
         // We don't have the block to perform the forkchoice update
         // We assume the FCU is valid and at least the head is missing,
         // so we need to start syncing to it
@@ -1420,24 +1426,30 @@ where
             if backfill_hash.is_zero() && state.finalized_block_hash.is_zero() {
                 backfill_hash = state.head_block_hash;
             }
+            // FLOW-E03 / op-geth: BeaconSync only with the head header from NewPayload
+            // (`remoteBlocks`). Never Start(pipeline tip=hash) if that tip is not buffered —
+            // seeding only an ancestor while Starting the FCU head hash parks Headers forever.
             if !backfill_hash.is_zero() {
-                // Prefer the backfill tip header (often the FCU head itself) so Headers stage does
-                // not depend on P2P tip fetch for a hash peers may not serve yet.
                 if let Some(tip_block) = self.state.buffer.block(&backfill_hash) {
                     self.seed_header_from_block(tip_block);
-                } else {
-                    self.seed_header_from_block(buffered);
+                    debug!(
+                        target: "engine::tree",
+                        local_tip,
+                        tip_number = tip_block.number(),
+                        %backfill_hash,
+                        "FCU tip buffered+seeded, starting backfill"
+                    );
+                    return Ok(syncing.with_event(TreeEvent::BackfillAction(
+                        BackfillAction::Start(backfill_hash.into()),
+                    )));
                 }
                 debug!(
                     target: "engine::tree",
                     local_tip,
                     buffered_number = buffered.number(),
                     %backfill_hash,
-                    "missing FCU head exceeds backfill threshold, starting backfill"
+                    "FCU tip hash not buffered yet; wait for NewPayload (no unseeded Headers tip)"
                 );
-                return Ok(syncing.with_event(TreeEvent::BackfillAction(BackfillAction::Start(
-                    backfill_hash.into(),
-                ))));
             }
         }
 
@@ -1933,6 +1945,11 @@ where
             self.canonical_in_memory_state.set_canonical_head(new_head);
         }
 
+        // OP archive: pipeline can advance tip for months while CL FCU keeps safe/finalized at an
+        // early fork (e.g. Wright). Advance labels to the backfill tip so op-node FindL2Heads does
+        // not walk tip→stale-finalized and stall the Engine driver (FLOW-E03).
+        self.advance_op_safe_finalized_if_stale();
+
         // check if we need to run backfill again by comparing the most recent backfill target
         // height to the backfill height
         let Some(sync_target_state) = self.state.forkchoice_state_tracker.sync_target_state()
@@ -1962,11 +1979,19 @@ where
                 self.backfill_sync_target(progress, target_number, None)
             })
         {
-            // request another backfill run
-            self.emit_event(EngineApiEvent::BackfillAction(BackfillAction::Start(
-                backfill_target.into(),
-            )));
-            return Ok(())
+            // FLOW-E03: Start only when that tip hash itself is still buffered+seeded.
+            if let Some(tip_block) = self.state.buffer.block(&backfill_target) {
+                self.seed_header_from_block(tip_block);
+                self.emit_event(EngineApiEvent::BackfillAction(BackfillAction::Start(
+                    backfill_target.into(),
+                )));
+                return Ok(())
+            }
+            debug!(
+                target: "engine::tree",
+                %backfill_target,
+                "post-Finish backfill tip not buffered; wait for NewPayload"
+            );
         };
 
         // Check if there are more blocks to sync between current head and FCU target
@@ -2643,6 +2668,52 @@ where
         }
     }
 
+    /// On OP Stack, advance persisted `safe`/`finalized` labels to the local tip when they lag by
+    /// more than [`MIN_BLOCKS_FOR_PIPELINE_RUN`].
+    ///
+    /// op-node `FindL2Heads` walks L2 from unsafe toward finalized (`Walking back L1Block`). If
+    /// pipeline catch-up left `finalized` at an early fork (e.g. Wright) while `latest` is near tip,
+    /// that walk spans O(10⁸) blocks, starves the Engine driver (`context deadline exceeded`), and
+    /// yields `Skipping EL sync` / zero EL `newPayload` (FLOW-E03). Advancing labels is safe here:
+    /// the blocks are already canonical on disk; we are not inventing consensus finality for CL
+    /// derivation — only unblocking Engine-API tip-follow after EL-led archive sync.
+    fn advance_op_safe_finalized_if_stale(&self) {
+        if !self.engine_kind.is_opstack() {
+            return;
+        }
+
+        let tip = self.state.tree_state.current_canonical_head;
+        if tip.number == 0 {
+            return;
+        }
+
+        let previous_finalized =
+            self.canonical_in_memory_state.get_finalized_num_hash().map(|f| f.number).unwrap_or(0);
+        let lag = tip.number.saturating_sub(previous_finalized);
+        if lag <= MIN_BLOCKS_FOR_PIPELINE_RUN {
+            return;
+        }
+
+        let Ok(Some(header)) = self.provider.sealed_header(tip.number) else {
+            return;
+        };
+
+        let _ = self.persistence.save_finalized_block_number(tip.number);
+        let _ = self.persistence.save_safe_block_number(tip.number);
+        self.canonical_in_memory_state.set_finalized(header.clone());
+        self.canonical_in_memory_state.set_safe(header);
+        self.metrics.tree.finalized_block_height.set(tip.number as f64);
+        self.metrics.tree.safe_block_height.set(tip.number as f64);
+
+        info!(
+            target: "engine::tree",
+            tip = tip.number,
+            previous_finalized,
+            lag,
+            "Advanced stale OP safe/finalized labels to local tip"
+        );
+    }
+
     /// Returns the target hash to sync to if the distance from the local tip is greater than the
     /// threshold and we're not yet synced to the backfill target (see
     /// [`Self::backfill_target_hash`]).
@@ -2844,8 +2915,17 @@ where
         if let Some(target) =
             self.backfill_sync_target(head.number, missing_parent.number, Some(downloaded_block))
         {
-            trace!(target: "engine::tree", %target, "triggering backfill on downloaded block");
-            return Some(TreeEvent::BackfillAction(BackfillAction::Start(target.into())));
+            // FLOW-E03: only Start when tip is buffered (and thus seedable).
+            if let Some(tip_block) = self.state.buffer.block(&target) {
+                self.seed_header_from_block(tip_block);
+                trace!(target: "engine::tree", %target, "triggering backfill on downloaded block");
+                return Some(TreeEvent::BackfillAction(BackfillAction::Start(target.into())));
+            }
+            debug!(
+                target: "engine::tree",
+                %target,
+                "backfill target not buffered; skip unseeded Start"
+            );
         }
 
         // continue downloading the missing parent

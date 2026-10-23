@@ -72,6 +72,13 @@ where
     type Header = A::Header;
     type Output = Either<A::Output, B::Output>;
 
+    fn seeded_header(&self, hash: B256) -> Option<Self::Header> {
+        match self {
+            Self::Left(a) => a.seeded_header(hash),
+            Self::Right(b) => b.seeded_header(hash),
+        }
+    }
+
     fn get_headers_with_priority(
         &self,
         request: HeadersRequest,

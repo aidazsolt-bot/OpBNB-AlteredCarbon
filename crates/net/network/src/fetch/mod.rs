@@ -362,6 +362,9 @@ impl<N: NetworkPrimitives> StateFetcher<N> {
 
     /// Returns `true` when every **idle** peer cannot serve `HeadersAtLeast(number)`.
     ///
+    /// eth/68 peers without a miss entry remain eligible even when Status `best_number` lags
+    /// (FLOW-H07). eth/69 range tips and `header_miss` still hard-filter.
+    ///
     /// If any peer is still busy (including Status tip-number resolve), returns `false` so the
     /// request waits instead of fail-fast empty.
     fn no_peer_can_serve_headers_at_least(&self, number: u64) -> bool {
@@ -708,7 +711,21 @@ impl Peer {
             BestPeerRequirements::EthVersion(ver) => self.capabilities.supports_eth_at_least(ver),
             BestPeerRequirements::SupportsSnap => self.supports_snap,
             BestPeerRequirements::HeadersAtLeast(number) => {
-                self.tip_number() >= *number && !self.header_miss.contains(number)
+                if self.header_miss.contains(number) {
+                    return false;
+                }
+                // eth/69 advertises an authoritative tip via range / Status.latest.
+                // eth/66–68 only learn `best_number` once (Status tip resolve on connect);
+                // OP-Stack ELs rarely gossip NewBlock, so the advertised tip goes stale after
+                // catch-up while peers still serve newer headers. Hard-filtering on
+                // tip_number() then fail-fast-Empties forever (FLOW-H07). Prefer peers with
+                // tip_number >= number via `is_better`, but still allow the request — Empty
+                // replies populate `header_miss` like FullBlockRange on eth/68.
+                if self.range_info.is_some() {
+                    self.tip_number() >= *number
+                } else {
+                    true
+                }
             }
             // eth/69: only peers that announced covering the range may serve bodies/receipts.
             // eth/66–68 (no range): allow and discover gaps via empty responses + miss map.
@@ -1746,20 +1763,23 @@ mod tests {
             fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(50)),
             Some(near_tip) // higher best preferred
         );
-        // Only lagging can be forced by disconnecting near tip
+        // eth/68: lagging Status tip no longer hard-blocks above best_number (FLOW-H07).
         fetcher.on_pending_disconnect(&near_tip);
         assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(50)), Some(lagging));
-        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(101)), None);
+        assert_eq!(
+            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(101)),
+            Some(lagging)
+        );
         assert_eq!(fetcher.max_peer_best_number.load(Ordering::Relaxed), 173_000_000);
     }
 
     #[tokio::test]
-    async fn test_headers_at_least_requires_resolved_best_number() {
+    async fn test_headers_at_least_eth68_allows_unresolved_or_stale_tip() {
         let manager = PeersManager::new(PeersConfig::default());
         let mut fetcher =
             StateFetcher::<EthNetworkPrimitives>::new(manager.handle(), Default::default());
         let peer_id = B512::random();
-        // Before Status tip resolve completes, best_number stays 0 → cannot serve tip-range.
+        // eth/68 before/after Status tip resolve: still eligible; tip is soft preference only.
         fetcher.new_active_peer(NewPeerInfo {
             peer_id,
             best_hash: B256::random(),
@@ -1769,9 +1789,11 @@ mod tests {
             range_info: None,
             supports_snap: false,
         });
-        assert_eq!(fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)), None);
+        assert_eq!(
+            fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)),
+            Some(peer_id)
+        );
 
-        // After GetBlockHeaders(Status.blockhash, limit=1) resolves the number:
         assert!(fetcher.update_peer_block(&peer_id, B256::random(), 173_274_244));
         assert_eq!(
             fetcher.next_best_peer(BestPeerRequirements::HeadersAtLeast(173_000_000)),
@@ -1781,9 +1803,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_headers_at_least_known_lagging_fail_fast_empty() {
+    async fn test_headers_at_least_eth69_lagging_fail_fast_empty() {
         let (mut fetcher, peer_id) = fetcher_with_peer();
+        // eth/69 range tip is authoritative — lagging peers must fail-fast Empty.
         fetcher.peers.get_mut(&peer_id).unwrap().best_number = 100;
+        fetcher.peers.get_mut(&peer_id).unwrap().range_info =
+            Some(crate::session::BlockRangeInfo::new(0, 100, B256::random()));
         fetcher.refresh_max_peer_best_number();
 
         assert!(fetcher.no_peer_can_serve_headers_at_least(1_000_000));
@@ -1801,7 +1826,7 @@ mod tests {
             priority: Priority::default(),
         });
 
-        // No peer can serve → empty OK (unblocks downloader), not an infinite requeue.
+        // No eth/69 peer can serve → empty OK (unblocks downloader), not an infinite requeue.
         let _ = poll_fn(|cx| {
             let _ = fetcher.poll(cx);
             Poll::Ready(())
@@ -1810,6 +1835,32 @@ mod tests {
         let delivered = rx.try_recv().unwrap().unwrap();
         assert!(delivered.1.is_empty());
         assert!(fetcher.peers.contains_key(&peer_id));
+    }
+
+    #[tokio::test]
+    async fn test_headers_at_least_eth68_miss_map_fail_fast_empty() {
+        let (mut fetcher, peer_id) = fetcher_with_peer();
+        fetcher.peers.get_mut(&peer_id).unwrap().best_number = 100;
+        fetcher.peers.get_mut(&peer_id).unwrap().header_miss.insert(1_000_000);
+        fetcher.refresh_max_peer_best_number();
+
+        assert!(fetcher.no_peer_can_serve_headers_at_least(1_000_000));
+        assert!(!fetcher.no_peer_can_serve_headers_at_least(50));
+
+        let (tx, mut rx) = oneshot::channel();
+        fetcher.queued_requests.push_back(DownloadRequest::GetBlockHeaders {
+            request: HeadersRequest::falling(1_000_000u64.into(), 1000),
+            response: tx,
+            priority: Priority::default(),
+        });
+
+        let _ = poll_fn(|cx| {
+            let _ = fetcher.poll(cx);
+            Poll::Ready(())
+        })
+        .await;
+        let delivered = rx.try_recv().unwrap().unwrap();
+        assert!(delivered.1.is_empty());
     }
 
     #[tokio::test]

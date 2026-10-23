@@ -282,7 +282,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(cmd.network.discovery.addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_eq!(cmd.network.addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(cmd.network.addr, Some(IpAddr::V4(Ipv4Addr::LOCALHOST)));
     }
 
     #[test]

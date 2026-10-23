@@ -29,6 +29,17 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
+## Session-Memory / Status (Stand 2026-10-19 ~16:58 CEST)
+
+Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + *Live Sync Progress*.
+
+| | |
+| --- | --- |
+| Live | **Finish @197 206 567 ✅** · Tip-Gap **~13 k** · Headers `target=None` nach Finish |
+| Engine | Buffer **64** · `fcu_valid=0` · CL Seed-Tip gebunden, kein Header-Download↑ |
+| Tip-Quelle | Tip = op-node `newPayload`/FCU; Gap ≫64 = Pipeline-Backfill (FLOW-E03/H06) |
+| Binary | `061a9b9c` · FLOW-H06 + RocksDB **~385 GiB** |
+
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
 Dieser Fork ist ein **Methodik-/Prozess-Experiment** (README *Project Notice* / *About This Fork*):

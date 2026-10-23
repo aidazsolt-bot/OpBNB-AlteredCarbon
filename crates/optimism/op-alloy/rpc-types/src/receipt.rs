@@ -109,7 +109,7 @@ pub struct OpTransactionReceiptFields {
 
 /// Serialize/Deserialize l1FeeScalar to/from string
 mod l1_fee_scalar_serde {
-    use serde::{Deserialize, de};
+    use serde::{de, Deserialize};
 
     pub(super) fn serialize<S>(value: &Option<f64>, s: S) -> Result<S::Ok, S::Error>
     where
@@ -262,7 +262,7 @@ impl From<OpTransactionReceipt> for OpReceiptEnvelope<alloy_primitives::Log> {
 mod tests {
     use super::*;
     use alloc::string::ToString;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
 
     // <https://github.com/alloy-rs/op-alloy/issues/18>
     #[test]

@@ -6,6 +6,7 @@ use reth_db_api::{
     table::{Decode, Decompress, Value},
     tables,
     transaction::DbTxMut,
+    Tables,
 };
 use reth_etl::Collector;
 use reth_primitives_traits::{NodePrimitives, SignedTransaction};
@@ -24,16 +25,24 @@ use tracing::*;
 
 /// The transaction lookup stage.
 ///
-/// This stage walks over existing transactions, and sets the transaction hash of each transaction
-/// in a block to the corresponding `BlockNumber` at each block. This is written to the
-/// [`tables::TransactionHashNumbers`] This is used for looking up changesets via the transaction
-/// hash.
+/// This stage walks over existing transactions and writes `tx_hash -> tx_number` into
+/// [`tables::TransactionHashNumbers`] (used for looking up transactions by hash).
 ///
-/// It uses [`reth_etl::Collector`] to collect all entries before finally writing them to disk.
+/// ## Why chunked ETL writes (not one stage-wide load)
+///
+/// Hash keys must be inserted sorted for fast MDBX `append` / lower write amplification
+/// ([`reth_etl::Collector`], see also paradigmxyz/reth#6655 / #6909). Holding the **entire**
+/// stage range in one ETL then one DB write was intentional for first-sync speed, but on
+/// archive genesis (or any run where `TransactionLookup` lags far behind Bodies) that build
+/// one giant `RocksDB` write batch / WAL and can OOM before commit.
+///
+/// Each pipeline call therefore processes at most [`Self::chunk_size`] transactions: ETL-sort
+/// that chunk, write it (with `RocksDB` auto-commit batches), and return `done = false` until
+/// the stage target is reached — same control flow as sender recovery. The first flush into an
+/// empty table still uses append; subsequent chunks use insert/upsert.
 #[derive(Debug, Clone)]
 pub struct TransactionLookupStage {
-    /// The maximum number of lookup entries to hold in memory before pushing them to
-    /// [`reth_etl::Collector`].
+    /// Max transactions per pipeline execute/commit (see [`TransactionLookupConfig::chunk_size`]).
     chunk_size: u64,
     etl_config: EtlConfig,
     prune_mode: Option<PruneMode>,
@@ -116,96 +125,102 @@ where
             return Ok(ExecOutput::done(input.checkpoint()));
         }
 
-        // 500MB temporary files
+        let Some(range_output) =
+            input.next_block_range_with_transaction_threshold(provider, self.chunk_size)?
+        else {
+            return Ok(ExecOutput::done(
+                StageCheckpoint::new(input.target())
+                    .with_entities_stage_checkpoint(stage_checkpoint(provider)?),
+            ));
+        };
+
+        let end_block = *range_output.block_range.end();
+        let is_final_range = range_output.is_final_range;
+
+        info!(
+            target: "sync::stages::transaction_lookup",
+            tx_range = ?range_output.tx_range,
+            block_range = ?range_output.block_range,
+            is_final_range,
+            "Updating transaction lookup"
+        );
+
+        // ETL-sort this chunk only, then stream into DB. Do not accumulate the full stage
+        // target: a single WriteBatch/WAL for archive-scale ranges OOMs (RocksDB) even when
+        // ETL spills to disk.
         let mut hash_collector: Collector<TxHash, TxNumber> =
             Collector::new(self.etl_config.file_size, self.etl_config.dir.clone());
 
         info!(
             target: "sync::stages::transaction_lookup",
-            tx_range = ?input.checkpoint().block_number..=input.target(),
-            "Updating transaction lookup"
+            tx_range = ?range_output.tx_range,
+            "Calculating transaction hashes"
         );
 
-        loop {
-            let Some(range_output) =
-                input.next_block_range_with_transaction_threshold(provider, self.chunk_size)?
-            else {
-                input.checkpoint = Some(
-                    StageCheckpoint::new(input.target())
-                        .with_entities_stage_checkpoint(stage_checkpoint(provider)?),
-                );
-                break;
-            };
-
-            let end_block = *range_output.block_range.end();
-
-            info!(target: "sync::stages::transaction_lookup", tx_range = ?range_output.tx_range, "Calculating transaction hashes");
-
-            for (key, value) in provider.transaction_hashes_by_range(range_output.tx_range)? {
-                hash_collector.insert(key, value)?;
-            }
-
-            input.checkpoint = Some(
-                StageCheckpoint::new(end_block)
-                    .with_entities_stage_checkpoint(stage_checkpoint(provider)?),
-            );
-
-            if range_output.is_final_range {
-                let total_hashes = hash_collector.len();
-                let interval = (total_hashes / 10).max(1);
-
-                // Use append mode when table is empty (first sync) - significantly faster
-                let append_only =
-                    provider.count_entries::<tables::TransactionHashNumbers>()?.is_zero();
-
-                // Create RocksDB batch if feature is enabled
-                #[cfg(all(unix, feature = "rocksdb"))]
-                let rocksdb = provider.rocksdb_provider();
-                #[cfg(all(unix, feature = "rocksdb"))]
-                let rocksdb_batch = rocksdb.batch();
-                #[cfg(not(all(unix, feature = "rocksdb")))]
-                let rocksdb_batch = ();
-
-                // Create writer that routes to either MDBX or RocksDB based on settings
-                let mut writer =
-                    EitherWriter::new_transaction_hash_numbers(provider, rocksdb_batch)?;
-
-                for (index, hash_to_number) in hash_collector.iter()?.enumerate() {
-                    let (hash_bytes, number_bytes) = hash_to_number?;
-                    if index > 0 && index.is_multiple_of(interval) {
-                        info!(
-                            target: "sync::stages::transaction_lookup",
-                            ?append_only,
-                            progress = %format!("{:.2}%", (index as f64 / total_hashes as f64) * 100.0),
-                            "Inserting hashes"
-                        );
-                    }
-
-                    // Decode from raw ETL bytes
-                    let hash = TxHash::decode(&hash_bytes)?;
-                    let tx_num = TxNumber::decompress(&number_bytes)?;
-                    writer.put_transaction_hash_number(hash, tx_num, append_only)?;
-                }
-
-                // Extract and register RocksDB batch for commit at provider level
-                #[cfg(all(unix, feature = "rocksdb"))]
-                if let Some(batch) = writer.into_raw_rocksdb_batch() {
-                    provider.set_pending_rocksdb_batch(batch);
-                }
-
-                trace!(target: "sync::stages::transaction_lookup",
-                    total_hashes,
-                    "Transaction hashes inserted"
-                );
-
-                break;
-            }
+        for (key, value) in provider.transaction_hashes_by_range(range_output.tx_range)? {
+            hash_collector.insert(key, value)?;
         }
 
+        let total_hashes = hash_collector.len();
+        let interval = (total_hashes / 10).max(1);
+
+        // Append only works while the table is empty (first chunk of a fresh index). Later
+        // chunks are still ETL-sorted locally but must upsert into the existing keyspace.
+        let append_only = provider.count_entries::<tables::TransactionHashNumbers>()?.is_zero();
+        let use_rocksdb = provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb();
+
+        info!(
+            target: "sync::stages::transaction_lookup",
+            total_hashes,
+            ?append_only,
+            ?use_rocksdb,
+            "Loading transaction hashes into database"
+        );
+
+        // Auto-commit RocksDB batches (see RocksDBProvider::batch_with_auto_commit) so a
+        // single chunk cannot grow an unbounded WAL; startup consistency heals crashes
+        // between those flushes.
+        provider.with_rocksdb_batch_auto_commit(|rocksdb_batch| {
+            let mut writer = EitherWriter::new_transaction_hash_numbers(provider, rocksdb_batch)?;
+
+            for (index, hash_to_number) in
+                hash_collector.iter().map_err(ProviderError::other)?.enumerate()
+            {
+                let (hash_bytes, number_bytes) = hash_to_number.map_err(ProviderError::other)?;
+                if index > 0 && index.is_multiple_of(interval) {
+                    info!(
+                        target: "sync::stages::transaction_lookup",
+                        ?append_only,
+                        progress = %format!("{:.2}%", (index as f64 / total_hashes as f64) * 100.0),
+                        "Inserting hashes"
+                    );
+                }
+
+                let hash = TxHash::decode(&hash_bytes)?;
+                let tx_num = TxNumber::decompress(&number_bytes)?;
+                writer.put_transaction_hash_number(hash, tx_num, append_only)?;
+            }
+
+            Ok(((), writer.into_raw_rocksdb_batch()))
+        })?;
+
+        if use_rocksdb {
+            provider.commit_pending_rocksdb_batches()?;
+            provider.rocksdb_provider().flush(&[Tables::TransactionHashNumbers.name()])?;
+        }
+
+        trace!(
+            target: "sync::stages::transaction_lookup",
+            total_hashes,
+            end_block,
+            is_final_range,
+            "Transaction hashes inserted"
+        );
+
         Ok(ExecOutput {
-            checkpoint: StageCheckpoint::new(input.target())
+            checkpoint: StageCheckpoint::new(end_block)
                 .with_entities_stage_checkpoint(stage_checkpoint(provider)?),
-            done: true,
+            done: is_final_range,
         })
     }
 
@@ -217,41 +232,36 @@ where
     ) -> Result<UnwindOutput, StageError> {
         let (range, unwind_to, _) = input.unwind_block_range_with_threshold(self.chunk_size);
 
-        // Create RocksDB batch if feature is enabled
-        #[cfg(all(unix, feature = "rocksdb"))]
-        let rocksdb = provider.rocksdb_provider();
-        #[cfg(all(unix, feature = "rocksdb"))]
-        let rocksdb_batch = rocksdb.batch();
-        #[cfg(not(all(unix, feature = "rocksdb")))]
-        let rocksdb_batch = ();
+        let use_rocksdb = provider.cached_storage_settings().transaction_hash_numbers_in_rocksdb();
 
-        // Create writer that routes to either MDBX or RocksDB based on settings
-        let mut writer = EitherWriter::new_transaction_hash_numbers(provider, rocksdb_batch)?;
+        provider.with_rocksdb_batch_auto_commit(|rocksdb_batch| {
+            let mut writer = EitherWriter::new_transaction_hash_numbers(provider, rocksdb_batch)?;
 
-        let static_file_provider = provider.static_file_provider();
-        let rev_walker = provider
-            .block_body_indices_range(range.clone())?
-            .into_iter()
-            .zip(range.collect::<Vec<_>>())
-            .rev();
+            let static_file_provider = provider.static_file_provider();
+            let rev_walker = provider
+                .block_body_indices_range(range.clone())?
+                .into_iter()
+                .zip(range.collect::<Vec<_>>())
+                .rev();
 
-        for (body, number) in rev_walker {
-            if number <= unwind_to {
-                break;
-            }
+            for (body, number) in rev_walker {
+                if number <= unwind_to {
+                    break;
+                }
 
-            // Delete all transactions that belong to this block
-            for tx_id in body.tx_num_range() {
-                if let Some(transaction) = static_file_provider.transaction_by_id(tx_id)? {
-                    writer.delete_transaction_hash_number(transaction.trie_hash())?;
+                for tx_id in body.tx_num_range() {
+                    if let Some(transaction) = static_file_provider.transaction_by_id(tx_id)? {
+                        writer.delete_transaction_hash_number(transaction.trie_hash())?;
+                    }
                 }
             }
-        }
 
-        // Extract and register RocksDB batch for commit at provider level
-        #[cfg(all(unix, feature = "rocksdb"))]
-        if let Some(batch) = writer.into_raw_rocksdb_batch() {
-            provider.set_pending_rocksdb_batch(batch);
+            Ok(((), writer.into_raw_rocksdb_batch()))
+        })?;
+
+        if use_rocksdb {
+            provider.commit_pending_rocksdb_batches()?;
+            provider.rocksdb_provider().flush(&[Tables::TransactionHashNumbers.name()])?;
         }
 
         Ok(UnwindOutput {
@@ -307,6 +317,49 @@ mod tests {
 
     // Implement stage test suite.
     stage_test_suite_ext!(TransactionLookupTestRunner, transaction_lookup);
+
+    /// Pipeline must commit between chunks (`done = false`) so archive-scale ranges do not
+    /// build one unbounded lookup write.
+    #[tokio::test]
+    async fn execute_chunked_transaction_lookup() {
+        let (previous_stage, stage_progress) = (50, 0);
+        let mut rng = generators::rng();
+
+        let mut runner = TransactionLookupTestRunner::default();
+        // Force many pipeline rounds regardless of tx density.
+        runner.chunk_size = 1;
+
+        let input = ExecInput {
+            target: Some(previous_stage),
+            checkpoint: Some(StageCheckpoint::new(stage_progress)),
+        };
+
+        let blocks = random_block_range(
+            &mut rng,
+            stage_progress + 1..=previous_stage,
+            BlockRangeParams { parent: Some(B256::ZERO), tx_count: 1..3, ..Default::default() },
+        );
+        runner
+            .db
+            .insert_blocks(blocks.iter(), StorageKind::Static)
+            .expect("failed to insert blocks");
+
+        let mut cursor = input;
+        let mut rounds = 0u32;
+        let output = loop {
+            rounds += 1;
+            assert!(rounds <= 10_000, "chunked lookup did not finish");
+            let result = runner.execute(cursor).await.unwrap().unwrap();
+            if result.done {
+                break result;
+            }
+            cursor.checkpoint = Some(result.checkpoint);
+        };
+
+        assert_eq!(output.checkpoint.block_number, previous_stage);
+        assert!(rounds > 1, "expected multiple execute rounds with chunk_size=1");
+        assert!(runner.validate_execution(input, Some(output)).is_ok(), "execution validation");
+    }
 
     #[tokio::test]
     async fn execute_single_transaction_lookup() {

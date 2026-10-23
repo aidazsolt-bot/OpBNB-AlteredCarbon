@@ -1,34 +1,34 @@
 //!Handler related to Optimism chain
 use crate::{
-    L1BlockInfo, OpHaltReason, OpSpecId,
     api::exec::OpContextTr,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{OpTransactionError, OpTxTr, deposit::DEPOSIT_TRANSACTION_TYPE},
+    transaction::{deposit::DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
+    L1BlockInfo, OpHaltReason, OpSpecId,
 };
 use op_alloy_consensus::OpTxType;
 use revm::{
     context::{
-        LocalContextTr,
-        journaled_state::{JournalCheckpoint, account::JournaledAccountTr},
+        journaled_state::{account::JournaledAccountTr, JournalCheckpoint},
         result::InvalidTransaction,
+        LocalContextTr,
     },
     context_interface::{
-        Block, Cfg, ContextTr, JournalTr, Transaction,
         context::take_error,
         result::{EVMError, ExecutionResult, FromStringError, ResultGas},
+        Block, Cfg, ContextTr, JournalTr, Transaction,
     },
     handler::{
-        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
         evm::FrameTr,
         handler::EvmTrError,
         post_execution::{self, reimburse_caller},
         pre_execution::{calculate_caller_fee, validate_account_nonce_and_code_with_components},
+        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     interpreter::{
-        Gas, InitialAndFloorGas, interpreter::EthInterpreter, interpreter_action::FrameInit,
+        interpreter::EthInterpreter, interpreter_action::FrameInit, Gas, InitialAndFloorGas,
     },
-    primitives::{U256, hardfork::SpecId},
+    primitives::{hardfork::SpecId, U256},
 };
 use std::{boxed::Box, vec::Vec};
 
@@ -344,7 +344,9 @@ where
             return Err(OpTransactionError::MissingEnvelopedTx.into());
         };
 
-        let l1_cost = l1_block_info.calculate_tx_l1_cost(enveloped_tx, spec);
+        let l1_cost = l1_block_info
+            .l1_data_fee_with_tx(&*tx, spec)
+            .ok_or(OpTransactionError::MissingEnvelopedTx)?;
         // Exclude reservoir gas (EIP-8037) from used gas — reservoir is unused and reimbursed.
         let effective_used =
             frame_result.gas().used().saturating_sub(frame_result.gas().reservoir());
@@ -508,10 +510,10 @@ where
 impl<EVM, ERROR> InspectorHandler for OpHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
-            Context: OpContextTr,
-            Frame = EthFrame<EthInterpreter>,
-            Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
-        >,
+        Context: OpContextTr,
+        Frame = EthFrame<EthInterpreter>,
+        Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
+    >,
     ERROR: EvmTrError<EVM> + From<OpTransactionError> + FromStringError + IsTxError,
 {
     type IT = EthInterpreter;
@@ -521,12 +523,12 @@ where
 mod tests {
     use super::*;
     use crate::{
-        DefaultOp, OpBuilder, OpTransaction,
         api::default_ctx::OpContext,
         constants::{
             BASE_FEE_SCALAR_OFFSET, ECOTONE_L1_BLOB_BASE_FEE_SLOT, ECOTONE_L1_FEE_SCALARS_SLOT,
             L1_BASE_FEE_SLOT, L1_BLOCK_CONTRACT, OPERATOR_FEE_SCALARS_SLOT,
         },
+        DefaultOp, OpBuilder, OpTransaction,
     };
     use alloy_primitives::uint;
     use revm::{
@@ -536,7 +538,7 @@ mod tests {
         database_interface::EmptyDB,
         handler::EthFrame,
         interpreter::{CallOutcome, CreateOutcome, InstructionResult, InterpreterResult},
-        primitives::{Address, B256, Bytes, bytes},
+        primitives::{bytes, Address, Bytes, B256},
         state::AccountInfo,
     };
     use rstest::rstest;
@@ -833,6 +835,53 @@ mod tests {
         // Check the account balance is updated.
         let account = evm.ctx().journal_mut().load_account(caller).unwrap();
         assert_eq!(account.info.balance, U256::from(10)); // 1058 - 1048 = 10
+    }
+
+    #[test]
+    fn test_wright_gasless_transaction_does_not_credit_l1_fee_vault() {
+        for gas_price in [0, 1] {
+            let chain = L1BlockInfo {
+                l1_base_fee: U256::from(1_000),
+                l1_base_fee_scalar: U256::from(1_000),
+                l1_blob_base_fee: Some(U256::from(1_000)),
+                l1_blob_base_fee_scalar: Some(U256::from(1_000)),
+                operator_fee_scalar: Some(U256::ZERO),
+                operator_fee_constant: Some(U256::ZERO),
+                skip_l1_data_fee: true,
+                ..Default::default()
+            };
+            let mut expected_chain = chain.clone();
+            let expected_credit = if gas_price == 0 {
+                U256::ZERO
+            } else {
+                expected_chain.calculate_tx_l1_cost(&bytes!("01"), OpSpecId::ISTHMUS)
+            };
+            let ctx = Context::op()
+                .with_chain(chain)
+                .with_cfg(CfgEnv::new_with_spec(OpSpecId::ISTHMUS))
+                .with_tx(
+                    OpTransaction::builder()
+                        .base(TxEnv::builder().gas_limit(1_000).gas_price(gas_price))
+                        .enveloped_tx(Some(bytes!("01")))
+                        .build_fill(),
+                );
+            let mut evm = ctx.build_op();
+            let handler =
+                OpHandler::<_, EVMError<_, OpTransactionError>, EthFrame<EthInterpreter>>::new();
+            let mut exec_result = FrameResult::Call(CallOutcome::new(
+                InterpreterResult {
+                    result: InstructionResult::Return,
+                    output: Bytes::new(),
+                    gas: Gas::new(1_000),
+                },
+                0..0,
+            ));
+
+            handler.reward_beneficiary(&mut evm, &mut exec_result).unwrap();
+
+            let vault = evm.ctx().journal_mut().load_account(L1_FEE_RECIPIENT).unwrap();
+            assert_eq!(vault.info.balance, expected_credit);
+        }
     }
 
     #[test]

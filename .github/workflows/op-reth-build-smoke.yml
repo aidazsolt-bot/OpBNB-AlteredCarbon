@@ -1,7 +1,12 @@
-name: op-reth build and smoke
+name: op-reth build and tip-sync smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      tip_hash:
+        description: "opBNB mainnet --debug.tip hash (default: block 10000000)"
+        required: false
+        default: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
   push:
     branches:
       - main
@@ -15,11 +20,16 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Block 10_000_000 on opbnb-mainnet (eth_getBlockByNumber).
+  # Proven GHA success (~45G, ~3h). 12M timed out mid-Exec (+ disk 99%); 15/20M failed.
+  OPBNB_SMOKE_TIP_HASH: "0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5"
+  OPBNB_SMOKE_TIP_BLOCK: "10000000"
 
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Build (~10–25m) + sync genesis→10M. GitHub-hosted job cap is 6h (360m).
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -27,11 +37,63 @@ jobs:
           - profile: maxperf
             build_args: --manifest-path crates/optimism/bin/Cargo.toml --profile maxperf --features jemalloc,asm-keccak,keccak-cache-global
             binary: target/maxperf/op-reth
-            rustflags: -C target-cpu=native
+            # target-cpu=native trusted the GitHub runner's reported CPUID, but the
+            # underlying hypervisor doesn't reliably back every advertised feature
+            # (e.g. AVX-512 state), causing rustc itself (proc-macro expansion runs
+            # in-process) or the built binary to crash with SIGILL. x86-64-v3 is a
+            # safe, still-modern baseline (AVX2/BMI2/FMA) that's actually guaranteed.
+            # librocksdb-sys's build.rs assumes AVX implies PCLMUL (a real RocksDB
+            # upstream bug, documented in its own build.rs), but x86-64-v3's psABI
+            # level does not include PCLMUL, so crc32c.cc's CLMUL intrinics fail to
+            # compile without it. PCLMUL is present on effectively every x86_64 CPU
+            # since ~2011 (well below the x86-64-v3 baseline itself), so requesting
+            # it explicitly stays portable while working around the RocksDB bug.
+            rustflags: -C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Log runner hardware specs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== runner identity ====="
+          echo "runs-on=ubuntu-latest"
+          echo "RUNNER_NAME=${RUNNER_NAME:-}"
+          echo "RUNNER_OS=${RUNNER_OS:-} RUNNER_ARCH=${RUNNER_ARCH:-}"
+          echo "ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          uname -a
+          echo
+          echo "===== CPU ====="
+          nproc
+          lscpu || true
+          echo
+          echo "===== /proc/cpuinfo (model lines) ====="
+          grep -E '^(model name|vendor_id|cpu MHz|cache size|flags)' /proc/cpuinfo | head -n 40
+          echo
+          echo "===== memory ====="
+          free -h
+          echo
+          echo "===== block devices / mounts ====="
+          lsblk -o NAME,SIZE,TYPE,ROTA,TRAN,MODEL,FSTYPE,MOUNTPOINTS || lsblk
+          echo
+          df -hT
+          echo
+          echo "===== disk topology (nvme/virtio hints) ====="
+          if command -v lsblk >/dev/null; then
+            lsblk -d -o NAME,SIZE,ROTA,TRAN,TYPE,MODEL,DISC-GRAN,SCHED || true
+          fi
+          for f in /sys/block/*/queue/rotational /sys/block/*/device/model; do
+            [ -e "$f" ] || continue
+            echo "$f=$(cat "$f" 2>/dev/null || true)"
+          done
+          echo
+          echo "===== Azure IMDS (best-effort SKU, raw JSON) ====="
+          # GitHub-hosted Linux runners are Azure VMs; IMDS often exposes vmSize.
+          curl -sS -H Metadata:true --noproxy "*" \
+            "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01" \
+            || echo "imds_unavailable"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,10 +101,20 @@ jobs:
           toolchain: 1.96.0
 
       - name: Cache cargo artifacts
+        id: rust-cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             .
+          # Smoke frees cargo/target before sync (same root FS as datadir). Do not
+          # re-upload an emptied tree as the job cache.
+          save-if: false
+
+      - name: Note cargo cache status
+        shell: bash
+        run: |
+          echo "rust-cache cache-hit=${{ steps.rust-cache.outputs.cache-hit }}"
+          echo "Cold maxperf Fat-LTO is typically ~20-25m; a cache hit can drop wall time to ~10-15m."
 
       - name: Build op-reth (${{ matrix.profile }})
         shell: bash
@@ -51,26 +123,83 @@ jobs:
           if [ -n "${{ matrix.rustflags }}" ]; then
             export RUSTFLAGS="${{ matrix.rustflags }}"
           fi
+          echo "RUSTFLAGS=${RUSTFLAGS:-}"
+          start=$(date +%s)
           cargo build ${{ matrix.build_args }}
+          end=$(date +%s)
+          echo "cargo_wall_sec=$((end - start))"
 
-      - name: Smoke op-reth on opbnb-mainnet (${{ matrix.profile }})
+      - name: Free disk for tip smoke (cargo/target cleanup)
         shell: bash
         run: |
           set -euo pipefail
+          # Cargo home, workspace target/, and $RUNNER_TEMP datadir all live on the
+          # same GitHub-hosted root FS (/dev/root ~145G). 10M smoke used ~45G datadir
+          # with ~37G free left; 12/15/20M failed — default tip is proven 10M + cleanup.
+          BIN_SRC="${{ matrix.binary }}"
+          BIN_DST="$RUNNER_TEMP/op-reth-${{ matrix.profile }}"
+          CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 
-          BIN="${{ matrix.binary }}"
+          echo "===== pre-cleanup disk ====="
+          df -hT /
+          du -sh target "$CARGO_HOME" 2>/dev/null || true
+
+          test -x "$BIN_SRC"
+          cp -a "$BIN_SRC" "$BIN_DST"
+          chmod +x "$BIN_DST"
+          echo "BIN_DST=$BIN_DST" >> "$GITHUB_ENV"
+
+          # Drop compile tree + registry/git caches; keep the copied binary.
+          rm -rf target
+          rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git"
+          # Incremental / sccache leftovers if present
+          rm -rf "$CARGO_HOME/incremental" || true
+
+          echo "===== post-cleanup disk ====="
+          df -hT /
+          du -sh "$BIN_DST" "$CARGO_HOME" 2>/dev/null || true
+          ls -lh "$BIN_DST"
+
+      - name: Sync op-reth to tip block ${{ env.OPBNB_SMOKE_TIP_BLOCK }} (${{ matrix.profile }})
+        shell: bash
+        env:
+          TIP_HASH: ${{ github.event.inputs.tip_hash != '' && github.event.inputs.tip_hash || env.OPBNB_SMOKE_TIP_HASH }}
+        run: |
+          set -euo pipefail
+
+          BIN="${BIN_DST:-$RUNNER_TEMP/op-reth-${{ matrix.profile }}}"
           JWT_SECRET="$RUNNER_TEMP/jwt-${{ matrix.profile }}.hex"
           DATA_DIR="$RUNNER_TEMP/opbnb-mainnet-${{ matrix.profile }}"
+          LOG_DIR="$RUNNER_TEMP/opbnb-logs-${{ matrix.profile }}"
+          IPC_PATH="$RUNNER_TEMP/opbnb-${{ matrix.profile }}.ipc"
+          TIP_BLOCK="${OPBNB_SMOKE_TIP_BLOCK}"
 
-          mkdir -p "$DATA_DIR"
+          test -x "$BIN"
+          mkdir -p "$DATA_DIR" "$LOG_DIR"
           openssl rand -hex 32 > "$JWT_SECRET"
 
+          echo "===== tip smoke ====="
+          echo "debug.tip=$TIP_HASH (block $TIP_BLOCK)"
+          echo "debug.terminate=true"
+          echo "binary=$BIN"
+          df -hT "$DATA_DIR"
+
+          cleanup() {
+            if [ -n "${NODE_PID:-}" ] && kill -0 "$NODE_PID" 2>/dev/null; then
+              kill -TERM "$NODE_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          echo "Syncing with --debug.tip $TIP_HASH --debug.terminate (no op-node)."
           set +e
-          timeout 5m "$BIN" node \
+          # Outer timeout is a hang safety net; job timeout is 360m (GHA hosted max).
+          timeout 330m "$BIN" node \
             --chain opbnb-mainnet \
             --datadir "$DATA_DIR" \
-            --disable-discovery \
+            --ipcpath "$IPC_PATH" \
             --port 0 \
+            --discovery.port 0 \
             --rollup.sequencer-http https://opbnb-mainnet-rpc.bnbchain.org \
             --http \
             --http.addr 127.0.0.1 \
@@ -79,13 +208,28 @@ jobs:
             --authrpc.addr 127.0.0.1 \
             --authrpc.port 8551 \
             --authrpc.jwtsecret "$JWT_SECRET" \
-            --metrics 127.0.0.1:6060
+            --metrics 127.0.0.1:6060 \
+            --log.file.directory "$LOG_DIR" \
+            --debug.tip "$TIP_HASH" \
+            --debug.terminate &
+          NODE_PID=$!
+          echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${{ matrix.profile }}.pid"
+          wait "$NODE_PID"
           status=$?
           set -e
+          NODE_PID=""
 
-          if [ "$status" -eq 124 ]; then
-            echo "Smoke test ran for 5 minutes."
-          else
-            echo "Smoke test exited early with status $status."
+          echo "===== post-sync disk ====="
+          du -sh "$DATA_DIR" || true
+          df -hT "$DATA_DIR"
+
+          if [ "$status" -eq 0 ]; then
+            echo "Reached --debug.tip $TIP_HASH (block $TIP_BLOCK) and terminated cleanly."
+            exit 0
+          fi
+          if [ "$status" -eq 124 ] || [ "$status" -eq 143 ]; then
+            echo "Stopped early (status=$status) before tip $TIP_HASH."
             exit 1
           fi
+          echo "Node exited with status $status before tip."
+          exit "$status"

@@ -2747,3 +2747,62 @@ async fn test_on_backfill_sync_finished_opstack_retriggers_backfill_to_buffered_
 async fn test_on_backfill_sync_finished_eth_retriggers_backfill_to_buffered_finalized() {
     assert_post_backfill_recheck_retriggers_to_buffered_target(EngineApiKind::Ethereum).await;
 }
+
+/// FLOW-E03: OP archive with pipeline tip ≫ stale finalized must advance safe/finalized labels
+/// so op-node FindL2Heads does not walk tip→Wright.
+#[test]
+fn test_advance_op_safe_finalized_if_stale_advances_to_tip() {
+    reth_tracing::init_test_tracing();
+
+    let chain_spec = MAINNET.clone();
+    let mut test_harness = TestHarness::new(chain_spec);
+    test_harness.tree.engine_kind = EngineApiKind::OpStack;
+
+    let tip_number = MIN_BLOCKS_FOR_PIPELINE_RUN + 100;
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..=tip_number).collect();
+    test_harness = test_harness.with_blocks(blocks);
+
+    let stale = SealedHeader::seal_slow(alloy_consensus::Header {
+        number: 1,
+        ..Default::default()
+    });
+    test_harness.tree.canonical_in_memory_state.set_finalized(stale.clone());
+    test_harness.tree.canonical_in_memory_state.set_safe(stale);
+
+    test_harness.tree.advance_op_safe_finalized_if_stale();
+
+    let advanced = test_harness.tree.canonical_in_memory_state.get_finalized_num_hash();
+    assert_eq!(advanced.map(|h| h.number), Some(tip_number));
+    assert_eq!(
+        test_harness.tree.canonical_in_memory_state.get_safe_num_hash().map(|h| h.number),
+        Some(tip_number)
+    );
+}
+
+#[test]
+fn test_advance_op_safe_finalized_if_stale_noop_on_eth() {
+    let chain_spec = MAINNET.clone();
+    let mut test_harness = TestHarness::new(chain_spec);
+    test_harness.tree.engine_kind = EngineApiKind::Ethereum;
+
+    let tip_number = MIN_BLOCKS_FOR_PIPELINE_RUN + 100;
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..=tip_number).collect();
+    test_harness = test_harness.with_blocks(blocks);
+
+    let stale = SealedHeader::seal_slow(alloy_consensus::Header {
+        number: 1,
+        ..Default::default()
+    });
+    test_harness.tree.canonical_in_memory_state.set_finalized(stale.clone());
+    test_harness.tree.canonical_in_memory_state.set_safe(stale);
+
+    test_harness.tree.advance_op_safe_finalized_if_stale();
+
+    assert_eq!(
+        test_harness.tree.canonical_in_memory_state.get_finalized_num_hash().map(|h| h.number),
+        Some(1),
+        "Ethereum must not auto-advance finalized"
+    );
+}

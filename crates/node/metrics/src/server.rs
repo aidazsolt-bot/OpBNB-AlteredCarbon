@@ -106,6 +106,7 @@ impl MetricServer {
         // Describe metrics after recorder installation
         describe_db_metrics();
         describe_static_file_metrics();
+        describe_rocksdb_metrics();
         Collector::default().describe();
         describe_memory_stats();
         describe_io_stats();
@@ -236,6 +237,31 @@ fn describe_static_file_metrics() {
         "static_files.segment_entries",
         "The number of entries for a static file segment"
     );
+}
+
+fn describe_rocksdb_metrics() {
+    describe_gauge!(
+        "rocksdb.table_size",
+        Unit::Bytes,
+        "Estimated RocksDB column-family size (SST files + memtables)"
+    );
+    describe_gauge!("rocksdb.table_entries", "Estimated number of keys in a RocksDB column family");
+    describe_gauge!(
+        "rocksdb.pending_compaction_bytes",
+        Unit::Bytes,
+        "Estimated bytes pending compaction for a RocksDB column family"
+    );
+    describe_gauge!(
+        "rocksdb.sst_size",
+        Unit::Bytes,
+        "Live SST file size for a RocksDB column family"
+    );
+    describe_gauge!(
+        "rocksdb.memtable_size",
+        Unit::Bytes,
+        "Memtable size for a RocksDB column family"
+    );
+    describe_gauge!("rocksdb.wal_size", Unit::Bytes, "Total RocksDB WAL (.log) size on disk");
 }
 
 #[cfg(all(feature = "jemalloc", unix))]

@@ -3,12 +3,12 @@
 
 use crate::OpTxEnvelope;
 use alloy_consensus::{
-    Extended, SignableTransaction, Signed, TransactionEnvelope, TxEip7702, TxEnvelope,
     error::ValueError,
     transaction::{TxEip1559, TxEip2930, TxHashRef, TxLegacy},
+    Extended, SignableTransaction, Signed, TransactionEnvelope, TxEip7702, TxEnvelope,
 };
 use alloy_eips::eip2718::Encodable2718;
-use alloy_primitives::{B256, Signature, TxHash, bytes};
+use alloy_primitives::{bytes, Signature, TxHash, B256};
 use core::hash::Hash;
 
 /// All possible transactions that can be included in a response to `GetPooledTransactions`.

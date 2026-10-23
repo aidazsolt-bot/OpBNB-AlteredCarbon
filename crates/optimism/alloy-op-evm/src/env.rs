@@ -3,9 +3,9 @@
 //! Provides spec ID mapping and `EvmEnv` constructors for Optimism.
 
 use alloy_consensus::BlockHeader;
-use alloy_evm::{EvmEnv, eth::NextEvmEnvAttributes};
+use alloy_evm::{eth::NextEvmEnvAttributes, EvmEnv};
 use alloy_op_hardforks::OpHardforks;
-use alloy_primitives::{Address, B256, BlockNumber, BlockTimestamp, ChainId, U256};
+use alloy_primitives::{Address, BlockNumber, BlockTimestamp, ChainId, B256, U256};
 use op_revm::OpSpecId;
 use revm::{
     context::{BlockEnv, CfgEnv},
@@ -175,10 +175,10 @@ mod tests {
     use alloy_consensus::Header;
     use alloy_hardforks::EthereumHardfork;
     use alloy_op_hardforks::{
-        EthereumHardforks, ForkCondition, OP_MAINNET_CANYON_TIMESTAMP,
-        OP_MAINNET_ECOTONE_TIMESTAMP, OP_MAINNET_FJORD_TIMESTAMP, OP_MAINNET_GRANITE_TIMESTAMP,
-        OP_MAINNET_HOLOCENE_TIMESTAMP, OP_MAINNET_ISTHMUS_TIMESTAMP, OP_MAINNET_JOVIAN_TIMESTAMP,
-        OP_MAINNET_REGOLITH_TIMESTAMP, OpChainHardforks, OpHardfork,
+        EthereumHardforks, ForkCondition, OpChainHardforks, OpHardfork,
+        OP_MAINNET_CANYON_TIMESTAMP, OP_MAINNET_ECOTONE_TIMESTAMP, OP_MAINNET_FJORD_TIMESTAMP,
+        OP_MAINNET_GRANITE_TIMESTAMP, OP_MAINNET_HOLOCENE_TIMESTAMP, OP_MAINNET_ISTHMUS_TIMESTAMP,
+        OP_MAINNET_JOVIAN_TIMESTAMP, OP_MAINNET_REGOLITH_TIMESTAMP,
     };
     use alloy_primitives::BlockTimestamp;
 
@@ -228,7 +228,11 @@ mod tests {
 
     impl OpHardforks for FakeHardfork {
         fn op_fork_activation(&self, fork: OpHardfork) -> ForkCondition {
-            if fork == self.fork { self.cond } else { ForkCondition::Never }
+            if fork == self.fork {
+                self.cond
+            } else {
+                ForkCondition::Never
+            }
         }
     }
 

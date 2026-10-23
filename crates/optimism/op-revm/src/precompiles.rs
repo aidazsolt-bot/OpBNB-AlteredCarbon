@@ -6,10 +6,10 @@ use revm::{
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{CallInputs, InterpreterResult},
     precompile::{
-        self, EthPrecompileResult, Precompile, PrecompileHalt, PrecompileId, Precompiles, bn254,
-        eth_precompile_fn, modexp, secp256r1,
+        self, bn254, eth_precompile_fn, modexp, secp256r1, EthPrecompileResult, Precompile,
+        PrecompileHalt, PrecompileId, Precompiles,
     },
-    primitives::{Address, AddressSet, OnceLock, hardfork::SpecId},
+    primitives::{hardfork::SpecId, Address, AddressSet, OnceLock},
 };
 use std::string::String;
 
@@ -355,16 +355,16 @@ pub mod bls12_381 {
 #[cfg(test)]
 mod tests {
     use crate::precompiles::bls12_381::{
+        run_g1_msm_isthmus, run_g1_msm_jovian, run_g2_msm_isthmus, run_g2_msm_jovian,
         ISTHMUS_G1_MSM_MAX_INPUT_SIZE, ISTHMUS_G2_MSM_MAX_INPUT_SIZE,
         ISTHMUS_PAIRING_MAX_INPUT_SIZE, JOVIAN_G1_MSM_MAX_INPUT_SIZE, JOVIAN_G2_MSM_MAX_INPUT_SIZE,
-        JOVIAN_PAIRING_MAX_INPUT_SIZE, run_g1_msm_isthmus, run_g1_msm_jovian, run_g2_msm_isthmus,
-        run_g2_msm_jovian,
+        JOVIAN_PAIRING_MAX_INPUT_SIZE,
     };
 
     use super::*;
     use revm::{
-        precompile::{PrecompileHalt, PrecompileStatus, bls12_381_const},
-        primitives::{Bytes, hex},
+        precompile::{bls12_381_const, PrecompileHalt, PrecompileStatus},
+        primitives::{hex, Bytes},
     };
     use std::vec;
 

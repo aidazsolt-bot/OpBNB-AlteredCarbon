@@ -11,16 +11,18 @@ use crate::{
     priority::Priority,
 };
 use alloy_consensus::Header;
+use alloy_primitives::B256;
 use futures::{Future, FutureExt, Stream, StreamExt};
 use reth_eth_wire_types::HeadersDirection;
 use reth_network_peers::{PeerId, WithPeerId};
 use reth_primitives_traits::SealedHeader;
 use std::{
+    collections::HashMap,
     fmt,
     pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex as StdMutex,
     },
     task::{ready, Context, Poll},
 };
@@ -166,6 +168,8 @@ pub struct TestHeadersClient {
     request_attempts: Arc<AtomicU64>,
     /// `u64::MAX` means unknown / no peers (see [`DownloadClient::max_peer_best_number`]).
     max_peer_best: Arc<AtomicU64>,
+    /// Engine/HeaderSeed tip headers for FLOW-E03 Tip(hash) bind in unit tests.
+    seeds: Arc<StdMutex<HashMap<B256, Header>>>,
 }
 
 impl Default for TestHeadersClient {
@@ -175,6 +179,7 @@ impl Default for TestHeadersClient {
             error: Default::default(),
             request_attempts: Default::default(),
             max_peer_best: Arc::new(AtomicU64::new(u64::MAX)),
+            seeds: Default::default(),
         }
     }
 }
@@ -188,6 +193,11 @@ impl TestHeadersClient {
     /// Sets the advertised max peer best number used by reachable-head capping tests.
     pub fn set_max_peer_best(&self, best: Option<u64>) {
         self.max_peer_best.store(best.unwrap_or(u64::MAX), Ordering::SeqCst);
+    }
+
+    /// Seeds a tip header so [`HeadersClient::seeded_header`] can bind `SyncTarget::Tip`.
+    pub fn seed_header(&self, header: &SealedHeader) {
+        self.seeds.lock().expect("seed lock").insert(header.hash(), header.as_ref().clone());
     }
 
     /// Adds headers to the set.
@@ -253,5 +263,9 @@ impl HeadersClient for TestHeadersClient {
             let with_peer_id = WithPeerId::from((PeerId::default(), resp));
             Ok(with_peer_id)
         })
+    }
+
+    fn seeded_header(&self, hash: B256) -> Option<Self::Header> {
+        self.seeds.lock().expect("seed lock").get(&hash).cloned()
     }
 }

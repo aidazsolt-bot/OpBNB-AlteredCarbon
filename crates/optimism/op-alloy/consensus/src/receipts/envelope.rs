@@ -4,11 +4,11 @@ use crate::{OpDepositReceipt, OpDepositReceiptWithBloom, OpTxType};
 use alloc::vec::Vec;
 use alloy_consensus::{Eip658Value, Receipt, ReceiptWithBloom, TxReceipt};
 use alloy_eips::{
-    Typed2718,
     eip2718::{Decodable2718, Eip2718Error, Eip2718Result, Encodable2718, IsTyped2718},
+    Typed2718,
 };
-use alloy_primitives::{Bloom, Log, logs_bloom};
-use alloy_rlp::{BufMut, Decodable, Encodable, length_of_length};
+use alloy_primitives::{logs_bloom, Bloom, Log};
+use alloy_rlp::{length_of_length, BufMut, Decodable, Encodable};
 
 /// Receipt envelope, as defined in [EIP-2718], modified for OP Stack chains.
 ///
@@ -389,7 +389,7 @@ mod tests {
     use super::*;
     use alloy_consensus::{Receipt, ReceiptWithBloom};
     use alloy_eips::eip2718::Encodable2718;
-    use alloy_primitives::{Log, LogData, address, b256, bytes, hex};
+    use alloy_primitives::{address, b256, bytes, hex, Log, LogData};
     use alloy_rlp::Encodable;
 
     #[cfg(not(feature = "std"))]

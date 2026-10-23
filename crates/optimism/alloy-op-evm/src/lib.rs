@@ -17,9 +17,9 @@ pub use env::{
 };
 
 pub mod error;
-pub use error::{OpTxError, map_op_err};
+pub use error::{map_op_err, OpTxError};
 
-use alloy_evm::{Database, Evm, EvmEnv, EvmFactory, IntoTxEnv, precompiles::PrecompilesMap};
+use alloy_evm::{precompiles::PrecompilesMap, Database, Evm, EvmEnv, EvmFactory, IntoTxEnv};
 use alloy_primitives::{Address, Bytes};
 use core::{
     fmt::Debug,
@@ -28,20 +28,20 @@ use core::{
 };
 use op_alloy::consensus::POST_EXEC_TX_TYPE_ID;
 use op_revm::{
-    L1BlockInfo, OpBuilder, OpHaltReason, OpSpecId, OpTransaction,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     precompiles::OpPrecompiles,
+    L1BlockInfo, OpBuilder, OpHaltReason, OpSpecId, OpTransaction,
 };
 use revm::{
-    Context, ExecuteEvm, InspectEvm, Inspector, Journal, MainContext, SystemCallEvm,
     context::{BlockEnv, CfgEnv, DBErrorMarker, TxEnv},
     context_interface::{
-        Transaction,
         result::{EVMError, ResultAndState},
+        Transaction,
     },
-    handler::{PrecompileProvider, instructions::EthInstructions},
+    handler::{instructions::EthInstructions, PrecompileProvider},
     inspector::NoOpInspector,
-    interpreter::{InterpreterResult, interpreter::EthInterpreter},
+    interpreter::{interpreter::EthInterpreter, InterpreterResult},
+    Context, ExecuteEvm, InspectEvm, Inspector, Journal, MainContext, SystemCallEvm,
 };
 
 pub mod tx;

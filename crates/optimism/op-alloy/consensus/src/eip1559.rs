@@ -1,7 +1,7 @@
 //! Support for EIP-1559 parameters after holocene.
 
 use alloy_eips::eip1559::BaseFeeParams;
-use alloy_primitives::{B64, Bytes};
+use alloy_primitives::{Bytes, B64};
 
 const HOLOCENE_EXTRA_DATA_VERSION_BYTE: u8 = 0;
 const JOVIAN_EXTRA_DATA_VERSION_BYTE: u8 = 1;

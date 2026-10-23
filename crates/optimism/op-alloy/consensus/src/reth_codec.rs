@@ -12,17 +12,17 @@
 //!   were previously provided by reth's in-tree codecs crate.
 
 use crate::{
-    OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction, POST_EXEC_TX_TYPE_ID, TxDeposit,
-    TxPostExec,
+    OpReceipt, OpTxEnvelope, OpTxType, OpTypedTransaction, TxDeposit, TxPostExec,
+    POST_EXEC_TX_TYPE_ID,
 };
 use alloc::vec::Vec;
 use alloy_consensus::{Receipt, Signed, Transaction};
-use alloy_primitives::{Address, B256, Bytes, Log, Signature, TxKind, U256};
+use alloy_primitives::{Address, Bytes, Log, Signature, TxKind, B256, U256};
 use alloy_rlp::Decodable;
 use reth_codecs::{
-    Compact,
     alloy::transaction::{CompactEnvelope, Envelope, FromTxCompact, ToTxCompact},
     txtype::*,
+    Compact,
 };
 
 // --- OpTxType ---

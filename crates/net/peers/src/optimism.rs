@@ -27,14 +27,19 @@ pub static OP_TESTNET_BOOTNODES: &[&str] = &[
 
 /// OPBNB mainnet boot nodes.
 ///
-/// Official EL bootnodes from
-/// <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
-/// (`OpBNBMainnetBootnodes`, ENR→enode), plus legacy community nodes.
+/// The former chain-spec bootnodes are no longer responsive. Keep the verified
+/// discv5-capable peer here so opBNB nodes can bootstrap without `--bootnodes`.
 pub static OPBNB_MAINNET_BOOTNODES: &[&str] = &[
-    // bnb-chain/op-geth OpBNBMainnetBootnodes (ENR→enode).
-    // ENRs advertise eth TCP on 30303 and discovery UDP on 30304 — dialing 30304 times out.
-    "enode://db109c6cac5c8b6225edd3176fc3764c58e0720950fe94c122c80978e706a9c9e976629b718e48b6306ea0f9126e5394d3424c9716c5703549e2e7eba216353b@52.193.218.151:30303?discport=30304",
-    "enode://afe18782053bb31fb7ea41e1acf659ab9bd1eec181fb97331f0a6b61871a469b4f75138f903c977796be1cc2a3c985d33150a396e878d3cd6e4723b6040ff9c0@52.195.105.192:30303?discport=30304",
+    "enode://a624fcf5276052da1f3a8151fd69e0e406903ff84d355301887d678f029160d02ab91583ed921812da04eefb12b24f4c71912c6f41603194b8c5ac8ef01ef421@167.235.95.170:30305",
+];
+
+/// OPBNB mainnet static/trusted peers.
+///
+/// These peers were verified as the working connections used by the live
+/// archive node. They are applied as defaults by the opBNB network builder.
+pub static OPBNB_MAINNET_STATIC_NODES: &[&str] = &[
+    "enode://a624fcf5276052da1f3a8151fd69e0e406903ff84d355301887d678f029160d02ab91583ed921812da04eefb12b24f4c71912c6f41603194b8c5ac8ef01ef421@167.235.95.170:30305",
+    "enode://9967d43687535151322e6b5fc4f745e8df739e1cc26b70497083d3e68b31cd9bba8efc8d8cb9992e29a783872b785f4a023dc36260e7b29891e182e5238d1b7e@157.180.98.155:30315",
 ];
 
 /// OPBNB testnet boot nodes.

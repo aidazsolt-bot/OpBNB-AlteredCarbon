@@ -1,11 +1,12 @@
 pub use crate::transaction::envelope::OpTypedTransaction;
 use crate::{OpTxEnvelope, OpTxType, TxDeposit, TxPostExec};
 use alloy_consensus::{
-    EthereumTypedTransaction, SignableTransaction, Signed, TxEip1559, TxEip2930, TxEip7702,
-    TxLegacy, Typed2718, TypedTransaction, error::ValueError, transaction::RlpEcdsaEncodableTx,
+    error::ValueError, transaction::RlpEcdsaEncodableTx, EthereumTypedTransaction,
+    SignableTransaction, Signed, TxEip1559, TxEip2930, TxEip7702, TxLegacy, Typed2718,
+    TypedTransaction,
 };
 use alloy_eips::Encodable2718;
-use alloy_primitives::{B256, ChainId, Signature, TxHash, bytes::BufMut};
+use alloy_primitives::{bytes::BufMut, ChainId, Signature, TxHash, B256};
 
 impl From<TxLegacy> for OpTypedTransaction {
     fn from(tx: TxLegacy) -> Self {

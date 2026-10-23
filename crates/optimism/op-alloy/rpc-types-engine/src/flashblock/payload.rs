@@ -2,8 +2,8 @@
 
 use super::{OpFlashblockPayloadBase, OpFlashblockPayloadDelta};
 use crate::flashblock::metadata::OpFlashblockPayloadMetadata;
-use alloy_eips::{Decodable2718, eip2718::Eip2718Result};
-use alloy_primitives::{B256, Bytes};
+use alloy_eips::{eip2718::Eip2718Result, Decodable2718};
+use alloy_primitives::{Bytes, B256};
 use alloy_rpc_types_engine::PayloadId;
 
 /// Flashblock payload.
@@ -86,7 +86,7 @@ mod tests {
         OpFlashblockPayloadBase, OpFlashblockPayloadDelta, OpFlashblockPayloadMetadata,
     };
     use alloc::{collections::BTreeMap, vec};
-    use alloy_primitives::{B256, Bloom, Bytes, U256, address};
+    use alloy_primitives::{address, Bloom, Bytes, B256, U256};
 
     fn sample_payload() -> OpFlashblockPayload {
         let base = OpFlashblockPayloadBase {

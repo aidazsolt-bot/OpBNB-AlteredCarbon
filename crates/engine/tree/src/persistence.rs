@@ -121,10 +121,19 @@ where
                     }
                 }
                 PersistenceAction::SaveFinalizedBlock(finalized_block) => {
-                    self.pending_finalized_block = Some(finalized_block);
+                    // Persist immediately. Idle OP archive nodes may not call `save_blocks` for a
+                    // long time after pipeline Finish; deferring labels then leaves
+                    // `eth_getBlockByNumber("finalized")` stuck (FLOW-E03 / op-node FindL2Heads).
+                    let provider_rw = self.provider.database_provider_rw()?;
+                    provider_rw.save_finalized_block_number(finalized_block)?;
+                    provider_rw.commit()?;
+                    self.pending_finalized_block = None;
                 }
                 PersistenceAction::SaveSafeBlock(safe_block) => {
-                    self.pending_safe_block = Some(safe_block);
+                    let provider_rw = self.provider.database_provider_rw()?;
+                    provider_rw.save_safe_block_number(safe_block)?;
+                    provider_rw.commit()?;
+                    self.pending_safe_block = None;
                 }
             }
         }

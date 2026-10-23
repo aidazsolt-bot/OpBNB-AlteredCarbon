@@ -48,6 +48,11 @@ impl<H: BlockHeader + Clone> HeaderSeed<H> {
         self.by_hash.write().expect("header seed lock").insert(hash, header);
     }
 
+    /// Returns the seeded header for `hash` if NewPayload/engine already inserted it.
+    pub fn get_by_hash(&self, hash: B256) -> Option<H> {
+        self.by_hash.read().expect("header seed lock").get(&hash).cloned()
+    }
+
     /// Returns a cloned header for `start` when the seed has a single-header match.
     fn get(&self, start: BlockHashOrNumber) -> Option<H> {
         match start {
@@ -170,13 +175,16 @@ impl<C: BlockClient> HeadersClient for SeededBlockClient<C> {
     type Header = <C as HeadersClient>::Header;
     type Output = SeededOrInnerFut<C>;
 
+    fn seeded_header(&self, hash: B256) -> Option<Self::Header> {
+        self.seed.get_by_hash(hash)
+    }
+
     fn get_headers_with_priority(
         &self,
         request: HeadersRequest,
         priority: Priority,
     ) -> Self::Output {
-        // Tip fetch is always limit=1. Serve from seed so reverse sync can start without peers that
-        // know the FCU tip hash yet.
+        // Tip fetch is always limit=1. Serve from seed (FLOW-E03 / op-geth remoteBlocks).
         if request.limit == 1 &&
             matches!(request.direction, HeadersDirection::Falling | HeadersDirection::Rising)
         {

@@ -1,7 +1,7 @@
 //! Commonly used types for interop.
 
 use alloc::string::{String, ToString};
-use alloy_primitives::{Address, address};
+use alloy_primitives::{address, Address};
 use core::str::FromStr;
 use derive_more::Display;
 

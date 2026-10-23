@@ -5,7 +5,7 @@ use crate::OpPayloadError;
 use crate::{OpExecutionPayload, OpExecutionPayloadSidecar, OpExecutionPayloadV4};
 use alloc::vec::Vec;
 use alloy_eips::eip7685::Requests;
-use alloy_primitives::{B256, keccak256};
+use alloy_primitives::{keccak256, B256};
 use alloy_rpc_types_engine::{
     CancunPayloadFields, ExecutionPayloadInputV2, ExecutionPayloadV1, ExecutionPayloadV2,
     ExecutionPayloadV3, PraguePayloadFields,
@@ -247,7 +247,7 @@ mod tests {
     use super::*;
     use crate::{OpFlashblockError, OpFlashblockPayload, OpPayloadError};
     use alloy_consensus::Block;
-    use alloy_primitives::{Address, Bloom, Bytes, U256, b256};
+    use alloy_primitives::{b256, Address, Bloom, Bytes, U256};
     use alloy_rpc_types_engine::{ExecutionPayloadV1, ExecutionPayloadV2, PayloadError};
 
     #[test]

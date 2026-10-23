@@ -2741,9 +2741,23 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
     ///     2. Take the new value from the local state
     ///     3. Set the local state to the value in the changeset
     fn remove_state_above(&self, block: BlockNumber) -> ProviderResult<()> {
-        let range = block + 1..=self.last_block_number()?;
+        let last_block_number = self.last_block_number()?;
+        let range = block + 1..=last_block_number;
 
         if range.is_empty() {
+            let execution_checkpoint = self
+                .get_stage_checkpoint(StageId::Execution)?
+                .map(|checkpoint| checkpoint.block_number);
+            if self.cached_storage_settings().use_hashed_state() &&
+                execution_checkpoint.is_some_and(|checkpoint| checkpoint > last_block_number)
+            {
+                return Err(ProviderError::Database(DatabaseError::Other(format!(
+                    "cannot remove state above block {block}: execution checkpoint is ahead of \
+                     available block data (execution={}, last_block={last_block_number}); \
+                     refusing to skip storage-v2 hashed-state rewind",
+                    execution_checkpoint.unwrap_or_default()
+                ))))
+            }
             return Ok(());
         }
 
@@ -3073,6 +3087,38 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
     }
 }
 
+impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> DatabaseProvider<TX, N> {
+    /// Writes sorted account-trie updates using the storage-settings key adapter (legacy or packed).
+    fn write_account_trie_updates<A: TrieTableAdapter>(
+        tx: &TX,
+        trie_updates: &TrieUpdatesSorted,
+        num_entries: &mut usize,
+    ) -> ProviderResult<()>
+    where
+        TX: DbTxMut,
+    {
+        let mut account_trie_cursor = tx.cursor_write::<A::AccountTrieTable>()?;
+        for (key, updated_node) in trie_updates.account_nodes_ref() {
+            let nibbles = A::AccountKey::from(*key);
+            match updated_node {
+                Some(node) => {
+                    if !key.is_empty() {
+                        *num_entries += 1;
+                        account_trie_cursor.upsert(nibbles, node)?;
+                    }
+                }
+                None => {
+                    *num_entries += 1;
+                    if account_trie_cursor.seek_exact(nibbles)?.is_some() {
+                        account_trie_cursor.delete_current()?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> TrieWriter for DatabaseProvider<TX, N> {
     /// Writes trie updates to the database with already sorted updates.
     ///
@@ -3092,27 +3138,10 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypes> TrieWriter for DatabaseProvider
         // Track the number of inserted entries.
         let mut num_entries = 0;
 
-        let tx = self.tx_ref();
-        let mut account_trie_cursor = tx.cursor_write::<tables::AccountsTrie>()?;
-
-        // Process sorted account nodes
-        for (key, updated_node) in trie_updates.account_nodes_ref() {
-            let nibbles = StoredNibbles(*key);
-            match updated_node {
-                Some(node) => {
-                    if !nibbles.0.is_empty() {
-                        num_entries += 1;
-                        account_trie_cursor.upsert(nibbles, node)?;
-                    }
-                }
-                None => {
-                    num_entries += 1;
-                    if account_trie_cursor.seek_exact(nibbles)?.is_some() {
-                        account_trie_cursor.delete_current()?;
-                    }
-                }
-            }
-        }
+        // PORT-STOR-TRIE-001: account trie must use the same packed/legacy adapter as reads.
+        reth_trie_db::with_adapter!(self, |A| {
+            Self::write_account_trie_updates::<A>(self.tx_ref(), trie_updates, &mut num_entries)?;
+        });
 
         num_entries +=
             self.write_storage_trie_updates_sorted(trie_updates.storage_tries_ref().iter())?;

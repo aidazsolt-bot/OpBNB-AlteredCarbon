@@ -1,5 +1,5 @@
 //! Optimism constants used in the Optimism EVM.
-use revm::primitives::{Address, U256, address};
+use revm::primitives::{address, Address, U256};
 
 /// The cost of a non-zero byte in the EVM.
 pub const NON_ZERO_BYTE_COST: u64 = 16;

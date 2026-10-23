@@ -17,7 +17,8 @@ pub mod upnp;
 
 pub use net_if::{NetInterfaceError, DEFAULT_NET_IF_NAME};
 pub use upnp::{
-    map_ports, map_udp_port, spawn_mapping_refresh, MappedGateway, UpnpMapError, DEFAULT_LEASE_SECS,
+    map_ports, map_udp_port, spawn_mapping_refresh, MappedGateway, UpnpMapError, UpnpMappingGuard,
+    DEFAULT_LEASE_SECS,
 };
 
 use std::{
@@ -359,40 +360,50 @@ pub async fn external_addr_with(resolver: NatResolver) -> Option<IpAddr> {
 
 /// Resolve the dialable NAT endpoint for the given listen ports.
 ///
-/// * [`NatResolver::Any`]: UPnP/IGD mapping first (no hijack); on failure HTTP IP + listen ports.
-/// * [`NatResolver::Upnp`]: UPnP only.
+/// * [`NatResolver::Any`]: UPnP/IGD mapping first (no hijack, IPv4 targets only — see below); on
+///   failure/for IPv6 targets, HTTP IP + listen ports.
+/// * [`NatResolver::Upnp`]: UPnP only (IPv4 targets only; always `None` for IPv6).
 /// * [`NatResolver::PublicIp`] / `NetIf` / `External*`: IP resolution without mapping.
 /// * [`NatResolver::None`]: `None`.
 ///
-/// `listen_ip` is the RLPx bind address (`--addr`). Per FLOW-N01 / P2P-006, when a concrete
-/// family is selected (including unspecified `0.0.0.0` / `::`), the announced IP must be the
-/// **same family** — not a global HTTP preference for IPv4. Dual-stack without `--addr` is a
-/// separate bind/announce path; this filter only enforces family consistency with the listen
-/// socket that was actually opened.
+/// When UPnP succeeds, the second tuple element is an [`UpnpMappingGuard`] that must be retained
+/// until network shutdown so leases stay refreshed and `DeletePortMapping` runs on stop.
+///
+/// `listen_ip` is the RLPx bind address (`--addr`), or an unspecified per-family placeholder when
+/// called once per family in dual-stack mode. Per FLOW-N01 / P2P-006, the announced IP must be
+/// the **same family** as `listen_ip` — not a global HTTP preference for IPv4.
+///
+/// UPnP/IGD is only ever attempted when `listen_ip` is (or resolves to) IPv4: IGD is an IPv4-NAT
+/// port-mapping protocol and consumer routers essentially never expose an IPv6 IGD (globally
+/// routable IPv6 hosts aren't behind NAT to begin with, at most a stateful firewall pinhole,
+/// which IGD/UPnP cannot open). Skipping UPnP outright for IPv6 avoids both a pointless SSDP
+/// round-trip and — in dual-stack mode, where this function is called once per family — discarding
+/// a valid IPv4 mapping obtained while resolving the IPv6 family, which previously forced a
+/// second, flakier SSDP search when resolving IPv4.
 pub async fn resolve_nat_endpoint(
     resolver: NatResolver,
     listen_tcp_port: u16,
     listen_udp_port: u16,
     listen_ip: IpAddr,
-) -> Option<NatEndpoint> {
+) -> Option<(NatEndpoint, Option<UpnpMappingGuard>)> {
     let preferred = listen_tcp_port;
     let want_ipv4 = listen_ip.is_ipv4();
 
-    if resolver.wants_upnp_mapping() {
+    // IGD/UPnP is an IPv4-NAT-traversal mechanism; consumer routers essentially never expose an
+    // IPv6 IGD (globally-routable IPv6 hosts don't sit behind NAT to begin with, at most a
+    // stateful firewall pinhole, which UPnP can't open). Attempting a mapping for an IPv6 target
+    // both wastes an SSDP round-trip and — in dual-stack mode, where this is called once per
+    // family — previously discarded a perfectly valid IPv4 mapping just because it didn't match
+    // the IPv6 call's requested family, forcing a second, flakier SSDP search for IPv4.
+    if want_ipv4 && resolver.wants_upnp_mapping() {
         match map_ports(listen_tcp_port, listen_udp_port, preferred).await {
             Ok((endpoint, mapped)) => {
-                if endpoint.ip.is_ipv4() != want_ipv4 {
-                    warn!(
-                        target: "net::nat",
-                        listen_ip = %listen_ip,
-                        mapped_ip = %endpoint.ip,
-                        "UPnP mapped IP family does not match --addr listen family; ignoring mapping"
-                    );
-                } else {
-                    // Refresh leases before they expire (geth uses ~8 min with 10 min lease).
-                    spawn_mapping_refresh(mapped, Duration::from_secs(8 * 60));
-                    return Some(endpoint);
-                }
+                // Family is guaranteed to match here since UPnP/IGD only ever maps IPv4.
+                debug_assert!(endpoint.ip.is_ipv4());
+                // Refresh leases before they expire (geth uses ~8 min with 10 min lease);
+                // guard deletes mappings on network shutdown (geth Map defer).
+                let guard = spawn_mapping_refresh(mapped, Duration::from_secs(8 * 60));
+                return Some((endpoint, Some(guard)));
             }
             Err(err) => {
                 if matches!(resolver, NatResolver::Upnp) {
@@ -421,7 +432,7 @@ pub async fn resolve_nat_endpoint(
                 listen_udp_port,
                 "Resolved public IP via HTTP (no UPnP port mapping)"
             );
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::ExternalIp(ip) => {
             if ip.is_ipv4() != want_ipv4 {
@@ -433,14 +444,14 @@ pub async fn resolve_nat_endpoint(
                 );
                 return None;
             }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::ExternalAddr(domain) => {
             let ip = tokio::net::lookup_host(format!("{domain}:0"))
                 .await
                 .ok()
                 .and_then(|addrs| addrs.map(|a| a.ip()).find(|ip| ip.is_ipv4() == want_ipv4))?;
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
         NatResolver::NetIf => {
             let ip = resolve_net_if_ip(DEFAULT_NET_IF_NAME).ok()?;
@@ -453,7 +464,7 @@ pub async fn resolve_nat_endpoint(
                 );
                 return None;
             }
-            Some(NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port))
+            Some((NatEndpoint::with_listen_ports(ip, listen_tcp_port, listen_udp_port), None))
         }
     }
 }

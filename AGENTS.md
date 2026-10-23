@@ -29,6 +29,25 @@ Reth is a high-performance Ethereum execution client written in Rust, focusing o
 
 ## Development Workflow
 
+### Local opBNB Archive Access
+
+For live archive diagnostics, source the gitignored local mapping first:
+
+```bash
+source .cursor/local/opbnb-archive-paths.env
+```
+
+- **IPC:** `$ARCHIVE_IPC` is directly accessible from this workspace host (normally
+  `/tmp/<archive-container>.ipc`). Do not look for it below `/var/lib/machines/.../tmp`.
+- **Reth file log:** `$ARCHIVE_LOG`
+- **Archived journal:** `$ARCHIVE_JOURNAL`; read it with
+  `journalctl --directory="$ARCHIVE_JOURNAL" ...`.
+- **Datadir:** `$ARCHIVE_DATADIR`
+
+Use IPC for live JSON-RPC (`admin_peers`, `admin_addPeer`, chain queries), the file log for detailed
+TRACE output, and the archived journal for service exits and older retained events. Never commit
+the concrete host/container names, addresses, or paths from the local mapping.
+
 ### Code Style and Standards
 
 1. **Formatting**: Always use nightly rustfmt

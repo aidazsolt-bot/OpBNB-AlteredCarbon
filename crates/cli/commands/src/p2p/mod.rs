@@ -185,7 +185,7 @@ impl<C: ChainSpecParser> DownloadArgs<C> {
 
         let default_secret_key_path = data_dir.p2p_secret();
         let p2p_secret_key = self.network.secret_key(default_secret_key_path)?;
-        let rlpx_socket = (self.network.addr, self.network.port).into();
+        let rlpx_socket = (self.network.resolved_addr(), self.network.port).into();
         let boot_nodes = self.chain.bootnodes().unwrap_or_default();
 
         let runtime = Runtime::test();
@@ -195,7 +195,12 @@ impl<C: ChainSpecParser> DownloadArgs<C> {
             .network_id(self.network.network_id)
             .boot_nodes(boot_nodes.clone())
             .apply(|builder| {
-                self.network.discovery.apply_to_builder(builder, rlpx_socket, boot_nodes)
+                self.network.discovery.apply_to_builder(
+                    builder,
+                    rlpx_socket,
+                    boot_nodes,
+                    self.network.wants_os_dual_stack(),
+                )
             })
             .build_with_noop_provider(self.chain.clone())
             .manager()

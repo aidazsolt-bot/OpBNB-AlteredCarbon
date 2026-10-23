@@ -68,11 +68,7 @@ use reth_transaction_pool::{
     TransactionValidator,
 };
 use reth_trie_common::KeccakKeyHasher;
-use std::{
-    marker::PhantomData,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 use url::Url;
 
 use reth_optimism_payload_builder::OpPayloadAttrs;
@@ -1571,7 +1567,7 @@ impl OpNetworkBuilder {
             .network_config_builder()?
             // apply discovery settings
             .apply(|mut builder| {
-                let rlpx_socket = SocketAddr::new(args.addr, args.port);
+                let rlpx_socket = SocketAddr::new(args.resolved_addr(), args.port);
                 if disable_discovery_v4 || args.discovery.disable_discovery {
                     builder = builder.disable_discv4_discovery();
                 }
@@ -1583,18 +1579,15 @@ impl OpNetworkBuilder {
                         .or_else(|| ctx.chain_spec().bootnodes())
                         .unwrap_or_default();
 
-                    // `--addr ::` alone makes discv5 IPv6-only; opBNB bootnodes are IPv4.
-                    // Add an IPv4 discv5 bind so discovery can reach them.
-                    let mut discovery = args.discovery.clone();
-                    if is_opbnb &&
-                        matches!(rlpx_socket.ip(), IpAddr::V6(_)) &&
-                        discovery.discv5_addr.is_none()
-                    {
-                        discovery.discv5_addr = Some(Ipv4Addr::UNSPECIFIED);
-                    }
-
-                    builder = builder
-                        .discovery_v5(discovery.discovery_v5_builder(rlpx_socket, boot_nodes));
+                    // opBNB bootnodes are IPv4-only. Explicitly requesting `--addr ::`
+                    // (IPv6-only) is respected as-is; only when `--addr` is left unset (real
+                    // OS-dependent dual-stack) do we also bring up an IPv4 discv5 socket so
+                    // discovery can still reach them.
+                    builder = builder.discovery_v5(args.discovery.discovery_v5_builder(
+                        rlpx_socket,
+                        boot_nodes,
+                        args.wants_os_dual_stack(),
+                    ));
                 }
 
                 builder

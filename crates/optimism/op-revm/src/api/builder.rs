@@ -1,12 +1,12 @@
 //! Optimism builder trait [`OpBuilder`] used to build [`OpEvm`].
-use crate::{L1BlockInfo, OpSpecId, evm::OpEvm, precompiles::OpPrecompiles, transaction::OpTxTr};
+use crate::{evm::OpEvm, precompiles::OpPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
 use revm::{
-    Context, Database,
     context::Cfg,
     context_interface::{Block, JournalTr},
     handler::instructions::EthInstructions,
     interpreter::interpreter::EthInterpreter,
     state::EvmState,
+    Context, Database,
 };
 
 /// Type alias for default `OpEvm`

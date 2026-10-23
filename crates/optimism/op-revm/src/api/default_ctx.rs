@@ -1,9 +1,9 @@
 //! Contains trait [`DefaultOp`] used to create a default context.
 use crate::{L1BlockInfo, OpSpecId, OpTransaction};
 use revm::{
-    Context, Journal, MainContext,
     context::{BlockEnv, CfgEnv, TxEnv},
     database_interface::EmptyDB,
+    Context, Journal, MainContext,
 };
 
 /// Type alias for the default context type of the `OpEvm`.
@@ -30,8 +30,8 @@ mod test {
     use super::*;
     use crate::api::builder::OpBuilder;
     use revm::{
-        ExecuteEvm,
         inspector::{InspectEvm, NoOpInspector},
+        ExecuteEvm,
     };
 
     #[test]

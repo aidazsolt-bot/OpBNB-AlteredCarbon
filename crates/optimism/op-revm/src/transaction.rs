@@ -58,7 +58,7 @@ pub fn encoded_tx_da_footprint(encoded_2718: &[u8], da_footprint_gas_scalar: u64
 #[cfg(test)]
 mod tests {
     use super::*;
-    use op_alloy_consensus::{SDMGasEntry, build_post_exec_tx};
+    use op_alloy_consensus::{build_post_exec_tx, SDMGasEntry};
     use std::vec;
 
     #[test]

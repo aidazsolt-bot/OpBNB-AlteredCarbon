@@ -76,6 +76,14 @@ pub trait HeadersClient: DownloadClient {
         priority: Priority,
     ) -> Self::Output;
 
+    /// Local tip header from engine NewPayload seed (FLOW-E03), if present.
+    ///
+    /// Default: none. [`crate::headers::SeededBlockClient`] returns the seeded header so reverse
+    /// sync can bind Tip(hash) → number without a P2P hash fetch.
+    fn seeded_header(&self, _hash: alloy_primitives::B256) -> Option<Self::Header> {
+        None
+    }
+
     /// Fetches a single header for the requested number or hash.
     fn get_header(&self, start: BlockHashOrNumber) -> SingleHeaderRequest<Self::Output> {
         self.get_header_with_priority(start, Priority::Normal)

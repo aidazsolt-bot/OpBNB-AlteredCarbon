@@ -9,7 +9,7 @@ use alloy_primitives::{Address, Signature, TxKind, U256};
 use alloy_primitives::{Bytes, ChainId};
 use alloy_rpc_types_eth::{AccessList, TransactionInput, TransactionRequest};
 use op_alloy_consensus::{
-    OpTxEnvelope, OpTypedTransaction, POST_EXEC_TX_TYPE_ID, TxDeposit, TxPostExec,
+    OpTxEnvelope, OpTypedTransaction, TxDeposit, TxPostExec, POST_EXEC_TX_TYPE_ID,
 };
 use serde::{Deserialize, Serialize};
 

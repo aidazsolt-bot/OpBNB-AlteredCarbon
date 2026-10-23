@@ -1,21 +1,21 @@
 use alloc::{format, vec, vec::Vec};
 use alloy_consensus::{SignableTransaction, TxLegacy};
 use alloy_evm::{
-    EvmInternals, FromRecoveredTx,
     evm::EvmFactoryExt,
     precompiles::{Precompile, PrecompileInput},
+    EvmInternals, FromRecoveredTx,
 };
 use alloy_primitives::{Signature, TxKind, U256};
 use core::convert::Infallible;
 use op_revm::{
-    OpTransactionError,
     precompiles::{bls12_381, bn254_pair},
+    OpTransactionError,
 };
 use revm::{
     context::CfgEnv,
     context_interface::{
-        ContextTr,
         result::{EVMError, InvalidTransaction},
+        ContextTr,
     },
     database::{CacheDB, EmptyDB, InMemoryDB},
     inspector::JournalExt,

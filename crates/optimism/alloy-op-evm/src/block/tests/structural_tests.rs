@@ -939,7 +939,7 @@ mod warm_set_leak {
     /// (sender-has-code) instead of by the nonce check — still only after it is loaded+warmed.
     fn contract_sender_db() -> State<InMemoryDB> {
         let code = Bytecode::new_raw(vec![0x00u8].into()); // STOP
-        // nonce 0 so the nonce check passes and EIP-3607 is the sole rejection reason.
+                                                           // nonce 0 so the nonce check passes and EIP-3607 is the sole rejection reason.
         db_with_leak_account(AccountInfo {
             code_hash: code.hash_slow(),
             code: Some(code),

@@ -24,12 +24,12 @@ use reth_primitives_traits::{GotExpected, SealedHeader};
 use reth_tasks::Runtime;
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{binary_heap::PeekMut, BinaryHeap, VecDeque},
+    collections::{binary_heap::PeekMut, BinaryHeap},
     future::Future,
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -39,8 +39,9 @@ use tracing::{debug, error, trace};
 /// downloader is yielding a next batch of headers that is being committed to the database.
 const REQUESTS_PER_PEER_MULTIPLIER: usize = 5;
 
-/// Backoff before retrying a failed sync-target tip fetch.
-const SYNC_TARGET_RETRY_BACKOFF: Duration = Duration::from_millis(500);
+/// Pause before re-issuing after [`DownloadError::EmptyResponse`] (FLOW-H07).
+/// Immediate re-submit busy-loops when every peer miss-maps the same origin (fail-fast Empty).
+const EMPTY_RESPONSE_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Wrapper for internal downloader errors.
 #[derive(Error, Debug)]
@@ -100,11 +101,6 @@ pub struct ReverseHeadersDownloader<H: HeadersClient> {
     /// This will give us the block number of the `sync_target`, after which we can send multiple
     /// requests at a time.
     sync_target_request: Option<HeadersRequestFuture<H::Output>>,
-    /// Sync-target request waiting to be (re)issued after [`SYNC_TARGET_RETRY_BACKOFF`].
-    sync_target_retry: Option<(Instant, HeadersRequest)>,
-    /// Falling-header requests deferred after EmptyResponse (peer miss) — backoff then retry so we
-    /// do not busy-loop the network; peer stays connected and can serve earlier ranges.
-    empty_response_retries: VecDeque<(Instant, HeadersRequest)>,
     /// Original CL/pipeline tip when working tip was capped to peer-reachable height.
     eventual_sync_target: Option<SyncTargetBlock>,
     /// requests in progress
@@ -115,6 +111,8 @@ pub struct ReverseHeadersDownloader<H: HeadersClient> {
     ///
     /// Note: headers are sorted from high to low
     queued_validated_headers: Vec<SealedHeader<H::Header>>,
+    /// EmptyResponse deferred re-submit (sleep, request, priority, sync_target_slot).
+    empty_retry: Option<(Pin<Box<tokio::time::Sleep>>, HeadersRequest, Priority, bool)>,
     /// Header downloader metrics.
     metrics: HeaderDownloaderMetrics,
 }
@@ -220,7 +218,6 @@ where
         self.next_chain_tip_block_number = 0;
         self.sync_target.take();
         self.eventual_sync_target.take();
-        self.empty_response_retries.clear();
     }
 
     /// Validate that the received header matches the expected sync target.
@@ -581,7 +578,9 @@ where
 
     /// Handles the error of a bad response
     ///
-    /// This will re-submit the request (with backoff on EmptyResponse).
+    /// Non-empty errors re-submit immediately. [`DownloadError::EmptyResponse`] is deferred
+    /// ([`EMPTY_RESPONSE_BACKOFF`]) so fail-fast Empty from the fetcher cannot busy-loop the
+    /// stage (FLOW-H07). Empty still does not ban ([`Self::penalize_peer`]).
     fn on_headers_error(&mut self, err: Box<HeadersResponseError>) {
         let HeadersResponseError { request, peer_id, error } = *err;
 
@@ -591,15 +590,26 @@ where
         self.metrics.increment_errors(&error);
 
         if matches!(error, DownloadError::EmptyResponse) {
-            // Peer does not have this range — wait before retry so another peer / earlier batches
-            // can make progress (op-geth reschedule + miss map; we never drop the peer).
-            self.empty_response_retries
-                .push_back((Instant::now() + SYNC_TARGET_RETRY_BACKOFF, request));
+            self.schedule_empty_retry(request, Priority::High, false);
             return;
         }
 
-        // Re-submit the request
         self.submit_request(request, Priority::High);
+    }
+
+    fn schedule_empty_retry(
+        &mut self,
+        request: HeadersRequest,
+        priority: Priority,
+        sync_target: bool,
+    ) {
+        // Coalesce: keep the latest empty retry; drop an older pending backoff.
+        self.empty_retry = Some((
+            Box::pin(tokio::time::sleep(EMPTY_RESPONSE_BACKOFF)),
+            request,
+            priority,
+            sync_target,
+        ));
     }
 
     /// Returns true when the sync tip is above every connected peer's Status best number.
@@ -614,15 +624,31 @@ where
     /// Drop the active working tip to `max_peer_best`, keeping the CL tip as eventual target.
     fn apply_working_tip_cap(&mut self, eventual_hash: B256, eventual_number: u64) {
         let reachable = self.client.max_peer_best_number().expect("should_cap checked");
-        // Already capped to (or below) this reachable tip — do not clear in-flight / tip header.
+        // Always track the latest CL tip — Tip churn while capped must not lose the eventual hash.
+        self.eventual_sync_target = Some(SyncTargetBlock::HashAndNumber {
+            hash: eventual_hash,
+            number: eventual_number,
+        });
+        // Already capped to this reachable tip — preserve in-flight Number request / Falling.
+        // FLOW-H07: Tip(hash) updates arrive every NewPayload; clearing `sync_target_request`
+        // before this early-return left Headers with target=None and no Falling forever.
         if self.sync_target.as_ref().and_then(|t| t.number()) == Some(reachable) {
+            let local = self.local_block_number().unwrap_or(0);
+            let falling_active = self.next_request_block_number > local ||
+                !self.in_progress_queue.is_empty() ||
+                !self.queued_validated_headers.is_empty();
+            if self.sync_target_request.is_none() && !falling_active {
+                debug!(
+                    target: "downloaders::headers",
+                    working_tip = reachable,
+                    eventual_tip = eventual_number,
+                    "Re-issuing capped working tip request after Tip update"
+                );
+                self.sync_target_request = Some(
+                    self.request_fut(self.get_sync_target_request(reachable.into()), Priority::High),
+                );
+            }
             return;
-        }
-        if self.eventual_sync_target.is_none() {
-            self.eventual_sync_target = Some(SyncTargetBlock::HashAndNumber {
-                hash: eventual_hash,
-                number: eventual_number,
-            });
         }
         debug!(
             target: "downloaders::headers",
@@ -631,8 +657,6 @@ where
             "Capping header sync working tip to max peer best number"
         );
         self.sync_target = Some(SyncTargetBlock::from_number(reachable));
-        self.sync_target_retry = None;
-        self.empty_response_retries.clear();
         self.in_progress_queue.clear();
         self.metrics.in_flight_requests.set(0.);
         // Drop validated headers above the reachable working tip (CL tip was unreachable).
@@ -737,7 +761,7 @@ where
         self.queued_validated_headers = Vec::new();
         self.buffered_responses = BinaryHeap::new();
         self.in_progress_queue.clear();
-        self.empty_response_retries.clear();
+        self.empty_retry = None;
 
         self.metrics.in_flight_requests.set(0.);
         self.metrics.buffered_responses.set(0.);
@@ -820,7 +844,6 @@ where
             SyncTarget::Tip(tip) => {
                 if Some(tip) != current_tip {
                     trace!(target: "downloaders::headers", current=?current_tip, new=?tip, "Update sync target");
-                    let new_sync_target = SyncTargetBlock::from_hash(tip);
 
                     // if the new sync target is the next queued request we don't need to re-start
                     // the target update
@@ -830,19 +853,61 @@ where
                         .filter(|h| h.hash() == tip)
                         .map(|h| h.number())
                     {
-                        self.sync_target = Some(new_sync_target.with_number(target_number));
+                        self.sync_target =
+                            Some(SyncTargetBlock::from_hash(tip).with_number(target_number));
                         return;
                     }
 
-                    trace!(target: "downloaders::headers", new=?target, "Request new sync target");
-                    self.metrics.out_of_order_requests.increment(1);
-                    // New CL tip supersedes a previous reachable-head cap.
-                    self.eventual_sync_target = None;
-                    self.sync_target = Some(new_sync_target);
-                    self.sync_target_retry = None;
-                    self.sync_target_request = Some(
-                        self.request_fut(self.get_sync_target_request(tip.into()), Priority::High),
+                    // FLOW-E03 / op-geth: Tip(hash) binds to number only from HeaderSeed
+                    // (NewPayload). Never GetBlockHeaders(hash,1) on the wire.
+                    if let Some(header) = self.client.seeded_header(tip) {
+                        let target = SealedHeader::seal_slow(header);
+                        if target.hash() != tip {
+                            error!(
+                                target: "downloaders::headers",
+                                expected=?tip,
+                                got=?target.hash(),
+                                "Seeded tip hash mismatch"
+                            );
+                            self.sync_target = Some(SyncTargetBlock::from_hash(tip));
+                            self.sync_target_request = None;
+                            return;
+                        }
+                        debug!(
+                            target: "downloaders::headers",
+                            hash=?tip,
+                            number=%target.number(),
+                            "Bound Tip(hash) from HeaderSeed"
+                        );
+                        self.metrics.out_of_order_requests.increment(1);
+                        if self.should_cap_working_tip(target.number()) {
+                            // FLOW-H07: do not clear `sync_target_request` first — Cap may
+                            // early-return when already at peer best; clearing then stalls.
+                            self.apply_working_tip_cap(target.hash(), target.number());
+                            return;
+                        }
+                        self.eventual_sync_target = None;
+                        self.sync_target_request = None;
+                        let parent_block_number = target.number().saturating_sub(1);
+                        self.sync_target = Some(SyncTargetBlock::HashAndNumber {
+                            hash: tip,
+                            number: target.number(),
+                        });
+                        self.on_block_number_update(target.number(), parent_block_number);
+                        self.queued_validated_headers.push(target);
+                        return;
+                    }
+
+                    // Tip not seeded yet — wait for NewPayload (op-geth remoteBlocks miss →
+                    // STATUS_SYNCING). Do not issue P2P hash tip fetch.
+                    debug!(
+                        target: "downloaders::headers",
+                        hash=?tip,
+                        "Tip hash not in HeaderSeed; waiting for NewPayload"
                     );
+                    self.eventual_sync_target = None;
+                    self.sync_target = Some(SyncTargetBlock::from_hash(tip));
+                    self.sync_target_request = None;
                 }
             }
             SyncTarget::Gap(existing) => {
@@ -907,34 +972,26 @@ where
         // Peer Status heads may become known after the tip was already seeded (eth/68).
         this.maybe_recap_working_tip();
 
-        // If we have a new tip request we need to complete that first before we send batched
-        // requests
-        if this.sync_target_request.is_none() {
-            if let Some((retry_at, request)) = this.sync_target_retry.take() {
-                if Instant::now() < retry_at {
-                    this.sync_target_retry = Some((retry_at, request));
-                    return Poll::Pending;
-                }
-                this.sync_target_request = Some(this.request_fut(request, Priority::High));
+        // Drain deferred EmptyResponse retries (FLOW-H07).
+        if let Some((sleep, _, _, _)) = this.empty_retry.as_mut() &&
+            sleep.as_mut().poll(cx).is_ready()
+        {
+            let (_, request, priority, sync_target) =
+                this.empty_retry.take().expect("just polled ready");
+            if sync_target {
+                this.sync_target_request = Some(this.request_fut(request, priority));
+            } else {
+                this.submit_request(request, priority);
             }
         }
 
-        // Re-issue EmptyResponse retries whose backoff elapsed (peer miss → try again later /
-        // other peer via HeadersAtLeast routing).
-        while let Some((retry_at, _)) = this.empty_response_retries.front() {
-            if Instant::now() < *retry_at {
-                break;
-            }
-            let (_, request) = this.empty_response_retries.pop_front().expect("front checked");
-            this.submit_request(request, Priority::High);
-        }
-
+        // Tip fetch first (FLOW-H06 / paradigm): keep an in-flight future so the task stays
+        // woken; EmptyResponse is deferred (FLOW-H07), other errors re-issue immediately.
         while let Some(mut req) = this.sync_target_request.take() {
             match req.poll_unpin(cx) {
                 Poll::Ready(outcome) => {
                     match this.on_sync_target_outcome(outcome) {
                         Ok(()) => {
-                            this.sync_target_retry = None;
                             // Working-tip cap reissues a Number tip fetch into
                             // `sync_target_request` — keep polling it instead of
                             // falling through to the "stream finished" path.
@@ -952,10 +1009,13 @@ where
 
                             this.penalize_peer(error.peer_id, &error.error);
                             this.metrics.increment_errors(&error.error);
-                            // Delay re-issue so empty tip responses do not spin against one peer.
-                            this.sync_target_retry =
-                                Some((Instant::now() + SYNC_TARGET_RETRY_BACKOFF, error.request));
-                            return Poll::Pending;
+                            if matches!(error.error, DownloadError::EmptyResponse) {
+                                this.schedule_empty_retry(error.request, Priority::High, true);
+                                break;
+                            }
+                            this.sync_target_request =
+                                Some(this.request_fut(error.request, Priority::High));
+                            continue;
                         }
                         Err(ReverseHeadersDownloaderError::Downloader(error)) => {
                             this.clear();
@@ -1049,8 +1109,8 @@ where
 
         // all requests are handled, stream is finished
         if this.in_progress_queue.is_empty() {
-            if !this.empty_response_retries.is_empty() || this.sync_target_retry.is_some() {
-                // Waiting on EmptyResponse / tip-fetch backoff — not done yet.
+            // Deferred Empty retry still counts as in-flight work (FLOW-H07).
+            if this.empty_retry.is_some() {
                 return Poll::Pending;
             }
             let next_batch = this.split_next_batch();
@@ -1370,12 +1430,11 @@ impl ReverseHeadersDownloaderBuilder {
             stream_batch_size,
             max_buffered_responses,
             sync_target_request: None,
-            sync_target_retry: None,
-            empty_response_retries: Default::default(),
             eventual_sync_target: None,
             in_progress_queue: Default::default(),
             buffered_responses: Default::default(),
             queued_validated_headers: Default::default(),
+            empty_retry: None,
             metrics: Default::default(),
         }
     }
@@ -1479,15 +1538,16 @@ mod tests {
         let mut downloader = ReverseHeadersDownloaderBuilder::default()
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
         downloader.update_local_head(genesis);
+        // FLOW-E03: Tip(hash) without HeaderSeed waits — no P2P hash tip fetch.
         downloader.update_sync_target(SyncTarget::Tip(B256::random()));
+        assert!(downloader.sync_target_request.is_none());
 
-        downloader.sync_target_request.take();
+        let tip = SealedHeader::default();
+        client.seed_header(&tip);
+        downloader.update_sync_target(SyncTarget::Tip(tip.hash()));
+        assert!(downloader.sync_target.is_some());
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(tip.number()));
 
-        let target = SyncTarget::Tip(B256::random());
-        downloader.update_sync_target(target);
-        assert!(downloader.sync_target_request.is_some());
-
-        downloader.sync_target_request.take();
         let target = SyncTarget::Gap(BlockWithParent {
             block: BlockNumHash::new(0, B256::random()),
             parent: Default::default(),
@@ -1600,17 +1660,12 @@ mod tests {
             .stream_batch_size(3)
             .request_limit(3)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
         downloader.update_local_head(p3.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        client
-            .extend(vec![
-                p0.as_ref().clone(),
-                p1.as_ref().clone(),
-                p2.as_ref().clone(),
-                p3.as_ref().clone(),
-            ])
-            .await;
+        // Tip already seeded — P2P only fills parents (high→low drain order).
+        client.extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()]).await;
 
         let headers = downloader.next().await.unwrap();
         assert_eq!(headers.unwrap(), vec![p0, p1, p2,]);
@@ -1632,17 +1687,11 @@ mod tests {
             .stream_batch_size(1)
             .request_limit(1)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
         downloader.update_local_head(p3.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        client
-            .extend(vec![
-                p0.as_ref().clone(),
-                p1.as_ref().clone(),
-                p2.as_ref().clone(),
-                p3.as_ref().clone(),
-            ])
-            .await;
+        client.extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()]).await;
 
         let headers = downloader.next().await.unwrap();
         let headers = headers.unwrap();
@@ -1675,17 +1724,11 @@ mod tests {
             .stream_batch_size(1)
             .request_limit(3)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
         downloader.update_local_head(p3.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        client
-            .extend(vec![
-                p0.as_ref().clone(),
-                p1.as_ref().clone(),
-                p2.as_ref().clone(),
-                p3.as_ref().clone(),
-            ])
-            .await;
+        client.extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()]).await;
 
         let headers = downloader.next().await.unwrap();
         let headers = headers.unwrap();
@@ -1721,13 +1764,13 @@ mod tests {
             .stream_batch_size(10)
             .request_limit(10)
             .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
         downloader.update_local_head(p3.clone());
         downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
 
-        // Tip (p0) then reachable working tip (p1), then parents for reverse fill.
+        // After Cap, Number(p1) tip fetch then parents for reverse fill.
         client
             .extend(vec![
-                p0.as_ref().clone(),
                 p1.as_ref().clone(),
                 p2.as_ref().clone(),
                 p3.as_ref().clone(),
@@ -1758,6 +1801,61 @@ mod tests {
             headers.extend(more);
         }
         assert!(headers.iter().any(|h| h.hash() == p2.hash() || h.hash() == p3.hash()));
+    }
+
+    /// FLOW-H07: advancing seeded Tips above a fixed peer best must not wipe the Cap Number
+    /// request (live: Cap then hours of Headers `target=None` with no Writing headers).
+    #[tokio::test]
+    async fn tip_churn_while_capped_keeps_number_request() {
+        reth_tracing::init_test_tracing();
+        let p4 = SealedHeader::default();
+        let p3 = child_header(&p4);
+        let p2 = child_header(&p3);
+        let p1 = child_header(&p2);
+        let p0 = child_header(&p1);
+        // Newer CL tip above peer best (same reachable height as p0).
+        let p_newer = child_header(&p0);
+
+        let client = Arc::new(TestHeadersClient::default());
+        client.set_max_peer_best(Some(p1.number()));
+
+        let mut downloader = ReverseHeadersDownloaderBuilder::default()
+            .stream_batch_size(10)
+            .request_limit(10)
+            .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
+        downloader.update_local_head(p4.clone());
+        downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
+
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p1.number()));
+        assert!(downloader.sync_target_request.is_some());
+
+        // Second Tip above the same peer best — must keep Cap request, not clear it.
+        client.seed_header(&p_newer);
+        downloader.update_sync_target(SyncTarget::Tip(p_newer.hash()));
+
+        assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p1.number()));
+        assert!(
+            downloader.sync_target_request.is_some(),
+            "Tip churn while capped must not leave sync_target_request=None"
+        );
+        assert_eq!(
+            downloader.eventual_sync_target.as_ref().and_then(|t| t.number()),
+            Some(p_newer.number())
+        );
+
+        client
+            .extend(vec![
+                p1.as_ref().clone(),
+                p2.as_ref().clone(),
+                p3.as_ref().clone(),
+                p4.as_ref().clone(),
+            ])
+            .await;
+
+        let headers = downloader.next().await.unwrap().unwrap();
+        assert!(headers.iter().any(|h| h.hash() == p1.hash()));
+        assert!(!headers.iter().any(|h| h.hash() == p0.hash() || h.hash() == p_newer.hash()));
     }
 
     #[test]

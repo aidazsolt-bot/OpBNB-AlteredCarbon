@@ -1,15 +1,15 @@
 //! Optimism transaction abstraction containing the `[OpTxTr]` trait and corresponding
 //! `[OpTransaction]` type.
-use super::deposit::{DEPOSIT_TRANSACTION_TYPE, DepositTransactionParts};
+use super::deposit::{DepositTransactionParts, DEPOSIT_TRANSACTION_TYPE};
 use auto_impl::auto_impl;
 use revm::{
     context::{
-        TxEnv,
         tx::{TxEnvBuildError, TxEnvBuilder},
+        TxEnv,
     },
     context_interface::transaction::Transaction,
     handler::SystemCallTx,
-    primitives::{Address, B256, Bytes, TxKind, U256},
+    primitives::{Address, Bytes, TxKind, B256, U256},
 };
 use std::vec;
 

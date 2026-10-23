@@ -1129,7 +1129,6 @@ pub enum SignError {
     NoChainId,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
