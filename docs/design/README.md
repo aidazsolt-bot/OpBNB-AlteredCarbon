@@ -1,11 +1,8 @@
-## Design
+# Design notes
 
-Docs under this page contain some context on how we've iterated on the Reth design (still WIP, please contribute!):
+Upstream Reth design history lives in
+[paradigmxyz/reth](https://github.com/paradigmxyz/reth) (`docs/design/`).
 
-- [Reth Goals](./goals.md)
-- [Database](./database.md)
-- Networking
-    - [P2P](./p2p.md)
-    - [Headers Downloader](./headers-downloader.md)
-- [Metrics](./metrics.md): Guidelines on metrics and traces.
-- [Review of Other Codebases](./review.md)
+This fork **does not** claim or maintain that design work. The tree here is a
+port of an opBNB archive experiment **onto** a Reth version line — not a
+continuation of Paradigm’s product docs.

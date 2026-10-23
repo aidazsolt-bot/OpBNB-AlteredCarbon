@@ -1,9 +1,8 @@
-## Repository structure (this fork)
+# Repository docs (this fork)
 
-This tree is an independent opBNB / AlteredCarbon experiment. It is **not** the
-upstream paradigmxyz/reth contributor project — there is no Paradigm issue triage,
-label scheme, release train, or CI matrix here.
+Port experiment onto a Reth version — **not** the paradigmxyz/reth contributor
+project.
 
-- [Layout](./layout.md): crate layout notes (historical; some links still point at upstream for provenance).
-- Root `README.md` / `NOTICE-PERSONAL-USE.md`: permitted use and project notice.
-- `.github/workflows/`: only this fork’s smoke + Actions scan workflows.
+- Root `README.md` / `NOTICE-PERSONAL-USE.md` — what this tree is for
+- `.github/workflows/` — smoke + Actions scan only
+- Upstream layout/design/CI docs: see [paradigmxyz/reth](https://github.com/paradigmxyz/reth)

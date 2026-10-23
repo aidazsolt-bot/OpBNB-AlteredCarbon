@@ -1,30 +1,25 @@
 ---
-description: Context for why upstream Reth exists — and what this fork is (and is not).
+description: Why a Reth baseline — and why this fork is only a port onto it.
 ---
 
-# Why Reth?
+# Context (why a Reth baseline?)
 
-Upstream [paradigmxyz/reth](https://github.com/paradigmxyz/reth) is a modular Ethereum execution
-client used in production by many operators. That history is why this tree still looks like Reth.
+Upstream [paradigmxyz/reth](https://github.com/paradigmxyz/reth) is a modular Ethereum
+execution client. **Their** engineering, community, and product claims are theirs.
 
-**This repository is different:** an independent personal opBNB / AlteredCarbon experiment. It is
-**not** affiliated with Paradigm, Coinbase, Alchemy, Base, or BNB Chain. Do not treat marketing
-claims from upstream docs as statements about this fork.
+This repository is a **port** of an opBNB archive / sync experiment **onto** a chosen
+Reth version. We reuse that codebase as a baseline; we do not continue Paradigm’s
+docs, support channels, or institutional narrative.
 
-## What still applies (crate design)
+## Practical implications
 
-- **Modularity** — components usable as libraries
-- **Performance focus** — staged sync, static files, parallel work where it pays off
-- **Extensibility** — SDK / ExEx patterns (see ExEx pages; treat as reference)
-
-## What does **not** apply here
-
-- No upstream support channel, Telegram, Homebrew tap, or public GHCR image for this fork
-- No “production ready / institutional staking” claim for AlteredCarbon
-- Permitted use is personal / non-commercial only — see root `README.md` and `NOTICE-PERSONAL-USE.md`
+- Build and run instructions here refer to **this** tree
+- Design history and “we built X” essays belong upstream — removed from `docs/design`
+  and `docs/crates` here
+- Permitted use: personal / non-commercial — `NOTICE-PERSONAL-USE.md`
 
 ## Next
 
 - [Overview](/overview)
 - [Build from source](/installation/source)
-- Root `README.md` Project Notice
+- Root `README.md`

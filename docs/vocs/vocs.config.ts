@@ -3,8 +3,8 @@ import { sidebar } from './sidebar'
 import { basePath } from './redirects.config'
 
 export default defineConfig({
-  title: 'Reth',
-  description: 'Reth is a secure, performant, and modular Ethereum execution client built in Rust.',
+  title: 'AlteredCarbon (Reth port)',
+  description: 'Personal opBNB / AlteredCarbon experiment ported onto a Reth version — not upstream Reth.',
   accentColor: 'light-dark(#1f1f1f, #ffffff)',
   srcDir: 'docs',
   logoUrl: '/logo.png',
