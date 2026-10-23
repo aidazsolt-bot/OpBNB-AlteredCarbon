@@ -24,11 +24,11 @@ pub fn validate_header_gas<H: BlockHeader>(header: &H) -> Result<(), ConsensusEr
         return Err(ConsensusError::HeaderGasUsedExceedsGasLimit {
             gas_used: header.gas_used(),
             gas_limit: header.gas_limit(),
-        });
+        })
     }
     // Check that the gas limit is below the maximum allowed gas limit
     if header.gas_limit() > MAXIMUM_GAS_LIMIT_BLOCK {
-        return Err(ConsensusError::HeaderGasLimitExceedsMax { gas_limit: header.gas_limit() });
+        return Err(ConsensusError::HeaderGasLimitExceedsMax { gas_limit: header.gas_limit() })
     }
     Ok(())
 }
@@ -41,7 +41,7 @@ pub fn validate_header_base_fee<H: BlockHeader, ChainSpec: EthereumHardforks>(
 ) -> Result<(), ConsensusError> {
     if chain_spec.is_london_active_at_block(header.number()) && header.base_fee_per_gas().is_none()
     {
-        return Err(ConsensusError::BaseFeeMissing);
+        return Err(ConsensusError::BaseFeeMissing)
     }
     Ok(())
 }
@@ -106,14 +106,14 @@ where
                 expected: header.ommers_hash(),
             }
             .into(),
-        ));
+        ))
     }
 
     let tx_root = body.calculate_tx_root();
     if header.transactions_root() != tx_root {
         return Err(ConsensusError::BodyTransactionRootDiff(
             GotExpected { got: tx_root, expected: header.transactions_root() }.into(),
-        ));
+        ))
     }
 
     match (header.withdrawals_root(), body.calculate_withdrawals_root()) {
@@ -121,7 +121,7 @@ where
             if withdrawals_root != header_withdrawals_root {
                 return Err(ConsensusError::BodyWithdrawalsRootDiff(
                     GotExpected { got: withdrawals_root, expected: header_withdrawals_root }.into(),
-                ));
+                ))
             }
         }
         (None, None) => {
@@ -177,7 +177,7 @@ where
         return Err(ConsensusError::BodyTransactionRootDiff(
             GotExpected { got: calculated_transaction_root, expected: expected_transaction_root }
                 .into(),
-        ));
+        ))
     }
 
     Ok(())
@@ -209,7 +209,7 @@ where
                 expected: block.ommers_hash(),
             }
             .into(),
-        ));
+        ))
     }
 
     // EIP-4895: Beacon chain push withdrawals as operations
@@ -231,7 +231,7 @@ where
         return Err(ConsensusError::BlockTooLarge {
             rlp_length: block.rlp_length(),
             max_rlp_length: MAX_RLP_BLOCK_SIZE,
-        });
+        })
     }
 
     Ok(())
@@ -250,21 +250,21 @@ pub fn validate_4844_header_standalone<H: BlockHeader>(
     let blob_gas_used = header.blob_gas_used().ok_or(ConsensusError::BlobGasUsedMissing)?;
 
     if header.parent_beacon_block_root().is_none() {
-        return Err(ConsensusError::ParentBeaconBlockRootMissing);
+        return Err(ConsensusError::ParentBeaconBlockRootMissing)
     }
 
     if !blob_gas_used.is_multiple_of(DATA_GAS_PER_BLOB) {
         return Err(ConsensusError::BlobGasUsedNotMultipleOfBlobGasPerBlob {
             blob_gas_used,
             blob_gas_per_blob: DATA_GAS_PER_BLOB,
-        });
+        })
     }
 
     if blob_gas_used > blob_params.max_blob_gas_per_block() {
         return Err(ConsensusError::BlobGasUsedExceedsMaxBlobGasPerBlock {
             blob_gas_used,
             max_blob_gas_per_block: blob_params.max_blob_gas_per_block(),
-        });
+        })
     }
 
     Ok(())
@@ -299,7 +299,7 @@ pub fn validate_against_parent_hash_number<H: BlockHeader>(
     if parent.hash() != header.parent_hash() {
         return Err(ConsensusError::ParentHashMismatch(
             GotExpected { got: header.parent_hash(), expected: parent.hash() }.into(),
-        ));
+        ))
     }
 
     let Some(parent_number) = parent.number().checked_add(1) else {
@@ -307,7 +307,7 @@ pub fn validate_against_parent_hash_number<H: BlockHeader>(
         return Err(ConsensusError::ParentBlockNumberMismatch {
             parent_block_number: parent.number(),
             block_number: u64::MAX,
-        });
+        })
     };
 
     // Parent number is consistent.
@@ -315,7 +315,7 @@ pub fn validate_against_parent_hash_number<H: BlockHeader>(
         return Err(ConsensusError::ParentBlockNumberMismatch {
             parent_block_number: parent.number(),
             block_number: header.number(),
-        });
+        })
     }
 
     Ok(())
@@ -345,7 +345,7 @@ pub fn validate_against_parent_eip1559_base_fee<ChainSpec: EthChainSpec + Ethere
             return Err(ConsensusError::BaseFeeDiff(GotExpected {
                 expected: expected_base_fee,
                 got: base_fee,
-            }));
+            }))
         }
     }
 
@@ -362,7 +362,7 @@ pub fn validate_against_parent_timestamp<H: BlockHeader>(
         return Err(ConsensusError::TimestampIsInPast {
             parent_timestamp: parent.timestamp(),
             timestamp: header.timestamp(),
-        });
+        })
     }
     Ok(())
 }
@@ -397,7 +397,7 @@ pub fn validate_against_parent_gas_limit<
             return Err(ConsensusError::GasLimitInvalidIncrease {
                 parent_gas_limit,
                 child_gas_limit: header.gas_limit(),
-            });
+            })
         }
     }
     // Check for a decrease in gas limit beyond the allowed threshold.
@@ -405,11 +405,11 @@ pub fn validate_against_parent_gas_limit<
         return Err(ConsensusError::GasLimitInvalidDecrease {
             parent_gas_limit,
             child_gas_limit: header.gas_limit(),
-        });
+        })
     }
     // Check if the self gas limit is below the minimum required limit.
     if header.gas_limit() < MINIMUM_GAS_LIMIT {
-        return Err(ConsensusError::GasLimitInvalidMinimum { child_gas_limit: header.gas_limit() });
+        return Err(ConsensusError::GasLimitInvalidMinimum { child_gas_limit: header.gas_limit() })
     }
 
     Ok(())
@@ -434,7 +434,7 @@ pub fn validate_against_parent_4844<H: BlockHeader>(
     let parent_excess_blob_gas = parent.excess_blob_gas().unwrap_or(0);
 
     if header.blob_gas_used().is_none() {
-        return Err(ConsensusError::BlobGasUsedMissing);
+        return Err(ConsensusError::BlobGasUsedMissing)
     }
     let excess_blob_gas = header.excess_blob_gas().ok_or(ConsensusError::ExcessBlobGasMissing)?;
 
@@ -449,7 +449,7 @@ pub fn validate_against_parent_4844<H: BlockHeader>(
             diff: GotExpected { got: excess_blob_gas, expected: expected_excess_blob_gas },
             parent_excess_blob_gas,
             parent_blob_gas_used,
-        });
+        })
     }
 
     Ok(())
@@ -489,102 +489,6 @@ mod tests {
         TransactionSigned::new_unhashed(request, signature)
     }
 
-    /// got test block
-    fn mock_block() -> (SealedBlock, Header) {
-        // https://etherscan.io/block/15867168 where transaction root and receipts root are cleared
-        // empty merkle tree: 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
-
-        let header = Header {
-            parent_hash: hex!("859fad46e75d9be177c2584843501f2270c7e5231711e90848290d12d7c6dcdd").into(),
-            ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: hex!("4675c7e5baafbffbca748158becba61ef3b0a263").into(),
-            state_root: hex!("8337403406e368b3e40411138f4868f79f6d835825d55fd0c2f6e17b1a3948e9").into(),
-            transactions_root: EMPTY_ROOT_HASH,
-            receipts_root: EMPTY_ROOT_HASH,
-            logs_bloom: hex!("002400000000004000220000800002000000000000000000000000000000100000000000000000100000000000000021020000000800000006000000002100040000000c0004000000000008000008200000000000000000000000008000000001040000020000020000002000000800000002000020000000022010000000000000010002001000000000020200000000000001000200880000004000000900020000000000020000000040000000000000000000000000000080000000000001000002000000000000012000200020000000000000001000000000000020000010321400000000100000000000000000000000000000400000000000000000").into(),
-            difficulty: U256::ZERO, // total difficulty: 0xc70d815d562d3cfa955).into(),
-            number: 0xf21d20,
-            gas_limit: 0x1c9c380,
-            gas_used: 0x6e813,
-            timestamp: 0x635f9657,
-            extra_data: hex!("")[..].into(),
-            mix_hash: hex!("0000000000000000000000000000000000000000000000000000000000000000").into(),
-            nonce: 0x0000000000000000u64.into(),
-            base_fee_per_gas: 0x28f0001df.into(),
-            withdrawals_root: None,
-            blob_gas_used: None,
-            excess_blob_gas: None,
-            parent_beacon_block_root: None,
-            requests_hash: None
-        };
-        // size: 0x9b5
-
-        let mut parent = header.clone();
-        parent.gas_used = 17763076;
-        parent.gas_limit = 30000000;
-        parent.base_fee_per_gas = Some(0x28041f7f5);
-        parent.number -= 1;
-        parent.timestamp -= 1;
-
-        let ommers = Vec::new();
-        let transactions = Vec::new();
-
-        let sealed = header.seal_slow();
-        let (header, seal) = sealed.into_parts();
-
-        (
-            SealedBlock {
-                header: SealedHeader::new(header, seal),
-                body: BlockBody { transactions, ommers, withdrawals: None, sidecars: None },
-            },
-            parent,
-        )
-    }
-
-    #[test]
-    fn valid_withdrawal_index() {
-        let chain_spec = ChainSpecBuilder::mainnet().shanghai_activated().build();
-
-        let create_block_with_withdrawals = |indexes: &[u64]| {
-            let withdrawals = Withdrawals::new(
-                indexes
-                    .iter()
-                    .map(|idx| Withdrawal { index: *idx, ..Default::default() })
-                    .collect(),
-            );
-
-            let sealed = Header {
-                withdrawals_root: Some(proofs::calculate_withdrawals_root(&withdrawals)),
-                ..Default::default()
-            }
-            .seal_slow();
-            let (header, seal) = sealed.into_parts();
-
-            SealedBlock {
-                header: SealedHeader::new(header, seal),
-                body: BlockBody { withdrawals: Some(withdrawals), ..Default::default() },
-            }
-        };
-
-        // Single withdrawal
-        let block = create_block_with_withdrawals(&[1]);
-        assert_eq!(validate_block_pre_execution(&block, &chain_spec), Ok(()));
-
-        // Multiple increasing withdrawals
-        let block = create_block_with_withdrawals(&[1, 2, 3]);
-        assert_eq!(validate_block_pre_execution(&block, &chain_spec), Ok(()));
-        let block = create_block_with_withdrawals(&[5, 6, 7, 8, 9]);
-        assert_eq!(validate_block_pre_execution(&block, &chain_spec), Ok(()));
-        let (_, parent) = mock_block();
-
-        // Withdrawal index should be the last withdrawal index + 1
-        let mut provider = Provider::new(Some(parent));
-        provider
-            .withdrawals_provider
-            .expect_latest_withdrawal()
-            .return_const(Ok(Some(Withdrawal { index: 2, ..Default::default() })));
-    }
-
     #[test]
     fn cancun_block_incorrect_blob_gas_used() {
         let chain_spec = ChainSpecBuilder::mainnet().cancun_activated().build();
@@ -605,7 +509,6 @@ mod tests {
             transactions: vec![transaction],
             ommers: vec![],
             withdrawals: Some(Withdrawals::default()),
-            sidecars: None,
         };
 
         let block = SealedBlock::seal_slow(alloy_consensus::Block { header, body });

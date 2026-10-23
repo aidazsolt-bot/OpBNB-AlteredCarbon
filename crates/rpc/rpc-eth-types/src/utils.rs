@@ -42,7 +42,7 @@ pub fn recover_raw_transaction<T: SignedTransaction>(data: &[u8]) -> EthResult<R
 /// Rejects empty input, malformed transactions, and trailing bytes with RPC-specific errors.
 pub fn decode_raw_transaction<T: SignedTransaction>(data: &[u8]) -> EthResult<T> {
     if data.is_empty() {
-        return Err(EthApiError::EmptyRawTransactionData);
+        return Err(EthApiError::EmptyRawTransactionData)
     }
 
     T::decode_2718_exact(data).map_err(|_| EthApiError::FailedToDecodeSignedTransaction)

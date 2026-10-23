@@ -12,6 +12,10 @@ export const sidebar: SidebarItem[] = [
             {
                 text: "Why Reth?",
                 link: "/introduction/why-reth"
+            },
+            {
+                text: "Contributing",
+                link: "/introduction/contributing"
             }
         ]
     },
@@ -33,6 +37,10 @@ export const sidebar: SidebarItem[] = [
                     {
                         text: "Pre-Built Binaries",
                         link: "/installation/binaries"
+                    },
+                    {
+                        text: "Docker",
+                        link: "/installation/docker"
                     },
                     {
                         text: "Build from Source",

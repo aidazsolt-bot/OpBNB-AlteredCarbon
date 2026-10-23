@@ -10,7 +10,7 @@ use super::{
     broadcast::NewBlockHashes, BlockAccessLists, BlockBodies, BlockHeaders, GetBlockAccessLists,
     GetBlockBodies, GetBlockHeaders, GetNodeData, GetPooledTransactions, GetReceipts,
     GetReceipts70, NewPooledTransactionHashes66, NewPooledTransactionHashes68, NodeData,
-    PooledTransactions, Receipts, Status, StatusEth69, Transactions, UpgradeStatus,
+    PooledTransactions, Receipts, Status, StatusEth69, Transactions,
 };
 use crate::{
     status::StatusMessage, BlockRangeUpdate, BroadcastPoolTransactions, Cells,
@@ -81,7 +81,7 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
         let message_type = EthMessageID::decode(buf)?;
 
         if message_type != EthMessageID::Status {
-            return Err(MessageError::ExpectedStatusMessage(message_type));
+            return Err(MessageError::ExpectedStatusMessage(message_type))
         }
 
         let status = if version < EthVersion::Eth69 {
@@ -158,13 +158,13 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::GetNodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData));
+                    return Err(MessageError::Invalid(version, EthMessageID::GetNodeData))
                 }
                 EthMessage::GetNodeData(RequestPair::decode(buf)?)
             }
             EthMessageID::NodeData => {
                 if version >= EthVersion::Eth67 {
-                    return Err(MessageError::Invalid(version, EthMessageID::NodeData));
+                    return Err(MessageError::Invalid(version, EthMessageID::NodeData))
                 }
                 EthMessage::NodeData(RequestPair::decode(buf)?)
             }
@@ -195,31 +195,31 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
             }
             EthMessageID::BlockRangeUpdate => {
                 if version < EthVersion::Eth69 {
-                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate));
+                    return Err(MessageError::Invalid(version, EthMessageID::BlockRangeUpdate))
                 }
                 EthMessage::BlockRangeUpdate(BlockRangeUpdate::decode(buf)?)
             }
             EthMessageID::GetBlockAccessLists => {
                 if version < EthVersion::Eth71 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetBlockAccessLists));
+                    return Err(MessageError::Invalid(version, EthMessageID::GetBlockAccessLists))
                 }
                 EthMessage::GetBlockAccessLists(RequestPair::decode(buf)?)
             }
             EthMessageID::BlockAccessLists => {
                 if version < EthVersion::Eth71 {
-                    return Err(MessageError::Invalid(version, EthMessageID::BlockAccessLists));
+                    return Err(MessageError::Invalid(version, EthMessageID::BlockAccessLists))
                 }
                 EthMessage::BlockAccessLists(RequestPair::decode(buf)?)
             }
             EthMessageID::Cells => {
                 if version < EthVersion::Eth72 {
-                    return Err(MessageError::Invalid(version, EthMessageID::Cells));
+                    return Err(MessageError::Invalid(version, EthMessageID::Cells))
                 }
                 EthMessage::Cells(RequestPair::decode(buf)?)
             }
             EthMessageID::GetCells => {
                 if version < EthVersion::Eth72 {
-                    return Err(MessageError::Invalid(version, EthMessageID::GetCells));
+                    return Err(MessageError::Invalid(version, EthMessageID::GetCells))
                 }
                 EthMessage::GetCells(RequestPair::decode(buf)?)
             }
@@ -230,10 +230,6 @@ impl<N: NetworkPrimitives> ProtocolMessage<N> {
                     message_type.to_u8() as usize,
                     raw_payload.into(),
                 ))
-            }
-            EthMessageID::UpgradeStatus => {
-                let upgrade_status = UpgradeStatus::decode(buf)?;
-                EthMessage::UpgradeStatus(upgrade_status)
             }
         };
         Ok(Self { message_type, message })
@@ -412,8 +408,6 @@ pub enum EthMessage<N: NetworkPrimitives = EthNetworkPrimitives> {
     BlockRangeUpdate(BlockRangeUpdate),
     /// Represents an encoded message that doesn't match any other variant
     Other(RawCapabilityMessage),
-    /// Represents a `UpgradeStatus` request-response pair.
-    UpgradeStatus(UpgradeStatus),
 }
 
 impl<N: NetworkPrimitives> EthMessage<N> {
@@ -443,7 +437,6 @@ impl<N: NetworkPrimitives> EthMessage<N> {
             Self::Cells(_) => EthMessageID::Cells,
             Self::GetCells(_) => EthMessageID::GetCells,
             Self::Other(msg) => EthMessageID::Other(msg.id as u8),
-            Self::UpgradeStatus(_) => EthMessageID::UpgradeStatus,
         }
     }
 
@@ -500,7 +493,7 @@ impl<N: NetworkPrimitives> EthMessage<N> {
                     Self::GetReceipts70(req)
                 }
                 other => other,
-            };
+            }
         }
 
         self
@@ -536,7 +529,6 @@ impl<N: NetworkPrimitives> Encodable for EthMessage<N> {
             Self::BlockRangeUpdate(block_range_update) => block_range_update.encode(out),
             Self::Cells(cells) => cells.encode(out),
             Self::Other(unknown) => out.put_slice(&unknown.payload),
-            Self::UpgradeStatus(status) => status.encode(out),
         }
     }
     fn length(&self) -> usize {
@@ -567,7 +559,6 @@ impl<N: NetworkPrimitives> Encodable for EthMessage<N> {
             Self::BlockRangeUpdate(block_range_update) => block_range_update.length(),
             Self::Cells(cells) => cells.length(),
             Self::Other(unknown) => unknown.length(),
-            Self::UpgradeStatus(status) => status.length(),
         }
     }
 }
@@ -684,8 +675,6 @@ pub enum EthMessageID {
     Cells = 0x15,
     /// Represents unknown message types.
     Other(u8),
-    /// BSC messages overloaded in eth/66.
-    UpgradeStatus = 0x0b,
 }
 
 impl EthMessageID {
@@ -713,7 +702,6 @@ impl EthMessageID {
             Self::GetCells => 0x14,
             Self::Cells => 0x15,
             Self::Other(value) => *value, // Return the stored `u8`
-            Self::UpgradeStatus => 0x0b,
         }
     }
 
@@ -772,7 +760,6 @@ impl Decodable for EthMessageID {
             0x13 => Self::BlockAccessLists,
             0x14 => Self::GetCells,
             0x15 => Self::Cells,
-            0x0b => Self::UpgradeStatus,
             unknown => Self::Other(*unknown),
         };
         buf.advance(1);
@@ -847,7 +834,7 @@ impl<T> RequestPair<T> {
 
         let consumed_len = initial_length - buf.len();
         if consumed_len != header.payload_length {
-            return Err(alloy_rlp::Error::UnexpectedLength);
+            return Err(alloy_rlp::Error::UnexpectedLength)
         }
 
         Ok(Self { request_id, message })
@@ -890,7 +877,7 @@ where
         // RequestPair
         let consumed_len = initial_length - buf.len();
         if consumed_len != header.payload_length {
-            return Err(alloy_rlp::Error::UnexpectedLength);
+            return Err(alloy_rlp::Error::UnexpectedLength)
         }
 
         Ok(Self { request_id, message })

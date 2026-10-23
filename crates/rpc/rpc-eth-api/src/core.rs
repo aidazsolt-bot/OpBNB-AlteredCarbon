@@ -4,7 +4,6 @@ use crate::{
     helpers::{EthApiSpec, EthBlocks, EthCall, EthFees, EthState, EthTransactions, FullEthApi},
     RpcBlock, RpcHeader, RpcReceipt, RpcTransaction,
 };
-use alloy_consensus::transaction::TxHashRef;
 use alloy_dyn_abi::TypedData;
 use alloy_eips::{eip2930::AccessListResult, BlockId, BlockNumberOrTag};
 use alloy_json_rpc::RpcObject;
@@ -464,7 +463,6 @@ impl<T>
     > for T
 where
     T: FullEthApi,
-    TxTy<T::Primitives>: TxHashRef,
     jsonrpsee_types::error::ErrorObject<'static>: From<T::Error>,
 {
     /// Handler for: `eth_protocolVersion`

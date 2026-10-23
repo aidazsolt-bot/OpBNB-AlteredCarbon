@@ -77,8 +77,7 @@ reth-codec = [
 	"dep:reth-codecs-derive",
 	"dep:reth-zstd-compressors",
 	"dep:bytes",
-	"dep:modular-bitfield",
-]
+	"dep:modular-bitfield"]
 k256 = ["alloy-primitives/k256", "alloy-consensus/k256"]
 kzg = ["alloy-eips/kzg", "alloy-consensus/kzg", "std"]
 arbitrary = [
@@ -90,8 +89,7 @@ arbitrary = [
 	"alloy-primitives/arbitrary",
 	"alloy-rpc-types-eth?/arbitrary",
 	"alloy-serde?/arbitrary",
-	"reth-codecs?/arbitrary",
-]
+	"reth-codecs?/arbitrary"]
 serde = [
 	"dep:serde",
 	"dep:alloy-serde",
@@ -100,8 +98,7 @@ serde = [
 	"alloy-eips/serde",
 	"alloy-rpc-types-eth?/serde",
 	"bytes?/serde",
-	"reth-codecs?/serde",
-]
+	"reth-codecs?/serde"]
 serde-bincode-compat = [
 	"serde_with",
 	"alloy-consensus/serde-bincode-compat",

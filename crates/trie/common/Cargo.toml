@@ -32,8 +32,6 @@ thiserror.workspace = true
 
 # reth
 revm.workspace = true
-rust-eth-triedb.workspace = true
-rust-eth-triedb-state-trie.workspace = true
 
 # `serde` feature
 serde = { workspace = true, optional = true }

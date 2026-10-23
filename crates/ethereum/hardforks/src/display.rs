@@ -1,9 +1,10 @@
-use crate::{hardforks::Hardforks, ForkCondition};
+use crate::ForkCondition;
 use alloc::{
     format,
     string::{String, ToString},
     vec::Vec,
 };
+use alloy_hardforks::Hardfork;
 
 /// A container to pretty-print a hardfork.
 ///
@@ -24,7 +25,7 @@ struct DisplayFork {
     activated_at: ForkCondition,
     /// An optional EIP (e.g. `EIP-1559`).
     eip: Option<String>,
-    /// Optional extra metadata to display after the activation condition (e.g. blob params).
+    /// Optional metadata to display alongside the fork (e.g. blob parameters)
     metadata: Option<String>,
 }
 
@@ -39,25 +40,21 @@ impl core::fmt::Display for DisplayFork {
         match self.activated_at {
             ForkCondition::Block(at) | ForkCondition::Timestamp(at) => {
                 write!(f, "{name_with_eip:32} @{at}")?;
+                if let Some(metadata) = &self.metadata {
+                    write!(f, "          {metadata}")?;
+                }
             }
-            ForkCondition::TTD { fork_block, total_difficulty, .. } => {
+            ForkCondition::TTD { total_difficulty, .. } => {
+                // All networks that have merged are finalized.
                 write!(
                     f,
-                    "{:32} @{} ({})",
-                    name_with_eip,
-                    total_difficulty,
-                    if fork_block.is_some() {
-                        "network is known to be merged"
-                    } else {
-                        "network is not known to be merged"
-                    }
+                    "{name_with_eip:32} @{total_difficulty} (network is known to be merged)",
                 )?;
+                if let Some(metadata) = &self.metadata {
+                    write!(f, "          {metadata}")?;
+                }
             }
             ForkCondition::Never => unreachable!(),
-        }
-
-        if let Some(metadata) = &self.metadata {
-            write!(f, " {metadata}")?;
         }
 
         Ok(())
@@ -95,7 +92,8 @@ impl core::fmt::Display for DisplayFork {
 // - Paris                            @58750000000000000000000 (network is known to be merged)
 // Post-merge hard forks (timestamp based):
 // - Shanghai                         @1681338455
-// - Cancun                           @1710338135"
+// - Cancun                           @1710338135
+// - Prague                           @1746612311
 /// ```
 #[derive(Debug)]
 pub struct DisplayHardforks {
@@ -126,14 +124,21 @@ impl core::fmt::Display for DisplayHardforks {
             Ok(())
         }
 
-        format(
-            "Pre-merge hard forks (block based)",
-            &self.pre_merge,
-            self.with_merge.is_empty() && self.post_merge.is_empty(),
-            f,
-        )?;
+        if !self.pre_merge.is_empty() {
+            format(
+                "Pre-merge hard forks (block based)",
+                &self.pre_merge,
+                self.with_merge.is_empty(),
+                f,
+            )?;
+        }
 
-        if !self.with_merge.is_empty() {
+        if self.with_merge.is_empty() {
+            if !self.pre_merge.is_empty() && !self.post_merge.is_empty() {
+                // need an extra line here in case we don't have a merge block (optimism)
+                writeln!(f)?;
+            }
+        } else {
             format("Merge hard forks", &self.with_merge, self.post_merge.is_empty(), f)?;
         }
 
@@ -147,53 +152,24 @@ impl core::fmt::Display for DisplayHardforks {
 
 impl DisplayHardforks {
     /// Creates a new [`DisplayHardforks`] from an iterator of hardforks.
-    pub fn new<H: Hardforks>(hardforks: &H, known_paris_block: Option<u64>) -> Self {
-        let mut pre_merge = Vec::new();
-        let mut with_merge = Vec::new();
-        let mut post_merge = Vec::new();
-
-        for (fork, condition) in hardforks.forks_iter() {
-            let mut display_fork = DisplayFork {
-                name: fork.name().to_string(),
-                activated_at: condition,
-                eip: None,
-                metadata: None,
-            };
-
-            match condition {
-                ForkCondition::Block(_) => {
-                    pre_merge.push(display_fork);
-                }
-                ForkCondition::TTD { total_difficulty, .. } => {
-                    display_fork.activated_at = ForkCondition::TTD {
-                        fork_block: known_paris_block,
-                        total_difficulty,
-                        activation_block_number: 0,
-                    };
-                    with_merge.push(display_fork);
-                }
-                ForkCondition::Timestamp(_) => {
-                    post_merge.push(display_fork);
-                }
-                ForkCondition::Never => continue,
-            }
-        }
-
-        Self { pre_merge, with_merge, post_merge }
+    pub fn new<'a, I>(hardforks: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a dyn Hardfork, ForkCondition)>,
+    {
+        // Delegate to with_meta by mapping the iterator to include None for metadata
+        Self::with_meta(hardforks.into_iter().map(|(fork, condition)| (fork, condition, None)))
     }
 
-    /// Creates a new [`DisplayHardforks`] from an iterator of `(fork, condition, metadata)`
-    /// tuples, where `metadata` is an optional extra string (e.g. blob params) to display
-    /// alongside the fork's activation condition.
-    pub fn with_meta<'a, I>(hardforks_with_meta: I) -> Self
+    /// Creates a new [`DisplayHardforks`] from an iterator of hardforks with optional metadata.
+    pub fn with_meta<'a, I>(hardforks: I) -> Self
     where
-        I: IntoIterator<Item = (&'a dyn crate::Hardfork, ForkCondition, Option<String>)>,
+        I: IntoIterator<Item = (&'a dyn Hardfork, ForkCondition, Option<String>)>,
     {
         let mut pre_merge = Vec::new();
         let mut with_merge = Vec::new();
         let mut post_merge = Vec::new();
 
-        for (fork, condition, metadata) in hardforks_with_meta {
+        for (fork, condition, metadata) in hardforks {
             let display_fork = DisplayFork {
                 name: fork.name().to_string(),
                 activated_at: condition,
@@ -211,7 +187,7 @@ impl DisplayHardforks {
                 ForkCondition::Timestamp(_) => {
                     post_merge.push(display_fork);
                 }
-                ForkCondition::Never => continue,
+                ForkCondition::Never => {}
             }
         }
 

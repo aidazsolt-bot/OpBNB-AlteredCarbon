@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 pub struct StorageSettings {
     /// Whether this node uses v2 storage layout.
     ///
-    /// When `true`, enables v2 storage features:
-    /// - Receipts, transaction senders, account changesets and storage changesets in static
-    ///   files
+    /// When `true`, enables all v2 storage features:
+    /// - Receipts and transaction senders in static files
     /// - History indices in `RocksDB` (accounts, storages, transaction hashes)
+    /// - Account and storage changesets in static files
     /// - Hashed state tables as canonical state representation
     ///
     /// When `false`, uses v1/legacy layout (everything in MDBX).
@@ -32,10 +32,10 @@ impl StorageSettings {
         Self::v2()
     }
 
-    /// Creates `StorageSettings` for v2 nodes:
-    /// - Receipts, transaction senders, account changesets and storage changesets in static
-    ///   files
+    /// Creates `StorageSettings` for v2 nodes with all storage features enabled:
+    /// - Receipts and transaction senders in static files
     /// - History indices in `RocksDB` (storages, accounts, transaction hashes)
+    /// - Account and storage changesets in static files
     /// - Hashed state as canonical state representation
     ///
     /// Use this when the `--storage.v2` CLI flag is set.
@@ -48,62 +48,6 @@ impl StorageSettings {
     /// This keeps all data in MDBX, matching the original storage layout.
     pub const fn v1() -> Self {
         Self { storage_v2: false }
-    }
-
-    /// Alias for [`Self::v1`] for compatibility with older multi-field API call sites.
-    pub const fn legacy() -> Self {
-        Self::v1()
-    }
-
-    /// Compatibility shim: enabling any former per-feature flag turns on v2 storage.
-    ///
-    /// Call sites typically start from [`Self::legacy`] and only pass `true` to enable a feature;
-    /// `false` leaves settings unchanged.
-    pub const fn with_receipts_in_static_files(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
-    }
-
-    /// See [`Self::with_receipts_in_static_files`].
-    pub const fn with_transaction_senders_in_static_files(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
-    }
-
-    /// See [`Self::with_receipts_in_static_files`].
-    pub const fn with_transaction_hash_numbers_in_rocksdb(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
-    }
-
-    /// See [`Self::with_receipts_in_static_files`].
-    pub const fn with_storages_history_in_rocksdb(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
-    }
-
-    /// See [`Self::with_receipts_in_static_files`].
-    pub const fn with_account_history_in_rocksdb(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
-    }
-
-    /// See [`Self::with_receipts_in_static_files`].
-    pub const fn with_account_changesets_in_static_files(mut self, value: bool) -> Self {
-        if value {
-            self.storage_v2 = true;
-        }
-        self
     }
 
     /// Returns `true` if this node uses v2 storage layout.
@@ -144,23 +88,6 @@ impl StorageSettings {
 
     /// Returns `true` if any tables are configured to be stored in `RocksDB`.
     pub const fn any_in_rocksdb(&self) -> bool {
-        self.storage_v2
-    }
-
-    /// Whether account changesets are stored in static files.
-    ///
-    /// Backed by the `AccountChangeSets` static-file segment, which tracks per-block
-    /// changeset offsets out-of-band in a `.csoff` sidecar file (see
-    /// [`reth_static_file_types::SegmentHeader::changeset_offsets_len`]).
-    pub const fn account_changesets_in_static_files(&self) -> bool {
-        self.storage_v2
-    }
-
-    /// Whether storage changesets are stored in static files.
-    ///
-    /// Backed by the `StorageChangeSets` static-file segment, which uses the same
-    /// change-based row model (and `.csoff` sidecar) as [`Self::account_changesets_in_static_files`].
-    pub const fn storage_changesets_in_static_files(&self) -> bool {
         self.storage_v2
     }
 }

@@ -19,9 +19,9 @@ reth-payload-builder.workspace = true
 reth-consensus.workspace = true
 reth-node-api.workspace = true
 reth-node-builder.workspace = true
-reth-engine-local = { workspace = true, features = ["optimism"] }
+reth-engine-local = { workspace = true }
 reth-tracing.workspace = true
-reth-provider = { workspace = true, features = ["optimism"] }
+reth-provider = { workspace = true }
 reth-transaction-pool.workspace = true
 reth-network.workspace = true
 reth-evm.workspace = true
@@ -32,8 +32,8 @@ reth-node-core.workspace = true
 reth-rpc-engine-api.workspace = true
 
 reth-rpc-api.workspace = true
-reth-db = { workspace = true, features = ["optimism"] }
-reth-db-api = { workspace = true, features = ["optimism"] }
+reth-db = { workspace = true }
+reth-db-api = { workspace = true }
 
 # op-reth
 reth-optimism-payload-builder.workspace = true
@@ -47,8 +47,7 @@ reth-optimism-forks.workspace = true
 reth-optimism-primitives = { workspace = true, features = [
   "serde",
   "serde-bincode-compat",
-  "reth-codec",
-] }
+  "reth-codec"] }
 # reth-optimism-exex / reth-optimism-trie deferred (historical proofs ExEx).
 
 # revm with required optimism features
@@ -57,8 +56,7 @@ revm = { workspace = true, features = [
   "secp256k1",
   "blst",
   "c-kzg",
-  "memory_limit",
-] }
+  "memory_limit"] }
 op-revm.workspace = true
 
 # ethereum
@@ -113,19 +111,16 @@ asm-keccak = [
   "alloy-primitives/asm-keccak",
   "reth-optimism-node/asm-keccak",
   "reth-node-core/asm-keccak",
-  "revm/asm-keccak",
-]
+  "revm/asm-keccak"]
 keccak-cache-global = [
   "alloy-primitives/keccak-cache-global",
   "reth-node-core/keccak-cache-global",
-  "reth-optimism-node/keccak-cache-global",
-]
+  "reth-optimism-node/keccak-cache-global"]
 js-tracer = [
   "reth-node-builder/js-tracer",
   "reth-optimism-node/js-tracer",
   "reth-rpc/js-tracer",
-  "reth-rpc-eth-types/js-tracer",
-]
+  "reth-rpc-eth-types/js-tracer"]
 test-utils = [
 	"reth-codec",
 	"reth-e2e-test-utils",
@@ -148,8 +143,7 @@ test-utils = [
 	"reth-trie-db/test-utils",
 	"reth-stages-types/test-utils",
 	"reth-db-api/test-utils",
-	"reth-tasks/test-utils",
-]
+	"reth-tasks/test-utils"]
 reth-codec = ["reth-optimism-primitives/reth-codec"]
 
 [[test]]

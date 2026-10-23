@@ -31,7 +31,7 @@ use alloy_eips::{
     eip7892::BlobScheduleBlobParams, eip7928::EMPTY_BLOCK_ACCESS_LIST_HASH,
 };
 use alloy_genesis::{ChainConfig, Genesis};
-use alloy_primitives::{address, b256, Address, BlockNumber, Sealable, B256, U256};
+use alloy_primitives::{address, b256, Address, BlockNumber, B256, U256};
 use alloy_trie::root::state_root_ref_unhashed;
 use core::fmt::Debug;
 use derive_more::From;
@@ -39,11 +39,7 @@ use reth_ethereum_forks::{
     ChainHardforks, DisplayHardforks, EthereumHardfork, EthereumHardforks, ForkCondition,
     ForkFilter, ForkFilterKey, ForkHash, ForkId, Hardfork, Hardforks, Head, DEV_HARDFORKS,
 };
-use reth_network_peers::{
-    base_nodes, base_testnet_nodes, bsc_mainnet_nodes, bsc_testnet_nodes, holesky_nodes,
-    hoodi_nodes, mainnet_nodes, op_nodes, op_testnet_nodes, opbnb_mainnet_nodes,
-    opbnb_testnet_nodes, sepolia_nodes, NodeRecord,
-};
+use reth_network_peers::{holesky_nodes, hoodi_nodes, mainnet_nodes, sepolia_nodes, NodeRecord};
 use reth_primitives_traits::{sync::LazyLock, BlockHeader, SealedHeader};
 
 /// Helper method building a [`Header`] given [`Genesis`] and [`ChainHardforks`].
@@ -410,7 +406,7 @@ impl<H: BlockHeader> core::ops::Deref for ChainSpec<H> {
 /// - Meta-information about the chain (the chain ID)
 /// - The genesis block of the chain ([`Genesis`])
 /// - What hardforks are activated, and under which conditions
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainSpec<H: BlockHeader = Header> {
     /// The chain ID
     pub chain: Chain,
@@ -441,39 +437,7 @@ pub struct ChainSpec<H: BlockHeader = Header> {
     pub blob_params: BlobScheduleBlobParams,
 }
 
-impl<H: BlockHeader + Sealable> PartialEq for ChainSpec<H> {
-    fn eq(&self, other: &Self) -> bool {
-        self.chain == other.chain &&
-            self.genesis == other.genesis &&
-            self.genesis_header == other.genesis_header &&
-            self.paris_block_and_final_difficulty == other.paris_block_and_final_difficulty &&
-            self.hardforks == other.hardforks &&
-            self.deposit_contract == other.deposit_contract &&
-            self.base_fee_params == other.base_fee_params &&
-            self.prune_delete_limit == other.prune_delete_limit &&
-            self.blob_params == other.blob_params
-    }
-}
-
-impl<H: BlockHeader + Sealable> Eq for ChainSpec<H> {}
-
-impl<H: BlockHeader + Clone> Clone for ChainSpec<H> {
-    fn clone(&self) -> Self {
-        Self {
-            chain: self.chain,
-            genesis: self.genesis.clone(),
-            genesis_header: self.genesis_header.clone(),
-            paris_block_and_final_difficulty: self.paris_block_and_final_difficulty,
-            hardforks: self.hardforks.clone(),
-            deposit_contract: self.deposit_contract,
-            base_fee_params: self.base_fee_params.clone(),
-            prune_delete_limit: self.prune_delete_limit,
-            blob_params: self.blob_params.clone(),
-        }
-    }
-}
-
-impl<H: BlockHeader + Default + Sealable> Default for ChainSpec<H> {
+impl<H: BlockHeader> Default for ChainSpec<H> {
     fn default() -> Self {
         Self {
             chain: Default::default(),
@@ -513,7 +477,7 @@ impl ChainSpec {
     }
 }
 
-impl<H: BlockHeader + Sealable> ChainSpec<H> {
+impl<H: BlockHeader> ChainSpec<H> {
     /// Get information about the chain itself
     pub const fn chain(&self) -> Chain {
         self.chain
@@ -523,35 +487,6 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     #[inline]
     pub const fn is_ethereum(&self) -> bool {
         self.chain.is_ethereum()
-    }
-
-    /// Returns `true` if this chain contains Bsc configuration.
-    #[inline]
-    pub fn is_bsc(&self) -> bool {
-        self.chain == Chain::bsc_mainnet() ||
-            self.chain == Chain::bsc_testnet() ||
-            self.chain == Chain::from_id(714)
-    }
-
-    /// Returns `true` if this chain is Bsc mainnet.
-    #[inline]
-    pub fn is_bsc_mainnet(&self) -> bool {
-        self.chain == Chain::bsc_mainnet()
-    }
-
-    /// Returns `true` if this chain contains Optimism configuration.
-    #[inline]
-    #[cfg(feature = "optimism")]
-    pub fn is_optimism(&self) -> bool {
-        self.chain.is_optimism() ||
-            self.hardforks.get(reth_optimism_forks::OptimismHardfork::Bedrock).is_some()
-    }
-
-    /// Returns `true` if this chain contains Optimism configuration.
-    #[inline]
-    #[cfg(not(feature = "optimism"))]
-    pub const fn is_optimism(&self) -> bool {
-        self.chain.is_optimism()
     }
 
     /// Returns `true` if this chain is Optimism mainnet.
@@ -579,10 +514,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     }
 
     /// Get the sealed header for the genesis block.
-    pub fn sealed_genesis_header(&self) -> SealedHeader<H>
-    where
-        H: Clone,
-    {
+    pub fn sealed_genesis_header(&self) -> SealedHeader<H> {
         SealedHeader::new(self.genesis_header().clone(), self.genesis_hash())
     }
 
@@ -606,7 +538,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
                 // given timestamp.
                 for (fork, params) in bf_params.iter().rev() {
                     if self.hardforks.is_fork_active_at_timestamp(fork.clone(), timestamp) {
-                        return *params;
+                        return *params
                     }
                 }
 
@@ -616,10 +548,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     }
 
     /// Get the hash of the genesis block.
-    pub fn genesis_hash(&self) -> B256
-    where
-        H: Sealable,
-    {
+    pub fn genesis_hash(&self) -> B256 {
         self.genesis_header.hash()
     }
 
@@ -642,10 +571,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
     }
 
     /// Returns the hardfork display helper.
-    pub fn display_hardforks(&self) -> DisplayHardforks
-    where
-        H: core::fmt::Debug + Send + Sync + Unpin,
-    {
+    pub fn display_hardforks(&self) -> DisplayHardforks {
         // Create an iterator with hardfork, condition, and optional blob metadata
         let hardforks_with_meta = self.hardforks.forks_iter().map(|(fork, condition)| {
             // Generate blob metadata for timestamp-based hardforks that have blob params
@@ -749,7 +675,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
                 } else {
                     // we can return here because this block fork is not active, so we set the
                     // `next` value
-                    return ForkId { hash: forkhash, next: block };
+                    return ForkId { hash: forkhash, next: block }
                 }
             }
         }
@@ -761,11 +687,6 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
             // ensure we only get timestamp forks activated __after__ the genesis block
             cond.as_timestamp().filter(|time| time > &self.genesis.timestamp)
         }) {
-            // Skip Fermat hardfork for opbnb
-            if timestamp == 1698991506 || timestamp == 1701151200 {
-                continue;
-            }
-
             if head.timestamp >= timestamp {
                 // skip duplicated hardfork activated at the same timestamp
                 if timestamp != current_applied {
@@ -776,7 +697,7 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
                 // can safely return here because we have already handled all block forks and
                 // have handled all active timestamp forks, and set the next value to the
                 // timestamp that is known but not active yet
-                return ForkId { hash: forkhash, next: timestamp };
+                return ForkId { hash: forkhash, next: timestamp }
             }
         }
 
@@ -856,14 +777,6 @@ impl<H: BlockHeader + Sealable> ChainSpec<H> {
             C::Mainnet => Some(mainnet_nodes()),
             C::Sepolia => Some(sepolia_nodes()),
             C::Holesky => Some(holesky_nodes()),
-            C::Base => Some(base_nodes()),
-            C::Optimism => Some(op_nodes()),
-            C::BaseGoerli | C::BaseSepolia => Some(base_testnet_nodes()),
-            C::OptimismSepolia | C::OptimismGoerli | C::OptimismKovan => Some(op_testnet_nodes()),
-            C::BinanceSmartChain => Some(bsc_mainnet_nodes()),
-            C::BinanceSmartChainTestnet => Some(bsc_testnet_nodes()),
-            C::OpBNBTestnet => Some(opbnb_testnet_nodes()),
-            C::OpBNBMainnet => Some(opbnb_mainnet_nodes()),
             C::Hoodi => Some(hoodi_nodes()),
             _ => None,
         }
@@ -1026,7 +939,7 @@ impl From<Genesis> for ChainSpec {
     }
 }
 
-impl<H: BlockHeader + Clone + Sealable> Hardforks for ChainSpec<H> {
+impl<H: BlockHeader> Hardforks for ChainSpec<H> {
     fn fork<HF: Hardfork>(&self, fork: HF) -> ForkCondition {
         self.hardforks.fork(fork)
     }
@@ -1036,15 +949,15 @@ impl<H: BlockHeader + Clone + Sealable> Hardforks for ChainSpec<H> {
     }
 
     fn fork_id(&self, head: &Head) -> ForkId {
-        ChainSpec::fork_id(self, head)
+        self.fork_id(head)
     }
 
     fn latest_fork_id(&self) -> ForkId {
-        ChainSpec::latest_fork_id(self)
+        self.latest_fork_id()
     }
 
     fn fork_filter(&self, head: Head) -> ForkFilter {
-        ChainSpec::fork_filter(self, head)
+        self.fork_filter(head)
     }
 }
 
@@ -1053,9 +966,6 @@ impl<H: BlockHeader> EthereumHardforks for ChainSpec<H> {
         self.fork(fork)
     }
 }
-
-#[cfg(feature = "optimism")]
-impl reth_optimism_forks::OptimismHardforks for ChainSpec {}
 
 /// A trait for reading the current chainspec.
 #[auto_impl::auto_impl(&, Arc)]
@@ -2843,9 +2753,6 @@ Post-merge hard forks (timestamp based):
 
     #[test]
     fn test_default_cancun_header_forkhash() {
-        use alloy_primitives::b256;
-        use std::str::FromStr;
-
         // set the gas limit from the hive test genesis according to the hash
         let genesis = Genesis { gas_limit: 0x2fefd8u64, ..Default::default() };
         let default_chainspec = ChainSpecBuilder::default()

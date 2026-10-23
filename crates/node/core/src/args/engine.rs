@@ -281,7 +281,7 @@ impl Default for DefaultEngineValues {
             txpool_prewarming_enabled: false,
             sender_recovery_cache_enabled: true,
             state_provider_metrics: false,
-            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB as usize,
+            cross_block_cache_size: DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB,
             state_root_task_compare_updates: false,
             accept_execution_requests_hash: false,
             multiproof_chunk_size: DEFAULT_MULTIPROOF_TASK_CHUNK_SIZE,
@@ -501,12 +501,6 @@ pub struct EngineArgs {
     #[arg(long = "engine.account-worker-count", default_value = Resettable::from(DefaultEngineValues::get_global().account_worker_count.map(|v| v.to_string().into())))]
     pub account_worker_count: Option<usize>,
 
-    /// Skip state root validation for fastnode mode.
-    /// This disables validation of state root hashes during live sync and also automatically
-    /// disables hashing stages for maximum sync speed at the cost of reduced validation.
-    #[arg(long = "engine.skip-state-root-validation", default_value = "false")]
-    pub skip_state_root_validation: bool,
-
     /// Configure the number of prewarming threads.
     /// If not specified, defaults to available parallelism.
     #[arg(long = "engine.prewarming-threads", default_value = Resettable::from(DefaultEngineValues::get_global().prewarming_threads.map(|v| v.to_string().into())))]
@@ -692,7 +686,6 @@ impl Default for EngineArgs {
             allow_unwind_canonical_header,
             storage_worker_count,
             account_worker_count,
-            skip_state_root_validation: false,
             prewarming_threads,
             cache_metrics_disabled,
             slow_block_threshold,
@@ -806,7 +799,6 @@ impl EngineArgs {
                 self.always_process_payload_attributes_on_canonical_head,
             )
             .with_unwind_canonical_header(self.allow_unwind_canonical_header)
-            .with_skip_state_root(self.skip_state_root_validation)
             .without_cache_metrics(self.cache_metrics_disabled)
             .with_slow_block_threshold(self.slow_block_threshold)
             .with_disable_sparse_trie_cache_pruning(self.disable_sparse_trie_cache_pruning)

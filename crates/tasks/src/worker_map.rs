@@ -109,7 +109,7 @@ impl WorkerThread {
 
         if self.tx.send(task).is_err() {
             self.pending.fetch_sub(1, Ordering::AcqRel);
-            return None;
+            return None
         }
 
         Some(result_rx)

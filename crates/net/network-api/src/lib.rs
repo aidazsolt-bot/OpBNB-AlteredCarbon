@@ -43,9 +43,6 @@ use reth_eth_wire_types::{
 };
 use reth_network_p2p::sync::NetworkSyncUpdater;
 use reth_network_peers::NodeRecord;
-use tokio::sync::mpsc::UnboundedReceiver;
-
-use crate::events::EngineMessage;
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Instant};
 
 /// The `PeerId` type.
@@ -58,8 +55,6 @@ pub trait FullNetwork:
     > + NetworkSyncUpdater
     + NetworkInfo
     + NetworkEventListenerProvider
-    + EngineRxProvider
-    + PeersInfo
     + Peers
     + PeersHandleProvider
     + Clone
@@ -73,8 +68,6 @@ impl<T> FullNetwork for T where
         > + NetworkSyncUpdater
         + NetworkInfo
         + NetworkEventListenerProvider
-        + EngineRxProvider
-        + PeersInfo
         + Peers
         + PeersHandleProvider
         + Clone
@@ -250,15 +243,6 @@ pub trait Peers: PeersInfo {
         &self,
         peer_id: PeerId,
     ) -> impl Future<Output = Result<Option<Reputation>, NetworkError>> + Send;
-}
-
-/// Provides engine rx that is to communicate between network and engine.
-#[auto_impl::auto_impl(&, Arc)]
-pub trait EngineRxProvider: Send + Sync {
-    /// Returns a sharable [`UnboundedReceiver<EngineMessage>`] that can be cloned and shared.
-    ///
-    /// The Engine message is used to communicate between the network and the `EngineTask`.
-    fn get_to_engine_rx(&self) -> Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>>;
 }
 
 /// Info about an active peer session.

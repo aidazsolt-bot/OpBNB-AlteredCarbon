@@ -41,7 +41,7 @@ where
     let tip = provider.last_block_number()?;
 
     if from > tip {
-        return Ok(storage);
+        return Ok(storage)
     }
 
     for (BlockNumberAddress((_, storage_address)), storage_change) in

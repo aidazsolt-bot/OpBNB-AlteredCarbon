@@ -3,8 +3,7 @@ export const redirects: Record<string, string> = {
   // Installation redirects
   '/installation/installation': '/installation/overview',
   '/binaries': '/installation/binaries',
-  '/docker': '/installation/overview',
-  '/installation/docker': '/installation/overview',
+  '/docker': '/installation/docker',
   '/source': '/installation/source',
   // Run a node redirects
   '/run/run-a-node': '/run/overview',
@@ -30,6 +29,8 @@ export const redirects: Record<string, string> = {
   '/developers/exex/hello-world': '/exex/hello-world',
   '/developers/exex/tracking-state': '/exex/tracking-state',
   '/developers/exex/remote': '/exex/remote',
+  // Contributing
+  '/developers/contribute': '/introduction/contributing',
 }
 
 export const basePath = '/';

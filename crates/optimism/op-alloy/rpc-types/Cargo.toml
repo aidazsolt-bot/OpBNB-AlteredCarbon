@@ -64,8 +64,7 @@ std = [
 	"derive_more/std",
 	"serde/std",
 	"serde_json/std",
-	"thiserror/std",
-]
+	"thiserror/std"]
 arbitrary = [
 	"std",
 	"dep:arbitrary",

@@ -7,11 +7,6 @@
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![allow(unexpected_cfgs)]
-
-/// Target accounts with corresponding prefix sets for storage root calculation.
-mod storage_root_targets;
-pub use storage_root_targets::StorageRootTargets;
 
 /// Error types for the state-root task and proof computation.
 pub mod error;

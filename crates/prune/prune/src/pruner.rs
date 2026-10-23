@@ -6,21 +6,17 @@ use crate::{
 };
 use alloy_primitives::BlockNumber;
 use reth_exex_types::FinishedExExHeight;
+use reth_primitives_traits::FastInstant as Instant;
 use reth_provider::{
     DBProvider, DatabaseProviderFactory, PruneCheckpointReader, PruneCheckpointWriter,
     StageCheckpointReader,
 };
 use reth_prune_types::{PruneProgress, PrunedSegmentInfo, PrunerOutput};
 use reth_stages_types::StageId;
-use reth_static_file_types::{find_fixed_range, StaticFileSegment, DEFAULT_BLOCKS_PER_STATIC_FILE};
 use reth_tokio_util::{EventSender, EventStream};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 use tokio::sync::watch;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 /// Result of [`Pruner::run`] execution.
 pub type PrunerResult = Result<PrunerOutput, PrunerError>;
@@ -46,14 +42,13 @@ pub struct Pruner<Provider, PF> {
     previous_tip_block_number: Option<BlockNumber>,
     /// Maximum total entries to prune (delete from database) per run.
     delete_limit: usize,
-    /// Maximum time for a one pruner run.
+    /// Maximum time for one pruner run.
     timeout: Option<Duration>,
+    /// Optional override for the minimum pruning distance. When set, this replaces the
+    /// per-segment hardcoded minimums (e.g. `MINIMUM_UNWIND_SAFE_DISTANCE`).
+    minimum_pruning_distance: Option<u64>,
     /// The finished height of all `ExEx`'s.
     finished_exex_height: watch::Receiver<FinishedExExHeight>,
-    /// The number of recent sidecars to keep in the static file provider.
-    recent_sidecars_kept_blocks: usize,
-    /// The path to the static file.
-    static_file_path: Option<PathBuf>,
     #[doc(hidden)]
     metrics: Metrics,
     event_sender: EventSender<PrunerEvent>,
@@ -67,8 +62,6 @@ impl<Provider> Pruner<Provider, ()> {
         delete_limit: usize,
         timeout: Option<Duration>,
         finished_exex_height: watch::Receiver<FinishedExExHeight>,
-        recent_sidecars_kept_blocks: usize,
-        static_file_path: Option<PathBuf>,
     ) -> Self {
         Self {
             provider_factory: (),
@@ -77,9 +70,8 @@ impl<Provider> Pruner<Provider, ()> {
             previous_tip_block_number: None,
             delete_limit,
             timeout,
+            minimum_pruning_distance: None,
             finished_exex_height,
-            recent_sidecars_kept_blocks,
-            static_file_path,
             metrics: Metrics::default(),
             event_sender: Default::default(),
         }
@@ -88,12 +80,9 @@ impl<Provider> Pruner<Provider, ()> {
 
 impl<PF> Pruner<PF::ProviderRW, PF>
 where
-    PF: DatabaseProviderFactory<
-        ProviderRW: PruneCheckpointWriter + PruneCheckpointReader + StageCheckpointReader,
-    >,
+    PF: DatabaseProviderFactory,
 {
-    /// Crates a new pruner with the given provider factory.
-    #[allow(clippy::too_many_arguments)]
+    /// Creates a new pruner with the given provider factory.
     pub fn new_with_factory(
         provider_factory: PF,
         segments: Vec<Box<dyn Segment<PF::ProviderRW>>>,
@@ -101,8 +90,6 @@ where
         delete_limit: usize,
         timeout: Option<Duration>,
         finished_exex_height: watch::Receiver<FinishedExExHeight>,
-        recent_sidecars_kept_blocks: usize,
-        static_file_path: Option<PathBuf>,
     ) -> Self {
         Self {
             provider_factory,
@@ -111,12 +98,19 @@ where
             previous_tip_block_number: None,
             delete_limit,
             timeout,
+            minimum_pruning_distance: None,
             finished_exex_height,
-            recent_sidecars_kept_blocks,
-            static_file_path,
             metrics: Metrics::default(),
             event_sender: Default::default(),
         }
+    }
+}
+
+impl<Provider, S> Pruner<Provider, S> {
+    /// Sets the minimum pruning distance, overriding per-segment hardcoded minimums.
+    pub const fn with_minimum_pruning_distance(mut self, distance: u64) -> Self {
+        self.minimum_pruning_distance = Some(distance);
+        self
     }
 }
 
@@ -134,6 +128,12 @@ where
     ///
     /// Returns a [`PruneProgress`], indicating whether pruning is finished, or there is more data
     /// to prune.
+    #[instrument(
+        name = "Pruner::run_with_provider",
+        level = "debug",
+        target = "pruner",
+        skip(self, provider)
+    )]
     pub fn run_with_provider(
         &mut self,
         provider: &Provider,
@@ -164,28 +164,12 @@ where
         let (stats, deleted_entries, output) =
             self.prune_segments(provider, tip_block_number, &mut limiter)?;
 
-        self.prune_ancient_sidecars(provider, tip_block_number);
-
         self.previous_tip_block_number = Some(tip_block_number);
 
         let elapsed = start.elapsed();
         self.metrics.duration_seconds.record(elapsed);
 
-        let message = match output.progress {
-            PruneProgress::HasMoreData(_) => "Pruner interrupted and has more data to prune",
-            PruneProgress::Finished => "Pruner finished",
-        };
-
-        debug!(
-            target: "pruner",
-            %tip_block_number,
-            ?elapsed,
-            ?deleted_entries,
-            ?limiter,
-            ?output,
-            ?stats,
-            "{message}",
-        );
+        output.debug_log(tip_block_number, deleted_entries, elapsed);
 
         self.event_sender.notify(PrunerEvent::Finished { tip_block_number, elapsed, stats });
 
@@ -198,6 +182,7 @@ where
     ///
     /// Returns a list of stats per pruned segment, total number of entries pruned, and
     /// [`PruneProgress`].
+    #[instrument(level = "debug", target = "pruner", skip_all, fields(segments = self.segments.len()))]
     fn prune_segments(
         &mut self,
         provider: &Provider,
@@ -213,13 +198,20 @@ where
 
         for segment in &self.segments {
             if limiter.is_limit_reached() {
+                output.progress =
+                    output.progress.combine(PruneProgress::HasMoreData(limiter.interrupt_reason()));
                 break
             }
 
             if let Some((to_block, prune_mode)) = segment
                 .mode()
                 .map(|mode| {
-                    mode.prune_target_block(tip_block_number, segment.segment(), segment.purpose())
+                    mode.prune_target_block_with_min(
+                        tip_block_number,
+                        segment.segment(),
+                        segment.purpose(),
+                        self.minimum_pruning_distance,
+                    )
                 })
                 .transpose()?
                 .flatten()
@@ -269,7 +261,7 @@ where
                         .set(highest_pruned_block as f64);
                 }
 
-                output.progress = segment_output.progress;
+                output.progress = output.progress.combine(segment_output.progress);
                 output.segments.push((segment.segment(), segment_output));
 
                 debug!(
@@ -285,11 +277,12 @@ where
                 if segment_output.pruned > 0 {
                     limiter.increment_deleted_entries_count_by(segment_output.pruned);
                     pruned += segment_output.pruned;
-                    stats.push(PrunedSegmentInfo {
+                    let info = PrunedSegmentInfo {
                         segment: segment.segment(),
                         pruned: segment_output.pruned,
                         progress: segment_output.progress,
-                    });
+                    };
+                    stats.push(info);
                 }
             } else {
                 debug!(target: "pruner", segment = ?segment.segment(), purpose = ?segment.purpose(), "Nothing to prune for the segment");
@@ -300,7 +293,8 @@ where
     }
 
     /// Returns `true` if the pruning is needed at the provided tip block number.
-    /// This determined by the check against minimum pruning interval and last pruned block number.
+    /// This is determined by the check against minimum pruning interval and last pruned block
+    /// number.
     pub fn is_pruning_needed(&self, tip_block_number: BlockNumber) -> bool {
         let Some(tip_block_number) =
             self.adjust_tip_block_number_to_finished_exex_height(tip_block_number)
@@ -349,75 +343,6 @@ where
             }
         }
     }
-
-    /// Prunes ancient sidecars data from the static file provider.
-    pub fn prune_ancient_sidecars(&self, _provider: &Provider, tip_block_number: BlockNumber) {
-        if self.recent_sidecars_kept_blocks == 0 {
-            return
-        }
-
-        let Some(ref static_file_path) = self.static_file_path else { return };
-
-        let prune_target_block =
-            tip_block_number.saturating_sub(self.recent_sidecars_kept_blocks as u64);
-        let mut range_start =
-            find_fixed_range(prune_target_block, DEFAULT_BLOCKS_PER_STATIC_FILE).start();
-        if range_start == 0 {
-            return
-        }
-
-        debug!(
-            target: "pruner",
-            %tip_block_number,
-            "Ancient sidecars pruning started",
-        );
-
-        while range_start > 0 {
-            let range = find_fixed_range(range_start - 1, DEFAULT_BLOCKS_PER_STATIC_FILE);
-            let path = static_file_path.join(StaticFileSegment::Sidecars.filename(&range));
-
-            if path.exists() {
-                delete_static_files(&path);
-                self.metrics.oldest_sidecars_height.set(range.end() as f64 + 1_f64);
-            } else {
-                debug!(target: "pruner", path = %path.display(), "Static file not found, skipping");
-                break
-            }
-
-            range_start = range.start();
-        }
-
-        debug!(
-            target: "pruner",
-            %tip_block_number,
-            "Ancient sidecars pruning finished",
-        );
-    }
-}
-
-fn delete_static_files(path: &Path) {
-    // Delete the main file
-    if let Err(err) = fs::remove_file(path) {
-        debug!(target: "pruner", path = %path.display(), %err, "Failed to remove file");
-    } else {
-        debug!(target: "pruner", path = %path.display(), "Removed file");
-    }
-
-    // Delete the .conf file
-    let conf_path = path.with_extension("conf");
-    if let Err(err) = fs::remove_file(&conf_path) {
-        debug!(target: "pruner", path = %conf_path.display(), %err, "Failed to remove .conf file");
-    } else {
-        debug!(target: "pruner", path = %conf_path.display(), "Removed .conf file");
-    }
-
-    // Delete the .off file
-    let off_path = path.with_extension("off");
-    if let Err(err) = fs::remove_file(&off_path) {
-        debug!(target: "pruner", path = %off_path.display(), %err, "Failed to remove .off file");
-    } else {
-        debug!(target: "pruner", path = %off_path.display(), "Removed .off file");
-    }
 }
 
 impl<PF> Pruner<PF::ProviderRW, PF>
@@ -431,6 +356,7 @@ where
     ///
     /// Returns a [`PruneProgress`], indicating whether pruning is finished, or there is more data
     /// to prune.
+    #[instrument(name = "Pruner::run", level = "debug", target = "pruner", skip(self))]
     pub fn run(&mut self, tip_block_number: BlockNumber) -> PrunerResult {
         let provider = self.provider_factory.database_provider_rw()?;
         let result = self.run_with_provider(&provider, tip_block_number);
@@ -440,12 +366,15 @@ where
 }
 
 /// Checks if the given stage has caught up with the `Finish` stage.
+///
+/// Returns `true` if the stage checkpoint is >= the Finish stage checkpoint.
 fn is_stage_finished<Provider: StageCheckpointReader>(
     provider: &Provider,
     stage_id: StageId,
 ) -> Result<bool, PrunerError> {
     let stage_checkpoint = provider.get_stage_checkpoint(stage_id)?.map(|c| c.block_number);
     let finish_checkpoint = provider.get_stage_checkpoint(StageId::Finish)?.map(|c| c.block_number);
+
     Ok(stage_checkpoint >= finish_checkpoint)
 }
 
@@ -462,16 +391,8 @@ mod tests {
         let (finished_exex_height_tx, finished_exex_height_rx) =
             tokio::sync::watch::channel(FinishedExExHeight::NoExExs);
 
-        let mut pruner = Pruner::new_with_factory(
-            provider_factory,
-            vec![],
-            5,
-            0,
-            None,
-            finished_exex_height_rx,
-            0,
-            None,
-        );
+        let mut pruner =
+            Pruner::new_with_factory(provider_factory, vec![], 5, 0, None, finished_exex_height_rx);
 
         // No last pruned block number was set before
         let first_block_number = 1;

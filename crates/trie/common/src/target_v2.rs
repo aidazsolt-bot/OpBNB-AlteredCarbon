@@ -136,7 +136,7 @@ impl MultiProofTargetsV2 {
             //
             // See: https://eips.ethereum.org/EIPS/eip-6780
             if !account.is_touched() || account.is_selfdestructed() {
-                continue;
+                continue
             }
 
             let hashed_address = keccak256(addr);
@@ -149,7 +149,7 @@ impl MultiProofTargetsV2 {
             for (key, slot) in &account.storage {
                 // do nothing if unchanged
                 if !slot.is_changed() {
-                    continue;
+                    continue
                 }
 
                 let hashed_slot = keccak256(B256::from(*key));

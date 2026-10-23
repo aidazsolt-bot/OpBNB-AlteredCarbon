@@ -1,14 +1,13 @@
 //! Configuration files.
 use reth_network_peers::TrustedPeer;
 use reth_network_types::{PeersConfig, SessionsConfig};
-use reth_prune_types::PruneModes;
+use reth_prune_types::{PruneModes, MINIMUM_UNWIND_SAFE_DISTANCE};
 use reth_stages_types::ExecutionStageThresholds;
 use reth_static_file_types::{StaticFileMap, StaticFileSegment};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use strum::IntoEnumIterator;
 use url::Url;
 
 #[cfg(feature = "serde")]
@@ -38,21 +37,12 @@ pub struct Config {
     /// Configuration for static files.
     #[cfg_attr(feature = "serde", serde(default))]
     pub static_files: StaticFilesConfig,
-
-    /// Configuration for state database.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub statedb: Option<StateDbConfig>,
 }
 
 impl Config {
     /// Sets the pruning configuration.
     pub fn set_prune_config(&mut self, prune_config: PruneConfig) {
         self.prune = prune_config;
-    }
-
-    /// Sets the state database configuration.
-    pub fn update_statedb_config(&mut self, statedb_config: StateDbConfig) {
-        self.statedb = Some(statedb_config);
     }
 }
 
@@ -145,8 +135,6 @@ pub struct StageConfig {
     pub index_storage_history: IndexHistoryConfig,
     /// Common ETL related configuration.
     pub etl: EtlConfig,
-    /// Disable hashing stages for fastnode mode.
-    pub disable_hashing_stages: bool,
 }
 
 impl StageConfig {
@@ -349,11 +337,15 @@ pub struct HashingConfig {
     pub clean_threshold: u64,
     /// The maximum number of entities to process before committing progress to the database.
     pub commit_threshold: u64,
+    /// The maximum number of changeset entries to process before committing progress. The stage
+    /// commits after either `commit_threshold` blocks or `commit_entries` entries, whichever
+    /// comes first. This bounds memory usage when blocks contain many state changes.
+    pub commit_entries: u64,
 }
 
 impl Default for HashingConfig {
     fn default() -> Self {
-        Self { clean_threshold: 500_000, commit_threshold: 100_000 }
+        Self { clean_threshold: 500_000, commit_threshold: 100_000, commit_entries: 30_000_000 }
     }
 }
 
@@ -386,12 +378,7 @@ impl Default for MerkleConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct TransactionLookupConfig {
-    /// Maximum number of transactions to hash, ETL-sort, and write before returning to the
-    /// pipeline (`done = false`) so the provider can commit.
-    ///
-    /// This bounds `TransactionHashNumbers` write-batch / WAL growth on archive genesis sync.
-    /// Within each chunk, keys are still ETL-sorted so an empty table can use append; later
-    /// chunks use insert/upsert into the non-empty table.
+    /// The maximum number of transactions to process before writing to disk.
     pub chunk_size: u64,
 }
 
@@ -520,7 +507,6 @@ impl StaticFilesConfig {
                 StaticFileSegment::Headers => headers,
                 StaticFileSegment::Transactions => transactions,
                 StaticFileSegment::Receipts => receipts,
-                StaticFileSegment::Sidecars => None,
                 StaticFileSegment::TransactionSenders => transaction_senders,
                 StaticFileSegment::AccountChangeSets => account_change_sets,
                 StaticFileSegment::StorageChangeSets => storage_change_sets,
@@ -559,11 +545,24 @@ pub struct PruneConfig {
     /// Pruning configuration for every part of the data that can be pruned.
     #[cfg_attr(feature = "serde", serde(alias = "parts"))]
     pub segments: PruneModes,
+    /// Minimum distance from the tip required for pruning. Controls the safety margin for
+    /// reorgs and manual unwinds. Defaults to [`MINIMUM_UNWIND_SAFE_DISTANCE`].
+    #[cfg_attr(feature = "serde", serde(default = "default_minimum_pruning_distance"))]
+    pub minimum_pruning_distance: u64,
+}
+
+/// Returns the default minimum pruning distance.
+const fn default_minimum_pruning_distance() -> u64 {
+    MINIMUM_UNWIND_SAFE_DISTANCE
 }
 
 impl Default for PruneConfig {
     fn default() -> Self {
-        Self { block_interval: DEFAULT_BLOCK_INTERVAL, segments: PruneModes::default() }
+        Self {
+            block_interval: DEFAULT_BLOCK_INTERVAL,
+            segments: PruneModes::default(),
+            minimum_pruning_distance: MINIMUM_UNWIND_SAFE_DISTANCE,
+        }
     }
 }
 
@@ -596,11 +595,17 @@ impl PruneConfig {
                     bodies_history,
                     receipts_log_filter,
                 },
+            minimum_pruning_distance,
         } = other;
 
         // Merge block_interval, only update if it's the default interval
         if self.block_interval == DEFAULT_BLOCK_INTERVAL {
             self.block_interval = block_interval;
+        }
+
+        // Merge minimum_pruning_distance, only update if it's the default
+        if self.minimum_pruning_distance == MINIMUM_UNWIND_SAFE_DISTANCE {
+            self.minimum_pruning_distance = minimum_pruning_distance;
         }
 
         // Merge the various segment prune modes
@@ -613,32 +618,6 @@ impl PruneConfig {
 
         if self.segments.receipts_log_filter.0.is_empty() && !receipts_log_filter.0.is_empty() {
             self.segments.receipts_log_filter = receipts_log_filter;
-        }
-    }
-}
-
-/// State database configuration.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(default))]
-pub struct StateDbConfig {
-    /// State database type: "triedb" or "mdbx"
-    #[cfg_attr(feature = "serde", serde(default = "default_statedb_type"))]
-    pub r#type: String,
-    /// Path to the state database
-    pub path: PathBuf,
-}
-
-fn default_statedb_type() -> String {
-    "mdbx".to_string()
-}
-
-impl Default for StateDbConfig {
-    fn default() -> Self {
-        Self {
-            r#type: "mdbx".to_string(),
-            // Default path will be set based on datadir when loading config
-            path: PathBuf::from("db"),
         }
     }
 }
@@ -668,7 +647,9 @@ mod tests {
     use crate::PruneConfig;
     use alloy_primitives::Address;
     use reth_network_peers::TrustedPeer;
-    use reth_prune_types::{PruneMode, PruneModes, ReceiptsLogPruneConfig};
+    use reth_prune_types::{
+        PruneMode, PruneModes, ReceiptsLogPruneConfig, MINIMUM_UNWIND_SAFE_DISTANCE,
+    };
     use std::{collections::BTreeMap, path::Path, str::FromStr, time::Duration};
 
     fn with_tempdir(filename: &str, proc: fn(&std::path::Path)) {
@@ -1138,6 +1119,7 @@ receipts = { distance = 16384 }
     fn test_prune_config_merge() {
         let mut config1 = PruneConfig {
             block_interval: 5,
+            minimum_pruning_distance: MINIMUM_UNWIND_SAFE_DISTANCE,
             segments: PruneModes {
                 sender_recovery: Some(PruneMode::Full),
                 transaction_lookup: None,
@@ -1154,6 +1136,7 @@ receipts = { distance = 16384 }
 
         let config2 = PruneConfig {
             block_interval: 10,
+            minimum_pruning_distance: MINIMUM_UNWIND_SAFE_DISTANCE,
             segments: PruneModes {
                 sender_recovery: Some(PruneMode::Distance(500)),
                 transaction_lookup: Some(PruneMode::Full),

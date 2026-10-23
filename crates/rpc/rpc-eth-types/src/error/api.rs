@@ -52,7 +52,7 @@ where
 
 /// Helper trait to access wrapped core error.
 pub trait AsEthApiError {
-    /// Returns reference to [`EthApiError`], if this an error variant inherited from core
+    /// Returns a reference to [`EthApiError`] if this is an error variant inherited from core
     /// functionality.
     fn as_err(&self) -> Option<&EthApiError>;
 
@@ -85,6 +85,7 @@ pub trait AsEthApiError {
                     Some(EthSimulateError::NonceTooLow { tx: *tx, state: *state })
                 }
                 RpcInvalidTransactionError::NonceTooHigh => Some(EthSimulateError::NonceTooHigh),
+                RpcInvalidTransactionError::NonceMaxValue => Some(EthSimulateError::NonceMaxValue),
                 RpcInvalidTransactionError::FeeCapTooLow => {
                     Some(EthSimulateError::BaseFeePerGasTooLow)
                 }

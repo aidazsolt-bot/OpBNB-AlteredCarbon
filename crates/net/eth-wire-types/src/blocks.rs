@@ -445,7 +445,6 @@ mod tests {
                         },
                     ],
                     withdrawals: None,
-                    sidecars: None,
                 }
             ]),
         };
@@ -525,7 +524,6 @@ mod tests {
                         },
                     ],
                     withdrawals: None,
-                    sidecars: None,
                 }
             ]),
         };

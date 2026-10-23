@@ -231,7 +231,7 @@ fn extract_entry_with_progress<R: Read>(
         unpack_entry(entry, target_dir, static_files_dir).wrap_err_with(|| {
             format!("failed to extract archive into `{}`", target_dir.display())
         })?;
-        return Ok(());
+        return Ok(())
     }
 
     if size < STREAMING_EXTRACTION_PROGRESS_MIN_FILE_SIZE {
@@ -241,21 +241,21 @@ fn extract_entry_with_progress<R: Read>(
         if let Some(progress) = progress {
             progress.record_extracted(size);
         }
-        return Ok(());
+        return Ok(())
     }
 
     let Some(progress_handle) = progress.as_ref().and_then(|progress| progress.handle()) else {
         unpack_entry(entry, target_dir, static_files_dir).wrap_err_with(|| {
             format!("failed to extract archive into `{}`", target_dir.display())
         })?;
-        return Ok(());
+        return Ok(())
     };
 
     let Some(entry_path) = entry_destination_path(entry, target_dir, static_files_dir)? else {
         unpack_entry(entry, target_dir, static_files_dir).wrap_err_with(|| {
             format!("failed to extract archive into `{}`", target_dir.display())
         })?;
-        return Ok(());
+        return Ok(())
     };
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -296,7 +296,7 @@ fn entry_destination_path<R: Read>(
     }
 
     if file_dst == target_dir {
-        return Ok(None);
+        return Ok(None)
     }
 
     Ok(Some(file_dst))
@@ -378,7 +378,7 @@ pub(crate) fn streaming_download_and_extract(
         let size = path.metadata()?.len();
         extract_from_file(&path, format, target_dir, static_files_dir)?;
         session.record_archive_output_complete(size);
-        return Ok(());
+        return Ok(())
     }
 
     let shared = session.progress();
@@ -478,7 +478,7 @@ pub(crate) fn streaming_download_and_extract(
 fn archive_file_url_path(url: &str) -> Result<Option<PathBuf>> {
     let Ok(parsed) = Url::parse(url) else { return Ok(None) };
     if parsed.scheme() != "file" {
-        return Ok(None);
+        return Ok(None)
     }
 
     parsed

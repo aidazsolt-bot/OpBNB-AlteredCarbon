@@ -15,7 +15,7 @@ use clap::{
     builder::{OsStr, Resettable},
     Args,
 };
-use reth_chainspec::{EthChainSpec, NamedChain};
+use reth_chainspec::EthChainSpec;
 use reth_cli_util::{get_secret_key, load_secret_key::SecretKeyError};
 use reth_config::Config;
 use reth_discv4::{NodeRecord, DEFAULT_DISCOVERY_ADDR, DEFAULT_DISCOVERY_PORT};
@@ -35,7 +35,7 @@ use reth_network::{
             },
             tx_manager::{
                 DEFAULT_MAX_COUNT_PENDING_POOL_IMPORTS,
-                DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER, DEFAULT_REANNOUNCE_TIME,
+                DEFAULT_MAX_COUNT_TRANSACTIONS_SEEN_BY_PEER,
                 DEFAULT_TX_MANAGER_CHANNEL_MEMORY_LIMIT_BYTES,
             },
         },
@@ -45,7 +45,7 @@ use reth_network::{
     },
     HelloMessageWithProtocols, NetworkConfigBuilder, NetworkPrimitives,
 };
-use reth_network_peers::{mainnet_nodes, TrustedPeer, OPBNB_MAINNET_STATIC_NODES};
+use reth_network_peers::{mainnet_nodes, TrustedPeer};
 use reth_tasks::Runtime;
 use secp256k1::SecretKey;
 use std::str::FromStr;
@@ -294,23 +294,13 @@ pub struct NetworkArgs {
     #[arg(long, verbatim_doc_comment)]
     pub no_persist_peers: bool,
 
-    /// NAT resolution method (`any`|`none`|`upnp`|`publicip`|`extip:<IP>`).
-    ///
-    /// Default `any`: try UPnP/IGD port mapping first (geth-style; no hijack of foreign mappings;
-    /// alternative external port on conflict; ENR/enode use the mapped endpoint). If UPnP is
-    /// unavailable, fall back to HTTP public-IP lookup without port mapping.
+    /// NAT resolution method (any|none|upnp|publicip|extip:\<IP\>)
     #[arg(long, default_value_t = DefaultNetworkArgs::get_global().nat.clone())]
     pub nat: NatResolver,
 
-    /// Network listening address.
-    ///
-    /// If omitted, the `RLPx` TCP listener binds to the IPv6 wildcard (`::`) and discv5 opens
-    /// both an IPv4 and an IPv6 UDP socket; whether the TCP listener actually ends up
-    /// dual-stack then depends on the OS's own `IPV6_V6ONLY` default (dual-stack on Linux by
-    /// default). Pass an explicit address, e.g. `0.0.0.0` or `::`, to restrict the node to a
-    /// single IP family.
-    #[arg(long = "addr", value_name = "ADDR")]
-    pub addr: Option<IpAddr>,
+    /// Network listening address
+    #[arg(long = "addr", value_name = "ADDR", default_value_t = DefaultNetworkArgs::get_global().addr)]
+    pub addr: IpAddr,
 
     /// Network listening port
     #[arg(long = "port", value_name = "PORT", default_value_t = DefaultNetworkArgs::get_global().port)]
@@ -464,8 +454,7 @@ impl NetworkArgs {
     /// address. That concrete address is also passed to discv5 as the default address to advertise
     /// in the local ENR.
     ///
-    /// If no interface is configured, this returns the configured `--addr` value, or the IPv6
-    /// wildcard (`::`) if `--addr` was not given (see [`Self::wants_os_dual_stack`]).
+    /// If no interface is configured, this returns the configured `--addr` value.
     pub fn resolved_addr(&self) -> IpAddr {
         if let Some(ref if_name) = self.net_if {
             let if_name = if if_name.is_empty() { DEFAULT_NET_IF_NAME } else { if_name };
@@ -483,17 +472,7 @@ impl NetworkArgs {
             };
         }
 
-        self.addr.unwrap_or(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-    }
-
-    /// Returns `true` if neither `--addr` nor `--net-if.experimental` was given, meaning the
-    /// listener family is left to the OS default (dual-stack where the OS allows it) rather than
-    /// pinned to a single family by an explicit address.
-    ///
-    /// A resolved `--net-if.experimental` address is always a single concrete family, so it never
-    /// requests dual-stack even though `--addr` itself was not set.
-    pub const fn wants_os_dual_stack(&self) -> bool {
-        self.addr.is_none() && self.net_if.is_none()
+        self.addr
     }
 
     /// Returns the IP address used for the discovery v4 UDP bind socket.
@@ -560,7 +539,6 @@ impl NetworkArgs {
             propagation_mode: self.propagation_mode,
             ingress_policy: self.tx_ingress_policy,
             tx_channel_memory_limit_bytes: self.tx_channel_memory_limit_bytes,
-            reannounce_time: DEFAULT_REANNOUNCE_TIME,
         }
     }
 
@@ -607,7 +585,7 @@ impl NetworkArgs {
 
         // Configure peer connections
         let ip_filter = self.ip_filter().unwrap_or_default();
-        let mut peers_config = config
+        let peers_config = config
             .peers_config_with_basic_nodes_from_file(
                 self.persistent_peers_file(peers_file).as_deref(),
             )
@@ -615,15 +593,6 @@ impl NetworkArgs {
             .with_max_outbound_opt(self.resolved_max_outbound_peers())
             .with_ip_filter(ip_filter)
             .with_enforce_enr_fork_id(self.enforce_enr_fork_id);
-        if matches!(chain_spec.chain().named(), Some(NamedChain::OpBNBMainnet)) &&
-            peers_config.trusted_nodes.is_empty()
-        {
-            peers_config.trusted_nodes.extend(
-                OPBNB_MAINNET_STATIC_NODES
-                    .iter()
-                    .map(|node| node.parse().expect("valid built-in opBNB static node")),
-            );
-        }
 
         // Configure basic network stack
         NetworkConfigBuilder::<N>::new(secret_key, executor)
@@ -647,12 +616,7 @@ impl NetworkArgs {
             // apply discovery settings
             .apply(|builder| {
                 let rlpx_socket = (listener_addr, self.port).into();
-                self.discovery.apply_to_builder(
-                    builder,
-                    rlpx_socket,
-                    chain_bootnodes,
-                    self.wants_os_dual_stack(),
-                )
+                self.discovery.apply_to_builder(builder, rlpx_socket, chain_bootnodes)
             })
             .listener_addr(SocketAddr::new(listener_addr, self.port))
             .discovery_addr(SocketAddr::new(discovery_addr, self.discovery.port))
@@ -779,7 +743,7 @@ impl Default for NetworkArgs {
             p2p_secret_key_hex: None,
             no_persist_peers: false,
             nat,
-            addr: Some(addr),
+            addr,
             port,
             max_outbound_peers: None,
             max_inbound_peers: None,
@@ -1041,17 +1005,11 @@ pub struct DiscoveryArgs {
 
 impl DiscoveryArgs {
     /// Apply the discovery settings to the given [`NetworkConfigBuilder`]
-    ///
-    /// `os_dual_stack` should be `true` only when the RLPx address was left to the OS default
-    /// (no explicit `--addr`/`--net-if.experimental`), signalling that discv5 should open both
-    /// an IPv4 and an IPv6 UDP socket rather than deriving a single family from
-    /// `rlpx_tcp_socket`'s concrete variant.
     pub fn apply_to_builder<N>(
         &self,
         mut network_config_builder: NetworkConfigBuilder<N>,
         rlpx_tcp_socket: SocketAddr,
         boot_nodes: impl IntoIterator<Item = NodeRecord>,
-        os_dual_stack: bool,
     ) -> NetworkConfigBuilder<N>
     where
         N: NetworkPrimitives,
@@ -1070,22 +1028,18 @@ impl DiscoveryArgs {
         }
 
         if self.should_enable_discv5() {
-            network_config_builder = network_config_builder.discovery_v5(
-                self.discovery_v5_builder(rlpx_tcp_socket, boot_nodes, os_dual_stack),
-            );
+            network_config_builder = network_config_builder
+                .discovery_v5(self.discovery_v5_builder(rlpx_tcp_socket, boot_nodes));
         }
 
         network_config_builder
     }
 
     /// Creates a [`reth_discv5::ConfigBuilder`] filling it with the values from this struct.
-    ///
-    /// See [`Self::apply_to_builder`] for the meaning of `os_dual_stack`.
     pub fn discovery_v5_builder(
         &self,
         rlpx_tcp_socket: SocketAddr,
         boot_nodes: impl IntoIterator<Item = NodeRecord>,
-        os_dual_stack: bool,
     ) -> reth_discv5::ConfigBuilder {
         let Self {
             discv5_addr,
@@ -1101,26 +1055,14 @@ impl DiscoveryArgs {
 
         let has_discv5_addr_args = discv5_addr.is_some() || discv5_addr_ipv6.is_some();
 
-        // Use rlpx address if none given. When the RLPx socket's family was left to the OS
-        // default (no explicit `--addr`), bring up both discv5 UDP sockets explicitly instead of
-        // deriving a single family from `rlpx_tcp_socket`'s concrete (but ambiguous) variant.
-        let discv5_addr_ipv4 = discv5_addr.or_else(|| {
-            if os_dual_stack {
-                return Some(Ipv4Addr::UNSPECIFIED);
-            }
-            match rlpx_tcp_socket {
-                SocketAddr::V4(addr) => Some(*addr.ip()),
-                SocketAddr::V6(_) => None,
-            }
+        // Use rlpx address if none given
+        let discv5_addr_ipv4 = discv5_addr.or(match rlpx_tcp_socket {
+            SocketAddr::V4(addr) => Some(*addr.ip()),
+            SocketAddr::V6(_) => None,
         });
-        let discv5_addr_ipv6 = discv5_addr_ipv6.or_else(|| {
-            if os_dual_stack {
-                return Some(Ipv6Addr::UNSPECIFIED);
-            }
-            match rlpx_tcp_socket {
-                SocketAddr::V4(_) => None,
-                SocketAddr::V6(addr) => Some(*addr.ip()),
-            }
+        let discv5_addr_ipv6 = discv5_addr_ipv6.or(match rlpx_tcp_socket {
+            SocketAddr::V4(_) => None,
+            SocketAddr::V6(addr) => Some(*addr.ip()),
         });
 
         let mut discv5_config_builder =

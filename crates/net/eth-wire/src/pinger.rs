@@ -98,7 +98,7 @@ impl Pinger {
                 if self.ping_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker())) &&
                     !self.ping_timer.is_elapsed()
                 {
-                    return Poll::Pending;
+                    return Poll::Pending
                 }
 
                 if self.ping_timer.as_mut().poll(cx).is_ready() {
@@ -106,7 +106,7 @@ impl Pinger {
                     self.ping_waker = None;
                     self.timeout_waker = None;
                     self.state = PingState::WaitingForPong;
-                    return Poll::Ready(Ok(PingerEvent::Ping));
+                    return Poll::Ready(Ok(PingerEvent::Ping))
                 }
                 self.ping_waker = Some(cx.waker().clone());
             }
@@ -115,20 +115,20 @@ impl Pinger {
                 if self.timeout_waker.as_ref().is_some_and(|waker| waker.will_wake(cx.waker())) &&
                     !self.timeout_timer.is_elapsed()
                 {
-                    return Poll::Pending;
+                    return Poll::Pending
                 }
 
                 if self.timeout_timer.as_mut().poll(cx).is_ready() {
                     self.timeout_waker = None;
                     self.state = PingState::TimedOut;
-                    return Poll::Ready(Ok(PingerEvent::Timeout));
+                    return Poll::Ready(Ok(PingerEvent::Timeout))
                 }
                 self.timeout_waker = Some(cx.waker().clone());
             }
             PingState::TimedOut => {
                 // we treat continuous calls while in timeout as pending, since the connection is
                 // not yet terminated
-                return Poll::Pending;
+                return Poll::Pending
             }
         };
         Poll::Pending

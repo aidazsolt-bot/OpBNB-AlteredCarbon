@@ -74,7 +74,7 @@ where
     ) -> ProviderResult<PreparedStateRootJob<N>> {
         let timestamp: u64 = ctx.env().evm_env.block_env.timestamp().saturating_to();
         if timestamp < self.activation_timestamp {
-            return self.default.prepare(ctx);
+            return self.default.prepare(ctx)
         }
         Ok(PreparedStateRootJob::new(Box::new(ZeroStateRootJob), None))
     }
@@ -84,7 +84,7 @@ where
         ctx: PayloadStateRootJobContext<'_, N, P>,
     ) -> ProviderResult<Option<PayloadStateRootHandle>> {
         if ctx.timestamp() < self.activation_timestamp {
-            return self.default.prepare_payload_builder(ctx);
+            return self.default.prepare_payload_builder(ctx)
         }
         // Without a background task the payload builder computes the state root itself. A real
         // strategy would return a custom handle here so built headers match validation.

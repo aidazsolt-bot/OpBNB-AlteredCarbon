@@ -1,15 +1,14 @@
 //! CLI definition and entrypoint to executable
 
-use crate::{
-    app::{run_commands_with, CliApp},
-    chainspec::EthereumChainSpecParser,
-};
+use crate::{app::CliApp, chainspec::EthereumChainSpecParser};
 use clap::{Parser, Subcommand};
-use reth_chainspec::{ChainSpec, EthChainSpec, Hardforks};
+use reth_chainspec::{ChainSpec, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::{
     common::{CliComponentsBuilder, CliNodeTypes, HeaderMut},
-    config_cmd, db, download, dump_genesis, export_era, import, import_era, init_cmd, init_state,
+    config_cmd, db, download,
+    download::manifest_cmd,
+    dump_genesis, export_era, import, import_era, init_cmd, init_state,
     launcher::FnLauncher,
     node::{self, NoArgs},
     p2p, prune, re_execute, stage,
@@ -22,8 +21,7 @@ use reth_node_core::{
     args::{LogArgs, OtlpInitStatus, OtlpLogsStatus, TraceArgs},
     version::version_metadata,
 };
-use reth_node_metrics::recorder::install_prometheus_recorder;
-use reth_rpc_server_types::{DefaultRpcModuleValidator, RpcModuleValidator};
+use reth_rpc_server_types::{DefaultRpcModuleValidator, RethRpcModule, RpcModuleValidator};
 use reth_tracing::{Layers, TracingGuards};
 use std::{ffi::OsString, fmt, future::Future, marker::PhantomData, sync::Arc};
 use tracing::{info, warn};
@@ -72,6 +70,34 @@ impl Cli {
     }
 }
 
+impl<C, Ext, Rpc, SubCmd> Cli<C, Ext, Rpc, SubCmd>
+where
+    C: ChainSpecParser,
+    Ext: clap::Args + fmt::Debug,
+    Rpc: RpcModuleValidator,
+    SubCmd: Subcommand + fmt::Debug,
+{
+    /// Returns the node command, if this CLI was invoked with `node`.
+    pub fn as_node_command_mut(&mut self) -> Option<&mut node::NodeCommand<C, Ext>> {
+        match &mut self.command {
+            Commands::Node(command) => Some(command.as_mut()),
+            _ => None,
+        }
+    }
+
+    /// Applies a closure to the node command, if this CLI was invoked with `node`.
+    pub fn apply_node_command(
+        &mut self,
+        f: impl FnOnce(&mut node::NodeCommand<C, Ext>),
+    ) -> &mut Self {
+        if let Some(command) = self.as_node_command_mut() {
+            f(command);
+        }
+
+        self
+    }
+}
+
 impl<
         C: ChainSpecParser,
         Ext: clap::Args + fmt::Debug,
@@ -92,7 +118,7 @@ impl<
     /// This accepts a closure that is used to launch the node via the
     /// [`NodeCommand`](node::NodeCommand).
     ///
-    /// This command will be run on the [default tokio runtime](reth_cli_runner::tokio_runtime).
+    /// This command will be run on the default tokio runtime.
     ///
     ///
     /// # Example
@@ -131,11 +157,12 @@ impl<
     /// ````
     pub fn run<L, Fut>(self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, C::ChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, C::ChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
         C: ChainSpecParser<ChainSpec = ChainSpec>,
     {
-        self.with_runner(CliRunner::try_default_runtime()?, launcher)
+        self.configure()
+            .run(FnLauncher::new::<C, Ext>(async move |builder, ext| launcher(builder, ext).await))
     }
 
     /// Execute the configured cli command with the provided [`CliComponentsBuilder`].
@@ -143,12 +170,12 @@ impl<
     /// This accepts a closure that is used to launch the node via the
     /// [`NodeCommand`](node::NodeCommand).
     ///
-    /// This command will be run on the [default tokio runtime](reth_cli_runner::tokio_runtime).
+    /// This command will be run on the default tokio runtime.
     pub fn run_with_components<N>(
         self,
         components: impl CliComponentsBuilder<N>,
         launcher: impl AsyncFnOnce(
-            WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, C::ChainSpec>>,
+            WithLaunchContext<NodeBuilder<DatabaseEnv, C::ChainSpec>>,
             Ext,
         ) -> eyre::Result<()>,
     ) -> eyre::Result<()>
@@ -156,7 +183,7 @@ impl<
         N: CliNodeTypes<Primitives: NodePrimitives<BlockHeader: HeaderMut>, ChainSpec: Hardforks>,
         C: ChainSpecParser<ChainSpec = N::ChainSpec>,
     {
-        self.with_runner_and_components(CliRunner::try_default_runtime()?, components, launcher)
+        self.configure().run_with_components(components, launcher)
     }
 
     /// Execute the configured cli command with the provided [`CliRunner`].
@@ -180,7 +207,7 @@ impl<
     /// ```
     pub fn with_runner<L, Fut>(self, runner: CliRunner, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, C::ChainSpec>>, Ext) -> Fut,
+        L: FnOnce(WithLaunchContext<NodeBuilder<DatabaseEnv, C::ChainSpec>>, Ext) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
         C: ChainSpecParser<ChainSpec = ChainSpec>,
     {
@@ -192,11 +219,11 @@ impl<
     /// Execute the configured cli command with the provided [`CliRunner`] and
     /// [`CliComponentsBuilder`].
     pub fn with_runner_and_components<N>(
-        mut self,
+        self,
         runner: CliRunner,
         components: impl CliComponentsBuilder<N>,
         launcher: impl AsyncFnOnce(
-            WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, C::ChainSpec>>,
+            WithLaunchContext<NodeBuilder<DatabaseEnv, C::ChainSpec>>,
             Ext,
         ) -> eyre::Result<()>,
     ) -> eyre::Result<()>
@@ -204,29 +231,14 @@ impl<
         N: CliNodeTypes<Primitives: NodePrimitives<BlockHeader: HeaderMut>, ChainSpec: Hardforks>,
         C: ChainSpecParser<ChainSpec = N::ChainSpec>,
     {
-        // Add network name if available to the logs dir
-        if let Some(chain_spec) = self.command.chain_spec() {
-            self.logs.log_file_directory =
-                self.logs.log_file_directory.join(chain_spec.chain().to_string());
-        }
-        // `--log.file.max-files` defaults to unset → effective 0 (disabled). For `node`,
-        // apply the documented default of 5 before init_tracing wires the file layer.
-        if matches!(self.command, Commands::Node(_)) {
-            self.logs.apply_node_defaults();
-        }
-        let _guard = self.init_tracing(&runner, Layers::new())?;
-
-        // Install the prometheus recorder to be sure to record all metrics
-        install_prometheus_recorder();
-
-        // Use the shared standalone function to avoid duplication
-        run_commands_with::<C, Ext, Rpc, N, SubCmd>(self, runner, components, launcher)
+        let mut app = self.configure();
+        app.set_runner(runner);
+        app.run_with_components(components, launcher)
     }
 
     /// Initializes tracing with the configured options.
     ///
-    /// If file logging is enabled, this function returns a guard that must be kept alive to ensure
-    /// that all logs are flushed to disk.
+    /// Returns tracing guards that must be kept alive to ensure outputs are flushed to disk.
     ///
     /// If an OTLP endpoint is specified, it will export traces and logs to the configured
     /// collector.
@@ -238,12 +250,10 @@ impl<
         let otlp_status = runner.block_on(self.traces.init_otlp_tracing(&mut layers))?;
         let otlp_logs_status = runner.block_on(self.traces.init_otlp_logs(&mut layers))?;
 
-        let guard = self.logs.init_tracing_with_layers(layers, false)?;
-        if self.logs.effective_log_file_max_files() > 0 {
-            info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.logs.log_file_directory);
-        } else {
-            info!(target: "reth::cli", "Initialized tracing (file logging disabled; set --log.file.max-files > 0 to enable)");
-        }
+        // Enable reload support if debug RPC namespace is available
+        let enable_reload = self.command.debug_namespace_enabled();
+        let guards = self.logs.init_tracing_with_layers(layers, enable_reload)?;
+        info!(target: "reth::cli", "Initialized tracing, debug log directory: {}", self.logs.log_file_directory);
 
         match otlp_status {
             OtlpInitStatus::Started(endpoint) => {
@@ -265,7 +275,7 @@ impl<
             OtlpLogsStatus::Disabled => {}
         }
 
-        Ok(guard)
+        Ok(guards)
     }
 }
 
@@ -302,6 +312,9 @@ pub enum Commands<
     /// Download public node snapshots
     #[command(name = "download")]
     Download(download::DownloadCommand<C>),
+    /// Generate a snapshot manifest from local archive files.
+    #[command(name = "snapshot-manifest")]
+    SnapshotManifest(manifest_cmd::SnapshotManifestCommand),
     /// Manipulate individual stages.
     #[command(name = "stage")]
     Stage(stage::Command<C>),
@@ -354,6 +367,7 @@ impl<C: ChainSpecParser, Ext: clap::Args + fmt::Debug, SubCmd: Subcommand + fmt:
             Self::DumpGenesis(cmd) => cmd.chain_spec(),
             Self::Db(cmd) => cmd.chain_spec(),
             Self::Download(cmd) => cmd.chain_spec(),
+            Self::SnapshotManifest(_) => None,
             Self::Stage(cmd) => cmd.chain_spec(),
             Self::P2P(cmd) => cmd.chain_spec(),
             #[cfg(feature = "dev")]
@@ -364,6 +378,16 @@ impl<C: ChainSpecParser, Ext: clap::Args + fmt::Debug, SubCmd: Subcommand + fmt:
             Self::Ext(_) => None,
         }
     }
+
+    /// Returns `true` if this is a node command with debug RPC namespace enabled.
+    ///
+    /// This is used to determine whether to enable runtime log level changes.
+    pub fn debug_namespace_enabled(&self) -> bool {
+        match self {
+            Self::Node(cmd) => cmd.rpc.is_namespace_enabled(RethRpcModule::Debug),
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -371,13 +395,37 @@ mod tests {
     use super::*;
     use crate::chainspec::SUPPORTED_CHAINS;
     use clap::CommandFactory;
-    use reth_chainspec::SEPOLIA;
+    use reth_chainspec::{EthChainSpec, SEPOLIA};
     use reth_node_core::args::ColorMode;
 
     #[test]
     fn parse_color_mode() {
         let reth = Cli::try_parse_args_from(["reth", "node", "--color", "always"]).unwrap();
         assert_eq!(reth.logs.color, ColorMode::Always);
+    }
+
+    #[test]
+    fn node_command_mut_accessor_returns_node_command() {
+        let mut reth = Cli::try_parse_args_from(["reth", "node"]).unwrap();
+
+        let node_command = reth.as_node_command_mut().expect("expected node command");
+        node_command.with_unused_ports = true;
+
+        assert!(reth.as_node_command_mut().unwrap().with_unused_ports);
+    }
+
+    #[test]
+    fn apply_node_command_only_runs_for_node_command() {
+        let mut reth = Cli::try_parse_args_from(["reth", "node"]).unwrap();
+        reth.apply_node_command(|node_command| node_command.with_unused_ports = true);
+        assert!(reth.as_node_command_mut().unwrap().with_unused_ports);
+
+        let mut reth = Cli::try_parse_args_from(["reth", "config"]).unwrap();
+        let mut applied = false;
+        reth.apply_node_command(|_| applied = true);
+
+        assert!(reth.as_node_command_mut().is_none());
+        assert!(!applied);
     }
 
     /// Tests that the help message is parsed correctly. This ensures that clap args are configured
@@ -455,10 +503,45 @@ mod tests {
     }
 
     #[test]
+    fn log_file_max_files_defaults() {
+        use reth_node_core::args::LogArgs;
+
+        // Node command without explicit --log.file.max-files should get Some(5) after
+        // apply_node_defaults
+        let mut cli = Cli::try_parse_args_from(["reth", "node"]).unwrap();
+        assert!(cli.logs.log_file_max_files.is_none());
+        cli.logs.apply_node_defaults();
+        assert_eq!(cli.logs.log_file_max_files, Some(LogArgs::DEFAULT_MAX_LOG_FILES_NODE));
+
+        // Non-node command without explicit --log.file.max-files should be None and
+        // effective_log_file_max_files returns 0
+        let cli = Cli::try_parse_args_from(["reth", "config"]).unwrap();
+        assert!(cli.logs.log_file_max_files.is_none());
+        assert_eq!(cli.logs.effective_log_file_max_files(), 0);
+
+        // Explicitly set value should be preserved for node command
+        let mut cli =
+            Cli::try_parse_args_from(["reth", "node", "--log.file.max-files", "10"]).unwrap();
+        assert_eq!(cli.logs.log_file_max_files, Some(10));
+        cli.logs.apply_node_defaults();
+        assert_eq!(cli.logs.log_file_max_files, Some(10));
+
+        // Explicitly set value should be preserved for non-node command
+        let cli =
+            Cli::try_parse_args_from(["reth", "config", "--log.file.max-files", "3"]).unwrap();
+        assert_eq!(cli.logs.log_file_max_files, Some(3));
+        assert_eq!(cli.logs.effective_log_file_max_files(), 3);
+
+        // Setting to 0 explicitly should work
+        let cli = Cli::try_parse_args_from(["reth", "node", "--log.file.max-files", "0"]).unwrap();
+        assert_eq!(cli.logs.log_file_max_files, Some(0));
+        assert_eq!(cli.logs.effective_log_file_max_files(), 0);
+    }
+
+    #[test]
     fn parse_env_filter_directives() {
         let temp_dir = tempfile::tempdir().unwrap();
 
-        unsafe { std::env::set_var("RUST_LOG", "info,evm=debug") };
         let reth = Cli::try_parse_args_from([
             "reth",
             "init",

@@ -55,7 +55,6 @@ pub struct StorageArgs {
     #[arg(
         long = "storage.v2",
         default_value_t = DefaultStorageValues::get_global().v2,
-        action = clap::ArgAction::Set,
         num_args = 0..=1,
         default_missing_value = "true",
     )]

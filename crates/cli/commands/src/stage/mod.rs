@@ -43,17 +43,18 @@ impl<C: ChainSpecParser<ChainSpec: EthChainSpec + Hardforks + EthereumHardforks>
     pub async fn execute<N, Comp>(
         self,
         ctx: CliContext,
-        components: impl FnOnce(Arc<C::ChainSpec>, crate::common::BlockchainProviderFor<N>) -> Comp,
+        components: impl FnOnce(Arc<C::ChainSpec>) -> Comp,
     ) -> eyre::Result<()>
     where
         N: CliNodeTypes<ChainSpec = C::ChainSpec>,
         Comp: CliNodeComponents<N>,
     {
+        let executor = ctx.task_executor.clone();
         match self.command {
             Subcommands::Run(command) => command.execute::<N, _, _>(ctx, components).await,
-            Subcommands::Drop(command) => command.execute::<N>().await,
-            Subcommands::Dump(command) => command.execute::<N, _, _>(components).await,
-            Subcommands::Unwind(command) => command.execute::<N, _, _>(components).await,
+            Subcommands::Drop(command) => command.execute::<N>(executor).await,
+            Subcommands::Dump(command) => command.execute::<N, _, _>(components, executor).await,
+            Subcommands::Unwind(command) => command.execute::<N, _, _>(components, executor).await,
         }
     }
 }

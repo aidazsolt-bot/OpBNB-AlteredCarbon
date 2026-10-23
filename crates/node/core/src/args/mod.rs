@@ -72,10 +72,6 @@ pub use era::{DefaultEraHost, EraArgs, EraSourceArgs};
 mod static_files;
 pub use static_files::{StaticFilesArgs, MINIMAL_BLOCKS_PER_FILE};
 
-/// State database arguments
-mod statedb;
-pub use statedb::StateDbArgs;
-
 /// `StorageArgs` for configuring storage settings.
 mod storage;
 pub use storage::{DefaultStorageValues, StorageArgs};
@@ -83,10 +79,6 @@ pub use storage::{DefaultStorageValues, StorageArgs};
 /// `JitArgs` for configuring JIT compilation of EVM bytecode.
 mod jit;
 pub use jit::JitArgs;
-
-/// PerformanceOptimizationArgs struct for configuring performance optimization
-mod performance_optimization;
-pub use performance_optimization::PerformanceOptimizationArgs;
 
 mod error;
 pub mod types;

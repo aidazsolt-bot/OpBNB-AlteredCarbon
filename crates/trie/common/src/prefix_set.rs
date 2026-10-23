@@ -280,7 +280,7 @@ impl PrefixSet {
     #[inline]
     pub fn contains(&mut self, prefix: &Nibbles) -> bool {
         if self.all {
-            return true;
+            return true
         }
 
         let keys = self.keys.as_deref().map(Vec::as_slice).unwrap_or_default();
@@ -291,12 +291,12 @@ impl PrefixSet {
         for (idx, key) in keys[self.index..].iter().enumerate() {
             if key.starts_with(prefix) {
                 self.index += idx;
-                return true;
+                return true
             }
 
             if key > prefix {
                 self.index += idx;
-                return false;
+                return false
             }
         }
 
@@ -311,7 +311,7 @@ impl PrefixSet {
     #[inline]
     pub fn contains_range(&mut self, range: Range<&Nibbles>) -> bool {
         if self.all {
-            return true;
+            return true
         }
 
         let keys = self.keys.as_deref().map(Vec::as_slice).unwrap_or_default();
@@ -322,12 +322,12 @@ impl PrefixSet {
         for (idx, key) in keys[self.index..].iter().enumerate() {
             if key >= range.start && key < range.end {
                 self.index += idx;
-                return true;
+                return true
             }
 
             if key >= range.end {
                 self.index += idx;
-                return false;
+                return false
             }
         }
 

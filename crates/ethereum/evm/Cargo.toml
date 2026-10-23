@@ -32,12 +32,6 @@ metrics = { workspace = true, optional = true }
 reth-metrics = { workspace = true, optional = true }
 revmc = { workspace = true, features = ["alloy-evm"], optional = true }
 
-# misc
-tracing.workspace = true
-
-# async
-tokio = { workspace = true, features = ["sync", "time"] }
-
 [dev-dependencies]
 reth-testing-utils.workspace = true
 reth-evm = { workspace = true, features = ["test-utils"] }

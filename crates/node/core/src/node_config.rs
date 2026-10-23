@@ -2,24 +2,22 @@
 
 use crate::{
     args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, EraArgs, MetricArgs,
-        NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, StateDbArgs, StaticFilesArgs,
-        StorageArgs, TxPoolArgs,
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, EngineArgs, JitArgs, NetworkArgs,
+        PayloadBuilderArgs, PruningArgs, RpcServerArgs, StaticFilesArgs, StorageArgs, TxPoolArgs,
     },
     dirs::{ChainPath, DataDirPath},
     utils::get_single_header,
 };
+use alloy_consensus::BlockHeader;
+use alloy_eips::BlockHashOrNumber;
+use alloy_primitives::{BlockNumber, B256, U256};
 use eyre::eyre;
 use reth_chainspec::{ChainSpec, EthChainSpec, MAINNET};
 use reth_config::config::PruneConfig;
+use reth_engine_local::MiningMode;
+use reth_engine_primitives::TreeConfig;
+use reth_ethereum_forks::{EthereumHardforks, Head};
 use reth_network_p2p::headers::client::HeadersClient;
-use serde::{de::DeserializeOwned, Serialize};
-use std::{fs, path::Path};
-
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockHashOrNumber;
-use alloy_primitives::{BlockNumber, B256};
-use reth_ethereum_forks::Head;
 use reth_primitives_traits::SealedHeader;
 use reth_stages_types::StageId;
 use reth_storage_api::{
@@ -27,15 +25,22 @@ use reth_storage_api::{
     StorageSettings,
 };
 use reth_storage_errors::provider::ProviderResult;
-use std::{path::PathBuf, sync::Arc};
+use reth_transaction_pool::TransactionPool;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tracing::*;
 
+use crate::args::{EraArgs, MetricArgs};
 pub use reth_engine_primitives::{
     DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD, DEFAULT_RESERVED_CPU_CORES,
 };
 
 /// Default size of cross-block cache in megabytes.
-pub const DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB: u64 = 4 * 1024;
+pub const DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB: usize = 4 * 1024;
 
 /// This includes all necessary configuration to launch the node.
 /// The individual configuration options can be overwritten before launching the node.
@@ -106,13 +111,13 @@ pub struct NodeConfig<ChainSpec> {
     /// Max number of instances is 200. It is chosen in a way so that it's not possible to have
     /// port numbers that conflict with each other.
     ///
-    /// Changes to the following port numbers (only when `--instance` is set):
+    /// Changes to the following port numbers:
     /// - `DISCOVERY_PORT`: default + `instance` - 1
     /// - `DISCOVERY_V5_PORT`: default + `instance` - 1
     /// - `AUTH_PORT`: default + `instance` * 100 - 100
     /// - `HTTP_RPC_PORT`: default - `instance` + 1
     /// - `WS_RPC_PORT`: default + `instance` * 2 - 2
-    /// - `IPC_PATH`: default + `-instance`
+    /// - `IPC_PATH`: default + `instance`
     pub instance: Option<u16>,
 
     /// All networking related arguments
@@ -151,17 +156,8 @@ pub struct NodeConfig<ChainSpec> {
     /// All storage related arguments with --storage prefix
     pub storage: StorageArgs,
 
-    /// All state database related arguments
-    pub statedb: StateDbArgs,
-
-    /// Enable prefetch when executing blocks.
-    pub enable_prefetch: bool,
-
-    /// Disable hashing stages to skip merkle tree building
-    pub skip_state_root_validation: bool,
-
-    /// Enable execution cache during block insertion
-    pub enable_execution_cache: bool,
+    /// All JIT related arguments with --jit prefix
+    pub jit: JitArgs,
 }
 
 impl NodeConfig<ChainSpec> {
@@ -194,30 +190,13 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             era: EraArgs::default(),
             static_files: StaticFilesArgs::default(),
             storage: StorageArgs::default(),
-            statedb: StateDbArgs::default(),
-            enable_prefetch: false,
-            skip_state_root_validation: false,
-            enable_execution_cache: false,
+            jit: JitArgs::default(),
         }
     }
 
-    /// Set the storage args for the node
-    pub const fn with_storage(mut self, storage: StorageArgs) -> Self {
-        self.storage = storage;
-        self
-    }
-
-    /// Returns the effective storage settings for this node.
-    ///
-    /// Determined by the `--storage.v2` flag (defaults to `true`).
-    /// Existing databases retain whatever settings are persisted in their
-    /// metadata (checked during genesis init).
-    pub const fn storage_settings(&self) -> StorageSettings {
-        if self.storage.v2 {
-            StorageSettings::v2()
-        } else {
-            StorageSettings::v1()
-        }
+    /// Creates a [`TreeConfig`] from all node arguments that affect the engine tree.
+    pub fn tree_config(&self) -> TreeConfig {
+        self.engine.tree_config().with_skip_state_root(self.debug.skip_state_root)
     }
 
     /// Sets --dev mode for the node.
@@ -228,6 +207,22 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         self.dev.dev = true;
         self.network.discovery.disable_discovery = true;
         self
+    }
+
+    /// Apply a function to the config.
+    pub fn apply<F>(self, f: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        f(self)
+    }
+
+    /// Applies a fallible function to the config.
+    pub fn try_apply<F, R>(self, f: F) -> Result<Self, R>
+    where
+        F: FnOnce(Self) -> Result<Self, R>,
+    {
+        f(self)
     }
 
     /// Sets --dev mode for the node [`NodeConfig::dev`], if `dev` is true.
@@ -255,6 +250,50 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     pub fn with_chain(mut self, chain: impl Into<Arc<ChainSpec>>) -> Self {
         self.chain = chain.into();
         self
+    }
+
+    /// Set the [`ChainSpec`] for the node and converts the type to that chainid.
+    pub fn map_chain<C>(self, chain: impl Into<Arc<C>>) -> NodeConfig<C> {
+        let Self {
+            datadir,
+            config,
+            metrics,
+            instance,
+            network,
+            rpc,
+            txpool,
+            builder,
+            debug,
+            db,
+            dev,
+            pruning,
+            engine,
+            era,
+            static_files,
+            storage,
+            jit,
+            ..
+        } = self;
+        NodeConfig {
+            datadir,
+            config,
+            chain: chain.into(),
+            metrics,
+            instance,
+            network,
+            rpc,
+            txpool,
+            builder,
+            debug,
+            db,
+            dev,
+            pruning,
+            engine,
+            era,
+            static_files,
+            storage,
+            jit,
+        }
     }
 
     /// Set the metrics address for the node
@@ -316,18 +355,45 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         self
     }
 
+    /// Set the dev block time for the node.
+    ///
+    /// This sets the interval at which the dev miner produces new blocks.
+    pub const fn with_dev_block_time(mut self, block_time: std::time::Duration) -> Self {
+        self.dev.block_time = Some(block_time);
+        self
+    }
+
     /// Set the pruning args for the node
     pub fn with_pruning(mut self, pruning: PruningArgs) -> Self {
         self.pruning = pruning;
         self
     }
 
+    /// Set the storage args for the node
+    pub const fn with_storage(mut self, storage: StorageArgs) -> Self {
+        self.storage = storage;
+        self
+    }
+
     /// Returns pruning configuration.
     pub fn prune_config(&self) -> Option<PruneConfig>
     where
-        ChainSpec: EthChainSpec,
+        ChainSpec: EthereumHardforks,
     {
         self.pruning.prune_config(&self.chain)
+    }
+
+    /// Returns the effective storage settings for this node.
+    ///
+    /// Determined by the `--storage.v2` flag (defaults to `true`).
+    /// Existing databases retain whatever settings are persisted in their
+    /// metadata (checked during genesis init).
+    pub const fn storage_settings(&self) -> StorageSettings {
+        if self.storage.v2 {
+            StorageSettings::v2()
+        } else {
+            StorageSettings::v1()
+        }
     }
 
     /// Returns the max block that the node should run to, looking it up from the network if
@@ -339,7 +405,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     ) -> eyre::Result<Option<BlockNumber>>
     where
         Provider: HeaderProvider,
-        Client: HeadersClient,
+        Client: HeadersClient<Header: reth_primitives_traits::BlockHeader>,
     {
         let max_block = if let Some(block) = self.debug.max_block {
             Some(block)
@@ -377,7 +443,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             number: head,
             hash,
             difficulty: header.difficulty(),
-            total_difficulty: Default::default(),
+            total_difficulty: U256::ZERO,
             timestamp: header.timestamp(),
         })
     }
@@ -401,7 +467,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         // try to look up the header in the database
         if let Some(header) = header {
             info!(target: "reth::cli", ?tip, "Successfully looked up tip block in the database");
-            return Ok(header.number());
+            return Ok(header.number())
         }
 
         Ok(self.fetch_tip_from_network(client, tip.into()).await.number())
@@ -424,7 +490,7 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             match get_single_header(&client, tip).await {
                 Ok(tip_header) => {
                     info!(target: "reth::cli", ?tip, "Successfully fetched tip");
-                    return tip_header;
+                    return tip_header
                 }
                 Err(error) => {
                     fetch_failures += 1;
@@ -438,11 +504,9 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
 
     /// Change rpc port numbers based on the instance number, using the inner
     /// [`RpcServerArgs::adjust_instance_ports`] method.
-    ///
-    /// No-op when `--instance` was not provided (keeps explicit `--ipcpath` intact).
     pub fn adjust_instance_ports(&mut self) {
-        self.rpc.adjust_instance_ports(self.instance);
         self.network.adjust_instance_ports(self.instance);
+        self.rpc.adjust_instance_ports(self.instance);
     }
 
     /// Sets networking and RPC ports to zero, causing the OS to choose random unused ports when
@@ -450,6 +514,21 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
     pub fn with_unused_ports(mut self) -> Self {
         self.rpc = self.rpc.with_unused_ports();
         self.network = self.network.with_unused_ports();
+        self
+    }
+
+    /// Disables all discovery services for the node.
+    pub const fn with_disabled_discovery(mut self) -> Self {
+        self.network.discovery.disable_discovery = true;
+        self
+    }
+
+    /// Effectively disables the RPC state cache by setting the cache sizes to `0`.
+    ///
+    /// By setting the cache sizes to 0, caching of newly executed or fetched blocks will be
+    /// effectively disabled.
+    pub const fn with_disabled_rpc_cache(mut self) -> Self {
+        self.rpc.rpc_state_cache.set_zero_lengths();
         self
     }
 
@@ -512,10 +591,19 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
             era: self.era,
             static_files: self.static_files,
             storage: self.storage,
-            statedb: self.statedb,
-            enable_prefetch: self.enable_prefetch,
-            skip_state_root_validation: self.skip_state_root_validation,
-            enable_execution_cache: self.enable_execution_cache,
+            jit: self.jit,
+        }
+    }
+
+    /// Returns the [`MiningMode`] intended for --dev mode.
+    pub fn dev_mining_mode<Pool>(&self, pool: Pool) -> MiningMode<Pool>
+    where
+        Pool: TransactionPool + Unpin,
+    {
+        if let Some(interval) = self.dev.block_time {
+            MiningMode::interval(interval)
+        } else {
+            MiningMode::instant(pool, self.dev.block_max_transactions)
         }
     }
 }
@@ -546,10 +634,21 @@ impl<ChainSpec> Clone for NodeConfig<ChainSpec> {
             era: self.era.clone(),
             static_files: self.static_files,
             storage: self.storage,
-            statedb: self.statedb.clone(),
-            enable_prefetch: self.enable_prefetch,
-            skip_state_root_validation: self.skip_state_root_validation,
-            enable_execution_cache: self.enable_execution_cache,
+            jit: self.jit.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tree_config_applies_debug_skip_state_root() {
+        let config = NodeConfig::default();
+        assert!(!config.tree_config().skip_state_root());
+
+        let config = config.with_debug(DebugArgs { skip_state_root: true, ..Default::default() });
+        assert!(config.tree_config().skip_state_root());
     }
 }

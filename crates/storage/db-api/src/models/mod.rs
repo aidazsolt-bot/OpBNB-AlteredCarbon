@@ -1,18 +1,12 @@
 //! Implements data structures specific to the database
 
 use crate::{
-    table::{Compress, Decode, Decompress, Encode},
+    table::{Decode, Encode},
     DatabaseError,
 };
-use alloy_consensus::Header;
-use alloy_genesis::GenesisAccount;
-use alloy_primitives::{bytes::BufMut, Address, Bytes, Log, B256, U256};
-use reth_codecs::{add_arbitrary_tests, Compact};
-use reth_ethereum_primitives::{Receipt, TransactionSigned, TxType};
-use reth_primitives::parlia::Snapshot;
-use reth_primitives_traits::{Account, BlobSidecar, BlobSidecars, Bytecode, StorageEntry};
-use reth_prune_types::{PruneCheckpoint, PruneSegment};
-use reth_stages_types::StageCheckpoint;
+use alloy_primitives::{Address, B256, U256};
+use reth_codecs::{add_arbitrary_tests, impl_compression_for_compact, Compact};
+use reth_prune_types::PruneSegment;
 use reth_trie_common::{StoredNibbles, StoredNibblesSubKey, *};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +15,6 @@ pub mod bal;
 pub mod blocks;
 pub mod integer_list;
 pub mod metadata;
-pub use integer_list::IntegerList;
 pub mod sharded_key;
 pub mod snap;
 pub mod storage_sharded_key;
@@ -29,10 +22,11 @@ pub mod storage_sharded_key;
 pub use accounts::*;
 pub use bal::*;
 pub use blocks::*;
+pub use integer_list::IntegerList;
 pub use metadata::*;
 pub use reth_db_models::{
-    AccountBeforeTx, ClientVersion, StorageBeforeTx, StoredBlockBodyIndices,
-    StoredBlockWithdrawals,
+    AccountBeforeTx, ClientVersion, StaticFileBlockWithdrawals, StorageBeforeTx,
+    StoredBlockBodyIndices, StoredBlockWithdrawals,
 };
 pub use sharded_key::ShardedKey;
 pub use snap::*;
@@ -129,13 +123,10 @@ impl Decode for String {
 }
 
 impl Encode for StoredNibbles {
-    type Encoded = Vec<u8>;
+    type Encoded = arrayvec::ArrayVec<u8, 64>;
 
-    // Delegate to the Compact implementation
     fn encode(self) -> Self::Encoded {
-        // NOTE: This used to be `to_compact`, but all it does is append the bytes to the buffer,
-        // so we can just use the implementation of `Into<Vec<u8>>` to reuse the buffer.
-        self.0.to_vec()
+        self.0.iter().collect()
     }
 }
 
@@ -146,13 +137,10 @@ impl Decode for StoredNibbles {
 }
 
 impl Encode for StoredNibblesSubKey {
-    type Encoded = Vec<u8>;
+    type Encoded = [u8; 65];
 
-    // Delegate to the Compact implementation
     fn encode(self) -> Self::Encoded {
-        let mut buf = Vec::with_capacity(65);
-        self.to_compact(&mut buf);
-        buf
+        self.to_compact_array()
     }
 }
 
@@ -223,122 +211,14 @@ impl Decode for ClientVersion {
     }
 }
 
-impl Compress for Snapshot {
-    type Compressed = Vec<u8>;
-
-    fn compress(self) -> Self::Compressed {
-        serde_cbor::to_vec(&self).expect("Failed to serialize Snapshot")
-    }
-
-    fn compress_to_buf<B: BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-        let compressed = self.clone().compress();
-        buf.put_slice(&compressed);
-    }
-}
-
-impl Decompress for Snapshot {
-    fn decompress(value: &[u8]) -> Result<Self, DatabaseError> {
-        serde_cbor::from_slice(value).map_err(|_| DatabaseError::Decode)
-    }
-}
-
-/// Implements compression for Compact type.
-macro_rules! impl_compression_for_compact {
-    ($($name:tt),+) => {
-        $(
-            impl Compress for $name {
-                type Compressed = Vec<u8>;
-
-                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-                    let _ = Compact::to_compact(self, buf);
-                }
-            }
-
-            impl Decompress for $name {
-                fn decompress(value: &[u8]) -> Result<$name, $crate::DatabaseError> {
-                    let (obj, _) = Compact::from_compact(value, value.len());
-                    Ok(obj)
-                }
-            }
-        )+
-    };
-}
-
-impl_compression_for_compact!(
-    Bytes,
-    Header,
-    Account,
-    Log,
-    Receipt,
-    TxType,
-    StorageEntry,
-    BranchNodeCompact,
-    StoredNibbles,
-    StoredNibblesSubKey,
-    StorageTrieEntry,
-    TrieChangeSetsEntry,
-    PackedStoredNibbles,
-    PackedStoredNibblesSubKey,
-    PackedStorageTrieEntry,
-    StoredBlockBodyIndices,
-    StoredBlockOmmers,
-    StoredBlockWithdrawals,
-    Bytecode,
-    AccountBeforeTx,
-    StorageBeforeTx,
-    TransactionSigned,
-    CompactU256,
-    StageCheckpoint,
-    PruneCheckpoint,
-    ClientVersion,
-    BlobSidecar,
-    BlobSidecars,
-    // Non-DB
-    GenesisAccount
-);
-
-#[cfg(feature = "optimism")]
-mod op {
-    use super::*;
-    use reth_optimism_primitives::{OpReceipt, OpTransactionSigned};
-
-    impl_compression_for_compact!(OpTransactionSigned, OpReceipt);
-}
-
-macro_rules! impl_compression_fixed_compact {
-    ($($name:tt),+) => {
-        $(
-            impl Compress for $name {
-                type Compressed = Vec<u8>;
-
-                fn uncompressable_ref(&self) -> Option<&[u8]> {
-                    Some(self.as_ref())
-                }
-
-                fn compress_to_buf<B: bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-                    let _  = Compact::to_compact(self, buf);
-                }
-            }
-
-            impl Decompress for $name {
-                fn decompress(value: &[u8]) -> Result<$name, $crate::DatabaseError> {
-                    let (obj, _) = Compact::from_compact(&value, value.len());
-                    Ok(obj)
-                }
-            }
-
-        )+
-    };
-}
-
-impl_compression_fixed_compact!(B256, Address);
+impl_compression_for_compact!(StoredBlockOmmers<H>, CompactU256);
 
 /// Adds wrapper structs for some primitive types so they can use `StructFlags` from Compact, when
 /// used as pure table values.
 macro_rules! add_wrapper_struct {
     ($(($name:tt, $wrapper:tt)),+) => {
         $(
-            /// Wrapper struct so it can use StructFlags from Compact, when used as pure table values.
+            /// Wrapper struct so it can use `StructFlags` from Compact, when used as pure table values.
             #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Compact)]
             #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
             #[add_arbitrary_tests(compact)]
@@ -374,22 +254,16 @@ add_wrapper_struct!((ClientVersion, CompactClientVersion));
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use rand::Rng;
-    use reth_primitives::parlia::{ValidatorInfo, VoteAddress, VoteData, DEFAULT_TURN_LENGTH};
-    use std::collections::{BTreeMap, HashMap};
-
     // each value in the database has an extra field named flags that encodes metadata about other
     // fields in the value, e.g. offset and length.
     //
     // this check is to ensure we do not inadvertently add too many fields to a struct which would
     // expand the flags field and break backwards compatibility
-    #[cfg(not(feature = "optimism"))]
     #[test]
     fn test_ensure_backwards_compatibility() {
         use super::*;
         use reth_codecs::{test_utils::UnusedBits, validate_bitflag_backwards_compat};
-        use reth_primitives::{Account, Receipt, ReceiptWithBloom, Withdrawals};
+        use reth_primitives_traits::Account;
         use reth_prune_types::{PruneCheckpoint, PruneMode, PruneSegment};
         use reth_stages_types::{
             AccountHashingCheckpoint, CheckpointBlockRange, EntitiesCheckpoint,
@@ -409,15 +283,11 @@ mod tests {
         assert_eq!(PruneCheckpoint::bitflag_encoded_bytes(), 1);
         assert_eq!(PruneMode::bitflag_encoded_bytes(), 1);
         assert_eq!(PruneSegment::bitflag_encoded_bytes(), 1);
-        assert_eq!(Receipt::bitflag_encoded_bytes(), 1);
-        assert_eq!(ReceiptWithBloom::bitflag_encoded_bytes(), 0);
         assert_eq!(StageCheckpoint::bitflag_encoded_bytes(), 1);
         assert_eq!(StageUnitCheckpoint::bitflag_encoded_bytes(), 1);
         assert_eq!(StoredBlockBodyIndices::bitflag_encoded_bytes(), 1);
-        assert_eq!(StoredBlockOmmers::bitflag_encoded_bytes(), 0);
         assert_eq!(StoredBlockWithdrawals::bitflag_encoded_bytes(), 0);
         assert_eq!(StorageHashingCheckpoint::bitflag_encoded_bytes(), 1);
-        assert_eq!(Withdrawals::bitflag_encoded_bytes(), 0);
 
         validate_bitflag_backwards_compat!(Account, UnusedBits::NotZero);
         validate_bitflag_backwards_compat!(AccountHashingCheckpoint, UnusedBits::NotZero);
@@ -432,49 +302,10 @@ mod tests {
         validate_bitflag_backwards_compat!(PruneCheckpoint, UnusedBits::NotZero);
         validate_bitflag_backwards_compat!(PruneMode, UnusedBits::Zero);
         validate_bitflag_backwards_compat!(PruneSegment, UnusedBits::Zero);
-        validate_bitflag_backwards_compat!(Receipt, UnusedBits::Zero);
-        validate_bitflag_backwards_compat!(ReceiptWithBloom, UnusedBits::Zero);
         validate_bitflag_backwards_compat!(StageCheckpoint, UnusedBits::NotZero);
         validate_bitflag_backwards_compat!(StageUnitCheckpoint, UnusedBits::Zero);
         validate_bitflag_backwards_compat!(StoredBlockBodyIndices, UnusedBits::Zero);
-        validate_bitflag_backwards_compat!(StoredBlockOmmers, UnusedBits::Zero);
         validate_bitflag_backwards_compat!(StoredBlockWithdrawals, UnusedBits::Zero);
         validate_bitflag_backwards_compat!(StorageHashingCheckpoint, UnusedBits::NotZero);
-        validate_bitflag_backwards_compat!(Withdrawals, UnusedBits::Zero);
-    }
-
-    #[test]
-    fn compress_snapshot() {
-        let mut rng = rand::thread_rng();
-
-        let mut snap = Snapshot {
-            epoch_num: rng.random::<u64>(),
-            block_number: rng.random::<u64>(),
-            block_hash: B256::random(),
-            validators: vec![Address::random()],
-            validators_map: HashMap::new(),
-            recent_proposers: BTreeMap::new(),
-            vote_data: VoteData::default(),
-            turn_length: Some(DEFAULT_TURN_LENGTH),
-        };
-        snap.validators_map.insert(
-            snap.validators[0],
-            ValidatorInfo { index: 1, vote_addr: VoteAddress::random() },
-        );
-        snap.recent_proposers.insert(1, snap.validators[0]);
-        snap.vote_data = VoteData {
-            source_number: rng.random::<u64>(),
-            source_hash: B256::random(),
-            target_number: rng.random::<u64>(),
-            target_hash: B256::random(),
-        };
-        println!("original snapshot: {:?}", snap);
-
-        let compressed = snap.clone().compress();
-        println!("compressed snapshot: {:?}", compressed);
-
-        let decompressed = Snapshot::decompress(&compressed).unwrap();
-        println!("decompressed snapshot: {:?}", decompressed);
-        assert_eq!(snap, decompressed);
     }
 }

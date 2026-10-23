@@ -239,7 +239,6 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                         blob_gas_used: 0,
                     },
                     state: BundleState::default(),
-                    snapshot: None,
                 }),
                 SortedTrieData::default(),
             );
@@ -324,7 +323,6 @@ impl<N: NodePrimitives> TestBlockBuilder<N> {
                     blob_gas_used: 0,
                 },
                 state: bundle,
-                snapshot: None,
             }),
             trie_data,
         );

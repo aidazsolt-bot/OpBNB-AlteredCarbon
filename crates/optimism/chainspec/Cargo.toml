@@ -58,5 +58,4 @@ std = [
     "reth-primitives-traits/std",
     "reth-optimism-forks/std",
     "alloy-consensus/std",
-    "once_cell/std",
-]
+    "once_cell/std"]

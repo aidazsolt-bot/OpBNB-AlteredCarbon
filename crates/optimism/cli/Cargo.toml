@@ -82,11 +82,7 @@ reth-optimism-chainspec = { workspace = true, features = ["std"] }
 default = []
 
 # Enable real RocksDB backend for storage v2 history indices (required for --storage.v2).
-rocksdb = [
-    "reth-cli-commands/rocksdb",
-    "reth-provider/rocksdb",
-    "reth-stages/rocksdb",
-]
+rocksdb = []
 
 # Opentelemetry feature to activate tracing and logs export
 otlp = ["reth-tracing/otlp", "reth-node-core/otlp"]
@@ -95,27 +91,22 @@ otlp-logs = ["reth-tracing/otlp-logs", "reth-node-core/otlp-logs"]
 asm-keccak = [
     "alloy-primitives/asm-keccak",
     "reth-node-core/asm-keccak",
-    "reth-optimism-node/asm-keccak",
-]
+    "reth-optimism-node/asm-keccak"]
 
 keccak-cache-global = [
     "alloy-primitives/keccak-cache-global",
     "reth-node-core/keccak-cache-global",
-    "reth-optimism-node/keccak-cache-global",
-]
+    "reth-optimism-node/keccak-cache-global"]
 
 jemalloc = [
     "reth-node-core/jemalloc",
-    "reth-node-metrics/jemalloc",
-]
+    "reth-node-metrics/jemalloc"]
 jemalloc-prof = [
     "jemalloc",
-    "reth-node-metrics/jemalloc-prof",
-]
+    "reth-node-metrics/jemalloc-prof"]
 jemalloc-symbols = [
     "jemalloc-prof",
-    "reth-node-metrics/jemalloc-symbols",
-]
+    "reth-node-metrics/jemalloc-symbols"]
 
 tracy = ["reth-tracing/tracy", "reth-node-core/tracy"]
 
@@ -128,5 +119,4 @@ serde = [
     "op-alloy-consensus/serde",
     "reth-execution-types/serde",
     "reth-optimism-primitives/serde",
-    "reth-primitives-traits/serde",
-]
+    "reth-primitives-traits/serde"]

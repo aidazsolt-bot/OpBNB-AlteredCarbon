@@ -1,7 +1,7 @@
 use crate::{
     add_static_file_mask,
     static_file::mask::{ColumnSelectorOne, ColumnSelectorTwo},
-    HeaderTerminalDifficulties, RawValue, Transactions,
+    HeaderTerminalDifficulties,
 };
 use alloy_primitives::{Address, BlockHash};
 use reth_db_api::{models::StorageBeforeTx, table::Table, AccountChangeSets};
@@ -42,10 +42,6 @@ add_static_file_mask! {
     #[doc = "Mask for selecting a single transaction from `Transactions` static file segment"]
     TransactionMask<T>, T, 0b1
 }
-add_static_file_mask! {
-    #[doc = "Mask for selecting a single raw transaction from `Transactions` static file segment"]
-    RawTransactionMask<T>, RawValue<<Transactions as Table>::Value>, 0b1
-}
 
 // TRANSACTION SENDER MASKS
 add_static_file_mask! {
@@ -53,28 +49,14 @@ add_static_file_mask! {
     TransactionSenderMask, Address, 0b1
 }
 
-// SIDECAR MASKS
-add_static_file_mask! {
-    #[doc = "Mask for selecting a single blob sidecar from `Sidecars` static file segment"]
-    SidecarMask<S>, S, 0b01
-}
-add_static_file_mask! {
-    #[doc = "Mask for selecting a block hash from `Sidecars` static file segment"]
-    SidecarBlockHashMask, BlockHash, 0b10
-}
-add_static_file_mask! {
-    #[doc = "Mask for selecting a blob sidecar together with block hash from `Sidecars` static file segment"]
-    SidecarWithHashMask<S>, S, BlockHash, 0b11
-}
-
 // ACCOUNT CHANGESET MASKS
 add_static_file_mask! {
     #[doc = "Mask for selecting a single changeset from `AccountChangesets` static file segment"]
-    AccountChangesetMask, <AccountChangeSets as reth_db_api::table::Table>::Value, 0b1
+    AccountChangesetMask, <AccountChangeSets as Table>::Value, 0b1
 }
 
 // STORAGE CHANGESET MASKS
 add_static_file_mask! {
-    #[doc = "Mask for selecting a single changeset from `StorageChangeSets` static file segment"]
+    #[doc = "Mask for selecting a single changeset from `StorageChangesets` static file segment"]
     StorageChangesetMask, StorageBeforeTx, 0b1
 }

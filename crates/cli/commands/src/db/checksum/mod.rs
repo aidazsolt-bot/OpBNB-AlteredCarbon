@@ -17,7 +17,6 @@ use reth_provider::{providers::ProviderNodeTypes, DBProvider, StaticFileProvider
 use reth_static_file_types::{ChangesetOffset, StaticFileSegment};
 use std::{
     hash::{BuildHasher, Hasher},
-    sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::{info, warn};
@@ -88,7 +87,7 @@ impl Command {
     /// Execute `db checksum` command
     pub fn execute<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
         self,
-        tool: &DbTool<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
+        tool: &DbTool<NodeTypesWithDBAdapter<N, DatabaseEnv>>,
     ) -> eyre::Result<()> {
         warn!("This command should be run without the node running!");
 
@@ -114,7 +113,7 @@ fn checksum_hasher() -> impl Hasher {
 }
 
 fn checksum_static_file<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
-    tool: &DbTool<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
+    tool: &DbTool<NodeTypesWithDBAdapter<N, DatabaseEnv>>,
     segment: StaticFileSegment,
     start_block: Option<u64>,
     end_block: Option<u64>,
@@ -128,7 +127,7 @@ fn checksum_static_file<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
     let static_files = iter_static_files(static_file_provider.directory())?;
 
     let ranges = static_files
-        .get(&segment)
+        .get(segment)
         .ok_or_else(|| eyre::eyre!("No static files found for segment: {}", segment))?;
 
     let start_time = Instant::now();
@@ -167,12 +166,22 @@ fn checksum_static_file<N: CliNodeTypes<ChainSpec: EthereumHardforks>>(
         let mut cursor = jar_provider.cursor()?;
 
         if is_change_based {
-            while let Some(row) = cursor.next_row()? {
-                if checksummer.write_row(&row) {
-                    reached_limit = true;
-                    break;
-                }
-            }
+            let offsets = jar_provider.read_changeset_offsets()?.ok_or_else(|| {
+                eyre::eyre!(
+                    "Missing changeset offsets sidecar for segment {} at range {}",
+                    segment,
+                    block_range
+                )
+            })?;
+            let input = ChangeBasedChecksumInput {
+                segment,
+                block_range_start: block_range.start(),
+                start_block,
+                end_block,
+                offsets: &offsets,
+            };
+
+            reached_limit = checksum_change_based_segment(&mut checksummer, input, &mut cursor)?;
         } else {
             while let Some(row) = cursor.next_row()? {
                 if checksummer.write_row(&row) {
@@ -367,7 +376,7 @@ fn checksum_change_based_segment<H: Hasher>(
 ) -> eyre::Result<bool> {
     let ChangeBasedChecksumInput { segment, block_range_start, start_block, end_block, offsets } =
         input;
-    let is_storage = false;
+    let is_storage = segment.is_storage_change_sets();
     let mut reached_limit = false;
 
     for (offset_index, offset) in offsets.iter().enumerate() {

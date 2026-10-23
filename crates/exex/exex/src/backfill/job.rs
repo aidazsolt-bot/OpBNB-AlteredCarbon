@@ -145,13 +145,10 @@ where
         );
         self.range = last_block_number + 1..=*self.range.end();
 
-        let (receipts, requests) =
-            results.into_iter().map(|result| (result.receipts, result.requests)).unzip();
-        let outcome = ExecutionOutcome::new(
-            executor.into_state().take_bundle(),
-            receipts,
+        let outcome = ExecutionOutcome::from_blocks(
             first_block_number,
-            requests,
+            executor.into_state().take_bundle(),
+            results,
         );
         let chain = Chain::new(blocks, outcome, BTreeMap::new());
         Ok(chain)

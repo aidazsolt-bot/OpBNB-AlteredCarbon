@@ -6,15 +6,11 @@ use alloy_consensus::BlockHeader;
 use alloy_primitives::{BlockHash, BlockNumber, TxNumber, U256};
 use parking_lot::{lock_api::RwLockWriteGuard, RawRwLock, RwLock};
 use reth_codecs::Compact;
-use reth_db::{
-    models::{AccountBeforeTx, StorageBeforeTx},
-    static_file::{
-        load_segment_nippy_jar_or_remove_incomplete, remove_incomplete_static_file_bundle,
-    },
-};
+use reth_db::models::{AccountBeforeTx, StorageBeforeTx};
 use reth_db_api::models::CompactU256;
-use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter, CONFIG_FILE_EXTENSION};
+use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter};
 use reth_node_types::NodePrimitives;
+use reth_primitives_traits::FastInstant as Instant;
 use reth_static_file_types::{
     ChangesetOffset, ChangesetOffsetReader, ChangesetOffsetWriter, SegmentHeader,
     SegmentRangeInclusive, StaticFileSegment,
@@ -26,9 +22,8 @@ use std::{
     fmt::Debug,
     path::{Path, PathBuf},
     sync::{Arc, Weak},
-    time::Instant,
 };
-use tracing::debug;
+use tracing::{debug, instrument};
 
 /// Represents different pruning strategies for various static file segments.
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +49,7 @@ enum PruneStrategy {
     },
     /// Prune transaction senders by number of rows and last block.
     TransactionSenders {
-        /// Number of sender rows to delete.
+        /// Number of transaction sender rows to delete.
         num_rows: u64,
         /// The last block number after pruning.
         last_block: BlockNumber,
@@ -108,7 +103,6 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
-            StaticFileSegment::Sidecars => self.transactions.write(),
             StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
             StaticFileSegment::AccountChangeSets => self.account_change_sets.write(),
             StaticFileSegment::StorageChangeSets => self.storage_change_sets.write(),
@@ -121,8 +115,28 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
         Ok(StaticFileProviderRWRefMut(write_guard))
     }
 
+    /// Drops the cached writer for a segment before destructive segment-level operations.
+    pub(crate) fn remove(&self, segment: StaticFileSegment) {
+        let mut write_guard = match segment {
+            StaticFileSegment::Headers => self.headers.write(),
+            StaticFileSegment::Transactions => self.transactions.write(),
+            StaticFileSegment::Receipts => self.receipts.write(),
+            StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
+            StaticFileSegment::AccountChangeSets => self.account_change_sets.write(),
+            StaticFileSegment::StorageChangeSets => self.storage_change_sets.write(),
+        };
+
+        *write_guard = None;
+    }
+
+    #[instrument(
+        name = "StaticFileWriters::commit",
+        level = "debug",
+        target = "providers::static_file",
+        skip_all
+    )]
     pub(crate) fn commit(&self) -> ProviderResult<()> {
-        debug!(target: "provider::static_file", "Committing all static file segments");
+        debug!(target: "providers::static_file", "Committing all static file segments");
 
         for writer_lock in [
             &self.headers,
@@ -138,7 +152,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             }
         }
 
-        debug!(target: "provider::static_file", "Committed all static file segments");
+        debug!(target: "providers::static_file", "Committed all static file segments");
         Ok(())
     }
 
@@ -165,8 +179,14 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
     ///
     /// Must be called after `sync_all` was called on individual writers.
     /// Returns an error if any writer has prune queued.
+    #[instrument(
+        name = "StaticFileWriters::finalize",
+        level = "debug",
+        target = "providers::static_file",
+        skip_all
+    )]
     pub(crate) fn finalize(&self) -> ProviderResult<()> {
-        debug!(target: "provider::static_file", "Finalizing all static file segments into disk");
+        debug!(target: "providers::static_file", "Finalizing all static file segments into disk");
 
         for writer_lock in [
             &self.headers,
@@ -182,7 +202,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             }
         }
 
-        debug!(target: "provider::static_file", "Finalized all static file segments into disk");
+        debug!(target: "providers::static_file", "Finalized all static file segments into disk");
         Ok(())
     }
 }
@@ -213,8 +233,9 @@ impl<N> std::ops::Deref for StaticFileProviderRWRefMut<'_, N> {
 /// Extends `StaticFileProvider` with writing capabilities
 pub struct StaticFileProviderRW<N> {
     /// Reference back to the provider. We need [Weak] here because [`StaticFileProviderRW`] is
-    /// stored in a [`dashmap::DashMap`] inside the parent [`StaticFileProvider`].which is an
-    /// [Arc]. If we were to use an [Arc] here, we would create a reference cycle.
+    /// stored in a [`reth_primitives_traits::dashmap::DashMap`] inside the parent
+    /// [`StaticFileProvider`].which is an [Arc]. If we were to use an [Arc] here, we would
+    /// create a reference cycle.
     reader: Weak<StaticFileProviderInner<N>>,
     /// A [`NippyJarWriter`] instance.
     writer: NippyJarWriter<SegmentHeader>,
@@ -283,15 +304,20 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let static_file_provider = Self::upgrade_provider_to_strong_reference(&reader);
 
         let block_range = static_file_provider.find_fixed_range(segment, block);
-        let data_path = static_file_provider.jar_data_path(segment, &block_range);
-        let (jar, path) = match load_segment_nippy_jar_or_remove_incomplete(&data_path)
-            .map_err(ProviderError::other)?
-        {
-            Some(jar) => (jar, data_path),
-            None => {
+        let (jar, path) = match static_file_provider.get_segment_provider_for_block(
+            segment,
+            block_range.start(),
+            None,
+        ) {
+            Ok(provider) => (
+                NippyJar::load(provider.data_path()).map_err(ProviderError::other)?,
+                provider.data_path().into(),
+            ),
+            Err(ProviderError::MissingStaticFileBlock(_, _)) => {
                 let path = static_file_provider.directory().join(segment.filename(&block_range));
                 (create_jar(segment, &path, block_range), path)
             }
+            Err(err) => return Err(err),
         };
 
         let result = match NippyJarWriter::new(jar) {
@@ -336,7 +362,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         }
 
         debug!(
-            target: "provider::static_file",
+            target: "providers::static_file",
             segment = ?self.writer.user_header().segment(),
             path = ?self.data_path,
             pruned_rows,
@@ -543,6 +569,12 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     /// If `sync_all()` was not called, this will call it first to ensure data is persisted.
     ///
     /// Returns an error if prune is queued (use [`Self::commit`] instead).
+    #[instrument(
+        name = "StaticFileProviderRW::finalize",
+        level = "debug",
+        target = "providers::static_file",
+        skip_all
+    )]
     pub fn finalize(&mut self) -> ProviderResult<()> {
         if self.prune_on_commit.is_some() {
             return Err(StaticFileWriterError::FinalizeWithPruneQueued.into());
@@ -562,13 +594,19 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
     }
 
     /// Commits configuration changes to disk and updates the reader index with the new changes.
+    #[instrument(
+        name = "StaticFileProviderRW::commit",
+        level = "debug",
+        target = "providers::static_file",
+        skip_all
+    )]
     pub fn commit(&mut self) -> ProviderResult<()> {
         let start = Instant::now();
 
         // Truncates the data file if instructed to.
         if let Some(strategy) = self.prune_on_commit.take() {
             debug!(
-                target: "provider::static_file",
+                target: "providers::static_file",
                 segment = ?self.writer.user_header().segment(),
                 "Pruning data on commit"
             );
@@ -592,9 +630,8 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
             }
         }
 
-        // For changeset segments, flush and sync the sidecar file before committing the main
-        // file. This ensures crash consistency: the sidecar is durable before the header
-        // references it.
+        // For changeset segments, flush and sync the sidecar file before committing the main file.
+        // This ensures crash consistency: the sidecar is durable before the header references it.
         self.flush_current_changeset_offset()?;
         if let Some(writer) = &mut self.changeset_offsets {
             writer.sync().map_err(ProviderError::other)?;
@@ -604,7 +641,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
         if self.writer.is_dirty() {
             debug!(
-                target: "provider::static_file",
+                target: "providers::static_file",
                 segment = ?self.writer.user_header().segment(),
                 "Committing writer to disk"
             );
@@ -621,7 +658,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
             }
 
             debug!(
-                target: "provider::static_file",
+                target: "providers::static_file",
                 segment = ?self.writer.user_header().segment(),
                 path = ?self.data_path,
                 duration = ?start.elapsed(),
@@ -642,7 +679,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let start = Instant::now();
 
         debug!(
-            target: "provider::static_file",
+            target: "providers::static_file",
             segment = ?self.writer.user_header().segment(),
             "Committing writer to disk (without sync)"
         );
@@ -659,7 +696,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         }
 
         debug!(
-            target: "provider::static_file",
+            target: "providers::static_file",
             segment = ?self.writer.user_header().segment(),
             path = ?self.data_path,
             duration = ?start.elapsed(),
@@ -673,14 +710,15 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Updates the `self.reader` internal index.
     fn update_index(&self) -> ProviderResult<()> {
+        let segment = self.writer.user_header().segment();
+
         // We find the maximum block of the segment by checking this writer's last block.
         //
         // However if there's no block range (because there's no data), we try to calculate it by
         // subtracting 1 from the expected block start, resulting on the last block of the
-        // previous file.
-        //
-        // If that expected block start is 0, then it means that there's no actual block data, and
-        // there's no block data in static files.
+        // previous file — but only if that file actually exists. If the previous file doesn't
+        // exist (e.g. first-ever file for a segment starting past range boundary), there's
+        // nothing to index.
         let segment_max_block = self
             .writer
             .user_header()
@@ -688,12 +726,18 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
             .as_ref()
             .map(|block_range| block_range.end())
             .or_else(|| {
-                (self.writer.user_header().expected_block_start() >
-                    self.reader().genesis_block_number())
-                .then(|| self.writer.user_header().expected_block_start() - 1)
+                let expected_start = self.writer.user_header().expected_block_start();
+                if expected_start <= self.reader().genesis_block_number() {
+                    return None;
+                }
+
+                let prev_block = expected_start - 1;
+                let prev_range = self.reader().find_fixed_range(segment, prev_block);
+                let prev_path = self.reader().directory().join(segment.filename(&prev_range));
+                prev_path.exists().then_some(prev_block)
             });
 
-        self.reader().update_index(self.writer.user_header().segment(), segment_max_block)
+        self.reader().update_index(segment, segment_max_block)
     }
 
     /// Ensures that the writer is positioned at the specified block number.
@@ -968,7 +1012,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         let mut remaining_rows = num_rows;
         let segment = self.writer.user_header().segment();
         while remaining_rows > 0 {
-            let len = if segment.is_headers() {
+            let len = if segment.is_block_based() {
                 self.writer.user_header().block_len().unwrap_or_default()
             } else {
                 self.writer.user_header().tx_len().unwrap_or_default()
@@ -1064,17 +1108,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         // Clear current changeset offset tracking since we're switching files
         self.current_changeset_offset = None;
 
-        if remove_incomplete_static_file_bundle(&current_path).map_err(ProviderError::other)? ||
-            current_path.exists() ||
-            current_path.with_extension(CONFIG_FILE_EXTENSION).exists()
-        {
-            match load_segment_nippy_jar_or_remove_incomplete(&current_path)
-                .map_err(ProviderError::other)?
-            {
-                Some(jar) => jar.delete().map_err(ProviderError::other)?,
-                None => {}
-            }
-        }
+        NippyJar::<SegmentHeader>::load(&current_path)
+            .map_err(ProviderError::other)?
+            .delete()
+            .map_err(ProviderError::other)?;
         Ok(())
     }
 
@@ -1404,6 +1441,34 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         Ok(())
     }
 
+    /// Starts a block account changeset that will be appended one entry at a time.
+    ///
+    /// Callers must append entries sorted by address and keep the writer open until the block is
+    /// complete so the changeset offset sidecar is finalized with the correct row count.
+    pub fn begin_account_changeset(&mut self, block_number: u64) -> ProviderResult<()> {
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::AccountChangeSets);
+
+        self.increment_block(block_number)?;
+        self.ensure_no_queued_prune()
+    }
+
+    /// Appends one account changeset entry to the current block.
+    ///
+    /// [`Self::begin_account_changeset`] must be called first.
+    pub fn append_account_changeset_entry(
+        &mut self,
+        change: AccountBeforeTx,
+    ) -> ProviderResult<()> {
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::AccountChangeSets);
+        if self.current_changeset_offset.is_none() {
+            return Err(ProviderError::other(StaticFileWriterError::new(
+                "account changeset stream must be started before appending entries",
+            )))
+        }
+
+        self.append_change(&change)
+    }
+
     /// Appends a block storage changeset to the static file.
     ///
     /// It **CALLS** `increment_block()`.
@@ -1418,11 +1483,10 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         self.increment_block(block_number)?;
         self.ensure_no_queued_prune()?;
 
-        // first sort the changeset by address, then by storage key
+        // sort by address + storage key
         changeset.sort_by_key(|change| (change.address, change.key));
 
         let mut count: u64 = 0;
-
         for change in changeset {
             self.append_change(&change)?;
             count += 1;
@@ -1438,6 +1502,35 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         }
 
         Ok(())
+    }
+
+    /// Starts a block storage changeset that will be appended one entry at a time.
+    ///
+    /// Callers must append entries sorted by address and storage key and keep the writer open until
+    /// the block is complete so the changeset offset sidecar is finalized with the correct row
+    /// count.
+    pub fn begin_storage_changeset(&mut self, block_number: u64) -> ProviderResult<()> {
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::StorageChangeSets);
+
+        self.increment_block(block_number)?;
+        self.ensure_no_queued_prune()
+    }
+
+    /// Appends one storage changeset entry to the current block.
+    ///
+    /// [`Self::begin_storage_changeset`] must be called first.
+    pub fn append_storage_changeset_entry(
+        &mut self,
+        change: StorageBeforeTx,
+    ) -> ProviderResult<()> {
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::StorageChangeSets);
+        if self.current_changeset_offset.is_none() {
+            return Err(ProviderError::other(StaticFileWriterError::new(
+                "storage changeset stream must be started before appending entries",
+            )))
+        }
+
+        self.append_change(&change)
     }
 
     /// Adds an instruction to prune `to_delete` transactions during commit.
@@ -1567,7 +1660,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
         Ok(())
     }
 
-    /// Prunes the last `to_delete` storage changesets from the data file.
+    /// Prunes the last storage changesets from the data file.
     fn prune_storage_changeset_data(&mut self, last_block: BlockNumber) -> ProviderResult<()> {
         let start = Instant::now();
 
@@ -1682,7 +1775,7 @@ impl<N: NodePrimitives> StaticFileProviderRW<N> {
 
     /// Helper function to override block range for testing.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn set_block_range(&mut self, block_range: std::ops::RangeInclusive<BlockNumber>) {
+    pub const fn set_block_range(&mut self, block_range: std::ops::RangeInclusive<BlockNumber>) {
         self.writer.user_header_mut().set_block_range(*block_range.start(), *block_range.end())
     }
 
@@ -1705,15 +1798,8 @@ fn create_jar(
     );
 
     // Transaction and Receipt already have the compression scheme used natively in its encoding.
-    // (zstd-dictionary). Senders/changesets use Compact + lz4 like headers.
-    if segment.is_headers() ||
-        matches!(
-            segment,
-            StaticFileSegment::TransactionSenders |
-                StaticFileSegment::AccountChangeSets |
-                StaticFileSegment::StorageChangeSets
-        )
-    {
+    // (zstd-dictionary)
+    if segment.is_headers() {
         jar = jar.with_lz4();
     }
 

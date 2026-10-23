@@ -463,11 +463,8 @@ pub trait LoadPendingBlock:
         let BlockBuilderOutcome { execution_result, block, hashed_state, trie_updates, .. } =
             builder.finish(NoopProvider::default(), None).map_err(Self::Error::from_eth_err)?;
 
-        let execution_outcome = BlockExecutionOutput {
-            state: db.take_bundle(),
-            result: execution_result,
-            snapshot: None,
-        };
+        let execution_outcome =
+            BlockExecutionOutput { state: db.take_bundle(), result: execution_result };
 
         Ok(ExecutedBlock::new(
             block.into(),

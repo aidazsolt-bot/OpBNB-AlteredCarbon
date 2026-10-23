@@ -30,5 +30,4 @@ std = [
     "reth-prune-types/std",
     "reth-stages-types/std",
     "alloy-consensus/std",
-    "reth-optimism-primitives/std",
-]
+    "reth-optimism-primitives/std"]

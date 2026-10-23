@@ -92,8 +92,7 @@ std = [
 portable = [
 	"reth-revm/portable",
 	"op-revm/portable",
-	"revm/portable",
-]
+	"revm/portable"]
 rpc = [
 	"reth-rpc-eth-api",
 	"reth-optimism-primitives/serde",
@@ -101,5 +100,4 @@ rpc = [
 	"alloy-evm/rpc",
 	"alloy-op-evm/rpc",
 	"op-alloy-rpc-types",
-	"alloy-rpc-types-eth",
-]
+	"alloy-rpc-types-eth"]

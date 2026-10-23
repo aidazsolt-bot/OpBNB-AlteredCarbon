@@ -28,10 +28,8 @@ eyre.workspace = true
 
 # value objects
 url.workspace = true
-strum = { workspace = true, features = ["derive"] }
 
 [features]
-default = ["serde"]
 serde = [
     "dep:serde",
     "dep:toml",

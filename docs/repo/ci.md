@@ -1,102 +1,69 @@
 ## CI
 
-Public CI for this fork is the GitHub Actions workflow
-[`.github/workflows/op-reth-build-smoke.yml`](../../.github/workflows/op-reth-build-smoke.yml):
+The CI runs a couple of workflows:
 
-1. **Log runner hardware** (`lscpu`, memory, `lsblk`/`df`, Azure IMDS `vmSize` when available).
-2. **Build** `op-reth` (`maxperf`, jemalloc + asm-keccak + keccak-cache-global). Cache hits via
-   `Swatinem/rust-cache` often cut wall time from ~20–25 m (cold Fat-LTO) to ~10–15 m
-   (`save-if: false` — cache is restored for the build, then discarded before smoke).
-3. **Free disk** for the smoke: copy `op-reth` to `$RUNNER_TEMP`, then delete workspace
-   `target/` and `$CARGO_HOME/{registry,git}` (same root FS as the datadir; rust-cache
-   `save-if: false` so the emptied tree is not re-uploaded).
-4. **Tip-sync smoke** on `opbnb-mainnet`: `--debug.tip` = hash of block **10 000 000**
-   (`0xba60240ac85944fe7d55acb78a9413106311afc4643806ebb02f4b424a42bbd5`) +
-   `--debug.terminate` (no op-node; tip hash starts backfill). Override via
-   `workflow_dispatch` input `tip_hash`.
+### Code
 
-Success is a clean exit after the tip backfill. A 330-minute `timeout` wrapper is only a hang
-safety net (job budget: **360** minutes — GitHub-hosted max). Higher tips failed on hosted
-runners: **20 M** ENOSPC mid-Bodies
-([34853720560](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34853720560)),
-**15 M** sync fail
-([35188544554](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35188544554)),
-**12 M** `timeout 330m` mid-Execution with disk ~99%
-([35288190515](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/35288190515)).
-Default remains the proven **10 M** run
-([34775664819](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34775664819),
-~45 G datadir). Cleanup of cargo/`target` remains required.
+- **[unit]**: Runs unit tests (tests in `src/`) and doc tests
+- **[integration]**: Runs integration tests (tests in `tests/` and sync tests)
+- **[bench]**: Runs benchmarks
+- **[sync]**: Runs sync tests
+- **[stage]**: Runs all `stage run` commands
 
-### Observed GHA bench — tip **10 000 000** (2026-09-13)
+### Docs
 
-**Not a product claim.** One successful maxperf smoke on GitHub-hosted runners
-([run 34775664819](https://github.com/aidazsolt-bot/OpBNB-AlteredCarbon/actions/runs/34775664819/job/103773196382),
-commit `3adbe256a9`). Higher tips (12/15/20 M) failed; default is again **10 000 000**.
+- **[book]**: Builds, tests, and deploys the book.
 
-| | |
-| --- | --- |
-| Job wall (build + sync) | ~**3 h 9 m** (`18:46`–`21:55` UTC) |
-| Build `op-reth` (maxperf) | ~**12.5 m** |
-| Sync step (Headers→Finish @10 M) | ~**2 h 56 m** |
-| **Execution** stage only | **~1 h 52 m** (`19:53:37`–`21:46:01` UTC) |
-| Execution wall blocks/s | **~1483** (10 M / 6743 s) |
-| Logged gas throughput | `Executed block range` → `throughput="… Ggas/second"` (n=301) |
-| Gas median / mean / max | **~1.03 / ~1.24 / ~4.27 Ggas/s** (~1030 / ~1240 / ~4270 Mgas/s) |
-| Datadir after Finish | **`du -sh` = 45 G** (`$RUNNER_TEMP/opbnb-mainnet-maxperf`) |
-| Root free after sync | **37 G** (`df`: 145 G / 108 G used) |
+### Meta
+- **[release]**: Runs the release workflow
+- **[release-dist]**: Publishes Reth to external package managers
+- **[dependencies]**: Runs `cargo update` periodically to keep dependencies current
+- **[stale]**: Marks issues as stale if there has been no activity
+- **[docker]**: Publishes the Docker image.
 
-Later stages after Execution (MerkleExecute / TxLookup / Index* / Finish) added ~**9 m**.
-Compare with the older tip-**2 M** notes below (different tip height; not directly comparable).
+#### Docker workflow changes
 
-Triggers: `workflow_dispatch`, and `push` to `main` when `Cargo.toml` / `Cargo.lock` /
-`Makefile` / `crates/**` / the workflow file change.
+Docker changes usually affect more than one workflow. Before merging changes to Dockerfiles,
+Docker build inputs, or files copied into images:
 
-Upstream Reth lint/unit/book workflows are not mirrored here. For local checks:
+- Check all Dockerfiles and bake targets that share the repository build context:
+  `Dockerfile`, `Dockerfile.depot`, `.github/scripts/hive/Dockerfile`, and `docker-bake.hcl`.
+- Keep `.dockerignore` in sync with every file or directory copied from the repository context.
+  A file that exists in git can still be missing from Docker builds if it is not allowlisted there.
+- Check the workflow users of those targets: `docker.yml`, reusable `docker-test.yml`, and callers
+  such as `hive.yml` and `kurtosis.yml`.
+- Run local syntax checks before opening or merging the PR when BuildKit/buildx is available, for
+  example `docker build --check -f Dockerfile .`, `docker build --check -f Dockerfile.depot .`,
+  and `docker buildx bake --print -f docker-bake.hcl`.
+- Run at least one GitHub Actions dry run for the affected workflow. For the publishing workflow,
+  use `docker.yml` with `workflow_dispatch`, `build_type=git-sha`, and `dry_run=true`.
+- When updating shared image contents, look at recent Docker-related PRs and existing workflow
+  history to identify when failures started and whether sibling workflows are affected.
 
-```bash
-cargo +nightly fmt --all --check
-cargo check -p op-reth
-cargo nextest run -p reth-optimism-chainspec   # example slice
-```
+### Integration Testing
 
-For upstream CI definitions, see [paradigmxyz/reth](https://github.com/paradigmxyz/reth/tree/main/.github/workflows).
+- **[kurtosis]**: Spins up a Kurtosis testnet and runs Assertoor tests on Reth pairs.
+- **[hive]**: Runs `ethereum/hive` tests.
 
----
+### Linting and Checks
 
-## Informal smoke timings (local vs GHA) — 2026-09-10
+- **[lint]**: Lints code using `cargo clippy` and other checks
+- **[lint-actions]**: Lints GitHub Actions workflows
+- **[label-pr]**: Automatically labels PRs
 
-**Not a claim, not a product benchmark.** One-off operator notes while a live opBNB archive
-Execution catch-up shared the same box. Tip for these runs was **2 000 000** (temporary CI tip
-override; public workflow defaults to **`--debug.tip` @ block 10 000 000**). Binary around `27fa672` (maxperf).
-
-### Anonymized host class (local)
-
-| | |
-| --- | --- |
-| CPU | 1× Intel Xeon (Cascade Lake-R class), **16c / 32t**, ~2.9 GHz base |
-| Board | Single-socket server board (LGA3647 class) |
-| RAM | **256 GiB** DDR4 ECC RDIMM (4×64 GiB), ~2933 MT/s configured |
-| Disk | Multiple **consumer PCIe4 NVMe** (several ~8 TB-class + one ~4 TB-class), bind-mounted volumes; some role datadirs live under `<volume>/<role>/…` or `<role>.local`, not always at the volume root |
-| Co-tenancy | **O(15–20)** concurrent EL/CL processes (reth / op-reth / chain forks / erigon / lighthouse / rollup consensus) sharing CPU/RAM/NVMe |
-| IPC | Host shm sockets bind-mounted into containers as `/tmp/*.ipc` |
-
-Serial numbers, asset tags, mount hostnames, and concrete role names are omitted on purpose.
-
-### Stage wall times (genesis → tip 2 000 000)
-
-| Stage | Local (SATA SSD + VDO) | Local (PCIe4 NVMe) | GHA (`Standard_D4ads_v5`, exclusive 4 vCPU) |
-| --- | ---: | ---: | ---: |
-| Headers | ~3.4 m | ~2.9 m | ~4.3 m |
-| Bodies | ~9.5 m | ~11.0 m | ~10.6 m |
-| SenderRecovery | ~8.8 s | ~6.2 s | ~24 s |
-| Execution | ~3.8 m | ~3.2 m | ~2.4 m |
-| **Wall (end-to-end)** | **~18.0 m** | **~18.3 m** | **~18.6 m** |
-
-### Read-out
-
-- **Disk class ≈ irrelevant** for this tip height: SATA+VDO vs PCIe4 NVMe did not move overall wall time.
-- **Bodies** dominate and stay **peer-bound** (`connected_peers≈1` on local smokes).
-- **Execution** is where exclusive GHA cores win (~2.4 m vs ~3.2–3.8 m) — expected under noisy-neighbor load (live archive alone was logging ~0.3–0.45 Ggas/s Execution concurrently).
-- Buying a newer EPYC / more PCIe lanes is **not** justified by these numbers if the bottleneck stays peers + multi-tenant CPU.
-
-GHA remains the cleaner apples-to-apples check for “does this binary sync?”; local smokes are useful for regression sniffing, not hardware ranking.
+[unit]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/unit.yml
+[integration]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/integration.yml
+[bench]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/bench.yml
+[sync]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/sync.yml
+[stage]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/stage.yml
+[book]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/book.yml
+[release]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/release.yml
+[release-dist]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/release-dist.yml
+[dependencies]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/dependencies.yml
+[stale]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/stale.yml
+[docker]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/docker.yml
+[kurtosis]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/kurtosis.yml
+[hive]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/hive.yml
+[lint]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/lint.yml
+[lint-actions]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/lint-actions.yml
+[label-pr]: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/label-pr.yml

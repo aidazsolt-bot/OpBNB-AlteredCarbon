@@ -2,6 +2,7 @@ use crate::{
     table::{Compress, Decode, Decompress, DupSort, Encode, IntoVec, Key, Table, Value},
     DatabaseError,
 };
+use reth_codecs::DecompressError;
 use serde::{Deserialize, Serialize};
 
 /// Tuple with `RawKey<T::Key>` and `RawValue<T::Value>`.
@@ -176,11 +177,11 @@ impl<V: Value> Compress for RawValue<V> {
 }
 
 impl<V: Value> Decompress for RawValue<V> {
-    fn decompress(value: &[u8]) -> Result<Self, DatabaseError> {
+    fn decompress(value: &[u8]) -> Result<Self, DecompressError> {
         Ok(Self { value: value.to_vec(), _phantom: std::marker::PhantomData })
     }
 
-    fn decompress_owned(value: Vec<u8>) -> Result<Self, DatabaseError> {
+    fn decompress_owned(value: Vec<u8>) -> Result<Self, DecompressError> {
         Ok(Self { value, _phantom: std::marker::PhantomData })
     }
 }

@@ -15,7 +15,6 @@ workspace = true
 # reth
 reth-codecs.workspace = true
 reth-primitives-traits.workspace = true
-reth-primitives = { workspace = true, optional = true }
 reth-ecies.workspace = true
 alloy-rlp = { workspace = true, features = ["derive"] }
 reth-eth-wire-types.workspace = true
@@ -48,8 +47,6 @@ arbitrary = { workspace = true, features = ["derive"], optional = true }
 reth-primitives-traits = { workspace = true, features = ["arbitrary"] }
 reth-eth-wire-types = { workspace = true, features = ["arbitrary"] }
 reth-tracing.workspace = true
-reth-optimism-chainspec.workspace = true
-reth-chainspec.workspace = true
 
 alloy-consensus.workspace = true
 test-fuzz.workspace = true

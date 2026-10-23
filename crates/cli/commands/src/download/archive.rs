@@ -333,7 +333,7 @@ impl ArchiveMode {
     fn new(ctx: &ArchiveProcessContext) -> Result<Self> {
         if ctx.cache_dir().is_some() {
             ctx.session().require_request_limiter()?;
-            return Ok(Self::Cached);
+            return Ok(Self::Cached)
         }
 
         Ok(Self::Streaming)

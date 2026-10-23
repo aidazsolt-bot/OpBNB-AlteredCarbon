@@ -24,5 +24,4 @@ jsonrpsee.workspace = true
 [features]
 client = [
     "jsonrpsee/client",
-    "jsonrpsee/async-client",
-]
+    "jsonrpsee/async-client"]

@@ -10,8 +10,6 @@ use std::collections::HashMap;
 pub(crate) struct Metrics {
     /// Pruning duration
     pub(crate) duration_seconds: Histogram,
-    /// The height of the oldest sidecars
-    pub(crate) oldest_sidecars_height: Gauge,
     #[metric(skip)]
     prune_segments: HashMap<PruneSegment, PrunerSegmentMetrics>,
 }

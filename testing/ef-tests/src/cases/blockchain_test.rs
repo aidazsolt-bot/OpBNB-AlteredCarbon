@@ -6,7 +6,7 @@ use crate::{
 };
 use alloy_eip7928::bal::Bal;
 use alloy_rlp::Decodable;
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use reth_chainspec::ChainSpec;
 use reth_consensus::{Consensus, HeaderValidator};
 use reth_db_common::init::{insert_genesis_hashes, insert_genesis_history, insert_genesis_state};
@@ -17,7 +17,7 @@ use reth_evm::{
     ConfigureEvm,
 };
 use reth_evm_ethereum::EthEvmConfig;
-use reth_primitives_traits::{RecoveredBlock, SealedBlock};
+use reth_primitives_traits::{ParallelBridgeBuffered, RecoveredBlock, SealedBlock};
 use reth_provider::{
     providers::{RocksDBBuilder, RocksDBProvider, StaticFileProviderBuilder},
     test_utils::MockNodeTypesWithDB,
@@ -180,8 +180,9 @@ impl Case for BlockchainTestCase {
         self.tests
             .into_iter()
             .filter(|(_, case)| !Self::excluded_fork(case.network))
-            .par_bridge()
-            .try_for_each(|(name, case)| Self::run_single_case(name.as_str(), &case).map(|_| ()))
+            .par_bridge_buffered()
+            .with_min_len(64)
+            .try_for_each(|(name, case)| Self::run_single_case(&name, &case).map(|_| ()))
     }
 }
 

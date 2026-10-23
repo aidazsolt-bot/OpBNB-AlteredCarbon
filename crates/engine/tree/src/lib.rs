@@ -94,7 +94,6 @@
 
 /// Support for backfill sync mode.
 pub mod backfill;
-
 /// The type that drives the chain forward.
 pub mod chain;
 /// Support for downloading blocks on demand for live sync.
@@ -107,8 +106,9 @@ pub mod launch;
 pub mod metrics;
 /// The background writer service, coordinating write operations on static files and the database.
 pub mod persistence;
+/// Support for interacting with the blockchain tree.
+pub mod tree;
+
 /// Test utilities.
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
-/// Support for interacting with the blockchain tree.
-pub mod tree;

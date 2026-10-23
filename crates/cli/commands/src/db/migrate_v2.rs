@@ -5,12 +5,12 @@ use alloy_primitives::Address;
 use clap::Parser;
 use reth_db::{
     mdbx::{self, ffi},
+    models::StorageBeforeTx,
     DatabaseEnv,
 };
 use reth_db_api::{
     cursor::DbCursorRO,
     database::Database,
-    models::{BlockNumberAddress, StorageBeforeTx},
     table::Table,
     tables,
     transaction::{DbTx, DbTxMut},
@@ -26,7 +26,6 @@ use reth_prune_types::PruneSegment;
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_static_file_types::StaticFileSegment;
 use reth_storage_api::StageCheckpointReader;
-use std::sync::Arc;
 use tracing::{info, warn};
 
 /// `reth db migrate-v2` command
@@ -42,7 +41,7 @@ impl Command {
     /// 4. Compact MDBX
     pub async fn execute<N: CliNodeTypes>(
         self,
-        provider_factory: ProviderFactory<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>,
+        provider_factory: ProviderFactory<NodeTypesWithDBAdapter<N, DatabaseEnv>>,
     ) -> eyre::Result<()>
     where
         N::Primitives: reth_primitives_traits::NodePrimitives<
@@ -55,12 +54,9 @@ impl Command {
         let provider = provider_factory.provider()?;
         let current_settings = provider.storage_settings()?;
 
-        let migration_was_started = current_settings.is_some_and(|s| s.is_v2());
-        if migration_was_started {
-            warn!(
-                target: "reth::cli",
-                "Storage settings already indicate v2; verifying and resuming the migration"
-            );
+        if current_settings.is_some_and(|s| s.is_v2()) {
+            info!(target: "reth::cli", "Storage is already v2, nothing to do");
+            return Ok(());
         }
 
         let tip =
@@ -70,27 +66,13 @@ impl Command {
 
         let sf_provider = provider_factory.static_file_provider();
 
-        if migration_was_started {
-            let changesets_complete =
-                [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets]
-                    .into_iter()
-                    .all(|segment| {
-                        sf_provider.get_highest_static_file_block(segment).is_some_and(|b| b >= tip)
-                    });
-            let receipts_complete = provider
-                .prune_modes_ref()
-                .receipts_log_filter
-                .is_empty()
-                .then(|| {
-                    sf_provider
-                        .get_highest_static_file_block(StaticFileSegment::Receipts)
-                        .is_some_and(|b| b >= tip)
-                })
-                .unwrap_or(true);
-
-            if changesets_complete && receipts_complete {
-                info!(target: "reth::cli", "Storage v2 migration is already complete");
-                return Ok(());
+        for segment in [StaticFileSegment::AccountChangeSets, StaticFileSegment::StorageChangeSets]
+        {
+            if sf_provider.get_highest_static_file_block(segment).is_some() {
+                eyre::bail!(
+                    "Static file segment {segment:?} already contains data. \
+                     Cannot migrate — target must be empty."
+                );
             }
         }
 
@@ -101,20 +83,12 @@ impl Command {
         Self::migrate_storage_changesets(&provider_factory, tip)?;
 
         // === Phase 2: Migrate receipts → static files ===
-        Self::migrate_receipts::<NodeTypesWithDBAdapter<N, Arc<DatabaseEnv>>>(
-            &provider_factory,
-            tip,
-        )?;
+        Self::migrate_receipts::<NodeTypesWithDBAdapter<N, DatabaseEnv>>(&provider_factory, tip)?;
 
         // === Phase 3: Migrate indices → RocksDB ===
-        #[cfg(all(unix, feature = "rocksdb"))]
-        {
-            Self::migrate_to_rocksdb::<_, tables::TransactionHashNumbers>(&provider_factory)?;
-            Self::migrate_to_rocksdb::<_, tables::AccountsHistory>(&provider_factory)?;
-            Self::migrate_to_rocksdb::<_, tables::StoragesHistory>(&provider_factory)?;
-        }
-        #[cfg(not(all(unix, feature = "rocksdb")))]
-        info!(target: "reth::cli", "Skipping RocksDB migration (rocksdb feature not enabled)");
+        Self::migrate_to_rocksdb::<_, tables::TransactionHashNumbers>(&provider_factory)?;
+        Self::migrate_to_rocksdb::<_, tables::AccountsHistory>(&provider_factory)?;
+        Self::migrate_to_rocksdb::<_, tables::StoragesHistory>(&provider_factory)?;
 
         // === Phase 4: Flip metadata to v2 ===
         info!(target: "reth::cli", "Writing StorageSettings v2 metadata");
@@ -156,18 +130,10 @@ impl Command {
 
         let mut cursor = provider.tx_ref().cursor_read::<tables::AccountChangeSets>()?;
 
-        let prune_start = provider
+        let first_block = provider
             .get_prune_checkpoint(PruneSegment::AccountHistory)?
             .and_then(|cp| cp.block_number)
             .map_or(0, |b| b + 1);
-        let existing =
-            sf_provider.get_highest_static_file_block(StaticFileSegment::AccountChangeSets);
-        let first_block = prune_start.max(existing.map_or(0, |block| block + 1));
-
-        if first_block > tip {
-            info!(target: "reth::cli", "AccountChangeSets already migrated");
-            return Ok(());
-        }
 
         // The writer always starts at the fixed range boundary (e.g. 2500000) which may be
         // earlier than first_block (e.g. 2603897 from prune checkpoint).
@@ -214,18 +180,10 @@ impl Command {
 
         let mut cursor = provider.tx_ref().cursor_read::<tables::StorageChangeSets>()?;
 
-        let prune_start = provider
+        let first_block = provider
             .get_prune_checkpoint(PruneSegment::StorageHistory)?
             .and_then(|cp| cp.block_number)
             .map_or(0, |b| b + 1);
-        let existing =
-            sf_provider.get_highest_static_file_block(StaticFileSegment::StorageChangeSets);
-        let first_block = prune_start.max(existing.map_or(0, |block| block + 1));
-
-        if first_block > tip {
-            info!(target: "reth::cli", "StorageChangeSets already migrated");
-            return Ok(());
-        }
 
         // The writer always starts at the fixed range boundary (e.g. 2500000) which may be
         // earlier than first_block (e.g. 2603897 from prune checkpoint).
@@ -235,19 +193,18 @@ impl Command {
         }
 
         let mut count = 0u64;
-        let mut walker =
-            cursor.walk(Some(BlockNumberAddress::from((first_block, Address::ZERO))))?.peekable();
+        let mut walker = cursor.walk(Some((first_block, Address::ZERO).into()))?.peekable();
 
         for block in first_block..=tip {
             let mut entries = Vec::new();
 
-            while let Some(Ok((block_address, _))) = walker.peek() {
-                if block_address.block_number() != block {
+            while let Some(Ok((key, _))) = walker.peek() {
+                if key.block_number() != block {
                     break;
                 }
-                let (block_address, entry) = walker.next().expect("peeked")?;
+                let (key, entry) = walker.next().expect("peeked")?;
                 entries.push(StorageBeforeTx {
-                    address: block_address.address(),
+                    address: key.address(),
                     key: entry.key,
                     value: entry.value,
                 });
@@ -327,7 +284,6 @@ impl Command {
         Ok(())
     }
 
-    #[cfg(all(unix, feature = "rocksdb"))]
     fn migrate_to_rocksdb<N: ProviderNodeTypes, T: Table>(
         factory: &ProviderFactory<N>,
     ) -> eyre::Result<()> {

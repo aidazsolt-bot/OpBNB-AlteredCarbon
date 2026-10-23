@@ -18,8 +18,8 @@ alloy-rlp = { workspace = true, features = ["derive", "core-net", "core-error"] 
 enr = { workspace = true, optional = true }
 
 # crypto
-secp256k1 = { workspace = true, optional = true }
 
+secp256k1 = { workspace = true, optional = true }
 # misc
 serde_with.workspace = true
 thiserror.workspace = true

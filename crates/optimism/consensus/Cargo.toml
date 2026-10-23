@@ -71,5 +71,4 @@ std = [
 	"revm/std",
 	"reth-revm/std",
 	"alloy-chains/std",
-	"op-alloy-consensus/std",
-]
+	"op-alloy-consensus/std"]

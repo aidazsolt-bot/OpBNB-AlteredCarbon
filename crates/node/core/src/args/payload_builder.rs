@@ -81,12 +81,15 @@ impl Default for DefaultPayloadBuilderValues {
 #[command(next_help_heading = "Builder")]
 pub struct PayloadBuilderArgs {
     /// Block extra data set by the payload builder.
+    ///
+    /// If the value is a `0x`-prefixed hex string, it is decoded into raw bytes. Otherwise, the
+    /// raw UTF-8 bytes of the string are used.
     #[arg(
         long = "builder.extradata",
         value_parser = ExtraDataValueParser::default(),
-        default_value_t = DefaultPayloadBuilderValues::get_global().extra_data.clone()
+        default_value = DefaultPayloadBuilderValues::get_global().extra_data.as_str()
     )]
-    pub extra_data: String,
+    pub extra_data: Bytes,
 
     /// Target gas limit for built blocks.
     #[arg(long = "builder.gaslimit", alias = "miner.gaslimit", value_name = "GAS_LIMIT")]
@@ -131,7 +134,7 @@ impl Default for PayloadBuilderArgs {
     fn default() -> Self {
         let defaults = DefaultPayloadBuilderValues::get_global();
         Self {
-            extra_data: defaults.extra_data.clone(),
+            extra_data: Bytes::from(defaults.extra_data.as_bytes().to_vec()),
             interval: parse_duration_from_secs_or_ms(defaults.interval.as_str()).unwrap(),
             gas_limit: None,
             deadline: Duration::from_secs(defaults.deadline.parse().unwrap()),
@@ -143,7 +146,7 @@ impl Default for PayloadBuilderArgs {
 
 impl PayloadBuilderConfig for PayloadBuilderArgs {
     fn extra_data(&self) -> Bytes {
-        Bytes::from(self.extra_data.as_bytes().to_vec())
+        self.extra_data.clone()
     }
 
     fn interval(&self) -> Duration {
@@ -172,7 +175,7 @@ impl PayloadBuilderConfig for PayloadBuilderArgs {
 struct ExtraDataValueParser;
 
 impl TypedValueParser for ExtraDataValueParser {
-    type Value = String;
+    type Value = Bytes;
 
     fn parse_ref(
         &self,
@@ -182,7 +185,19 @@ impl TypedValueParser for ExtraDataValueParser {
     ) -> Result<Self::Value, clap::Error> {
         let val =
             value.to_str().ok_or_else(|| clap::Error::new(clap::error::ErrorKind::InvalidUtf8))?;
-        if val.len() > MAXIMUM_EXTRA_DATA_SIZE {
+
+        let bytes = if let Some(hex) = val.strip_prefix("0x") {
+            alloy_primitives::hex::decode(hex).map_err(|e| {
+                clap::Error::raw(
+                    clap::error::ErrorKind::InvalidValue,
+                    format!("Invalid hex in extradata: {e}"),
+                )
+            })?
+        } else {
+            val.as_bytes().to_vec()
+        };
+
+        if bytes.len() > MAXIMUM_EXTRA_DATA_SIZE {
             return Err(clap::Error::raw(
                 clap::error::ErrorKind::InvalidValue,
                 format!(
@@ -190,7 +205,8 @@ impl TypedValueParser for ExtraDataValueParser {
                 ),
             ))
         }
-        Ok(val.to_string())
+
+        Ok(bytes.into())
     }
 }
 
@@ -199,6 +215,7 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    /// A helper type to parse Args more easily
     #[derive(Parser)]
     struct CommandParser<T: Args> {
         #[command(flatten)]
@@ -232,7 +249,7 @@ mod tests {
             extra_data.as_str(),
         ])
         .args;
-        assert_eq!(args.extra_data, extra_data);
+        assert_eq!(args.extra_data.as_ref(), extra_data.as_bytes());
     }
 
     #[test]
@@ -247,9 +264,68 @@ mod tests {
     }
 
     #[test]
+    fn test_valid_hex_extra_data() {
+        let hex = format!("0x{}", "ab".repeat(MAXIMUM_EXTRA_DATA_SIZE));
+        let args = CommandParser::<PayloadBuilderArgs>::parse_from([
+            "reth",
+            "--builder.extradata",
+            hex.as_str(),
+        ])
+        .args;
+        assert_eq!(args.extra_data.as_ref(), vec![0xab; MAXIMUM_EXTRA_DATA_SIZE].as_slice());
+    }
+
+    #[test]
+    fn test_oversized_hex_extra_data() {
+        let hex = format!("0x{}", "ab".repeat(MAXIMUM_EXTRA_DATA_SIZE + 1));
+        assert!(CommandParser::<PayloadBuilderArgs>::try_parse_from([
+            "reth",
+            "--builder.extradata",
+            hex.as_str(),
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn test_invalid_hex_extra_data() {
+        assert!(CommandParser::<PayloadBuilderArgs>::try_parse_from([
+            "reth",
+            "--builder.extradata",
+            "0xZZZZ",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn test_odd_length_hex_extra_data() {
+        assert!(CommandParser::<PayloadBuilderArgs>::try_parse_from([
+            "reth",
+            "--builder.extradata",
+            "0xabc",
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn payload_builder_args_default_sanity_check() {
         let default_args = PayloadBuilderArgs::default();
         let args = CommandParser::<PayloadBuilderArgs>::parse_from(["reth"]).args;
         assert_eq!(args, default_args);
+    }
+
+    #[test]
+    fn test_args_with_s_interval() {
+        let args =
+            CommandParser::<PayloadBuilderArgs>::parse_from(["reth", "--builder.interval", "50"])
+                .args;
+        assert_eq!(args.interval, Duration::from_secs(50));
+    }
+
+    #[test]
+    fn test_args_with_ms_interval() {
+        let args =
+            CommandParser::<PayloadBuilderArgs>::parse_from(["reth", "--builder.interval", "50ms"])
+                .args;
+        assert_eq!(args.interval, Duration::from_millis(50));
     }
 }

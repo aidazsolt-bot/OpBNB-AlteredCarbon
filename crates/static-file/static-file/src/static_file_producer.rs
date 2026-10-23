@@ -29,7 +29,7 @@ pub type StaticFileProducerResult = ProviderResult<StaticFileTargets>;
 pub type StaticFileProducerWithResult<Provider> =
     (StaticFileProducer<Provider>, StaticFileProducerResult);
 
-/// Static File producer. It's a wrapper around [`StaticFileProducer`] that allows to share it
+/// Static File producer. It's a wrapper around [`StaticFileProducerInner`] that allows to share it
 /// between threads.
 #[derive(Debug)]
 pub struct StaticFileProducer<Provider>(Arc<Mutex<StaticFileProducerInner<Provider>>>);
@@ -116,7 +116,7 @@ where
     pub fn run(&self, targets: StaticFileTargets) -> StaticFileProducerResult {
         // If there are no targets, do not produce any static files and return early
         if !targets.any() {
-            return Ok(targets);
+            return Ok(targets)
         }
 
         debug_assert!(targets.is_contiguous_to_highest_static_files(
@@ -142,7 +142,7 @@ where
             // Create a new database transaction on every segment to prevent long-lived read-only
             // transactions
             let provider = self.provider.database_provider_ro()?.disable_long_read_transaction_safety();
-            segment.copy_to_static_files(provider, block_range.clone())?;
+            segment.copy_to_static_files(provider,  block_range.clone())?;
 
             let elapsed = start.elapsed(); // TODO(alexey): track in metrics
             debug!(target: "static_file", segment = %segment.segment(), ?block_range, ?elapsed, "Finished StaticFileProducer segment");
@@ -175,8 +175,7 @@ where
         let execution_checkpoint =
             provider.get_stage_checkpoint(StageId::Execution)?.map(|c| c.block_number);
 
-        let highest_static_files =
-            HighestStaticFiles { receipts: execution_checkpoint, ..Default::default() };
+        let highest_static_files = HighestStaticFiles { receipts: execution_checkpoint };
         let targets = self.get_static_file_targets(highest_static_files)?;
         self.run(targets)?;
 
@@ -193,7 +192,6 @@ where
         let highest_static_files = self.provider.static_file_provider().get_highest_static_files();
 
         let targets = StaticFileTargets {
-            headers: None,
             // StaticFile receipts only if they're not pruned according to the user configuration
             receipts: if self.prune_modes.receipts.is_none() &&
                 self.prune_modes.receipts_log_filter.is_empty()
@@ -207,8 +205,6 @@ where
             } else {
                 None
             },
-            transactions: None,
-            sidecars: None,
         };
 
         trace!(
@@ -271,7 +267,6 @@ mod tests {
             .expect("get static file writer for headers");
         static_file_writer.prune_headers(blocks.len() as u64).unwrap();
         static_file_writer.commit().expect("prune headers");
-
         drop(static_file_writer);
 
         db.insert_blocks(blocks.iter(), StorageKind::Database(None)).expect("insert blocks");

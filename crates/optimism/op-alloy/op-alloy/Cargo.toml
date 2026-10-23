@@ -42,18 +42,15 @@ full = [
   "network",
   "rpc-types",
   "rpc-types-engine",
-  "rpc-jsonrpsee",
-]
+  "rpc-jsonrpsee"]
 
 k256 = [
-  "op-alloy-consensus?/k256",
-]
+  "op-alloy-consensus?/k256"]
 
 arbitrary = [
   "op-alloy-consensus?/arbitrary",
   "op-alloy-rpc-types?/arbitrary",
-  "op-alloy-rpc-types-engine?/arbitrary",
-]
+  "op-alloy-rpc-types-engine?/arbitrary"]
 
 serde = [
 	"op-alloy-consensus?/serde",
