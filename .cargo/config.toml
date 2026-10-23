@@ -1,3 +1,16 @@
-# v2.8.0 rebase workspace — keep builds off the live v2.4.1 tree's target/
-[build]
-target-dir = "/usr/src/Erigon/Cargo/target-reth-v2.8.0"
+[alias]
+docs = "doc --workspace --all-features --no-deps"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    # Increases the stack size to 10MB, which is
+    # in line with Linux (whereas default for Windows is 1MB)
+    "-Clink-arg=/STACK:10000000",
+]
+
+[target.i686-pc-windows-msvc]
+rustflags = [
+    # Increases the stack size to 10MB, which is
+    # in line with Linux (whereas default for Windows is 1MB)
+    "-Clink-arg=/STACK:10000000",
+]
