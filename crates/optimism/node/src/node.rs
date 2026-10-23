@@ -35,6 +35,7 @@ use reth_node_builder::{
 };
 use reth_optimism_chainspec::{OpChainSpec, OpHardfork};
 use reth_optimism_consensus::OpBeaconConsensus;
+use reth_evm::ConfigureEvm;
 use reth_optimism_evm::{ConfigurePostExecEvm, OpEvmConfig, OpRethReceiptBuilder};
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_payload_builder::{
@@ -350,10 +351,10 @@ where
     fn local_payload_attributes_builder(
         chain_spec: &Self::ChainSpec,
     ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        // `LocalPayloadAttributesBuilder` (engine-local) builds wire attrs; wrap as
-        // [`OpPayloadAttrs`].
+        // `LocalPayloadAttributesBuilder` (engine-local) builds Eth wire attrs; wrap as
+        // [`OpPayloadAttrs`] (OP fields stay unset for local mining).
         let builder = Arc::new(LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone())));
-        move |parent: reth_primitives_traits::SealedHeader| OpPayloadAttrs(builder.build(&parent))
+        move |parent: reth_primitives_traits::SealedHeader| OpPayloadAttrs::from(builder.build(&parent))
     }
 }
 
@@ -1014,6 +1015,7 @@ impl<NetworkT, RpcMiddleware> OpAddOnsBuilder<NetworkT, RpcMiddleware> {
                 EB::default(),
                 EVB::default(),
                 rpc_middleware,
+                Identity::new(),
             )
             .with_tokio_runtime(tokio_runtime),
             da_config.unwrap_or_default(),
@@ -1223,24 +1225,23 @@ impl<T, O, W> OpPoolBuilder<T, O, W> {
     }
 }
 
-impl<Node, T, O, W> PoolBuilder<Node> for OpPoolBuilder<T, O, W>
+impl<Node, T, O, W, Evm> PoolBuilder<Node, Evm> for OpPoolBuilder<T, O, W>
 where
     Node: FullNodeTypes<Types: OpNodeTypes>,
     T: EthPoolTransaction<Consensus = TxTy<Node::Types>> + OpPooledTx,
     O: TransactionOrdering<Transaction = T> + 'static,
-    W: OpValidatorWrapper<
-        Node::Provider,
-        T,
-        OpEvmConfig<<Node::Types as NodeTypes>::ChainSpec, OpPrimitives>,
-    >,
+    Evm: ConfigureEvm<Primitives = OpPrimitives> + 'static,
+    W: OpValidatorWrapper<Node::Provider, T, Evm>,
     W::Validator: TransactionValidator<Transaction = T, Block = BlockTy<Node::Types>> + 'static,
 {
     type Pool = OpCustomTransactionPool<DiskFileBlobStore, W::Validator, O>;
 
-    async fn build_pool(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Pool> {
+    async fn build_pool(
+        self,
+        ctx: &BuilderContext<Node>,
+        evm_config: Evm,
+    ) -> eyre::Result<Self::Pool> {
         let Self { pool_config_overrides, ordering, validator_wrapper, .. } = self;
-        let evm_config =
-            OpEvmConfig::<_, OpPrimitives>::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
 
         // Interop filter used for txpool validation.
         let interop_client = if self.interop_endpoints.is_empty() {
@@ -1478,7 +1479,6 @@ where
             Payload: PayloadTypes<
                 BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
                 PayloadAttributes = OpPayloadAttrs,
-                PayloadBuilderAttributes = OpPayloadBuilderAttributes<TxTy<Node::Types>>,
             >,
         >,
     >,
@@ -1583,11 +1583,8 @@ impl OpNetworkBuilder {
                     // (IPv6-only) is respected as-is; only when `--addr` is left unset (real
                     // OS-dependent dual-stack) do we also bring up an IPv4 discv5 socket so
                     // discovery can still reach them.
-                    builder = builder.discovery_v5(args.discovery.discovery_v5_builder(
-                        rlpx_socket,
-                        boot_nodes,
-                        args.wants_os_dual_stack(),
-                    ));
+                    builder = builder
+                        .discovery_v5(args.discovery.discovery_v5_builder(rlpx_socket, boot_nodes));
                 }
 
                 builder

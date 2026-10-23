@@ -77,7 +77,6 @@ where
     type ExecutionData = crate::payload::OpExecData;
     type BuiltPayload = OpBuiltPayload<N>;
     type PayloadAttributes = crate::payload::OpPayloadAttrs;
-    type PayloadBuilderAttributes = OpPayloadBuilderAttributes<N::SignedTx>;
 
     // `block_to_payload` and `From<OpBuiltPayload<N>> for OpExecData` are two
     // separate conversion paths to the same `ExecutionData` type — kept parallel

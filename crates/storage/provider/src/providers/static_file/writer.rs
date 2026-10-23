@@ -103,6 +103,9 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
+            StaticFileSegment::Sidecars => {
+                return Err(ProviderError::UnsupportedProvider)
+            }
             StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
             StaticFileSegment::AccountChangeSets => self.account_change_sets.write(),
             StaticFileSegment::StorageChangeSets => self.storage_change_sets.write(),
@@ -121,6 +124,7 @@ impl<N: NodePrimitives> StaticFileWriters<N> {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
+            StaticFileSegment::Sidecars => return,
             StaticFileSegment::TransactionSenders => self.transaction_senders.write(),
             StaticFileSegment::AccountChangeSets => self.account_change_sets.write(),
             StaticFileSegment::StorageChangeSets => self.storage_change_sets.write(),

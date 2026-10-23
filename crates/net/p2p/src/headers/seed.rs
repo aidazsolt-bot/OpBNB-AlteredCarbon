@@ -6,6 +6,7 @@
 //! the parent chain without treating empty P2P tip responses as peer faults.
 
 use crate::{
+    block_access_lists::client::{BalRequirement, BlockAccessListsClient},
     bodies::client::BodiesClient,
     download::DownloadClient,
     headers::client::{HeadersClient, HeadersRequest},
@@ -199,6 +200,26 @@ impl<C: BlockClient> HeadersClient for SeededBlockClient<C> {
 
 impl<C: BlockClient> BlockClient for SeededBlockClient<C> {
     type Block = C::Block;
+}
+
+impl<C> BlockAccessListsClient for SeededBlockClient<C>
+where
+    C: BlockClient + BlockAccessListsClient,
+{
+    type Output = <C as BlockAccessListsClient>::Output;
+
+    fn get_block_access_lists_with_priority_and_requirement(
+        &self,
+        hashes: Vec<B256>,
+        priority: Priority,
+        requirement: BalRequirement,
+    ) -> Self::Output {
+        self.inner.get_block_access_lists_with_priority_and_requirement(
+            hashes,
+            priority,
+            requirement,
+        )
+    }
 }
 
 #[cfg(test)]

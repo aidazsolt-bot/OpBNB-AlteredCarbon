@@ -1307,7 +1307,7 @@ mod tests {
                     StaticFileSegment::TransactionSenders => writer.prune_transaction_senders(0, 5),
                     StaticFileSegment::AccountChangeSets => writer.prune_account_changesets(5),
                     StaticFileSegment::StorageChangeSets => writer.prune_storage_changesets(5),
-                    StaticFileSegment::Headers => unreachable!(),
+                    StaticFileSegment::Headers | StaticFileSegment::Sidecars => unreachable!(),
                 }
             };
             assert!(queued.and_then(|()| provider.commit()).is_err(), "{segment}");

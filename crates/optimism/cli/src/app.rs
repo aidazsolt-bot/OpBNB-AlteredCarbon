@@ -78,9 +78,11 @@ where
             register_hardfork_activation_metrics(chain_spec);
         }
 
-        let components = |spec: Arc<OpChainSpec>, _provider| {
+        let components = |spec: Arc<OpChainSpec>| {
             (OpExecutorProvider::optimism(spec.clone()), Arc::new(OpBeaconConsensus::new(spec)))
         };
+
+        let rt = runner.runtime();
 
         match self.cli.command {
             Commands::Node(command) => {
@@ -95,16 +97,16 @@ where
                 runner.run_command_until_exit(|ctx| command.execute(ctx, launcher))
             }
             Commands::Init(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>(rt))
             }
             Commands::InitState(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>(rt))
             }
             Commands::ImportOp(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>(rt))
             }
             Commands::ImportReceiptsOp(command) => {
-                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>())
+                runner.run_blocking_until_ctrl_c(command.execute::<OpNode>(rt))
             }
             Commands::DumpGenesis(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             Commands::Db(command) => {
@@ -115,11 +117,13 @@ where
             }
             Commands::P2P(command) => runner.run_until_ctrl_c(command.execute::<OpNode>()),
             Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
-            Commands::Prune(command) => runner.run_until_ctrl_c(command.execute::<OpNode>()),
+            Commands::Prune(command) => {
+                runner.run_command_until_exit(|ctx| command.execute::<OpNode>(ctx))
+            }
             #[cfg(feature = "dev")]
             Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::ReExecute(command) => {
-                runner.run_until_ctrl_c(command.execute::<OpNode>(components))
+                runner.run_until_ctrl_c(command.execute::<OpNode>(components, rt))
             }
         }
     }

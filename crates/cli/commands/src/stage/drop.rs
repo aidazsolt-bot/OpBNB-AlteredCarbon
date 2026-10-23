@@ -72,6 +72,7 @@ impl<C: ChainSpecParser> Command<C> {
                     StaticFileSegment::Headers => {
                         writer.prune_headers(highest_block)?;
                     }
+                    StaticFileSegment::Sidecars => {}
                     StaticFileSegment::Transactions => {
                         let to_delete = static_file_provider
                             .get_highest_static_file_tx(segment)

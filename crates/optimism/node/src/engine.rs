@@ -21,7 +21,7 @@ use reth_optimism_payload_builder::{
     OpExecData, OpExecutionPayloadValidator, OpPayloadAttrs, OpPayloadTypes,
 };
 use reth_optimism_primitives::{OpBlock, L2_TO_L1_MESSAGE_PASSER_ADDRESS};
-use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock, SignedTransaction};
+use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock, SealedHeader, SignedTransaction};
 use reth_provider::{ProviderResult, StateProviderBox, StateProviderFactory};
 use reth_trie_common::{HashedPostState, KeyHasher};
 use std::{marker::PhantomData, sync::Arc};
@@ -40,7 +40,6 @@ where
     type ExecutionData = T::ExecutionData;
     type BuiltPayload = T::BuiltPayload;
     type PayloadAttributes = T::PayloadAttributes;
-    type PayloadBuilderAttributes = T::PayloadBuilderAttributes;
 
     fn block_to_payload(
         block: SealedBlock<
@@ -134,8 +133,9 @@ where
 
     fn validate_block_post_execution_with_hashed_state<'a>(
         &self,
-        state_updates: &dyn Fn() -> &'a HashedPostState,
+        state_updates: impl FnOnce() -> &'a HashedPostState,
         block: &RecoveredBlock<Self::Block>,
+        _parent_header: &SealedHeader<<Self::Block as Block>::Header>,
         parent_state: impl FnOnce() -> ProviderResult<StateProviderBox>,
     ) -> Result<(), InsertBlockErrorKind> {
         if self.chain_spec().is_isthmus_active_at_timestamp(block.timestamp()) {

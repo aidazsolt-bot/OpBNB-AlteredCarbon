@@ -25,8 +25,8 @@ reth-payload-util.workspace = true
 reth-payload-primitives.workspace = true
 reth-basic-payload-builder.workspace = true
 reth-payload-validator.workspace = true
-reth-ethereum-engine-primitives.workspace = true
 reth-metrics.workspace = true
+reth-tasks.workspace = true
 
 # op-reth
 reth-optimism-evm.workspace = true

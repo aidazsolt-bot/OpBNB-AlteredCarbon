@@ -40,7 +40,8 @@ pub trait DebugExecutionWitnessApi<Attributes> {
 }
 use reth_storage_api::{
     errors::{ProviderError, ProviderResult},
-    BlockReaderIdExt, NodePrimitivesProvider, StateProviderFactory, TransactionVariant,
+    BlockReaderIdExt, EvmStateProviderAdapter, NodePrimitivesProvider, StateProviderFactory,
+    TransactionVariant,
 };
 use reth_tasks::Runtime;
 use reth_transaction_pool::TransactionPool;
@@ -110,10 +111,10 @@ impl<Pool, Provider, EvmConfig, Attrs> OpDebugWitnessApi<Pool, Provider, EvmConf
 where
     Provider: BlockReaderIdExt<
             Block = AlloyBlock<
-                <Provider::Primitives as OpPayloadPrimitives>::_TX,
-                <Provider::Primitives as OpPayloadPrimitives>::_Header,
+                <<Provider as NodePrimitivesProvider>::Primitives as OpPayloadPrimitives>::_TX,
+                <<Provider as NodePrimitivesProvider>::Primitives as OpPayloadPrimitives>::_Header,
             >,
-            Header = <Provider::Primitives as NodePrimitives>::BlockHeader,
+            Header = <<Provider as NodePrimitivesProvider>::Primitives as NodePrimitives>::BlockHeader,
         > + NodePrimitivesProvider<Primitives: OpPayloadPrimitives>,
 {
     fn replay_block_by_request(
@@ -126,7 +127,10 @@ where
                 .recovered_block(hash.into(), TransactionVariant::NoHash)?
                 .ok_or_else(|| ProviderError::HeaderNotFound(hash.into())),
             ReplayPostExecBlockRequest::Number(number_or_tag) => provider
-                .recovered_block_by_id(BlockId::Number(number_or_tag), TransactionVariant::NoHash)?
+                .block_with_senders_by_id(
+                    BlockId::Number(number_or_tag),
+                    TransactionVariant::NoHash,
+                )?
                 .ok_or_else(|| {
                     ProviderError::HeaderNotFound(
                         number_or_tag.as_number().unwrap_or_default().into(),
@@ -136,22 +140,24 @@ where
     }
 }
 
+type ProviderPrimitives<Provider> = <Provider as NodePrimitivesProvider>::Primitives;
+
 #[async_trait]
 impl<Pool, Provider, EvmConfig, Attrs> DebugExecutionWitnessApiServer<Attrs::RpcPayloadAttributes>
     for OpDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 where
     Pool: TransactionPool<
-            Transaction: OpPooledTx<Consensus = <Provider::Primitives as NodePrimitives>::SignedTx>,
+            Transaction: OpPooledTx<Consensus = <ProviderPrimitives<Provider> as NodePrimitives>::SignedTx>,
         > + 'static,
-    Provider: BlockReaderIdExt<Header = <Provider::Primitives as NodePrimitives>::BlockHeader>
+    Provider: BlockReaderIdExt<Header = <ProviderPrimitives<Provider> as NodePrimitives>::BlockHeader>
         + NodePrimitivesProvider<Primitives: OpPayloadPrimitives>
-        + StateProviderFactory
+        + StateProviderFactory<Primitives = ProviderPrimitives<Provider>>
         + ChainSpecProvider<ChainSpec: OpHardforks>
         + Clone
         + 'static,
-    <Provider::Primitives as NodePrimitives>::SignedTx: From<Sealed<TxPostExec>>,
+    <ProviderPrimitives<Provider> as NodePrimitives>::SignedTx: From<Sealed<TxPostExec>>,
     EvmConfig: ConfigurePostExecEvm<
-            Primitives = Provider::Primitives,
+            Primitives = ProviderPrimitives<Provider>,
             NextBlockEnvCtx: BuildNextEnv<Attrs, Provider::Header, Provider::ChainSpec>,
         > + 'static,
     Attrs: OpAttributes<Transaction = TxTy<EvmConfig::Primitives>, RpcPayloadAttributes: Send>,
@@ -182,35 +188,37 @@ where
 impl<Pool, Provider, EvmConfig, Attrs> OpDebugPostExecApiServer
     for OpDebugWitnessApi<Pool, Provider, EvmConfig, Attrs>
 where
-    Provider::Primitives: OpPayloadPrimitives
+    ProviderPrimitives<Provider>: OpPayloadPrimitives
         + NodePrimitives<
             Block = AlloyBlock<
-                <Provider::Primitives as OpPayloadPrimitives>::_TX,
-                <Provider::Primitives as OpPayloadPrimitives>::_Header,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_TX,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_Header,
             >,
             BlockBody = alloy_consensus::BlockBody<
-                <Provider::Primitives as OpPayloadPrimitives>::_TX,
-                <Provider::Primitives as OpPayloadPrimitives>::_Header,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_TX,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_Header,
             >,
-            BlockHeader = <Provider::Primitives as OpPayloadPrimitives>::_Header,
-            SignedTx = <Provider::Primitives as OpPayloadPrimitives>::_TX,
+            BlockHeader = <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_Header,
+            SignedTx = <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_TX,
         >,
     Pool: TransactionPool<
-            Transaction: OpPooledTx<Consensus = <Provider::Primitives as NodePrimitives>::SignedTx>,
+            Transaction: OpPooledTx<
+                Consensus = <ProviderPrimitives<Provider> as NodePrimitives>::SignedTx,
+            >,
         > + 'static,
     Provider: BlockReaderIdExt<
             Block = AlloyBlock<
-                <Provider::Primitives as OpPayloadPrimitives>::_TX,
-                <Provider::Primitives as OpPayloadPrimitives>::_Header,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_TX,
+                <ProviderPrimitives<Provider> as OpPayloadPrimitives>::_Header,
             >,
-            Header = <Provider::Primitives as NodePrimitives>::BlockHeader,
+            Header = <ProviderPrimitives<Provider> as NodePrimitives>::BlockHeader,
         > + NodePrimitivesProvider
-        + StateProviderFactory
+        + StateProviderFactory<Primitives = ProviderPrimitives<Provider>>
         + ChainSpecProvider<ChainSpec: OpHardforks>
         + Clone
         + 'static,
     EvmConfig: ConfigurePostExecEvm<
-            Primitives = Provider::Primitives,
+            Primitives = ProviderPrimitives<Provider>,
             NextBlockEnvCtx: BuildNextEnv<Attrs, Provider::Header, Provider::ChainSpec>,
         > + Clone
         + 'static,
@@ -234,7 +242,7 @@ where
                     .provider
                     .state_by_block_hash(block.header().parent_hash())
                     .to_rpc_result()?;
-                let db = StateProviderDatabase::new(&state_provider);
+                let db = StateProviderDatabase::new(EvmStateProviderAdapter(state_provider));
                 replay_block(&this.inner.evm_config, db, &block, config)
                     .map_err(|err| internal_rpc_err(err.to_string()))
             };

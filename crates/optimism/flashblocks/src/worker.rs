@@ -27,10 +27,10 @@ use reth_revm::{
 };
 use reth_rpc_eth_types::{EthApiError, PendingBlock};
 use reth_storage_api::{
-    noop::NoopProvider, BlockReaderIdExt, HashedPostStateProvider, StateProviderFactory,
-    StateRootProvider,
+    noop::NoopProvider, BlockReaderIdExt, EvmStateProviderAdapter, HashedPostStateProvider,
+    StateProviderFactory, StateRootProvider,
 };
-use reth_trie_common::ComputedTrieData;
+use reth_trie_common::SortedTrieData;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -229,7 +229,9 @@ where
                 args.pending_parent.as_ref().map(|p| p.cached_reads.clone()).unwrap_or_default()
             });
 
-        let cached_db = request_cache.as_db_mut(StateProviderDatabase::new(&state_provider));
+        let cached_db = request_cache.as_db_mut(StateProviderDatabase::new(
+            EvmStateProviderAdapter(state_provider.as_ref()),
+        ));
 
         // Check for resumable canonical execution state.
         let canonical_parent_hash = args.base.parent_hash;
@@ -328,14 +330,14 @@ where
 
             let (hashed_state, state_root) = if args.compute_state_root {
                 trace!(target: "flashblocks", "Computing block state root");
-                let hashed_state = state_provider.hashed_post_state(&db.bundle_state);
+                let hashed_state = state_provider.hashed_post_state(&db.bundle_state)?;
                 let (state_root, _) = state_provider
                     .state_root_with_updates(hashed_state.clone())
                     .map_err(RethError::other)?;
                 (hashed_state, state_root)
             } else {
                 let noop_provider = NoopProvider::default();
-                let hashed_state = noop_provider.hashed_post_state(&db.bundle_state);
+                let hashed_state = noop_provider.hashed_post_state(&db.bundle_state)?;
                 let (state_root, _) = noop_provider
                     .state_root_with_updates(hashed_state.clone())
                     .map_err(RethError::other)?;
@@ -406,13 +408,13 @@ where
         }
 
         let execution_outcome =
-            BlockExecutionOutput { state: bundle, result: execution_result, snapshot: None };
+            BlockExecutionOutput { state: bundle, result: execution_result };
         let execution_outcome = Arc::new(execution_outcome);
 
         // Create pending state for subsequent builds.
         // Use the locally built block hash for both parent matching and speculative
         // execution context to avoid split-hash ambiguity.
-        let local_block_hash = block.hash();
+        let local_block_hash: B256 = block.hash();
         if local_block_hash != args.last_flashblock_hash {
             trace!(
                 target: "flashblocks",
@@ -438,7 +440,7 @@ where
             ExecutedBlock::new(
                 block.into(),
                 execution_outcome,
-                ComputedTrieData::new(Arc::new(hashed_state.into_sorted()), Arc::default()),
+                SortedTrieData::new(Arc::new(hashed_state.into_sorted()), Arc::default()),
             ),
         );
         let pending_flashblock = PendingFlashBlock::new(

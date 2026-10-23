@@ -35,7 +35,6 @@ pub fn withdrawals_root<DB: StorageRootProvider>(
             .get(&L2_TO_L1_MESSAGE_PASSER_ADDRESS)
             .map(|acc| {
                 HashedStorage::from_plain_storage(
-                    acc.status,
                     acc.storage.iter().map(|(slot, value)| (slot, &value.present_value)),
                 )
             })

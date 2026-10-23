@@ -7202,6 +7202,7 @@ dependencies = [
  "jsonrpsee",
  "op-alloy-consensus",
  "rand 0.9.5",
+ "reth-rpc-traits",
  "serde",
  "serde_json",
  "similar-asserts",
@@ -10876,7 +10877,6 @@ dependencies = [
  "op-revm",
  "reth-basic-payload-builder",
  "reth-chainspec",
- "reth-ethereum-engine-primitives",
  "reth-evm",
  "reth-execution-types",
  "reth-metrics",
@@ -10892,6 +10892,7 @@ dependencies = [
  "reth-primitives-traits",
  "reth-revm",
  "reth-storage-api",
+ "reth-tasks",
  "reth-transaction-pool",
  "revm",
  "serde",
@@ -11882,6 +11883,7 @@ name = "reth-static-file-types"
 version = "2.8.0"
 dependencies = [
  "alloy-primitives",
+ "bincode",
  "clap",
  "derive_more 2.1.1",
  "fixed-map",

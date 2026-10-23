@@ -192,6 +192,9 @@ impl Command {
                         None,
                         <ReceiptMask<ReceiptTy<N>>>::MASK,
                     ),
+                    StaticFileSegment::Sidecars => {
+                        eyre::bail!("sidecars static files are not supported");
+                    }
                     StaticFileSegment::TransactionSenders => (
                         table_key::<tables::TransactionSenders>(&key)?,
                         None,
@@ -275,6 +278,9 @@ impl Command {
                                     let receipt =
                                         ReceiptTy::<N>::decompress(content[0].as_slice())?;
                                     println!("{}", serde_json::to_string_pretty(&receipt)?);
+                                }
+                                StaticFileSegment::Sidecars => {
+                                    eyre::bail!("sidecars static files are not supported");
                                 }
                                 StaticFileSegment::TransactionSenders => {
                                     let sender =

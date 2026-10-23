@@ -337,10 +337,7 @@ impl EthChainSpec for OpChainSpec {
     }
 
     fn display_hardforks(&self) -> Box<dyn Display> {
-        Box::new(DisplayHardforks::new(
-            &self.inner,
-            self.inner.paris_block_and_final_difficulty.map(|(block, _)| block),
-        ))
+        Box::new(self.inner.display_hardforks())
     }
 
     fn genesis_header(&self) -> &Header {
@@ -359,9 +356,6 @@ impl EthChainSpec for OpChainSpec {
         true
     }
 
-    fn is_bsc(&self) -> bool {
-        false
-    }
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.inner.final_paris_total_difficulty()

@@ -1508,6 +1508,8 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     {
         match segment {
             StaticFileSegment::Headers | StaticFileSegment::Transactions => true,
+            // Legacy discriminant slot; never produced for opBNB / not healed.
+            StaticFileSegment::Sidecars => false,
             StaticFileSegment::Receipts => {
                 if EitherWriter::receipts_destination(provider).is_database() {
                     // Old pruned nodes (including full node) do not store receipts as static
@@ -1693,6 +1695,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                     highest_tx,
                     highest_block,
                 ),
+            StaticFileSegment::Sidecars => Ok(None),
             StaticFileSegment::TransactionSenders => self
                 .ensure_invariants::<_, tables::TransactionSenders>(
                     provider,
@@ -1826,6 +1829,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                 // TODO(joshie): is_block_meta
                 writer.prune_headers(prune_count)?;
             }
+            StaticFileSegment::Sidecars => {}
             StaticFileSegment::Transactions |
             StaticFileSegment::Receipts |
             StaticFileSegment::TransactionSenders => {
@@ -1849,6 +1853,7 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
                             writer.prune_transaction_senders(number, checkpoint_block_number)?
                         }
                         StaticFileSegment::Headers |
+                        StaticFileSegment::Sidecars |
                         StaticFileSegment::AccountChangeSets |
                         StaticFileSegment::StorageChangeSets => {
                             unreachable!()
@@ -2005,7 +2010,9 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
             StaticFileSegment::TransactionSenders => Some(PruneSegment::SenderRecovery),
             StaticFileSegment::AccountChangeSets => Some(PruneSegment::AccountHistory),
             StaticFileSegment::StorageChangeSets => Some(PruneSegment::StorageHistory),
-            StaticFileSegment::Headers | StaticFileSegment::Transactions => None,
+            StaticFileSegment::Headers |
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Sidecars => None,
         }
     }
 

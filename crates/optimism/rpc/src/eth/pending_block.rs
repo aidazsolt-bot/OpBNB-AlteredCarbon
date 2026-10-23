@@ -3,7 +3,6 @@
 use crate::{OpEthApi, OpEthApiError};
 use alloy_eips::BlockNumberOrTag;
 use alloy_primitives::B256;
-use reth_chain_state::BlockState;
 use reth_optimism_flashblocks::PendingFlashBlock;
 use reth_rpc_eth_api::{
     helpers::{pending_block::PendingEnvBuilder, LoadPendingBlock, SpawnBlocking},
@@ -52,14 +51,13 @@ where
             return Ok(None);
         };
         let canonical_anchor_hash = pending_state_history_lookup_hash(&pending_block);
-        let state = BlockState::from(pending_block.pending);
+        let executed_block = pending_block.executed_block.clone();
 
-        let anchor_historical = self
-            .provider()
-            .history_by_block_hash(canonical_anchor_hash)
-            .map_err(Self::Error::from_eth_err)?;
-
-        Ok(Some(Box::new(state.state_provider(anchor_historical)) as StateProviderBox))
+        Ok(Some(
+            self.provider()
+                .state_with_block_appended(canonical_anchor_hash, executed_block)
+                .map_err(Self::Error::from_eth_err)?,
+        ))
     }
 
     /// Returns the locally built pending block
@@ -81,7 +79,7 @@ where
             .get_block_and_receipts(latest.hash())
             .await
             .map_err(Self::Error::from_eth_err)?
-            .map(|(block, receipts)| BlockAndReceipts { block, receipts });
+            .map(|(block, receipts)| BlockAndReceipts::new(block, receipts));
         Ok(latest)
     }
 }

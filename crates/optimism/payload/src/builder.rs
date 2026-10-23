@@ -1,10 +1,10 @@
 //! Optimism payload builder implementation.
 use crate::{
     config::OpBuilderConfig, error::OpPayloadBuilderError, payload::OpBuiltPayload, OpAttributes,
-    OpPayloadBuilderAttributes, OpPayloadPrimitives,
+    OpPayloadAttrs, OpPayloadBuilderAttributes, OpPayloadPrimitives,
 };
 use alloy_consensus::{transaction::Recovered, BlockHeader, Sealable, Transaction, Typed2718};
-use alloy_eips::eip2718::Encodable2718;
+use alloy_eips::eip2718::{Decodable2718, Encodable2718};
 use alloy_evm::Evm as AlloyEvm;
 use alloy_primitives::{Address, Sealed, B256, U256};
 use alloy_rpc_types_debug::ExecutionWitness;
@@ -43,11 +43,9 @@ use reth_payload_util::{BestPayloadTransactions, NoopPayloadTransactions, Payloa
 use reth_primitives_traits::{
     HeaderTy, NodePrimitives, SealedHeader, SealedHeaderFor, SignedTransaction, TxTy,
 };
-use reth_revm::{
-    cancelled::CancelOnDrop, database::StateProviderDatabase, db::State,
-    witness::ExecutionWitnessRecord,
-};
+use reth_revm::{database::StateProviderDatabase, db::State, witness::ExecutionWitnessRecord};
 use reth_storage_api::{errors::ProviderError, StateProvider, StateProviderFactory};
+use reth_tasks::CancelOnDrop;
 use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction, TransactionPool};
 use revm::context::{Block, BlockEnv};
 use std::{marker::PhantomData, sync::Arc};
@@ -268,7 +266,8 @@ where
         let builder = OpBuilder::new(best);
 
         let state_provider = self.client.state_by_block_hash(ctx.parent().hash())?;
-        let state = StateProviderDatabase::new(&state_provider);
+        let state =
+            StateProviderDatabase::new((&state_provider).into_evm_state_provider());
 
         if ctx.attributes().no_tx_pool() {
             builder.build(state, &state_provider, ctx)
@@ -286,8 +285,13 @@ where
         attributes: Attrs::RpcPayloadAttributes,
     ) -> Result<ExecutionWitness, PayloadBuilderError> {
         let attributes = Attrs::try_new(parent.hash(), attributes, 3)?;
-
-        let config = PayloadConfig { parent_header: Arc::new(parent), attributes };
+        let payload_id = attributes.payload_id();
+        let config = PayloadConfig {
+            parent_header: Arc::new(parent),
+            parent_block_info: None,
+            attributes,
+            payload_id,
+        };
         let ctx = OpPayloadBuilderCtx {
             evm_config: self.evm_config.clone(),
             builder_config: self.config.clone(),
@@ -305,6 +309,10 @@ where
 }
 
 /// Implementation of the [`PayloadBuilder`] trait for [`OpPayloadBuilder`].
+///
+/// Engine API attributes ([`OpPayloadAttrs`]) are decoded into
+/// [`OpPayloadBuilderAttributes`] at the job boundary; the rest of the builder keeps the
+/// decoded sequencer txs.
 impl<Pool, Client, Evm, N, Txs> PayloadBuilder
     for OpPayloadBuilder<Pool, Client, Evm, Txs, OpPayloadBuilderAttributes<N::SignedTx>>
 where
@@ -322,7 +330,7 @@ where
     >,
     Txs: OpPayloadTransactions<Pool::Transaction>,
 {
-    type Attributes = OpPayloadBuilderAttributes<N::SignedTx>;
+    type Attributes = OpPayloadAttrs;
     type BuiltPayload = OpBuiltPayload<N>;
 
     fn try_build(
@@ -330,6 +338,7 @@ where
         args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
     ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
         let pool = self.pool.clone();
+        let args = decode_op_build_args(args)?;
         self.build_payload(args, |attrs| self.best_transactions.best_transactions(pool, attrs))
     }
 
@@ -348,16 +357,57 @@ where
         &self,
         config: PayloadConfig<Self::Attributes, N::BlockHeader>,
     ) -> Result<Self::BuiltPayload, PayloadBuilderError> {
-        let args = BuildArguments {
+        let args = decode_op_build_args(BuildArguments {
             config,
             cached_reads: Default::default(),
+            execution_cache: None,
+            state_root_handle: None,
             cancel: Default::default(),
             best_payload: None,
-        };
+        })?;
         self.build_payload(args, |_| NoopPayloadTransactions::<Pool::Transaction>::default())?
             .into_payload()
             .ok_or_else(|| PayloadBuilderError::MissingPayload)
     }
+}
+
+/// Decodes Engine API [`OpPayloadAttrs`] into builder attributes with sequencer txs.
+fn decode_op_build_args<N>(
+    args: BuildArguments<OpPayloadAttrs, OpBuiltPayload<N>>,
+) -> Result<BuildArguments<OpPayloadBuilderAttributes<N::SignedTx>, OpBuiltPayload<N>>, PayloadBuilderError>
+where
+    N: OpPayloadPrimitives,
+    N::SignedTx: Decodable2718 + Send + Sync + core::fmt::Debug + Unpin + 'static,
+{
+    let BuildArguments {
+        cached_reads,
+        execution_cache,
+        state_root_handle,
+        config,
+        cancel,
+        best_payload,
+    } = args;
+    let parent = config.parent_header.hash();
+    let payload_id = config.payload_id;
+    let attributes = OpPayloadBuilderAttributes::from_rpc_attrs(
+        parent,
+        payload_id,
+        config.attributes.0,
+    )
+    .map_err(PayloadBuilderError::other)?;
+    Ok(BuildArguments {
+        cached_reads,
+        execution_cache,
+        state_root_handle,
+        config: PayloadConfig {
+            parent_header: config.parent_header,
+            parent_block_info: config.parent_block_info,
+            attributes,
+            payload_id,
+        },
+        cancel,
+        best_payload,
+    })
 }
 
 /// The type that builds the payload.
@@ -486,7 +536,6 @@ impl<Txs> OpBuilder<'_, Txs> {
         let execution_outcome = BlockExecutionOutput {
             state: db.take_bundle(),
             result: execution_result,
-            snapshot: None,
         };
 
         // create the executed block data
@@ -495,7 +544,6 @@ impl<Txs> OpBuilder<'_, Txs> {
             execution_output: Arc::new(execution_outcome),
             hashed_state: Arc::new(hashed_state),
             trie_updates: Arc::new(trie_updates),
-            changed_paths: None,
         };
 
         let no_tx_pool = ctx.attributes().no_tx_pool();
@@ -531,7 +579,9 @@ impl<Txs> OpBuilder<'_, Txs> {
         Attrs: OpAttributes<Transaction = N::SignedTx>,
     {
         let mut db = State::builder()
-            .with_database(StateProviderDatabase::new(&state_provider))
+            .with_database(StateProviderDatabase::new(
+                (&state_provider).into_evm_state_provider(),
+            ))
             .with_bundle_update()
             .build();
         let mut builder = ctx.block_builder(&mut db)?;
@@ -546,15 +596,9 @@ impl<Txs> OpBuilder<'_, Txs> {
             _ = db.load_cache_account(L2_TO_L1_MESSAGE_PASSER_ADDRESS)?;
         }
 
-        let ExecutionWitnessRecord { hashed_state, codes, keys, lowest_block_number: _ } =
-            ExecutionWitnessRecord::from_executed_state(&db, Default::default());
-        let state = state_provider.witness(Default::default(), hashed_state, Default::default())?;
-        Ok(ExecutionWitness {
-            state: state.into_iter().collect(),
-            codes,
-            keys,
-            ..Default::default()
-        })
+        ExecutionWitnessRecord::new(&db)
+            .into_execution_witness_without_headers(&state_provider, Default::default())
+            .map_err(PayloadBuilderError::other)
     }
 }
 

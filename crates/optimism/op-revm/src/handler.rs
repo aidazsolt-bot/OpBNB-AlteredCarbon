@@ -26,10 +26,13 @@ use revm::{
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
     interpreter::{
-        interpreter::EthInterpreter, interpreter_action::FrameInit, Gas, InitialAndFloorGas,
+        interpreter::EthInterpreter, interpreter_action::FrameInit, Gas, GasTracker, InitialAndFloorGas,
     },
-    primitives::{hardfork::SpecId, U256},
+    primitives::U256,
 };
+#[cfg(test)]
+use revm::primitives::hardfork::SpecId;
+
 use std::{boxed::Box, vec::Vec};
 
 /// Optimism handler extends the [`Handler`] with Optimism specific logic.
@@ -188,8 +191,8 @@ where
     fn last_frame_result(
         &mut self,
         evm: &mut Self::Evm,
-        _original_reservoir: u64,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
+        parent_gas: &mut GasTracker,
     ) -> Result<(), Self::Error> {
         let ctx = evm.ctx();
         let tx = ctx.tx();
@@ -278,6 +281,9 @@ where
             gas.refill_reservoir(state_gas_charged);
         }
 
+        // Keep the transaction-level gas in sync with OP deposit/refund accounting above.
+        *parent_gas = *frame_result.gas_mut().tracker_mut();
+
         Ok(())
     }
 
@@ -303,7 +309,7 @@ where
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
         eip7702_refund: i64,
-    ) {
+    ) -> Result<(), Self::Error> {
         frame_result.gas_mut().record_refund(eip7702_refund);
 
         let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
@@ -313,9 +319,10 @@ where
         let is_gas_refund_disabled = is_deposit && !is_regolith;
         if !is_gas_refund_disabled {
             frame_result.gas_mut().set_final_refund(
-                evm.ctx().cfg().spec().into_eth_spec().is_enabled_in(SpecId::LONDON),
+                evm.ctx().cfg().gas_params().max_refund_quotient(),
             );
         }
+        Ok(())
     }
 
     fn reward_beneficiary(

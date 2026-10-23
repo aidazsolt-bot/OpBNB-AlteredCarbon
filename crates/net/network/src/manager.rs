@@ -348,6 +348,8 @@ impl<N: NetworkPrimitives> NetworkManager<N> {
             discv5,
             event_sender.clone(),
             nat,
+            // FLOW-N01/N02: full UPnP advertise path re-wired later; keep handle field alive.
+            Arc::new(Mutex::new(None)),
         );
 
         // Spawn required block peer filter if configured

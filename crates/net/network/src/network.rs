@@ -15,11 +15,11 @@ use reth_eth_wire::{
 use reth_ethereum_forks::{ForkFilter, Head};
 use reth_net_nat::NatEndpoint;
 use reth_network_api::{
-    events::{EngineMessage, NetworkPeersEvents, PeerEvent, PeerEventStream},
+    events::{NetworkPeersEvents, PeerEvent, PeerEventStream},
     test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, CellCustody, DiscoveryEvent, EngineRxProvider, NetworkError,
-    NetworkEvent, NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest,
-    Peers, PeersInfo,
+    BlockDownloaderProvider, CellCustody, DiscoveryEvent, NetworkError, NetworkEvent,
+    NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
+    PeersInfo,
 };
 use reth_network_p2p::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
 use reth_network_peers::{NodeRecord, PeerId, TrustedPeer};
@@ -30,12 +30,12 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc, LazyLock,
+        Arc,
     },
 };
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
-    oneshot, Mutex as TokioMutex,
+    oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -560,16 +560,6 @@ impl<N: NetworkPrimitives> BlockDownloaderProvider for NetworkHandle<N> {
     }
 }
 
-impl<N: NetworkPrimitives> EngineRxProvider for NetworkHandle<N> {
-    fn get_to_engine_rx(&self) -> Arc<TokioMutex<mpsc::UnboundedReceiver<EngineMessage>>> {
-        static RX: LazyLock<Arc<TokioMutex<mpsc::UnboundedReceiver<EngineMessage>>>> =
-            LazyLock::new(|| {
-                let (_tx, rx) = mpsc::unbounded_channel();
-                Arc::new(TokioMutex::new(rx))
-            });
-        RX.clone()
-    }
-}
 
 #[derive(Debug)]
 struct NetworkInner<N: NetworkPrimitives = EthNetworkPrimitives> {

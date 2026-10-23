@@ -40,12 +40,13 @@ impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> InitStateCommandOp<C> {
     /// Execute the `init` command
     pub async fn execute<N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>>(
         mut self,
+        runtime: reth_tasks::Runtime,
     ) -> eyre::Result<()> {
         // If using --without-ovm for OP mainnet, handle the special case with hardcoded Bedrock
         // header. Otherwise delegate to the base InitStateCommand implementation.
         if self.without_ovm {
             if self.init_state.env.chain.is_optimism_mainnet() {
-                return self.execute_with_bedrock_header::<N>();
+                return self.execute_with_bedrock_header::<N>(runtime);
             }
 
             // For non-mainnet OP chains with --without-ovm, use the base implementation
@@ -53,7 +54,7 @@ impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> InitStateCommandOp<C> {
             self.init_state.without_evm = true;
         }
 
-        self.init_state.execute::<N>().await
+        self.init_state.execute::<N>(runtime).await
     }
 
     /// Execute init-state with hardcoded Bedrock header for OP mainnet.
@@ -61,9 +62,10 @@ impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> InitStateCommandOp<C> {
         N: CliNodeTypes<ChainSpec = C::ChainSpec, Primitives = OpPrimitives>,
     >(
         self,
+        runtime: reth_tasks::Runtime,
     ) -> eyre::Result<()> {
         info!(target: "reth::cli", "Reth init-state starting for OP mainnet");
-        let env = self.init_state.env.init::<N>(AccessRights::RW)?;
+        let env = self.init_state.env.init::<N>(AccessRights::RW, runtime)?;
 
         let Environment { config, provider_factory, .. } = env;
         let static_file_provider = provider_factory.static_file_provider();
@@ -85,21 +87,21 @@ impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> InitStateCommandOp<C> {
             // SAFETY: it's safe to commit static files, since in the event of a crash, they
             // will be unwound according to database checkpoints.
             //
-            // Necessary to commit, so the BEDROCK_HEADER is accessible to provider_rw and
-            // init_state_dump
+            // Necessary to commit, so the BEDROCK_HEADER is accessible to init_from_state_dump
             static_file_provider.commit()?;
+            provider_rw.commit()?;
         } else if last_block_number > 0 && last_block_number < BEDROCK_HEADER.number {
             return Err(eyre::eyre!(
                 "Data directory should be empty when calling init-state with --without-ovm."
             ));
+        } else {
+            provider_rw.commit()?;
         }
 
         info!(target: "reth::cli", "Initiating state dump");
 
         let reader = BufReader::new(reth_fs_util::open(&self.init_state.state)?);
-        let hash = init_from_state_dump(reader, &provider_rw, config.stages.etl)?;
-
-        provider_rw.commit()?;
+        let hash = init_from_state_dump(reader, &provider_factory, config.stages.etl)?;
 
         info!(target: "reth::cli", hash = ?hash, "Genesis block written");
         Ok(())

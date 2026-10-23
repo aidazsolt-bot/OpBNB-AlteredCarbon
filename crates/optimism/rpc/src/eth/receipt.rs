@@ -48,7 +48,17 @@ where
         BlockReader<Block = N::Block> + ChainSpecProvider<ChainSpec: OpHardforks> + Debug + 'static,
 {
     type RpcReceipt = OpTransactionReceipt;
+    type RpcLog = Log;
     type Error = OpEthApiError;
+
+    fn convert_log(
+        &self,
+        log: Log,
+        _receipt: &N::Receipt,
+        _header: &reth_primitives_traits::SealedHeader<N::BlockHeader>,
+    ) -> Result<Self::RpcLog, Self::Error> {
+        Ok(log)
+    }
 
     fn convert_receipts(
         &self,

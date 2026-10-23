@@ -8,7 +8,6 @@ use eyre::ErrReport;
 use reth_db::DatabaseEnv;
 use reth_node_builder::{NodeBuilder, WithLaunchContext};
 use reth_optimism_chainspec::OpChainSpec;
-use std::sync::Arc;
 use tracing::info;
 
 /// Launch the node.
@@ -16,7 +15,7 @@ use tracing::info;
 /// When `--rollup.proofs-history` is set, logs a warning and falls back to a normal launch
 /// until the trie-backed proofs stack is ported.
 pub async fn launch_node(
-    builder: WithLaunchContext<NodeBuilder<Arc<DatabaseEnv>, OpChainSpec>>,
+    builder: WithLaunchContext<NodeBuilder<DatabaseEnv, OpChainSpec>>,
     args: RollupArgs,
 ) -> eyre::Result<(), ErrReport> {
     if args.proofs_history {

@@ -507,6 +507,8 @@ impl StaticFilesConfig {
                 StaticFileSegment::Headers => headers,
                 StaticFileSegment::Transactions => transactions,
                 StaticFileSegment::Receipts => receipts,
+                // Legacy discriminant-only; never configured / never in `iter()`.
+                StaticFileSegment::Sidecars => None,
                 StaticFileSegment::TransactionSenders => transaction_senders,
                 StaticFileSegment::AccountChangeSets => account_change_sets,
                 StaticFileSegment::StorageChangeSets => storage_change_sets,

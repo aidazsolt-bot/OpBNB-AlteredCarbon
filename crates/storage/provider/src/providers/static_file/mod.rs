@@ -352,6 +352,7 @@ mod tests {
                 if tx_count > 0 {
                     match segment {
                         StaticFileSegment::Headers |
+                        StaticFileSegment::Sidecars |
                         StaticFileSegment::AccountChangeSets |
                         StaticFileSegment::StorageChangeSets => {
                             panic!("non tx based segment")
@@ -471,6 +472,7 @@ mod tests {
             // Prune transactions or receipts based on the segment type
             match segment {
                 StaticFileSegment::Headers |
+                StaticFileSegment::Sidecars |
                 StaticFileSegment::AccountChangeSets |
                 StaticFileSegment::StorageChangeSets => {
                     panic!("non tx based segment")
@@ -498,6 +500,7 @@ mod tests {
             if let Some(id) = expected_tx_tip {
                 match segment {
                     StaticFileSegment::Headers |
+                    StaticFileSegment::Sidecars |
                     StaticFileSegment::AccountChangeSets |
                     StaticFileSegment::StorageChangeSets => {
                         panic!("non tx based segment")

@@ -4,15 +4,16 @@ pub mod ext;
 pub mod receipt;
 pub mod transaction;
 
+mod bal;
 mod block;
 mod call;
 mod pending_block;
+mod subscriptions;
 
 use crate::{
     eth::{receipt::OpReceiptConverter, transaction::OpTxInfoMapper},
     OpEthApiError, SequencerClient,
 };
-use alloy_eips::BlockNumHash;
 use alloy_primitives::U256;
 use alloy_rpc_types_eth::{Filter, Log};
 use eyre::WrapErr;
@@ -40,9 +41,7 @@ use reth_rpc_eth_api::{
     EthApiTypes, FromEvmError, FullEthApiServer, RpcConvert, RpcConverter, RpcNodeCore,
     RpcNodeCoreExt, RpcTypes,
 };
-use reth_rpc_eth_types::{
-    logs_utils::matching_block_logs_with_tx_hashes, EthStateCache, FeeHistoryCache, GasPriceOracle,
-};
+use reth_rpc_eth_types::{EthApiSettings, EthStateCache, FeeHistoryCache, GasPriceOracle};
 use reth_storage_api::ProviderHeader;
 use reth_tasks::{
     pool::{BlockingTaskGuard, BlockingTaskPool},
@@ -143,6 +142,8 @@ impl<N: RpcNodeCore, Rpc: RpcConvert> OpEthApi<N, Rpc> {
                 .scan(
                     None::<(u64, u64)>, // state buffers base block number and timestamp
                     move |state, result| {
+                        use alloy_consensus::TxReceipt;
+
                         let fb = match result.ok() {
                             Some(fb) => fb,
                             None => return futures::future::ready(None),
@@ -159,16 +160,38 @@ impl<N: RpcNodeCore, Rpc: RpcConvert> OpEthApi<N, Rpc> {
                             return futures::future::ready(Some(Vec::new()));
                         };
 
-                        let receipts =
-                            fb.metadata.receipts.iter().map(|(tx, receipt)| (*tx, receipt));
+                        let block_hash = fb.diff.block_hash;
+                        let block_num_hash =
+                            alloy_eips::BlockNumHash::new(block_number, block_hash);
+                        if !filter.matches_block(&block_num_hash) ||
+                            !filter.matches_bloom(fb.diff.logs_bloom)
+                        {
+                            return futures::future::ready(Some(Vec::new()));
+                        }
 
-                        let all_logs = matching_block_logs_with_tx_hashes(
-                            &filter,
-                            BlockNumHash::new(block_number, fb.diff.block_hash),
-                            timestamp,
-                            receipts,
-                            false,
-                        );
+                        // OP network RpcLog is alloy Log; convert_log is identity — match locally
+                        // so the BroadcastStream closure stays 'static without capturing self.
+                        let mut all_logs = Vec::new();
+                        let mut log_index = 0u64;
+                        for (receipt_idx, (tx_hash, receipt)) in
+                            fb.metadata.receipts.iter().enumerate()
+                        {
+                            for log in receipt.logs() {
+                                if filter.matches(log) {
+                                    all_logs.push(Log {
+                                        inner: log.clone(),
+                                        block_hash: Some(block_hash),
+                                        block_number: Some(block_number),
+                                        transaction_hash: Some(*tx_hash),
+                                        transaction_index: Some(receipt_idx as u64),
+                                        log_index: Some(log_index),
+                                        removed: false,
+                                        block_timestamp: Some(timestamp),
+                                    });
+                                }
+                                log_index += 1;
+                            }
+                        }
 
                         futures::future::ready(Some(all_logs))
                     },
@@ -237,6 +260,10 @@ where
     type Error = OpEthApiError;
     type NetworkTypes = Rpc::Network;
     type RpcConvert = Rpc;
+
+    fn eth_api_settings(&self) -> &EthApiSettings {
+        self.inner.eth_api.eth_api_settings()
+    }
 
     fn converter(&self) -> &Self::RpcConvert {
         self.inner.eth_api.converter()

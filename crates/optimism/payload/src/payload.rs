@@ -149,6 +149,10 @@ impl reth_payload_primitives::PayloadAttributes for OpPayloadAttrs {
     fn slot_number(&self) -> Option<u64> {
         None
     }
+
+    fn target_gas_limit(&self) -> Option<u64> {
+        self.0.gas_limit
+    }
 }
 
 /// Optimism Payload Builder Attributes
@@ -181,11 +185,8 @@ pub struct OpPayloadBuilderAttributes<T> {
     pub min_base_fee: Option<u64>,
 }
 
-// Manual serde implementations required because:
-// - Serialize: the `transactions` field must serialize as encoded bytes (Vec<&Bytes>), not as the
-//   inner `WithEncoded<T>` type, so #[derive(Serialize)] can't be used.
-// - Deserialize: intentionally errors out since this builder type is never deserialized from the
-//   wire (the engine API uses OpPayloadAttributes, not this builder type).
+// Manual Serialize: the `transactions` field must serialize as encoded bytes (Vec<&Bytes>),
+// not as the inner `WithEncoded<T>` type, so #[derive(Serialize)] can't be used.
 impl<T> serde::Serialize for OpPayloadBuilderAttributes<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
@@ -209,63 +210,6 @@ impl<T> serde::Serialize for OpPayloadBuilderAttributes<T> {
     }
 }
 
-impl<'de, T: Decodable2718 + Send + Sync + Debug + Unpin + 'static> serde::Deserialize<'de>
-    for OpPayloadBuilderAttributes<T>
-{
-    fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
-        // This type is never deserialized in practice; the PayloadAttributes trait bound
-        // requires DeserializeOwned but the engine API uses OpPayloadAttributes for
-        // deserialization, not OpPayloadBuilderAttributes.
-        Err(serde::de::Error::custom(
-            "OpPayloadBuilderAttributes cannot be deserialized directly; \
-             use OpPayloadAttributes instead",
-        ))
-    }
-}
-
-impl<T: Decodable2718 + Send + Sync + Debug + Unpin + 'static>
-    reth_payload_primitives::PayloadBuilderAttributes for OpPayloadBuilderAttributes<T>
-{
-    type RpcPayloadAttributes = OpPayloadAttrs;
-    type Error = alloy_rlp::Error;
-
-    fn try_new(
-        parent: B256,
-        attributes: Self::RpcPayloadAttributes,
-        version: u8,
-    ) -> Result<Self, Self::Error> {
-        Self::try_new(parent, attributes.0, version)
-    }
-
-    fn payload_id(&self) -> PayloadId {
-        self.id
-    }
-
-    fn parent(&self) -> B256 {
-        self.parent
-    }
-
-    fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-
-    fn parent_beacon_block_root(&self) -> Option<B256> {
-        self.parent_beacon_block_root
-    }
-
-    fn suggested_fee_recipient(&self) -> Address {
-        self.suggested_fee_recipient
-    }
-
-    fn prev_randao(&self) -> B256 {
-        self.prev_randao
-    }
-
-    fn withdrawals(&self) -> &Withdrawals {
-        &self.withdrawals
-    }
-}
-
 impl<T> Default for OpPayloadBuilderAttributes<T> {
     fn default() -> Self {
         Self {
@@ -276,27 +220,6 @@ impl<T> Default for OpPayloadBuilderAttributes<T> {
             prev_randao: B256::default(),
             withdrawals: Default::default(),
             parent_beacon_block_root: None,
-            no_tx_pool: false,
-            transactions: Vec::new(),
-            gas_limit: None,
-            eip_1559_params: None,
-            min_base_fee: None,
-        }
-    }
-}
-
-impl<T> From<reth_ethereum_engine_primitives::EthPayloadBuilderAttributes>
-    for OpPayloadBuilderAttributes<T>
-{
-    fn from(value: reth_ethereum_engine_primitives::EthPayloadBuilderAttributes) -> Self {
-        Self {
-            id: value.id,
-            parent: value.parent,
-            timestamp: value.timestamp,
-            suggested_fee_recipient: value.suggested_fee_recipient,
-            prev_randao: value.prev_randao,
-            withdrawals: value.withdrawals,
-            parent_beacon_block_root: value.parent_beacon_block_root,
             no_tx_pool: false,
             transactions: Vec::new(),
             gas_limit: None,

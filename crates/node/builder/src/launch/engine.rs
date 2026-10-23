@@ -24,6 +24,7 @@ use reth_engine_util::EngineMessageStreamExt;
 use reth_exex::ExExManagerHandle;
 use reth_network::{types::BlockRangeUpdate, NetworkSyncUpdater, SyncState};
 use reth_network_api::BlockDownloaderProvider;
+use reth_network_p2p::headers::{HeaderSeed, SeededBlockClient};
 use reth_node_api::{
     BuiltPayload, ConsensusEngineHandle, FullNodeTypes, NodeTypes, NodeTypesWithDBAdapter,
 };
@@ -161,7 +162,9 @@ impl<B> EngineNodeLauncher<B> {
 
         // create pipeline
         let network_handle = ctx.components().network().clone();
-        let network_client = network_handle.fetch_client().await?;
+        let fetch_client = network_handle.fetch_client().await?;
+        let header_seed = Arc::new(HeaderSeed::default());
+        let network_client = SeededBlockClient::new(fetch_client.clone(), Arc::clone(&header_seed));
         let (consensus_engine_tx, consensus_engine_rx) = unbounded_channel();
 
         let node_config = ctx.node_config();
@@ -267,8 +270,9 @@ impl<B> EngineNodeLauncher<B> {
             EngineApiKind::Ethereum
         };
 
+        // Backfill builder is typed to the raw network Client; pipeline/engine use the seeded wrap.
         let (backfill_client, backfill_factory) =
-            (network_client.clone(), ctx.provider_factory().clone());
+            (fetch_client, ctx.provider_factory().clone());
         let mut orchestrator = EngineOrchestratorBuilder {
             engine_kind,
             consensus,
@@ -286,6 +290,7 @@ impl<B> EngineNodeLauncher<B> {
             sync_metrics_tx: ctx.sync_metrics_tx(),
             evm_config: ctx.components().evm_config().clone(),
             runtime: ctx.task_executor().clone(),
+            header_seed,
         }
         .build_with_backfill(|pipeline, runtime| {
             backfill.build(BackfillContext::new(

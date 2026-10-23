@@ -17,7 +17,7 @@ use futures::Stream;
 use reth_consensus::FullConsensus;
 use reth_engine_primitives::BeaconEngineMessage;
 use reth_evm::ConfigureEvm;
-use reth_network_p2p::{BlockAccessListsClient, BlockClient};
+use reth_network_p2p::{headers::HeaderSeed, BlockAccessListsClient, BlockClient};
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_primitives_traits::NodePrimitives;
 use reth_provider::{
@@ -99,6 +99,8 @@ where
     pub evm_config: C,
     /// Runtime used to spawn engine tree tasks.
     pub runtime: Runtime,
+    /// Shared HeaderSeed for FLOW-E03 Tip(hash) bind / reverse Headers.
+    pub header_seed: Arc<HeaderSeed<<N::Primitives as NodePrimitives>::BlockHeader>>,
 }
 
 impl<N, Client, S, V, C> EngineOrchestratorBuilder<N, Client, S, V, C>
@@ -146,6 +148,7 @@ where
             sync_metrics_tx,
             evm_config,
             runtime,
+            header_seed,
         } = self;
 
         let backfill_sync = backfill(pipeline, pipeline_task_spawner)?;
@@ -168,6 +171,7 @@ where
             engine_kind,
             evm_config,
             runtime,
+            header_seed,
         );
 
         let engine_handler = EngineApiRequestHandler::new(to_tree_tx, from_tree);

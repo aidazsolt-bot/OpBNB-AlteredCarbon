@@ -35,6 +35,9 @@ serde = { workspace = true, features = ["derive"] }
 jsonrpsee = { workspace = true, optional = true }
 alloy-signer = { workspace = true, optional = true }
 
+# reth RPC conversion traits (optional — used by op-reth)
+reth-rpc-traits = { workspace = true, optional = true, default-features = false }
+
 # arbitrary
 arbitrary = { workspace = true, features = ["derive"], optional = true }
 
@@ -85,3 +88,10 @@ serde = [
 	"alloy-rpc-types-eth/serde"
 ]
 jsonrpsee = ["dep:jsonrpsee"]
+reth = [
+	"std",
+	"dep:reth-rpc-traits",
+	"dep:alloy-signer",
+	"dep:alloy-network",
+	"reth-rpc-traits/std",
+]
