@@ -349,13 +349,25 @@ impl EthChainSpec for OpChainSpec {
     }
 
     fn bootnodes(&self) -> Option<Vec<NodeRecord>> {
-        self.inner.bootnodes()
+        use alloy_chains::NamedChain;
+        use reth_network_peers::{
+            op_mainnet_nodes, op_testnet_nodes, opbnb_mainnet_nodes, opbnb_testnet_nodes,
+        };
+
+        // EthChainSpec::bootnodes only knows L1 presets; without an OP/opBNB override
+        // NetworkArgs falls back to Ethereum mainnet bootnodes and Status handshakes fail.
+        match self.chain().named() {
+            Some(NamedChain::OpBNBMainnet) => Some(opbnb_mainnet_nodes()),
+            Some(NamedChain::OpBNBTestnet) => Some(opbnb_testnet_nodes()),
+            Some(NamedChain::Optimism | NamedChain::Base) => Some(op_mainnet_nodes()),
+            Some(NamedChain::OptimismSepolia | NamedChain::BaseSepolia) => Some(op_testnet_nodes()),
+            _ => self.inner.bootnodes(),
+        }
     }
 
     fn is_optimism(&self) -> bool {
         true
     }
-
 
     fn final_paris_total_difficulty(&self) -> Option<U256> {
         self.inner.final_paris_total_difficulty()
@@ -875,6 +887,17 @@ mod tests {
             "post-Fjord forkid must match op-geth tip"
         );
         assert_eq!(OPBNB_MAINNET.latest_fork_id().hash, ForkHash([0x45, 0xea, 0xc6, 0xaa]));
+    }
+
+    #[test]
+    fn opbnb_mainnet_bootnodes_are_wired() {
+        use crate::OPBNB_MAINNET;
+        use reth_network_peers::OPBNB_MAINNET_BOOTNODES;
+
+        let nodes = OPBNB_MAINNET.bootnodes().expect("opBNB mainnet must expose bootnodes");
+        assert_eq!(nodes.len(), OPBNB_MAINNET_BOOTNODES.len());
+        // Must not fall through to Ethereum mainnet seeds (different peer ids / ports).
+        assert!(nodes.iter().any(|n| n.address.to_string() == "167.235.95.170"));
     }
 
     #[test]

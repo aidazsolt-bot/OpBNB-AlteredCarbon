@@ -1,4 +1,11 @@
-//! OP bootnodes come from <https://github.com/ethereum-optimism/op-geth/blob/optimism/params/bootnodes.go>
+//! OP / opBNB bootnodes.
+//!
+//! OP stack: <https://github.com/ethereum-optimism/op-geth/blob/optimism/params/bootnodes.go>
+//! opBNB: <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
+
+use alloc::vec::Vec;
+
+use crate::{parse_nodes, NodeRecord};
 
 /// OP stack mainnet boot nodes.
 pub static OP_BOOTNODES: &[&str] = &[
@@ -11,7 +18,7 @@ pub static OP_BOOTNODES: &[&str] = &[
     "enode://ca21ea8f176adb2e229ce2d700830c844af0ea941a1d8152a9513b966fe525e809c3a6c73a2c18a12b74ed6ec4380edf91662778fe0b79f6a591236e49e176f9@184.72.129.189:30301",
     "enode://acf4507a211ba7c1e52cdf4eef62cdc3c32e7c9c47998954f7ba024026f9a6b2150cd3f0b734d9c78e507ab70d59ba61dfe5c45e1078c7ad0775fb251d7735a2@3.220.145.177:30301",
     "enode://8a5a5006159bf079d06a04e5eceab2a1ce6e0f721875b2a9c96905336219dbe14203d38f70f3754686a6324f786c2f9852d8c0dd3adac2d080f4db35efc678c5@3.231.11.52:30301",
-    "enode://cdadbe835308ad3557f9a1de8db411da1a260a98f8421d62da90e71da66e55e98aaa8e90aa7ce01b408a54e4bd2253d701218081ded3dbe5efbbc7b41d7cef79@54.198.153.150:30301"
+    "enode://cdadbe835308ad3557f9a1de8db411da1a260a98f8421d62da90e71da66e55e98aaa8e90aa7ce01b408a54e4bd2253d701218081ded3dbe5efbbc7b41d7cef79@54.198.153.150:30301",
 ];
 
 /// OP stack testnet boot nodes.
@@ -25,28 +32,33 @@ pub static OP_TESTNET_BOOTNODES: &[&str] = &[
     "enode://6f10052847a966a725c9f4adf6716f9141155b99a0fb487fea3f51498f4c2a2cb8d534e680ee678f9447db85b93ff7c74562762c3714783a7233ac448603b25f@107.21.251.55:30301",
 ];
 
-/// OPBNB mainnet boot nodes.
+/// opBNB mainnet boot nodes.
 ///
-/// The former chain-spec bootnodes are no longer responsive. Keep the verified
-/// discv5-capable peer here so opBNB nodes can bootstrap without `--bootnodes`.
+/// Official `OpBNBMainnetBootnodes` ENRs from bnb-chain/op-geth decoded to enode
+/// (ip4/tcp from ENR). Plus a verified community peer used when the official
+/// seeds are discv5-unresponsive from some networks.
 pub static OPBNB_MAINNET_BOOTNODES: &[&str] = &[
+    // bnb-chain/op-geth OpBNBMainnetBootnodes (ENR→enode)
+    "enode://547af4cbde12708f6d484f6182e9568da95404b0914fb4db4efa57794133427ca6968b86ca1322b29671d39e5db44e417f3be4b83a4c4d3772a708f82ff3948e@54.178.145.73:30303",
+    "enode://50849e69a823e74db2bdda011cd85f7ccbebb53a0655008d4cb31f948877b36376489ff848efb8f5c5a523024ede177ee6c944d0c487c1a57b04b51f1a3d8923@54.227.72.206:30303",
+    // verified reachable peer (discv5 + eth/68)
     "enode://a624fcf5276052da1f3a8151fd69e0e406903ff84d355301887d678f029160d02ab91583ed921812da04eefb12b24f4c71912c6f41603194b8c5ac8ef01ef421@167.235.95.170:30305",
 ];
 
-/// OPBNB mainnet static/trusted peers.
+/// opBNB mainnet static/trusted peers.
 ///
-/// These peers were verified as the working connections used by the live
-/// archive node. They are applied as defaults by the opBNB network builder.
+/// Applied as defaults by the network CLI when the operator did not set
+/// `--trusted-peers` / config trusted nodes, so a fresh node can dial known
+/// healthy peers without CLI flags.
 pub static OPBNB_MAINNET_STATIC_NODES: &[&str] = &[
     "enode://a624fcf5276052da1f3a8151fd69e0e406903ff84d355301887d678f029160d02ab91583ed921812da04eefb12b24f4c71912c6f41603194b8c5ac8ef01ef421@167.235.95.170:30305",
     "enode://9967d43687535151322e6b5fc4f745e8df739e1cc26b70497083d3e68b31cd9bba8efc8d8cb9992e29a783872b785f4a023dc36260e7b29891e182e5238d1b7e@157.180.98.155:30315",
 ];
 
-/// OPBNB testnet boot nodes.
+/// opBNB testnet boot nodes.
 ///
-/// Official EL bootnodes from
-/// <https://github.com/bnb-chain/op-geth/blob/develop/params/bootnodes.go>
-/// (`OpBNBTestnetBootnodes`), plus legacy community nodes.
+/// Official EL bootnodes from bnb-chain/op-geth (`OpBNBTestnetBootnodes`), plus
+/// legacy community nodes.
 pub static OPBNB_TESTNET_BOOTNODES: &[&str] = &[
     // bnb-chain/op-geth OpBNBTestnetBootnodes (ENR→enode)
     "enode://3ca42ffac304ebe4dd90fb25d0d4a18ab20cfd8bd10f2e4f00b5aeb9a54c981b3c036fb6e4e2c0779124fbb47740a2f32f70614ec5e02597915df7c0ab8ac2d1@52.68.138.166:30303",
@@ -56,3 +68,23 @@ pub static OPBNB_TESTNET_BOOTNODES: &[&str] = &[
     "enode://217cfe091047a1c3f490e96d51e2f3bd90517a9be77b8a6033b31833a193aa6c33b6d07088c4980f462162635ffbccaa413dc28cb14c4f2b96af0dd97292411f@13.112.117.88:30304",
     "enode://38c8913f87d64179bac23514ddb56a17f5b28f7e253b3825a10a2c8b9553c5df7d3b6c83a96948ad0466f384bf63236fd5e6bed6d6402156749b6b0899c82d47@54.199.235.83:30304",
 ];
+
+/// Parsed OP mainnet bootnodes.
+pub fn op_mainnet_nodes() -> Vec<NodeRecord> {
+    parse_nodes(OP_BOOTNODES.iter().copied())
+}
+
+/// Parsed OP testnet bootnodes.
+pub fn op_testnet_nodes() -> Vec<NodeRecord> {
+    parse_nodes(OP_TESTNET_BOOTNODES.iter().copied())
+}
+
+/// Parsed opBNB mainnet bootnodes.
+pub fn opbnb_mainnet_nodes() -> Vec<NodeRecord> {
+    parse_nodes(OPBNB_MAINNET_BOOTNODES.iter().copied())
+}
+
+/// Parsed opBNB testnet bootnodes.
+pub fn opbnb_testnet_nodes() -> Vec<NodeRecord> {
+    parse_nodes(OPBNB_TESTNET_BOOTNODES.iter().copied())
+}

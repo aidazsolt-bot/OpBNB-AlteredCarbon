@@ -253,6 +253,43 @@ jobs:
             --debug.terminate &
           NODE_PID=$!
           echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${PROFILE}.pid"
+
+          # Fail fast if Headers never leave "Preparing" (typical when bootnodes
+          # are missing / wrong-chain). Do not burn the full 6h job timeout.
+          WATCH_SECS=900
+          WATCH_DEADLINE=$(( $(date +%s) + WATCH_SECS ))
+          LOG_FILE=""
+          HEADERS_OK=0
+          while [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              break
+            fi
+            if [ -z "$LOG_FILE" ]; then
+              LOG_FILE="$(find "$LOG_DIR" -type f -name '*.log' 2>/dev/null | head -n 1 || true)"
+            fi
+            if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ] && \
+               grep -Eiq 'Received headers|Executing stage|Committed .*[Hh]eaders' "$LOG_FILE"; then
+              echo "Headers progress observed within ${WATCH_SECS}s — continuing sync."
+              HEADERS_OK=1
+              break
+            fi
+            sleep 15
+          done
+          if [ "$HEADERS_OK" -ne 1 ] && kill -0 "$NODE_PID" 2>/dev/null; then
+            echo "::error::No Headers progress within ${WATCH_SECS}s (likely peer/bootnode failure)."
+            echo "===== log tail ====="
+            if [ -n "${LOG_FILE:-}" ] && [ -f "$LOG_FILE" ]; then
+              tail -n 80 "$LOG_FILE" || true
+            else
+              echo "(no reth.log under $LOG_DIR yet)"
+              ls -la "$LOG_DIR" || true
+            fi
+            kill -TERM "$NODE_PID" 2>/dev/null || true
+            wait "$NODE_PID" 2>/dev/null || true
+            NODE_PID=""
+            exit 1
+          fi
+
           wait "$NODE_PID"
           status=$?
           set -e
