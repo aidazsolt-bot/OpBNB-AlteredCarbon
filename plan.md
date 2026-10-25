@@ -35,22 +35,23 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-23 ~19:47 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-25 ~13:23 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **Dest:** `/usr/src/Erigon/Binance/reth-bsc-trail-v2.8.0.git` · `rebase/reth-v2.8.0` → trail `main`.
-> **Tip-DoD:** Finish≈Tip ✅ · Binary `d5b7a7bd` v2.8.0 maxperf · `el-trigger.gap 120`.
-> **Grafana hero:** `assets/logo.png` = Reth-Dash **2026-08-10→now** (Instance anonym `opbnb-archive:6060`).
-> **Cargo target:** via env `CARGO_TARGET_DIR` (kein hardcoded `target-dir` in `.cargo/config.toml`); Smoke-CI Guard + `CARGO_TARGET_DIR=target` + gepinnte Actions
+> **FLOW-H07 Tip-DoD live:** after Finish stall @198 854 009 (gap ~399 k), reverse-headers
+> tip-priority + sliding window + short-accept + `has_open_gap`=`next_chain_tip>local` deployed
+> via `make maxperf-op` → `dist/bin/op-reth-bnb` + BlockChain restart.
+> **Live-Beleg:** `Received headers` → `Writing headers total=401554` → Headers **199 255 563**
+> (~2 min); Bodies catching up; tip-gap ≈ **636**.
 
 | Thema | Lage |
 | --- | --- |
-| **Live** | Pipeline idle @**198 642 442** (alle Stages 100%) · peers **5** · Total storage **~3.69 TiB** |
-| **Tip-DoD** | ✅ tip-following (Abnahme); Point-4 Header-`stateRoot` ≠ EVM-perfect claim |
+| **Live** | Headers/Bodies Tip-catch-up aktiv · Headers **199 255 563** · Bodies ~199 1xx k → same target · peers **4** |
+| **Tip-DoD** | ✅ FLOW-H07 live (Received→Writing→checkpoint↑) |
 | **SF enum** | Sidecars legacy slot ✅ (not in `iter()`) |
-| **Next** | offen: `PORT-FLOW-X03` / `PORT-FLOW-S02` · Snap `PORT-FLOW-SNAP-*` |
+| **Next** | `PORT-FLOW-X03` / `PORT-FLOW-S02` · Snap optional |
 
-**Migrations-Gate (nächste Stage):** PIPE ohne offenes Tip-Backfill; Rest-FLOW = Persistenz/Prune (`X03`/`S02`) + optional Snap.
+**Migrations-Gate (nächste Stage):** FLOW-H07 live ✅; Rest-FLOW = Persistenz/Prune (`X03`/`S02`) + optional Snap.
 
 ---
 
@@ -173,7 +174,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
 | PORT-FLOW-H04 | Cap → Falling | `SyncTarget::Number(N)` / Tip-Outcome `old==new` **primt** Falling-Tracker (`next_request_*`) | P2P-005 | ✅ live |
 | PORT-FLOW-H05 | Headers Persistenz | ETL=`TempDir` → Checkpoint/Metriken erst nach `Writing headers`; Restart vor Write = Download von Tip neu | Upstream #6154 | ✅ **live** |
-| PORT-FLOW-H07 | EL-Sync Gap nach Finish (eth/68) | Tip via CL NewPayload; Gap via P2P Headers. Cap auf `max_peer_best` darf bei Tip-Churn den Number-Request nicht clearen (sonst Headers `target=None`, Buffer=64, Dauer-SYNCING). | PIPE-001/002 | 🔧 Tip-churn Cap fix 2026-10-21 · Deploy offen |
+| PORT-FLOW-H07 | EL-Sync Gap nach Finish (eth/68) | Tip via CL NewPayload; Gap via P2P Headers. Cap auf `max_peer_best` darf bei Tip-Churn den Number-Request nicht clearen. Zusätzlich: Empty-coalesce höherer Miss, kein `Ready(None)` solange `next_chain_tip>local`, tip-hole High-prio + sliding window, eth/68 short GetBlockHeaders akzeptieren (kein Ban). | PIPE-001/002 | ✅ live 2026-10-25 · Headers 198 854 009→199 255 563 |
 | PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS; Announce dialbar == Listen. **`--addr <ip>`:** single-family strict | P2P-006 | ✅ |
 | PORT-FLOW-N02 | NAT / UPnP → Announce | Default **`--nat any`:** UPnP geth-style; Discv4+5 konsistent | P2P-002 | ✅ |
 | PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | ✅ |

@@ -24,7 +24,7 @@ use reth_primitives_traits::{GotExpected, SealedHeader};
 use reth_tasks::Runtime;
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{binary_heap::PeekMut, BinaryHeap},
+    collections::{binary_heap::PeekMut, BinaryHeap, HashSet},
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -113,6 +113,11 @@ pub struct ReverseHeadersDownloader<H: HeadersClient> {
     queued_validated_headers: Vec<SealedHeader<H::Header>>,
     /// EmptyResponse deferred re-submit (sleep, request, priority, sync_target_slot).
     empty_retry: Option<(Pin<Box<tokio::time::Sleep>>, HeadersRequest, Priority, bool)>,
+    /// Start block numbers of Falling requests currently in [`Self::in_progress_queue`].
+    ///
+    /// Used to detect a missing `next_chain_tip` hole while speculative lower ranges flood the
+    /// buffer (FLOW-H07 Tip-DoD live stall: `buffered≈100`, `in_flight=1`, flushed stuck).
+    in_flight_starts: HashSet<u64>,
     /// Header downloader metrics.
     metrics: HeaderDownloaderMetrics,
 }
@@ -181,19 +186,34 @@ where
     ///
     /// Returns `None` if no more requests are required.
     fn next_request(&mut self) -> Option<HeadersRequest> {
-        if let Some(local_head) = self.local_block_number() &&
-            self.next_request_block_number > local_head
-        {
-            let request =
-                calc_next_request(local_head, self.next_request_block_number, self.request_limit);
-            // need to shift the tracked request block number based on the number of requested
-            // headers so follow-up requests will use that as start.
-            self.next_request_block_number -= request.limit;
-
-            return Some(request);
+        let local_head = self.local_block_number()?;
+        if self.next_request_block_number <= local_head {
+            return None;
         }
 
-        None
+        // FLOW-H07: do not speculative-fetch far below the contiguous validation tip. Without
+        // this window, concurrent Falling fills `buffered_responses` with unusable lower ranges
+        // while the `next_chain_tip` hole is empty — then capacity is exhausted and Tip-DoD
+        // stalls (`buffered≈100`, `flushed` stuck after the first tip batch).
+        let tip = self.next_chain_tip_block_number;
+        if tip > self.next_request_block_number {
+            let below = tip - self.next_request_block_number;
+            let max_below = self
+                .request_limit
+                .saturating_mul((self.max_buffered_responses / 2).max(1) as u64)
+                .max(self.request_limit);
+            if below >= max_below {
+                return None;
+            }
+        }
+
+        let request =
+            calc_next_request(local_head, self.next_request_block_number, self.request_limit);
+        // need to shift the tracked request block number based on the number of requested
+        // headers so follow-up requests will use that as start.
+        self.next_request_block_number -= request.limit;
+
+        Some(request)
     }
 
     /// Returns the next header to use for validation.
@@ -501,18 +521,6 @@ where
                     .into());
                 }
 
-                if (headers.len() as u64) != request.limit {
-                    return Err(HeadersResponseError {
-                        peer_id: Some(peer_id),
-                        error: DownloadError::HeadersResponseTooShort(GotExpected {
-                            got: headers.len() as u64,
-                            expected: request.limit,
-                        }),
-                        request,
-                    }
-                    .into());
-                }
-
                 // sort headers from highest to lowest block number
                 headers.sort_unstable_by_key(|h| Reverse(h.number()));
 
@@ -533,6 +541,19 @@ where
                     .into());
                 }
 
+                // FLOW-H07: eth/68 peers commonly return fewer headers than `limit`. Accept the
+                // contiguous falling prefix instead of Soft-ban + resubmit (live unexpected_errors
+                // storm while Tip-DoD stalls).
+                if (headers.len() as u64) != request.limit {
+                    debug!(
+                        target: "downloaders::headers",
+                        got = headers.len(),
+                        expected = request.limit,
+                        start = requested_block_number,
+                        "Accepting short headers response"
+                    );
+                }
+
                 // check if the response is the next expected
                 if highest.number() == self.next_chain_tip_block_number {
                     // is next response, validate it
@@ -542,6 +563,19 @@ where
                         .map(Err::<(), ReverseHeadersDownloaderError<H::Header>>)
                         .transpose()?;
                 } else if highest.number() > self.existing_local_block_number() {
+                    // Do not park speculative ranges when the buffer is already full — keep
+                    // capacity for the contiguous `next_chain_tip` hole (FLOW-H07).
+                    if highest.number() < self.next_chain_tip_block_number &&
+                        self.buffered_responses.len() >= self.max_buffered_responses
+                    {
+                        debug!(
+                            target: "downloaders::headers",
+                            start = highest.number(),
+                            next_chain_tip = self.next_chain_tip_block_number,
+                            "Dropping speculative headers; buffer full waiting on next_chain_tip"
+                        );
+                        return Ok(());
+                    }
                     self.metrics.buffered_responses.increment(1.);
                     // can't validate yet
                     self.buffered_responses.push(OrderedHeadersResponse {
@@ -563,9 +597,10 @@ where
     }
 
     fn penalize_peer(&self, peer_id: Option<PeerId>, error: &DownloadError) {
-        // Empty GetBlockHeaders is a valid eth response ("I don't have these blocks"), not a
-        // protocol violation. Penalizing it burns the only useful peer during tip fetch.
-        if matches!(error, DownloadError::EmptyResponse) {
+        // Empty / short GetBlockHeaders are valid eth responses (peer may not have the full
+        // range). Penalizing burns the only useful peers during Tip-DoD (FLOW-H07).
+        if matches!(error, DownloadError::EmptyResponse | DownloadError::HeadersResponseTooShort(_))
+        {
             return;
         }
 
@@ -603,13 +638,117 @@ where
         priority: Priority,
         sync_target: bool,
     ) {
-        // Coalesce: keep the latest empty retry; drop an older pending backoff.
+        // Coalesce only toward the *higher* miss. Concurrent Falling Empties used to overwrite
+        // the Empty for `next_chain_tip_block_number` with a lower start — that hole never
+        // retried, validation stalled, then `Ready(None)` killed Tip-DoD (FLOW-H07 live:
+        // one `Received headers` batch near tip, then `in_flight=0` forever).
+        if let Some((_, existing, _, existing_sync_target)) = &self.empty_retry {
+            let existing_start = existing.start.as_number().unwrap_or(0);
+            let new_start = request.start.as_number().unwrap_or(0);
+            if existing_sync_target == &sync_target && existing_start >= new_start {
+                return;
+            }
+        }
         self.empty_retry = Some((
             Box::pin(tokio::time::sleep(EMPTY_RESPONSE_BACKOFF)),
             request,
             priority,
             sync_target,
         ));
+    }
+
+    /// True while Falling has not yet connected `next_chain_tip` down to the local head.
+    ///
+    /// Uses [`Self::next_chain_tip_block_number`] (the contiguous validation cursor), **not**
+    /// `sync_target.number() > local`: the downloader never advances `local_head` itself, so
+    /// comparing against the tip number would keep the stream open forever after Tip-DoD
+    /// (`download_at_fork_head` hung; live would never reach `Ready(None)` either once attached).
+    fn has_open_gap(&self) -> bool {
+        let local = self.local_block_number().unwrap_or(0);
+        if self.next_chain_tip_block_number > local {
+            return true;
+        }
+        // Hash-only tip: still waiting for HeaderSeed bind / tip outcome.
+        matches!(self.sync_target, Some(SyncTargetBlock::Hash(_)))
+    }
+
+    /// Re-prime Falling when the request tracker drained but the gap is still open.
+    fn ensure_falling_primed(&mut self) {
+        let local = self.local_block_number().unwrap_or(0);
+        if self.next_request_block_number > local {
+            return;
+        }
+        let resume = self
+            .next_chain_tip_block_number
+            .max(self.lowest_validated_header().map(|h| h.number().saturating_sub(1)).unwrap_or(0));
+        if resume > local {
+            debug!(
+                target: "downloaders::headers",
+                resume,
+                local,
+                next_chain_tip = self.next_chain_tip_block_number,
+                "Re-priming Falling request tracker while gap still open"
+            );
+            self.next_request_block_number = resume;
+        }
+    }
+
+    /// Whether the contiguous `next_chain_tip` range is already in-flight, buffered, or deferred.
+    fn chain_tip_request_outstanding(&self) -> bool {
+        let tip = self.next_chain_tip_block_number;
+        if tip == 0 {
+            return true;
+        }
+        self.in_flight_starts.contains(&tip) ||
+            self.buffered_responses.iter().any(|r| r.block_number() == tip) ||
+            self.empty_retry.as_ref().is_some_and(|(_, req, _, sync_target)| {
+                !sync_target && req.start.as_number() == Some(tip)
+            })
+    }
+
+    /// Force a High-priority Falling request for [`Self::next_chain_tip_block_number`] when the
+    /// contiguous hole is not covered (FLOW-H07).
+    fn ensure_chain_tip_requested(&mut self) {
+        if self.chain_tip_request_outstanding() {
+            return;
+        }
+        let local = self.local_block_number().unwrap_or(0);
+        let tip = self.next_chain_tip_block_number;
+        if tip <= local {
+            return;
+        }
+        // Normal Falling cursor already points at/above the hole — `next_request` will cover it.
+        if self.next_request_block_number >= tip {
+            return;
+        }
+        // Free capacity: drop farthest-from-tip buffered speculative ranges.
+        while self.buffered_responses.len() >= self.max_buffered_responses {
+            if self.pop_lowest_buffered().is_none() {
+                break;
+            }
+        }
+        let request = calc_next_request(local, tip, self.request_limit);
+        debug!(
+            target: "downloaders::headers",
+            tip,
+            limit = request.limit,
+            "Prioritizing next_chain_tip Falling request"
+        );
+        self.submit_request(request, Priority::High);
+    }
+
+    /// Pop the buffered response with the lowest block number (farthest from tip).
+    fn pop_lowest_buffered(&mut self) -> Option<OrderedHeadersResponse<H::Header>> {
+        if self.buffered_responses.is_empty() {
+            return None;
+        }
+        let mut entries: Vec<_> = std::mem::take(&mut self.buffered_responses).into_vec();
+        let min_idx =
+            entries.iter().enumerate().min_by_key(|(_, r)| r.block_number()).map(|(i, _)| i)?;
+        let lowest = entries.swap_remove(min_idx);
+        self.metrics.buffered_responses.decrement(1.);
+        self.buffered_responses = BinaryHeap::from(entries);
+        Some(lowest)
     }
 
     /// Returns true when a **number-only** working tip is above every peer's Status best.
@@ -637,10 +776,8 @@ where
     fn apply_working_tip_cap(&mut self, eventual_hash: B256, eventual_number: u64) {
         let reachable = self.client.max_peer_best_number().expect("should_cap checked");
         // Always track the latest CL tip — Tip churn while capped must not lose the eventual hash.
-        self.eventual_sync_target = Some(SyncTargetBlock::HashAndNumber {
-            hash: eventual_hash,
-            number: eventual_number,
-        });
+        self.eventual_sync_target =
+            Some(SyncTargetBlock::HashAndNumber { hash: eventual_hash, number: eventual_number });
         // Already capped to this reachable tip — preserve in-flight Number request / Falling.
         // FLOW-H07: Tip(hash) updates arrive every NewPayload; clearing `sync_target_request`
         // before this early-return left Headers with target=None and no Falling forever.
@@ -656,9 +793,11 @@ where
                     eventual_tip = eventual_number,
                     "Re-issuing capped working tip request after Tip update"
                 );
-                self.sync_target_request = Some(
-                    self.request_fut(self.get_sync_target_request(reachable.into()), Priority::High),
-                );
+                self.sync_target_request =
+                    Some(self.request_fut(
+                        self.get_sync_target_request(reachable.into()),
+                        Priority::High,
+                    ));
             }
             return;
         }
@@ -670,6 +809,7 @@ where
         );
         self.sync_target = Some(SyncTargetBlock::from_number(reachable));
         self.in_progress_queue.clear();
+        self.in_flight_starts.clear();
         self.metrics.in_flight_requests.set(0.);
         // Drop validated headers above the reachable working tip (CL tip was unreachable).
         self.queued_validated_headers.retain(|h| h.number() <= reachable);
@@ -742,6 +882,9 @@ where
     /// Starts a request future
     fn submit_request(&mut self, request: HeadersRequest, priority: Priority) {
         trace!(target: "downloaders::headers", ?request, "Submitting headers request");
+        if let Some(start) = request.start.as_number() {
+            self.in_flight_starts.insert(start);
+        }
         self.in_progress_queue.push(self.request_fut(request, priority));
         self.metrics.in_flight_requests.increment(1.);
     }
@@ -773,6 +916,7 @@ where
         self.queued_validated_headers = Vec::new();
         self.buffered_responses = BinaryHeap::new();
         self.in_progress_queue.clear();
+        self.in_flight_starts.clear();
         self.empty_retry = None;
 
         self.metrics.in_flight_requests.set(0.);
@@ -894,7 +1038,8 @@ where
                         self.metrics.out_of_order_requests.increment(1);
                         // FLOW-H07 Tip-DoD: never Cap a seeded Tip to Number(peer_best). We already
                         // have hash+number from NewPayload; Falling requests use soft eth/68 peer
-                        // selection above Status best. Cap was the live stall (total=1 / flushed=1).
+                        // selection above Status best. Cap was the live stall (total=1 /
+                        // flushed=1).
                         self.eventual_sync_target = None;
                         self.sync_target_request = None;
                         let parent_block_number = target.number().saturating_sub(1);
@@ -1054,6 +1199,7 @@ where
             // poll requests
             while let Poll::Ready(Some(outcome)) = this.in_progress_queue.poll_next_unpin(cx) {
                 this.metrics.in_flight_requests.decrement(1.);
+                this.in_flight_starts.remove(&outcome.block_number());
                 // handle response
                 match this.on_headers_outcome(outcome) {
                     Ok(()) => (),
@@ -1078,6 +1224,12 @@ where
             let mut progress = false;
 
             let concurrent_request_limit = this.concurrent_request_limit();
+            // FLOW-H07: always keep the contiguous tip hole covered before speculative Falling.
+            let before_tip = this.in_flight_starts.len();
+            this.ensure_chain_tip_requested();
+            if this.in_flight_starts.len() > before_tip {
+                progress = true;
+            }
             // populate requests
             while this.in_progress_queue.len() < concurrent_request_limit &&
                 this.buffered_responses.len() < this.max_buffered_responses
@@ -1124,6 +1276,19 @@ where
             }
             let next_batch = this.split_next_batch();
             if next_batch.is_empty() {
+                // FLOW-H07 Tip-DoD: never end the stream while local..tip is still open.
+                // Ending here (`Ready(None)` → stage `ChannelClosed`) after flushing only the
+                // seeded tip / first Falling batch was the live stall once peers Empty-missed
+                // the next_chain_tip hole (coalesced away) and the tracker drained to local.
+                if this.has_open_gap() {
+                    this.ensure_falling_primed();
+                    this.ensure_chain_tip_requested();
+                    // Wake on next poll; also try to submit immediately if capacity exists.
+                    if let Some(request) = this.next_request() {
+                        this.submit_request(request, Priority::Normal);
+                    }
+                    return Poll::Pending;
+                }
                 this.clear();
                 return Poll::Ready(None);
             }
@@ -1444,6 +1609,7 @@ impl ReverseHeadersDownloaderBuilder {
             buffered_responses: Default::default(),
             queued_validated_headers: Default::default(),
             empty_retry: None,
+            in_flight_starts: HashSet::new(),
             metrics: Default::default(),
         }
     }
@@ -1796,13 +1962,142 @@ mod tests {
         assert_eq!(downloader.sync_target.as_ref().and_then(|t| t.number()), Some(p0.number()));
 
         // Tip already queued from seed — only parents for Falling (high→low).
-        client
-            .extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()])
-            .await;
+        client.extend(vec![p1.as_ref().clone(), p2.as_ref().clone(), p3.as_ref().clone()]).await;
 
         let headers = downloader.next().await.unwrap().unwrap();
         assert!(headers.iter().any(|h| h.hash() == p0.hash()), "must keep seeded tip");
         assert!(headers.iter().any(|h| h.hash() == p1.hash() || h.hash() == p2.hash()));
+    }
+
+    /// FLOW-H07: Falling must not speculative-fetch far below `next_chain_tip` (buffer flood).
+    #[test]
+    fn next_request_respects_chain_tip_window() {
+        let client = Arc::new(TestHeadersClient::default());
+        let mut downloader = ReverseHeadersDownloaderBuilder::default()
+            .request_limit(10)
+            .max_buffered_responses(4)
+            .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+
+        let local = SealedHeader::default();
+        downloader.update_local_head(local);
+        downloader.next_chain_tip_block_number = 1_000;
+        // Far below the contiguous tip — outside the speculative window.
+        downloader.next_request_block_number = 100;
+        assert!(
+            downloader.next_request().is_none(),
+            "must not issue Falling far below next_chain_tip"
+        );
+
+        // Inside the window (tip - start < max_below).
+        downloader.next_request_block_number = 990;
+        let req = downloader.next_request().expect("within window");
+        assert_eq!(req.start.as_number(), Some(990));
+    }
+
+    /// FLOW-H07: when the tip hole is uncovered, prioritize that request even if the buffer is
+    /// full.
+    #[test]
+    fn ensure_chain_tip_requested_frees_buffer_and_submits() {
+        let client = Arc::new(TestHeadersClient::default());
+        let mut downloader = ReverseHeadersDownloaderBuilder::default()
+            .request_limit(1)
+            .max_buffered_responses(2)
+            .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+
+        let local = SealedHeader::default();
+        downloader.update_local_head(local);
+        downloader.next_chain_tip_block_number = 50;
+        // Cursor already ran below the contiguous tip hole (classic Tip-DoD stall).
+        downloader.next_request_block_number = 20;
+
+        // Fill buffer with speculative lower ranges.
+        for start in [40u64, 30] {
+            downloader.metrics.buffered_responses.increment(1.);
+            downloader.buffered_responses.push(OrderedHeadersResponse {
+                headers: vec![Default::default()],
+                request: HeadersRequest::falling(BlockHashOrNumber::Number(start), 1),
+                peer_id: PeerId::random(),
+            });
+        }
+        assert_eq!(downloader.buffered_responses.len(), 2);
+        assert!(!downloader.chain_tip_request_outstanding());
+
+        downloader.ensure_chain_tip_requested();
+        assert!(
+            downloader.in_flight_starts.contains(&50),
+            "must submit High-priority request for next_chain_tip"
+        );
+        assert!(
+            downloader.buffered_responses.len() < 2,
+            "must free a buffer slot for the tip hole"
+        );
+    }
+
+    /// FLOW-H07: Empty coalesce must keep the higher miss (next_chain_tip), not replace it with a
+    /// lower Falling Empty — otherwise the tip hole is never retried and the stream dies.
+    #[tokio::test]
+    async fn empty_retry_keeps_higher_miss() {
+        let client = Arc::new(TestHeadersClient::default());
+        let mut downloader = ReverseHeadersDownloaderBuilder::default()
+            .request_limit(1)
+            .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+
+        let high = HeadersRequest::falling(BlockHashOrNumber::Number(100), 1);
+        let low = HeadersRequest::falling(BlockHashOrNumber::Number(50), 1);
+        downloader.schedule_empty_retry(high.clone(), Priority::Normal, false);
+        downloader.schedule_empty_retry(low, Priority::Normal, false);
+
+        let (_, kept, _, _) = downloader.empty_retry.as_ref().expect("retry scheduled");
+        assert_eq!(
+            kept.start.as_number(),
+            Some(100),
+            "lower Empty must not overwrite next_chain_tip miss"
+        );
+
+        // Higher miss may replace a lower one.
+        let higher = HeadersRequest::falling(BlockHashOrNumber::Number(120), 1);
+        downloader.schedule_empty_retry(higher, Priority::Normal, false);
+        let (_, kept, _, _) = downloader.empty_retry.as_ref().expect("retry scheduled");
+        assert_eq!(kept.start.as_number(), Some(120));
+    }
+
+    /// FLOW-H07: draining the Falling tracker with the gap still open must Pending + re-prime,
+    /// not `Ready(None)` (stage ChannelClosed after first tip batch).
+    #[tokio::test]
+    async fn open_gap_does_not_end_stream_when_idle() {
+        reth_tracing::init_test_tracing();
+        let p3 = SealedHeader::default();
+        let p2 = child_header(&p3);
+        let p1 = child_header(&p2);
+        let p0 = child_header(&p1);
+
+        let client = Arc::new(TestHeadersClient::default());
+        let mut downloader = ReverseHeadersDownloaderBuilder::default()
+            .stream_batch_size(10)
+            .request_limit(1)
+            .build(Arc::clone(&client), Arc::new(TestConsensus::default()));
+        client.seed_header(&p0);
+        downloader.update_local_head(p3.clone());
+        downloader.update_sync_target(SyncTarget::Tip(p0.hash()));
+
+        // Simulate tracker drained after flushing the tip while parents are still missing.
+        downloader.queued_validated_headers.clear();
+        downloader.next_request_block_number = p3.number(); // <= local → next_request None
+        downloader.next_chain_tip_block_number = p1.number();
+        assert!(downloader.has_open_gap());
+
+        // No peer bodies yet — must not end the stream.
+        let poll = futures::poll!(downloader.next());
+        assert!(
+            poll.is_pending(),
+            "open gap + idle Falling must Pending, not Ready(None): {poll:?}"
+        );
+        assert!(
+            downloader.next_request_block_number > p3.number() ||
+                downloader.chain_tip_request_outstanding(),
+            "must re-prime Falling and/or keep next_chain_tip in-flight"
+        );
+        let _ = (p0, p1, p2);
     }
 
     /// FLOW-H07: Tip churn while Falling from a seeded tip must rebind to the new seed, not Cap.
@@ -1843,7 +2138,8 @@ mod tests {
             "churn must queue the new seeded tip"
         );
         assert!(downloader.sync_target_request.is_none());
-        // Falling from the new seed is covered by `seeded_tip_above_peer_best_falls_from_seed_not_cap`.
+        // Falling from the new seed is covered by
+        // `seeded_tip_above_peer_best_falls_from_seed_not_cap`.
         let _ = (p0, p1, p2, p3, p4);
     }
 
