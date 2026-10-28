@@ -227,6 +227,9 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 
 ---
 
+**Änderungsnotiz 2026-10-28 (CLI):**
+- `op-reth` / `op-reth-bnb`: `download` + `snapshot-manifest` verdrahtet (gleicher `reth-cli-commands`-Pfad wie Upstream-`reth`; `--archive`/`--full`/`--minimal`/manifest/component flags). opBNB-Export: `snapshot-manifest --chain-id 204`.
+
 **Änderungsnotiz 2026-10-28:**
 - FLOW-E03 / **PORT-ENGINE-005** Live-Root (2026-10-27 19:54Z): Finish@200 055 639, CL FCU head=safe=finalized@stale + attrs → invalid timestamp → Engine deadline; tip stuck.
 - Port-Fix `engine/tree`: stale OP ancestor + attrs → InvalidForkchoiceState (op-node ErrReset); skip lagging label persist + re-advance; unit tests.

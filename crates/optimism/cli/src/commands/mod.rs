@@ -5,7 +5,9 @@ use import_receipts::ImportReceiptsOpCommand;
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_commands::{
-    config_cmd, db, dump_genesis, init_cmd,
+    config_cmd, db, download,
+    download::manifest_cmd,
+    dump_genesis, init_cmd,
     node::{self, NoArgs},
     p2p, prune, re_execute, stage,
 };
@@ -42,6 +44,18 @@ pub enum Commands<Spec: ChainSpecParser = OpChainSpecParser, Ext: clap::Args + f
     /// Database debugging utilities
     #[command(name = "db")]
     Db(db::Command<Spec>),
+    /// Download public node snapshots (manifest / archive / full / minimal).
+    ///
+    /// Same modular snapshot pipeline as upstream `reth download` (`--archive`,
+    /// `--full`, `--minimal`, `--manifest-url`, component flags, resumable extracts).
+    #[command(name = "download")]
+    Download(download::DownloadCommand<Spec>),
+    /// Generate a snapshot manifest from local archive files.
+    ///
+    /// Same packaging path as upstream `reth snapshot-manifest` (chunked
+    /// `*.tar.zst` + `manifest.json`). For opBNB set `--chain-id 204`.
+    #[command(name = "snapshot-manifest")]
+    SnapshotManifest(manifest_cmd::SnapshotManifestCommand),
     /// Manipulate individual stages.
     #[command(name = "stage")]
     Stage(Box<stage::Command<Spec>>),
@@ -76,6 +90,8 @@ impl<
             Self::InitState(cmd) => cmd.chain_spec(),
             Self::DumpGenesis(cmd) => cmd.chain_spec(),
             Self::Db(cmd) => cmd.chain_spec(),
+            Self::Download(cmd) => cmd.chain_spec(),
+            Self::SnapshotManifest(_) => None,
             Self::Stage(cmd) => cmd.chain_spec(),
             Self::P2P(cmd) => cmd.chain_spec(),
             Self::Config(_) => None,

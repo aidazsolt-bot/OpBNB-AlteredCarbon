@@ -60,8 +60,7 @@ impl<C: ChainSpecParser<ChainSpec = OpChainSpec>> ImportReceiptsOpCommand<C> {
             "Chunking receipts import"
         );
 
-        let Environment { provider_factory, .. } =
-            self.env.init::<N>(AccessRights::RW, runtime)?;
+        let Environment { provider_factory, .. } = self.env.init::<N>(AccessRights::RW, runtime)?;
 
         import_receipts_from_file(
             provider_factory,

@@ -112,6 +112,10 @@ where
             Commands::Db(command) => {
                 runner.run_blocking_command_until_exit(|ctx| command.execute::<OpNode>(ctx))
             }
+            Commands::Download(command) => runner.run_blocking_until_ctrl_c(async move {
+                command.execute::<OpNode>().await.map(|_| ())
+            }),
+            Commands::SnapshotManifest(command) => command.execute(),
             Commands::Stage(command) => {
                 runner.run_command_until_exit(|ctx| command.execute::<OpNode, _>(ctx, components))
             }

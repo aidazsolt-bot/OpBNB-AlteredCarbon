@@ -33,7 +33,10 @@ pub struct SnapshotManifestCommand {
     #[arg(long)]
     block: Option<u64>,
 
-    /// Chain ID.
+    /// Chain ID written into the manifest.
+    ///
+    /// Defaults to `1` (Ethereum mainnet). For OP-Stack / opBNB datadirs pass the L2
+    /// chain id (e.g. `--chain-id 204` for opBNB mainnet, `10` OP Mainnet, `8453` Base).
     #[arg(long, default_value = "1")]
     chain_id: u64,
 
