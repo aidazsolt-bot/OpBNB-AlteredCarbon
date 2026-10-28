@@ -3535,10 +3535,9 @@ async fn test_on_backfill_sync_finished_opstack_zero_finalized_stays_idle() {
         .fcu_to(base_chain.last().unwrap().recovered_block().hash(), ForkchoiceStatus::Valid)
         .await;
 
-    let main_chain = test_harness.block_builder.create_fork(
-        base_chain[0].recovered_block(),
-        DEFAULT_BACKFILL_RUN_THRESHOLD + 50,
-    );
+    let main_chain = test_harness
+        .block_builder
+        .create_fork(base_chain[0].recovered_block(), DEFAULT_BACKFILL_RUN_THRESHOLD + 50);
     let tip_block = main_chain.last().unwrap().clone();
     let tip_hash = tip_block.hash();
     test_harness.tree.state.buffer.insert_block(tip_block.clone_sealed_block().into());
@@ -3579,10 +3578,12 @@ fn test_advance_op_safe_finalized_if_stale_advances_to_tip() {
     test_harness.tree.engine_kind = EngineApiKind::OpStack;
 
     let tip_number = DEFAULT_BACKFILL_RUN_THRESHOLD + 100;
-    let blocks: Vec<_> = test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
     test_harness = test_harness.with_blocks(blocks);
 
-    let stale = SealedHeader::seal_slow(alloy_consensus::Header { number: 1, ..Default::default() });
+    let stale =
+        SealedHeader::seal_slow(alloy_consensus::Header { number: 1, ..Default::default() });
     test_harness.tree.canonical_in_memory_state.set_finalized(stale.clone());
     test_harness.tree.canonical_in_memory_state.set_safe(stale);
 
@@ -3602,10 +3603,12 @@ fn test_advance_op_safe_finalized_if_stale_noop_on_eth() {
     test_harness.tree.engine_kind = EngineApiKind::Ethereum;
 
     let tip_number = DEFAULT_BACKFILL_RUN_THRESHOLD + 100;
-    let blocks: Vec<_> = test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
     test_harness = test_harness.with_blocks(blocks);
 
-    let stale = SealedHeader::seal_slow(alloy_consensus::Header { number: 1, ..Default::default() });
+    let stale =
+        SealedHeader::seal_slow(alloy_consensus::Header { number: 1, ..Default::default() });
     test_harness.tree.canonical_in_memory_state.set_finalized(stale.clone());
     test_harness.tree.canonical_in_memory_state.set_safe(stale);
 
@@ -3615,6 +3618,110 @@ fn test_advance_op_safe_finalized_if_stale_noop_on_eth() {
         test_harness.tree.canonical_in_memory_state.get_finalized_num_hash().map(|h| h.number),
         Some(1),
         "Ethereum must not auto-advance finalized"
+    );
+}
+
+/// FLOW-E03: CL FCU must not rewind OP safe/finalized to a hash that lags tip ≫ threshold.
+#[test]
+fn test_op_fcu_skips_stale_safe_finalized_labels() {
+    reth_tracing::init_test_tracing();
+    let mut test_harness = TestHarness::new(MAINNET.clone());
+    test_harness.tree.engine_kind = EngineApiKind::OpStack;
+
+    let tip_number = DEFAULT_BACKFILL_RUN_THRESHOLD + 50;
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
+    test_harness = test_harness.with_blocks(blocks.clone());
+
+    let tip = blocks[tip_number as usize].recovered_block();
+    let stale = blocks[1].recovered_block();
+    test_harness.tree.canonical_in_memory_state.set_finalized(tip.clone_sealed_header());
+    test_harness.tree.canonical_in_memory_state.set_safe(tip.clone_sealed_header());
+
+    test_harness
+        .tree
+        .ensure_consistent_forkchoice_state(ForkchoiceState {
+            head_block_hash: tip.hash(),
+            safe_block_hash: stale.hash(),
+            finalized_block_hash: stale.hash(),
+        })
+        .expect("stale OP labels must be skipped, not invalid");
+
+    assert_eq!(
+        test_harness.tree.canonical_in_memory_state.get_finalized_num_hash().map(|h| h.number),
+        Some(tip_number),
+        "FCU must not rewind finalized behind tip"
+    );
+    assert_eq!(
+        test_harness.tree.canonical_in_memory_state.get_safe_num_hash().map(|h| h.number),
+        Some(tip_number),
+        "FCU must not rewind safe behind tip"
+    );
+}
+
+/// FLOW-E03: attrs FCU on stale head → InvalidForkchoiceState (op-node ErrReset), tip kept.
+#[tokio::test]
+async fn test_op_fcu_stale_ancestor_with_attrs_keeps_tip() {
+    reth_tracing::init_test_tracing();
+    let mut test_harness = TestHarness::new(MAINNET.clone());
+    test_harness.tree.engine_kind = EngineApiKind::OpStack;
+    test_harness.tree.config = test_harness.tree.config.clone().with_unwind_canonical_header(true);
+
+    let tip_number = DEFAULT_BACKFILL_RUN_THRESHOLD + 40;
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
+    test_harness = test_harness.with_blocks(blocks.clone());
+
+    let tip = blocks[tip_number as usize].recovered_block();
+    let stale = blocks[1].recovered_block();
+    test_harness.tree.canonical_in_memory_state.set_finalized(stale.clone_sealed_header());
+    test_harness.tree.canonical_in_memory_state.set_safe(stale.clone_sealed_header());
+
+    let tip_hash = tip.hash();
+    let tip_num = tip.number();
+    let attrs = EthPayloadAttributes {
+        // Far ahead of stale parent → would be invalid timestamp if attrs were processed.
+        timestamp: tip.timestamp() + 12,
+        prev_randao: B256::ZERO,
+        suggested_fee_recipient: Default::default(),
+        withdrawals: None,
+        parent_beacon_block_root: None,
+        slot_number: None,
+        ..Default::default()
+    };
+
+    let outcome = test_harness
+        .tree
+        .on_forkchoice_updated(
+            ForkchoiceState {
+                head_block_hash: stale.hash(),
+                safe_block_hash: stale.hash(),
+                finalized_block_hash: stale.hash(),
+            },
+            Some(attrs),
+        )
+        .unwrap();
+
+    assert_eq!(outcome.outcome.forkchoice_status(), ForkchoiceStatus::Invalid);
+    let err = outcome.outcome.await.unwrap_err();
+    assert_matches!(
+        err,
+        BeaconForkChoiceUpdateError::ForkchoiceUpdateError(ForkchoiceUpdateError::InvalidState)
+    );
+    assert!(
+        test_harness.payload_command_rx.try_recv().is_err(),
+        "must not start payload build on stale OP head"
+    );
+    assert_eq!(
+        test_harness.tree.state.tree_state.canonical_block_hash(),
+        tip_hash,
+        "must not unwind tip to stale FCU head"
+    );
+    assert_eq!(test_harness.tree.state.tree_state.canonical_block_number(), tip_num);
+    assert_eq!(
+        test_harness.tree.canonical_in_memory_state.get_finalized_num_hash().map(|h| h.number),
+        Some(tip_num),
+        "must advance labels to tip so FindL2Heads after ErrReset stays near tip"
     );
 }
 

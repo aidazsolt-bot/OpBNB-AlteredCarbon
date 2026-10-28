@@ -24,8 +24,7 @@ use reth_engine_primitives::{
 };
 use reth_errors::{ConsensusError, ProviderResult};
 use reth_evm::ConfigureEvm;
-use reth_network_p2p::full_block::SealedBlockWithAccessList;
-use reth_network_p2p::headers::HeaderSeed;
+use reth_network_p2p::{full_block::SealedBlockWithAccessList, headers::HeaderSeed};
 use reth_payload_builder::{BuildNewPayload, PayloadBuilderHandle, PayloadBuilderLease};
 use reth_payload_primitives::{BuiltPayload, NewPayloadError, PayloadAttributes, PayloadTypes};
 use reth_primitives_traits::{
@@ -1280,6 +1279,8 @@ where
             // safe or finalized hashes are invalid
             return Ok(Some(TreeOutcome::new(outcome)));
         }
+        // Undo CL label rewind after apply (FLOW-E03).
+        self.advance_op_safe_finalized_if_stale();
 
         self.payload_validator.on_canonical_head_changed(state.head_block_hash, &self.state);
 
@@ -1347,6 +1348,49 @@ where
                 return Ok(Some(TreeOutcome::new(OnForkChoiceUpdated::invalid_state())));
             }
 
+            // FLOW-E03 live (2026-10-27): op-node Derive kept L2 safe/finalized at an early fork
+            // while unsafe tip followed via newPayload. Engine stage then FCU'd head=stale
+            // finalized + payload_attributes → invalid timestamp → derivation critical error →
+            // Engine RPC `context deadline exceeded` forever. Never unwind tip or build attrs on
+            // a head that lags tip by more than the backfill threshold.
+            //
+            // Self-heal without process restart (op-node `attributes.forceNextSafeAttributes`):
+            // - always re-advance EL safe/finalized to tip so FindL2Heads stays O(1);
+            // - with attrs: `InvalidForkchoiceState` → `BlockInsertPrestateErr` → `ErrReset`
+            //   (pipeline reset + re-FindL2Heads at tip-near labels; driver does not exit);
+            // - without attrs: VALID at tip (like geth ETH "Ignoring beacon update to old head").
+            // Returning VALID+nil PayloadID would only yield Temporary retries on the same stale
+            // parent and can stall tip-follow until a manual restart.
+            let tip_number = self.state.tree_state.current_canonical_head.number;
+            let stale_op_head =
+                self.engine_kind.is_opstack() && self.op_label_lags_tip(canonical_header.number());
+            if stale_op_head {
+                warn!(
+                    target: "engine::tree",
+                    fcu_head = canonical_header.number(),
+                    tip = tip_number,
+                    has_attrs = attrs.is_some(),
+                    "Rejecting OP FCU on stale canonical ancestor behind tip (FLOW-E03)"
+                );
+                self.advance_op_safe_finalized_if_stale();
+                if attrs.is_some() {
+                    return Ok(Some(TreeOutcome::new(OnForkChoiceUpdated::invalid_state())));
+                }
+                return Ok(Some(Self::valid_outcome(ForkchoiceState {
+                    head_block_hash: self.state.tree_state.canonical_block_hash(),
+                    safe_block_hash: self
+                        .canonical_in_memory_state
+                        .get_safe_num_hash()
+                        .map(|h| h.hash)
+                        .unwrap_or(state.safe_block_hash),
+                    finalized_block_hash: self
+                        .canonical_in_memory_state
+                        .get_finalized_num_hash()
+                        .map(|h| h.hash)
+                        .unwrap_or(state.finalized_block_hash),
+                })));
+            }
+
             // We need to effectively unwind the _canonical_ chain to the FCU's head, which is
             // part of the canonical chain. We need to update the latest block state to reflect
             // the canonical ancestor. This ensures that state providers and the transaction
@@ -1368,6 +1412,11 @@ where
                 return Ok(Some(TreeOutcome::new(updated)));
             }
 
+            if let Err(outcome) = self.ensure_consistent_forkchoice_state(state) {
+                return Ok(Some(TreeOutcome::new(outcome)));
+            }
+            self.advance_op_safe_finalized_if_stale();
+
             // The head block is already canonical and we're not processing payload attributes,
             // so we're not triggering a payload job and can return right away
             return Ok(Some(Self::valid_outcome(state)));
@@ -1387,6 +1436,7 @@ where
                 // safe or finalized hashes are invalid
                 return Ok(Some(TreeOutcome::new(outcome)));
             }
+            self.advance_op_safe_finalized_if_stale();
 
             if let Some(attr) = attrs {
                 // Clone only when we actually need to process the attributes
@@ -1463,9 +1513,9 @@ where
                     %backfill_hash,
                     "FCU tip buffered+seeded, starting backfill"
                 );
-                return Ok(syncing.with_event(TreeEvent::BackfillAction(
-                    BackfillAction::Start(backfill_hash.into()),
-                )));
+                return Ok(syncing.with_event(TreeEvent::BackfillAction(BackfillAction::Start(
+                    backfill_hash.into(),
+                ))));
             }
             debug!(
                 target: "engine::tree",
@@ -2889,15 +2939,22 @@ where
         state.finalized_block_hash
     }
 
+    /// True when `label_number` lags the local tip by more than the backfill threshold (FLOW-E03).
+    fn op_label_lags_tip(&self, label_number: u64) -> bool {
+        let tip = self.state.tree_state.current_canonical_head.number;
+        tip.saturating_sub(label_number) > self.config.backfill_run_threshold()
+    }
+
     /// On OP Stack, advance persisted `safe`/`finalized` labels to the local tip when they lag by
     /// more than the configured backfill threshold.
     ///
     /// op-node `FindL2Heads` walks L2 from unsafe toward finalized (`Walking back L1Block`). If
-    /// pipeline catch-up left `finalized` at an early fork (e.g. Wright) while `latest` is near tip,
-    /// that walk spans O(10⁸) blocks, starves the Engine driver (`context deadline exceeded`), and
-    /// yields `Skipping EL sync` / zero EL `newPayload` (FLOW-E03). Advancing labels is safe here:
-    /// the blocks are already canonical on disk; we are not inventing consensus finality for CL
-    /// derivation — only unblocking Engine-API tip-follow after EL-led archive sync.
+    /// pipeline catch-up left `finalized` at an early fork (e.g. Wright) while `latest` is near
+    /// tip, that walk spans O(10⁸) blocks, starves the Engine driver (`context deadline
+    /// exceeded`), and yields `Skipping EL sync` / zero EL `newPayload` (FLOW-E03). Advancing
+    /// labels is safe here: the blocks are already canonical on disk; we are not inventing
+    /// consensus finality for CL derivation — only unblocking Engine-API tip-follow after
+    /// EL-led archive sync.
     fn advance_op_safe_finalized_if_stale(&self) {
         if !self.engine_kind.is_opstack() {
             return;
@@ -2910,14 +2967,22 @@ where
 
         let previous_finalized =
             self.canonical_in_memory_state.get_finalized_num_hash().map(|f| f.number).unwrap_or(0);
-        let lag = tip.number.saturating_sub(previous_finalized);
-        if lag <= self.config.backfill_run_threshold() {
-            return;
+        if !self.op_label_lags_tip(previous_finalized) {
+            // Also repair safe if only safe lags (finalized already near tip).
+            let previous_safe =
+                self.canonical_in_memory_state.get_safe_num_hash().map(|s| s.number).unwrap_or(0);
+            if !self.op_label_lags_tip(previous_safe) {
+                return;
+            }
         }
 
         let Ok(Some(header)) = self.provider.sealed_header(tip.number) else {
             return;
         };
+
+        let previous_safe =
+            self.canonical_in_memory_state.get_safe_num_hash().map(|s| s.number).unwrap_or(0);
+        let lag = tip.number.saturating_sub(previous_finalized.min(previous_safe));
 
         let _ = self.persistence.save_finalized_block_number(tip.number);
         let _ = self.persistence.save_safe_block_number(tip.number);
@@ -2930,9 +2995,18 @@ where
             target: "engine::tree",
             tip = tip.number,
             previous_finalized,
+            previous_safe,
             lag,
             "Advanced stale OP safe/finalized labels to local tip"
         );
+    }
+
+    /// FLOW-E03: CL may keep sending FCU `safe`/`finalized` at an early fork while the EL tip
+    /// has already caught up via pipeline / unsafe inserts. Persisting those hashes rewinds the
+    /// labels and recreates the FindL2Heads tip→stale-finalized walk. Skip the apply and keep
+    /// (or re-advance) tip-level labels instead.
+    fn should_skip_stale_op_label(&self, label_number: u64) -> bool {
+        self.engine_kind.is_opstack() && self.op_label_lags_tip(label_number)
     }
 
     /// Returns the target hash to sync to if the distance from the local tip is greater than the
@@ -3654,6 +3728,16 @@ where
                 return Err(OnForkChoiceUpdated::invalid_state())
             }
             Ok(Some(finalized)) => {
+                if self.should_skip_stale_op_label(finalized.number()) {
+                    debug!(
+                        target: "engine::tree",
+                        finalized = finalized.number(),
+                        tip = self.state.tree_state.current_canonical_head.number,
+                        "Skipping stale OP finalized label from FCU (FLOW-E03)"
+                    );
+                    self.advance_op_safe_finalized_if_stale();
+                    return Ok(())
+                }
                 if Some(finalized.num_hash()) !=
                     self.canonical_in_memory_state.get_finalized_num_hash()
                 {
@@ -3686,6 +3770,16 @@ where
                 return Err(OnForkChoiceUpdated::invalid_state())
             }
             Ok(Some(safe)) => {
+                if self.should_skip_stale_op_label(safe.number()) {
+                    debug!(
+                        target: "engine::tree",
+                        safe = safe.number(),
+                        tip = self.state.tree_state.current_canonical_head.number,
+                        "Skipping stale OP safe label from FCU (FLOW-E03)"
+                    );
+                    self.advance_op_safe_finalized_if_stale();
+                    return Ok(())
+                }
                 if Some(safe.num_hash()) != self.canonical_in_memory_state.get_safe_num_hash() {
                     // we're also persisting the safe block on disk so we can reload it on
                     // restart this is required by optimism which queries the safe block: <https://github.com/ethereum-optimism/optimism/blob/c383eb880f307caa3ca41010ec10f30f08396b2e/op-node/rollup/sync/start.go#L65-L65>

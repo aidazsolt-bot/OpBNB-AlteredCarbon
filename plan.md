@@ -35,23 +35,22 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-25 ~13:23 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-28 ~15:10 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **FLOW-H07 Tip-DoD live:** after Finish stall @198 854 009 (gap ~399 k), reverse-headers
-> tip-priority + sliding window + short-accept + `has_open_gap`=`next_chain_tip>local` deployed
-> via `make maxperf-op` → `dist/bin/op-reth-bnb` + BlockChain restart.
-> **Live-Beleg:** `Received headers` → `Writing headers total=401554` → Headers **199 255 563**
-> (~2 min); Bodies catching up; tip-gap ≈ **636**.
+> **FLOW-E03 deployed** (`make maxperf-op` → `dist/bin/op-reth-bnb`, Restart ~14:09Z).
+> Boot: `Advanced stale OP safe/finalized` tip=**200 055 655** ← previous **199 882 735** (lag ~173 k).
+> CL `newPayload` Tip-Seed **~200 318 595** → `BackfillSyncStarted` → Headers reverse
+> `Received`…`Writing headers total=262940` (H07 path). Public tip ~**200 318 786**.
 
 | Thema | Lage |
 | --- | --- |
-| **Live** | Headers/Bodies Tip-catch-up aktiv · Headers **199 255 563** · Bodies ~199 1xx k → same target · peers **4** |
-| **Tip-DoD** | ✅ FLOW-H07 live (Received→Writing→checkpoint↑) |
-| **SF enum** | Sidecars legacy slot ✅ (not in `iter()`) |
-| **Next** | `PORT-FLOW-X03` / `PORT-FLOW-S02` · Snap optional |
+| **Live** | Backfill Headers Tip-catch-up aktiv · gap ~263 k · peers OK · validation/invalid=0 |
+| **Tip-DoD** | H07 ✅ · E03 Labels+deploy ✅ · Tip-follow via Backfill in progress |
+| **Health** | bodies_validation=0 · invalid_messages=0 |
+| **Next** | Bodies/Exec catch-up to tip · dann `X03`/`S02` |
 
-**Migrations-Gate (nächste Stage):** FLOW-H07 live ✅; Rest-FLOW = Persistenz/Prune (`X03`/`S02`) + optional Snap.
+**Migrations-Gate (nächste Stage):** E03 Tip-DoD bis Finish≈public; Rest = Persistenz/Prune (`X03`/`S02`).
 
 ---
 
@@ -168,7 +167,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | --- | --- | --- | --- | --- |
 | PORT-FLOW-E01 | Engine poll | `downloader.poll` vor CL-`incoming_requests`, sonst keine `DownloadedBlocks` → kein Backfill | ENGINE-001, PIPE-001 | ✅ live Backfill |
 | PORT-FLOW-E02 | Missing block | Gap ≫ Buffer → **Backfill**, nicht endlos `Download(single)` / Tip-Chase | ENGINE-001, PIPE-001 | ✅ |
-| PORT-FLOW-E03 | Tip-Header-Quelle | Tip-Hash aus **CL/NewPayload/HeaderSeed**; OP: `safe`/`finalized` Labels dürfen nach Pipeline-Catch-up nicht monatelang hinter Tip hängen (sonst op-node FindL2Heads-Walk tip→stale-finalized) | ENGINE-003 | ✅ Labels+Stream 2026-10-21 · Rest Tip-DoD (Finish≈public) |
+| PORT-FLOW-E03 | Tip-Header-Quelle | Tip aus **CL/NewPayload/HeaderSeed**. OP: (1) `safe`/`finalized` nicht monatelang hinter Tip (FindL2Heads-Walk); (2) FCU darf Labels nicht hinter Tip rewinden; (3) FCU `head`≪tip + attrs → InvalidForkchoiceState (ErrReset), kein Tip-Unwind | ENGINE-003/005 | ✅ Labels+deploy 2026-10-28 · Tip-Backfill live (gap~263k) |
 | PORT-FLOW-H01 | eth/68 Status | Tip oft nur **Hash** → Number-Resolve bevor `HeadersAtLeast(CL)` | P2P-003 | ✅ live |
 | PORT-FLOW-H02 | Peer-Auswahl / Empty | `HeadersAtLeast` + miss-map; Empty → backoff **ohne** Peer-Drop/Ban; eth/69 `max(best,range.latest)` + Range-Filter | P2P-003 | ✅ live |
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
@@ -210,13 +209,29 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - Ban auf Empty Headers/Bodies
 - „Workspace kompiliert“ / nextest grün als Protokoll-Done
 
+## Portierungs-Bugliste (aktiv — Engine / Tip)
+
+| ID | Symptom | Ursache | Status |
+| --- | --- | --- | --- |
+| PORT-ENGINE-001 | Tip-FCU ohne Pipeline / Grafana Stages No data | Download-Poll hinter CL-Flood; Tip-Chase statt Backfill | ✅ live (FLOW-E01/E02) |
+| PORT-ENGINE-002 | Grafana „0 Blöcke“ vs „No data“ verwechselt | Docs-Semantik Checkpoint vs idle | 📝 docs |
+| PORT-ENGINE-003 | Headers Tip-Hash per P2P → empty → Ban | Tip muss von CL/HeaderSeed kommen | ✅ closed · Tip-Seed live (FLOW-E03/H05) |
+| PORT-ENGINE-004 | Reload/Stop: Panic `SelectNextSome polled after terminated` | Engine-Shutdown nach Stream-Ende | 🧊 parked |
+| PORT-ENGINE-005 | Nach Finish≈Tip: CL FCU `head=safe=finalized`@stale + `payload_attributes` → invalid timestamp → Derive crit / Engine `context deadline`; Tip stuck; Labels von CL zurückgedreht | OP-FCU-Pfad: Tip-Unwind + Attrs auf Ancestor ≫ Backfill-Threshold; Persistenz lagging safe/finalized | ✅ **fixed+deployed 2026-10-28** · FLOW-E03: skip stale labels; attrs→`InvalidForkchoiceState` (op-node `ErrReset`); `advance_op_safe_finalized_if_stale`. Live: Advanced **199 882 735→200 055 655**; Backfill `Writing headers total=262940` |
+| PORT-FLOW-H07 | Tip-DoD nach Finish stall (eth/68 Empty / Falling) | Cap/Empty/tip-window / `has_open_gap` | ✅ live 2026-10-25 · re-verified 2026-10-28 Backfill after E03 |
+
 ## Roadmap / weitere Abschnitte
 
-> Die folgenden historischen Abschnitte (Session 13 ff., Phasenübersicht, Buglisten,
-> Aufwandsprotokolle, Cleanup, Feature-Requests, Chronologie) bleiben unverändert erhalten.
-> (Aus Platzgründen in dieser Änderungsrunde nicht vollständig neu formatiert.)
+> Ältere Abschnitte (Session 13 ff., volle historische Buglisten, Aufwandsprotokolle, …)
+> sind Archiv/Referenz. Aktive Engine/Tip-Bugs: Tabelle oben; FLOW-Matrix weiter oben.
 
 ---
+
+**Änderungsnotiz 2026-10-28:**
+- FLOW-E03 / **PORT-ENGINE-005** Live-Root (2026-10-27 19:54Z): Finish@200 055 639, CL FCU head=safe=finalized@stale + attrs → invalid timestamp → Engine deadline; tip stuck.
+- Port-Fix `engine/tree`: stale OP ancestor + attrs → InvalidForkchoiceState (op-node ErrReset); skip lagging label persist + re-advance; unit tests.
+- Deploy maxperf + Restart ~14:09Z: Advanced labels 199 882 735→200 055 655; CL newPayload tip~200 318 595 → Backfill Writing headers 262940.
+- Bugliste: ENGINE-005 ✅; H07 re-verify noted.
 
 **Änderungsnotiz 2026-10-21:**
 - FLOW-E03: `advance_op_safe_finalized_if_stale` + immediate Persist safe/finalized; op-node fall-through reverted.
