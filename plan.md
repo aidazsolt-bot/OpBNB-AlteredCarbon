@@ -35,22 +35,22 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-28 ~15:10 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-10-28 ~16:05 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **FLOW-E03 deployed** (`make maxperf-op` → `dist/bin/op-reth-bnb`, Restart ~14:09Z).
+> **FLOW-E03 / ENGINE-005 deployed** (`make maxperf-op` → `dist/bin/op-reth-bnb`, Restart ~14:09Z).
 > Boot: `Advanced stale OP safe/finalized` tip=**200 055 655** ← previous **199 882 735** (lag ~173 k).
-> CL `newPayload` Tip-Seed **~200 318 595** → `BackfillSyncStarted` → Headers reverse
-> `Received`…`Writing headers total=262940` (H07 path). Public tip ~**200 318 786**.
+> Headers reverse backfill **done** (`Writing headers total=262940`) → Headers/Bodies/Sender/Exec @ **200 318 595**.
+> Merkle/Index/TxLookup/Finish still @ **200 055 655** (catch-up **262 940**). Public tip ~**200 318 k**.
 
 | Thema | Lage |
 | --- | --- |
-| **Live** | Backfill Headers Tip-catch-up aktiv · gap ~263 k · peers OK · validation/invalid=0 |
-| **Tip-DoD** | H07 ✅ · E03 Labels+deploy ✅ · Tip-follow via Backfill in progress |
+| **Live** | Tip Headers/Exec ✅ · Merkle→Finish catch-up **~263 k** · peers OK · validation/invalid=0 |
+| **Tip-DoD** | H07 ✅ · E03/ENGINE-005 ✅ (no tip rewind under stale FCU+attrs) |
 | **Health** | bodies_validation=0 · invalid_messages=0 |
-| **Next** | Bodies/Exec catch-up to tip · dann `X03`/`S02` |
+| **Next** | MerkleExecute…Finish → tip · dann `X03`/`S02` |
 
-**Migrations-Gate (nächste Stage):** E03 Tip-DoD bis Finish≈public; Rest = Persistenz/Prune (`X03`/`S02`).
+**Migrations-Gate (nächste Stage):** Finish≈public nach Merkle-Catch-up; Rest = Persistenz/Prune (`X03`/`S02`).
 
 ---
 
@@ -173,7 +173,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
 | PORT-FLOW-H04 | Cap → Falling | `SyncTarget::Number(N)` / Tip-Outcome `old==new` **primt** Falling-Tracker (`next_request_*`) | P2P-005 | ✅ live |
 | PORT-FLOW-H05 | Headers Persistenz | ETL=`TempDir` → Checkpoint/Metriken erst nach `Writing headers`; Restart vor Write = Download von Tip neu | Upstream #6154 | ✅ **live** |
-| PORT-FLOW-H07 | EL-Sync Gap nach Finish (eth/68) | Tip via CL NewPayload; Gap via P2P Headers. Cap auf `max_peer_best` darf bei Tip-Churn den Number-Request nicht clearen. Zusätzlich: Empty-coalesce höherer Miss, kein `Ready(None)` solange `next_chain_tip>local`, tip-hole High-prio + sliding window, eth/68 short GetBlockHeaders akzeptieren (kein Ban). | PIPE-001/002 | ✅ live 2026-10-25 · Headers 198 854 009→199 255 563 |
+| PORT-FLOW-H07 | EL-Sync Gap nach Finish (eth/68) | Tip via CL NewPayload; Gap via P2P Headers. Cap auf `max_peer_best` darf bei Tip-Churn den Number-Request nicht clearen. Zusätzlich: Empty-coalesce höherer Miss, kein `Ready(None)` solange `next_chain_tip>local`, tip-hole High-prio + sliding window, eth/68 short GetBlockHeaders akzeptieren (kein Ban). | PIPE-001/002 | ✅ live 2026-10-25 · re-verify 2026-10-28 post-E03 Headers→**200 318 595** |
 | PORT-FLOW-N01 | Bind / Dial / Announce | **Kein `--addr`:** OS Dual-Stack; Dial-Preference OS; Announce dialbar == Listen. **`--addr <ip>`:** single-family strict | P2P-006 | ✅ |
 | PORT-FLOW-N02 | NAT / UPnP → Announce | Default **`--nat any`:** UPnP geth-style; Discv4+5 konsistent | P2P-002 | ✅ |
 | PORT-FLOW-B01 | Bodies Peer/Range | Body-Requests nur an Peers mit Range/Fähigkeit; eth/69 hard-filter analog Headers | PIPE-005 | ✅ |
