@@ -245,6 +245,9 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 - **Tip-Lag:** ~1–5 Blöcke vs public = erwarteter Floor (BNB Reth Live-Sync: MDBX-Commit bei 500 ms;
   ähnlich kurze Lags bei op-geth/OP-Stack unter Last). Nicht minimierbar ohne Cache/IO-Hebel;
   Messpunkt = Canonical vs public, nicht Finish in derselben Sekunde.
+- **Effort/Kosten (Session 28, gemessen 2026-11-10 ~23:19 CET):** interactive Gap>90 min **~5.5 h**
+  (3 Cluster); Cursor cum. ~**97–98 h**; maxperf ~20–24 min; Tracked AI+Strom+A1 **~EUR 817**
+  (Strom carry **~€187**, A1 **~€390**/13 mo; AI unverändert ~€240). Details: README Effort-Log.
 
 **Änderungsnotiz 2026-10-28 (CLI):**
 - `op-reth` / `op-reth-bnb`: `download` + `snapshot-manifest` verdrahtet (gleicher `reth-cli-commands`-Pfad wie Upstream-`reth`; `--archive`/`--full`/`--minimal`/manifest/component flags). opBNB-Export: `snapshot-manifest --chain-id 204`.

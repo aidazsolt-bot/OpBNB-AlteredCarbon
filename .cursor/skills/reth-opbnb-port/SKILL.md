@@ -39,6 +39,7 @@ Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + Buglis
 | Engine | **005** ✅ · **006** ✅ `ff96c53e52` milli FCU-Attrs + OP attrs-fail→`InvalidForkchoiceState` |
 | Tip-DoD | H07 ✅ · E03 ✅ · ENGINE-006 ✅ live |
 | Next | `X03`/`S02` · Point-4 wenn IPC ok |
+| Effort S28 | ~**5.5 h** interactive · Cursor cum ~**97–98 h** · Tracked **~EUR 817** (README) |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 
