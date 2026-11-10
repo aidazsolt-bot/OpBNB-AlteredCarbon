@@ -29,16 +29,16 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-10-28 ~16:05 CEST)
+## Session-Memory / Status (Stand 2026-11-10 ~22:50 CEST)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + Bugliste/FLOW-Matrix (kanonisch).
 
 | | |
 | --- | --- |
-| Live | Headers/Bodies/Sender/Exec @ **200 318 595** · Merkle/Index/TxLookup/Finish @ **200 055 655** (catch-up **~263 k**) |
-| Engine | **ENGINE-005 / FLOW-E03** ✅ deployed: stale OP FCU+attrs → `InvalidForkchoiceState` (op-node `ErrReset`); labels advanced, no tip rewind |
-| Tip-DoD | **FLOW-H07** ✅ (10-25; re-verify post-E03 backfill 10-28) · Tip = CL `newPayload`; Gap = Pipeline-Backfill |
-| Next | Merkle→Finish catch-up to tip · dann `X03`/`S02` · Snap = FEAT, nicht Sync-Gate |
+| Live | Tip-Follow ~204 919 k · Finish≈CL · FCU `Valid` |
+| Engine | **005** ✅ · **006** ✅ milli FCU-Attrs + OP attrs-fail→`InvalidForkchoiceState` |
+| Tip-DoD | H07 ✅ · E03 ✅ · ENGINE-006 ✅ live |
+| Next | `X03`/`S02` · Point-4 wenn IPC ok |
 
 ## Experiment-Befund (Workspace-Zweck — verbindlich)
 

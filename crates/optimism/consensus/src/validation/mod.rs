@@ -5,7 +5,7 @@ pub mod isthmus;
 pub mod milli_timestamp;
 
 pub use milli_timestamp::{
-    opbnb_milli_timestamp, opbnb_milliseconds_from_mix_hash,
+    opbnb_attrs_milli_timestamp, opbnb_milli_timestamp, opbnb_milliseconds_from_mix_hash,
     validate_against_parent_opbnb_milli_timestamp,
 };
 

@@ -35,22 +35,24 @@ Tree; Session-Start muss Chain-ID + Binary + `plan.md`-Gates nennen.
 
 Historische PORT-BSC-* / BSC-Session-Einträge unten sind **Archiv**, nicht aktiver Scope.
 
-## Aktueller Stand (Session-Memory — 2026-10-28 ~16:05 CEST) {#session-memory}
+## Aktueller Stand (Session-Memory — 2026-11-10 ~22:50 CEST) {#session-memory}
 
 > **Handoff.** Skills: `reth-opbnb-port` + `rust-best-practices`.
-> **FLOW-E03 / ENGINE-005 deployed** (`make maxperf-op` → `dist/bin/op-reth-bnb`, Restart ~14:09Z).
-> Boot: `Advanced stale OP safe/finalized` tip=**200 055 655** ← previous **199 882 735** (lag ~173 k).
-> Headers reverse backfill **done** (`Writing headers total=262940`) → Headers/Bodies/Sender/Exec @ **200 318 595**.
-> Merkle/Index/TxLookup/Finish still @ **200 055 655** (catch-up **262 940**). Public tip ~**200 318 k**.
+> **DoD (verbindlich):** Alles, was für **stabilen + korrekten opBNB-Betrieb** (EL) nötig ist —
+> nicht „stock OP-Stack reicht“. Referenz = `bnb-chain/op-geth` + CL-Attrs aus `bnb-chain/opbnb`.
+> BSC-L1-Formate/Flows als Referenz OK; Parlia-Sealing / `crates/bsc` bleiben out of scope.
+>
+> **PORT-ENGINE-006 live:** milli FCU-Attrs + OP attrs-fail→`InvalidForkchoiceState`. Tip-Freeze
+> (Nov-4→10) aufgehoben — Finish/Pipeline catch-up + Tip-Follow (~204 919 k, FCU `Valid`).
 
 | Thema | Lage |
 | --- | --- |
-| **Live** | Tip Headers/Exec ✅ · Merkle→Finish catch-up **~263 k** · peers OK · validation/invalid=0 |
-| **Tip-DoD** | H07 ✅ · E03/ENGINE-005 ✅ (no tip rewind under stale FCU+attrs) |
-| **Health** | bodies_validation=0 · invalid_messages=0 |
-| **Next** | MerkleExecute…Finish → tip · dann `X03`/`S02` |
+| **Live** | Tip-Follow · Finish≈CL/public (~204 919 k) · `latest_block` Status |
+| **Tip-DoD** | H07 ✅ · E03/005 ✅ · **ENGINE-006** ✅ deploy+live 2026-11-10 |
+| **Health** | peers>0 · val_err=0 · Canonical commits · kein deposit-only crit |
+| **Next** | `X03`/`S02` · Point-4 RPC wenn IPC wieder · Snap = FEAT |
 
-**Migrations-Gate (nächste Stage):** Finish≈public nach Merkle-Catch-up; Rest = Persistenz/Prune (`X03`/`S02`).
+**Migrations-Gate (nächste Stage):** `X03`/`S02` (Prune/History v2 Persistenz). Snap = FEAT, nicht Tip-Gate.
 
 ---
 
@@ -167,7 +169,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | --- | --- | --- | --- | --- |
 | PORT-FLOW-E01 | Engine poll | `downloader.poll` vor CL-`incoming_requests`, sonst keine `DownloadedBlocks` → kein Backfill | ENGINE-001, PIPE-001 | ✅ live Backfill |
 | PORT-FLOW-E02 | Missing block | Gap ≫ Buffer → **Backfill**, nicht endlos `Download(single)` / Tip-Chase | ENGINE-001, PIPE-001 | ✅ |
-| PORT-FLOW-E03 | Tip-Header-Quelle | Tip aus **CL/NewPayload/HeaderSeed**. OP: (1) `safe`/`finalized` nicht monatelang hinter Tip (FindL2Heads-Walk); (2) FCU darf Labels nicht hinter Tip rewinden; (3) FCU `head`≪tip + attrs → InvalidForkchoiceState (ErrReset), kein Tip-Unwind | ENGINE-003/005 | ✅ Labels+deploy 2026-10-28 · Tip-Backfill live (gap~263k) |
+| PORT-FLOW-E03 | Tip-Header-Quelle | Tip aus **CL/NewPayload/HeaderSeed**. OP: (1) `safe`/`finalized` nicht monatelang hinter Tip (FindL2Heads-Walk); (2) FCU darf Labels nicht hinter Tip rewinden; (3) FCU `head`≪tip + attrs → InvalidForkchoiceState (ErrReset), kein Tip-Unwind; (4) **opBNB:** FCU attrs vs parent in **Milli** (`prevRandao`/`mixHash`); (5) Attrs-Fail auf Tip → `InvalidForkchoiceState` (nicht `InvalidPayloadAttributes`/deposit-only crit) | ENGINE-003/005/**006** | ✅ E03/005 2026-10-28 · **006** ✅ live Tip-Follow 2026-11-10 |
 | PORT-FLOW-H01 | eth/68 Status | Tip oft nur **Hash** → Number-Resolve bevor `HeadersAtLeast(CL)` | P2P-003 | ✅ live |
 | PORT-FLOW-H02 | Peer-Auswahl / Empty | `HeadersAtLeast` + miss-map; Empty → backoff **ohne** Peer-Drop/Ban; eth/69 `max(best,range.latest)` + Range-Filter | P2P-003 | ✅ live |
 | PORT-FLOW-H03 | Working-Tip-Cap | `eventual_CL` ≠ `working=max_peer_best`; Cap **idempotent** (kein Re-Cap-Loop) | P2P-004 | ✅ live |
@@ -218,6 +220,7 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 | PORT-ENGINE-003 | Headers Tip-Hash per P2P → empty → Ban | Tip muss von CL/HeaderSeed kommen | ✅ closed · Tip-Seed live (FLOW-E03/H05) |
 | PORT-ENGINE-004 | Reload/Stop: Panic `SelectNextSome polled after terminated` | Engine-Shutdown nach Stream-Ende | 🧊 parked |
 | PORT-ENGINE-005 | Nach Finish≈Tip: CL FCU `head=safe=finalized`@stale + `payload_attributes` → invalid timestamp → Derive crit / Engine `context deadline`; Tip stuck; Labels von CL zurückgedreht | OP-FCU-Pfad: Tip-Unwind + Attrs auf Ancestor ≫ Backfill-Threshold; Persistenz lagging safe/finalized | ✅ **fixed+deployed 2026-10-28** · FLOW-E03: skip stale labels; attrs→`InvalidForkchoiceState` (op-node `ErrReset`); `advance_op_safe_finalized_if_stale`. Live: Advanced **199 882 735→200 055 655**; Backfill `Writing headers total=262940` |
+| PORT-ENGINE-006 | Tip friert (auch nach ENGINE-005/Restart): (a) FCU attrs gleiche Unix-Sekunde → second-only Reject; (b) Attrs für Block N nachdem Tip schon N ist → `InvalidPayloadAttributes` → deposit-only **crit** (Restart heilt Derive-crit nicht dauerhaft) | **Lücke CONS-001:** Milli nur in Header-Konsens (`validate_header_against_parent`), **nicht** in Engine FCU-Attrs. **Lücke ENGINE-005:** nur stale **head**, nicht stale/equal attrs auf Tip. Fix: (1) `OpEngineValidator` milli-Attrs; (2) OP `process_payload_attributes` Fail → `InvalidForkchoiceState`/`ErrReset` | ✅ **live 2026-11-10** Tip-Follow ~204 919 k · FCU `Valid` |
 | PORT-FLOW-H07 | Tip-DoD nach Finish stall (eth/68 Empty / Falling) | Cap/Empty/tip-window / `has_open_gap` | ✅ live 2026-10-25 · re-verified 2026-10-28 Backfill after E03 |
 
 ## Roadmap / weitere Abschnitte
@@ -226,6 +229,15 @@ FCU Tip(hash) → Backfill → SyncTarget Tip
 > sind Archiv/Referenz. Aktive Engine/Tip-Bugs: Tabelle oben; FLOW-Matrix weiter oben.
 
 ---
+
+**Änderungsnotiz 2026-11-10:**
+- DoD: alle EL-Deltas für **stabilen/korrekten opBNB-Betrieb** (Referenz op-geth/opbnb), nicht stock OP.
+- **Warum CONS-001 (Aug) unvollständig:** Milli-Patch deckte nur **Header/NewPayload**-Konsens
+  (PIPE) ab — Pipeline/Sync past Fermat. Tip-Follow FCU+attrs (FLOW) blieb second-only Default;
+  Fail → `InvalidPayloadAttributes` → op-node deposit-only **crit** (kein ErrReset). ENGINE-005
+  schloss nur stale-**head**; Attrs-Race auf Tip blieb. Restart hilft nicht dauerhaft.
+- **PORT-ENGINE-006:** (1) `opbnb_attrs_milli_timestamp` + `OpEngineValidator` override;
+  (2) OP `process_payload_attributes` Fail → `InvalidForkchoiceState`. FLOW-E03(4)(5). ✅ live Tip-Follow 2026-11-10.
 
 **Änderungsnotiz 2026-10-28 (CLI):**
 - `op-reth` / `op-reth-bnb`: `download` + `snapshot-manifest` verdrahtet (gleicher `reth-cli-commands`-Pfad wie Upstream-`reth`; `--archive`/`--full`/`--minimal`/manifest/component flags). opBNB-Export: `snapshot-manifest --chain-id 204`.

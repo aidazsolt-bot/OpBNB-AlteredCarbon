@@ -33,6 +33,16 @@ pub fn opbnb_milli_timestamp(header: &impl BlockHeader) -> u64 {
         .saturating_add(opbnb_milliseconds_from_mix_hash(header.mix_hash().unwrap_or_default()))
 }
 
+/// Milli-timestamp of Engine `payloadAttributes` (seconds + ms in `prevRandao[0..2]`).
+///
+/// Mirrors bnb-chain/opbnb `eth.PayloadAttributes.MillisecondTimestamp()`.
+#[inline]
+pub fn opbnb_attrs_milli_timestamp(timestamp_secs: u64, prev_randao: B256) -> u64 {
+    timestamp_secs
+        .saturating_mul(1000)
+        .saturating_add(opbnb_milliseconds_from_mix_hash(prev_randao))
+}
+
 /// Validates that the child header's milli-timestamp is strictly greater than the parent's.
 ///
 /// Used on opBNB instead of second-resolution [`validate_against_parent_timestamp`].

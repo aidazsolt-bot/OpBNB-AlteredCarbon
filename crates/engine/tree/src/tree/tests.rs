@@ -3725,6 +3725,60 @@ async fn test_op_fcu_stale_ancestor_with_attrs_keeps_tip() {
     );
 }
 
+/// FLOW-E03 / ENGINE-006: attrs timestamp ≤ tip on current head → InvalidForkchoiceState
+/// (op-node ErrReset), not InvalidPayloadAttributes (deposit-only crit / tip freeze).
+#[tokio::test]
+async fn test_op_fcu_stale_attrs_on_tip_returns_invalid_state() {
+    reth_tracing::init_test_tracing();
+    let mut test_harness = TestHarness::new(MAINNET.clone());
+    test_harness.tree.engine_kind = EngineApiKind::OpStack;
+
+    let tip_number = 10;
+    let blocks: Vec<_> =
+        test_harness.block_builder.get_executed_blocks(0..tip_number + 1).collect();
+    test_harness = test_harness.with_blocks(blocks.clone());
+
+    let tip = blocks[tip_number as usize].recovered_block();
+    let tip_hash = tip.hash();
+    let tip_num = tip.number();
+
+    // Same second as tip → fails second-resolution attrs check (and milli if ms not higher).
+    let attrs = EthPayloadAttributes {
+        timestamp: tip.timestamp(),
+        prev_randao: B256::ZERO,
+        suggested_fee_recipient: Default::default(),
+        withdrawals: None,
+        parent_beacon_block_root: None,
+        slot_number: None,
+        ..Default::default()
+    };
+
+    let outcome = test_harness
+        .tree
+        .on_forkchoice_updated(
+            ForkchoiceState {
+                head_block_hash: tip_hash,
+                safe_block_hash: tip_hash,
+                finalized_block_hash: tip_hash,
+            },
+            Some(attrs),
+        )
+        .unwrap();
+
+    assert_eq!(outcome.outcome.forkchoice_status(), ForkchoiceStatus::Invalid);
+    let err = outcome.outcome.await.unwrap_err();
+    assert_matches!(
+        err,
+        BeaconForkChoiceUpdateError::ForkchoiceUpdateError(ForkchoiceUpdateError::InvalidState)
+    );
+    assert!(
+        test_harness.payload_command_rx.try_recv().is_err(),
+        "must not start payload build on non-increasing attrs"
+    );
+    assert_eq!(test_harness.tree.state.tree_state.canonical_block_hash(), tip_hash);
+    assert_eq!(test_harness.tree.state.tree_state.canonical_block_number(), tip_num);
+}
+
 #[test]
 fn test_backfill_threshold_above_header_limit_triggers_backfill() {
     let mut test_harness = TestHarness::new(MAINNET.clone());

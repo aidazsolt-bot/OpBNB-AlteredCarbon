@@ -1654,7 +1654,10 @@ pub struct OpEngineValidatorBuilder;
 impl<Node> PayloadValidatorBuilder<Node> for OpEngineValidatorBuilder
 where
     Node: FullNodeComponents<
-        Types: NodeTypes<ChainSpec: OpHardforks, Payload: PayloadTypes<ExecutionData = OpExecData>>,
+        Types: NodeTypes<
+            ChainSpec: EthChainSpec + OpHardforks,
+            Payload: PayloadTypes<ExecutionData = OpExecData, PayloadAttributes = OpPayloadAttrs>,
+        >,
     >,
 {
     type Validator = OpEngineValidator<

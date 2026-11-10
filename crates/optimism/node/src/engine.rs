@@ -5,17 +5,21 @@ use op_alloy_rpc_types_engine::{
     OpExecutionData, OpExecutionPayloadEnvelope, OpExecutionPayloadEnvelopeV3,
     OpExecutionPayloadEnvelopeV4,
 };
+use reth_chainspec::EthChainSpec;
 use reth_consensus::ConsensusError;
 use reth_node_api::{
     payload::{
         validate_parent_beacon_block_root_presence, EngineApiMessageVersion,
-        EngineObjectValidationError, MessageValidationKind, NewPayloadError, PayloadOrAttributes,
-        PayloadTypes, VersionSpecificValidationError,
+        EngineObjectValidationError, InvalidPayloadAttributesError, MessageValidationKind,
+        NewPayloadError, PayloadAttributes, PayloadOrAttributes, PayloadTypes,
+        VersionSpecificValidationError,
     },
     validate_version_specific_fields, BuiltPayload, EngineApiValidator, EngineTypes,
     InsertBlockErrorKind, NodePrimitives, PayloadValidator,
 };
-use reth_optimism_consensus::isthmus;
+use reth_optimism_consensus::{
+    is_opbnb_chain_id, isthmus, opbnb_attrs_milli_timestamp, opbnb_milli_timestamp,
+};
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_payload_builder::{
     OpExecData, OpExecutionPayloadValidator, OpPayloadAttrs, OpPayloadTypes,
@@ -126,8 +130,8 @@ impl<P, Tx, ChainSpec, Types> PayloadValidator<Types> for OpEngineValidator<P, T
 where
     P: StateProviderFactory + Unpin + 'static,
     Tx: SignedTransaction + Unpin + 'static,
-    ChainSpec: OpHardforks + Send + Sync + 'static,
-    Types: PayloadTypes<ExecutionData = OpExecData>,
+    ChainSpec: EthChainSpec + OpHardforks + Send + Sync + 'static,
+    Types: PayloadTypes<ExecutionData = OpExecData, PayloadAttributes = OpPayloadAttrs>,
 {
     type Block = alloy_consensus::Block<Tx>;
 
@@ -155,6 +159,34 @@ where
             })?
         }
 
+        Ok(())
+    }
+
+    /// opBNB: compare Engine attrs vs parent with **milli**-timestamps (ms in
+    /// `prevRandao` / header `mixHash`), matching op-geth / op-node. Second-only
+    /// comparison rejects valid same-unix-second 250/500ms blocks and yields
+    /// `InvalidPayloadAttributes` → op-node deposit-only crit → tip freeze
+    /// (PORT-ENGINE-006 / FLOW-E03).
+    fn validate_payload_attributes_against_header(
+        &self,
+        attr: &Types::PayloadAttributes,
+        header: &<Self::Block as Block>::Header,
+    ) -> Result<(), InvalidPayloadAttributesError> {
+        if is_opbnb_chain_id(self.chain_spec().chain().id()) {
+            let parent_milli = opbnb_milli_timestamp(header);
+            let attrs_milli = opbnb_attrs_milli_timestamp(
+                attr.timestamp(),
+                attr.payload_attributes.prev_randao,
+            );
+            if attrs_milli <= parent_milli {
+                return Err(InvalidPayloadAttributesError::InvalidTimestamp);
+            }
+            return Ok(());
+        }
+
+        if attr.timestamp() <= header.timestamp() {
+            return Err(InvalidPayloadAttributesError::InvalidTimestamp);
+        }
         Ok(())
     }
 
@@ -315,7 +347,7 @@ mod test {
     use alloy_rpc_types_engine::PayloadAttributes;
     use op_alloy_rpc_types_engine::OpPayloadAttributes;
     use reth_db_common::init::init_genesis;
-    use reth_optimism_chainspec::OP_SEPOLIA;
+    use reth_optimism_chainspec::{OPBNB_MAINNET, OP_SEPOLIA};
     use reth_optimism_primitives::OpTransactionSigned;
     use reth_provider::{
         noop::NoopProvider, providers::BlockchainProvider,
@@ -547,6 +579,77 @@ mod test {
         assert!(
             matches!(result, Err(InsertBlockErrorKind::Consensus(_))),
             "mismatched withdrawals root must be a consensus error, got {result:?}"
+        );
+    }
+
+    /// opBNB 500ms blocks often share a unix second; FCU attrs must compare milli
+    /// (ms in prevRandao) or same-second attrs are rejected → tip freeze.
+    #[test]
+    fn opbnb_equal_second_attrs_accepted_via_milli_prev_randao() {
+        let mut parent_mix = [0u8; 32];
+        parent_mix[0] = 0x01;
+        parent_mix[1] = 0xf4; // 500ms
+        let parent = Header {
+            timestamp: 1_786_430_373,
+            mix_hash: B256::from(parent_mix),
+            ..Default::default()
+        };
+
+        let mut attrs_prev = [0u8; 32];
+        attrs_prev[0] = 0x02;
+        attrs_prev[1] = 0xee; // 750ms — same unix second, higher milli
+        let attrs = OpPayloadAttrs(OpPayloadAttributes {
+            gas_limit: Some(1000),
+            eip_1559_params: Some(b64!("0000000000000000")),
+            min_base_fee: None,
+            transactions: None,
+            no_tx_pool: None,
+            payload_attributes: PayloadAttributes {
+                timestamp: 1_786_430_373,
+                prev_randao: B256::from(attrs_prev),
+                suggested_fee_recipient: Address::ZERO,
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+                slot_number: None,
+                target_gas_limit: None,
+            },
+        });
+
+        let validator = OpEngineValidator::new::<KeccakKeyHasher>(
+            OPBNB_MAINNET.clone(),
+            NoopProvider::default(),
+        );
+        let result = <OpEngineValidator<_, OpTransactionSigned, _> as PayloadValidator<
+            OpPayloadTypes,
+        >>::validate_payload_attributes_against_header(&validator, &attrs, &parent);
+        assert!(result.is_ok(), "equal-second milli-increasing attrs must pass: {result:?}");
+
+        // Same milli as parent → still invalid.
+        let mut same_prev = [0u8; 32];
+        same_prev[0] = 0x01;
+        same_prev[1] = 0xf4;
+        let bad = OpPayloadAttrs(OpPayloadAttributes {
+            gas_limit: Some(1000),
+            eip_1559_params: Some(b64!("0000000000000000")),
+            min_base_fee: None,
+            transactions: None,
+            no_tx_pool: None,
+            payload_attributes: PayloadAttributes {
+                timestamp: 1_786_430_373,
+                prev_randao: B256::from(same_prev),
+                suggested_fee_recipient: Address::ZERO,
+                withdrawals: Some(vec![]),
+                parent_beacon_block_root: Some(B256::ZERO),
+                slot_number: None,
+                target_gas_limit: None,
+            },
+        });
+        let bad_result = <OpEngineValidator<_, OpTransactionSigned, _> as PayloadValidator<
+            OpPayloadTypes,
+        >>::validate_payload_attributes_against_header(&validator, &bad, &parent);
+        assert!(
+            matches!(bad_result, Err(InvalidPayloadAttributesError::InvalidTimestamp)),
+            "non-increasing milli must fail: {bad_result:?}"
         );
     }
 }

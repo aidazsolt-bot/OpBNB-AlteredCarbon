@@ -37,18 +37,20 @@ pub use proof::calculate_receipt_root_no_memo_optimism;
 
 pub mod validation;
 pub use validation::{
-    canyon, isthmus, opbnb_milli_timestamp, opbnb_milliseconds_from_mix_hash,
-    validate_against_parent_opbnb_milli_timestamp, validate_block_post_execution,
+    canyon, isthmus, opbnb_attrs_milli_timestamp, opbnb_milli_timestamp,
+    opbnb_milliseconds_from_mix_hash, validate_against_parent_opbnb_milli_timestamp,
+    validate_block_post_execution,
 };
 
 pub mod error;
 pub use error::OpConsensusError;
 
-/// Returns `true` for opBNB L2 chains that encode sub-second time in `mixHash`.
+/// Returns `true` for opBNB L2 chains that encode sub-second time in `mixHash` /
+/// Engine `prevRandao`.
 ///
 /// Chain IDs: mainnet 204, testnet 5611 (bnb-chain/op-geth).
 #[inline]
-fn is_opbnb_chain_id(chain_id: u64) -> bool {
+pub fn is_opbnb_chain_id(chain_id: u64) -> bool {
     matches!(chain_id, 204 | 5611)
 }
 

@@ -3829,15 +3829,16 @@ where
     /// This is called during `engine_forkchoiceUpdated` when the CL provides payload attributes,
     /// indicating it wants the EL to start building a new block.
     ///
-    /// Runs [`PayloadValidator::validate_payload_attributes_against_header`](reth_engine_primitives::PayloadValidator::validate_payload_attributes_against_header) to ensure
-    /// `payloadAttributes.timestamp > headBlock.timestamp` per the Engine API spec.
+    /// Runs [`PayloadValidator::validate_payload_attributes_against_header`](reth_engine_primitives::PayloadValidator::validate_payload_attributes_against_header)
+    /// (opBNB: milli via `prevRandao`/`mixHash`, see PORT-ENGINE-006).
     ///
-    /// If validation passes, sends the attributes to the payload builder to start a new
-    /// payload job. If it fails, returns `INVALID_PAYLOAD_ATTRIBUTES` without rolling back
-    /// the forkchoice update.
-    ///
-    /// Note: At this point, the fork choice update is considered to be VALID, however, we can still
-    /// return an error if the payload attributes are invalid.
+    /// If validation passes, starts a payload job. If it fails:
+    /// - **Ethereum:** `INVALID_PAYLOAD_ATTRIBUTES` (forkchoice remains VALID).
+    /// - **OP-Stack / opBNB (FLOW-E03 / ENGINE-006):** `InvalidForkchoiceState` so op-node
+    ///   maps to `ErrReset` instead of `InvalidPayloadAttributes` → deposit-only →
+    ///   **Derivation critical error** (tip freeze; restart alone does not clear the
+    ///   wedged engine-driver notify queue). Covers equal-second milli misses and the
+    ///   race where attrs for block N land after tip already advanced to N.
     fn process_payload_attributes(
         &mut self,
         attributes: T::PayloadAttributes,
@@ -3847,7 +3848,16 @@ where
         if let Err(err) =
             self.payload_validator.validate_payload_attributes_against_header(&attributes, head)
         {
-            warn!(target: "engine::tree", %err, ?head, "Invalid payload attributes");
+            warn!(
+                target: "engine::tree",
+                %err,
+                ?head,
+                is_opstack = self.engine_kind.is_opstack(),
+                "Invalid payload attributes"
+            );
+            if self.engine_kind.is_opstack() {
+                return OnForkChoiceUpdated::invalid_state();
+            }
             return OnForkChoiceUpdated::invalid_payload_attributes()
         }
 
