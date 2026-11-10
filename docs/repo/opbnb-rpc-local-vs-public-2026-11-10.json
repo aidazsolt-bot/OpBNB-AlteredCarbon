@@ -1,0 +1,2034 @@
+{
+  "when": "2026-11-10T22:38:58Z",
+  "chain": "opBNB mainnet (204)",
+  "local": {
+    "transport": "IPC NDJSON unix socket",
+    "ipc": "/tmp/BSCRethArchiveNode.ipc",
+    "tip": 204933263
+  },
+  "public": {
+    "bnbchain": "https://opbnb-mainnet-rpc.bnbchain.org",
+    "publicnode": "https://opbnb-rpc.publicnode.com",
+    "note": "HTTPS keep-alive warm connections from this host (EU). Latency includes WAN RTT + shared-fleet queue/handler."
+  },
+  "point4_hash_checks": [
+    {
+      "height": 1000,
+      "ok": true,
+      "hash": "0x397f5595e41be17f34cc3d5e1d4bb06767ba839d458bde5e97872940c1ca3e37"
+    },
+    {
+      "height": 100000,
+      "ok": true,
+      "hash": "0x0adc670f6e1ade1c80024ab21b2b4a711d8a2cb06982911b2274750d84281c6c"
+    },
+    {
+      "height": 9397477,
+      "ok": true,
+      "hash": "0x74a80dff35fc27abe3e72c6e18768928bfff4a15c07e504a3b140b71f88d4c6f"
+    },
+    {
+      "height": 204932263,
+      "ok": true,
+      "hash": "0x9d470d91d166fe3e4b67200a2c3087a1a8ce782c7b07bde3e5d58801c754f4c9"
+    }
+  ],
+  "scenarios": [
+    {
+      "label": "tip_getBlock_latest",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['latest', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.004,
+        "qps": 7035.21,
+        "lat_ms": {
+          "n": 25,
+          "p50": 0.085,
+          "p90": 0.103,
+          "p99": 0.166,
+          "mean": 0.089,
+          "min": 0.07,
+          "max": 0.166
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 3.604,
+        "qps": 6.94,
+        "lat_ms": {
+          "n": 25,
+          "p50": 130.555,
+          "p90": 202.365,
+          "p99": 230.187,
+          "mean": 144.079,
+          "min": 106.5,
+          "max": 230.187
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.322,
+        "qps": 18.92,
+        "lat_ms": {
+          "n": 25,
+          "p50": 51.677,
+          "p90": 83.718,
+          "p99": 92.106,
+          "mean": 52.796,
+          "min": 26.361,
+          "max": 92.106
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1535.9,
+      "speedup_vs_publicnode_p50": 608.0
+    },
+    {
+      "label": "tip_getBalance_wbnb",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', 'latest']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.004,
+        "qps": 5968.79,
+        "lat_ms": {
+          "n": 25,
+          "p50": 0.129,
+          "p90": 0.158,
+          "p99": 0.207,
+          "mean": 0.131,
+          "min": 0.072,
+          "max": 0.207
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 3.255,
+        "qps": 7.68,
+        "lat_ms": {
+          "n": 25,
+          "p50": 121.347,
+          "p90": 148.379,
+          "p99": 233.787,
+          "mean": 130.151,
+          "min": 106.579,
+          "max": 233.787
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.424,
+        "qps": 17.56,
+        "lat_ms": {
+          "n": 25,
+          "p50": 47.956,
+          "p90": 95.363,
+          "p99": 186.456,
+          "mean": 56.898,
+          "min": 22.748,
+          "max": 186.456
+        }
+      },
+      "speedup_vs_bnbchain_p50": 940.7,
+      "speedup_vs_publicnode_p50": 371.8
+    },
+    {
+      "label": "tip_eth_call_totalSupply",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, 'latest']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 4012.25,
+        "lat_ms": {
+          "n": 25,
+          "p50": 0.177,
+          "p90": 0.372,
+          "p99": 0.494,
+          "mean": 0.212,
+          "min": 0.14,
+          "max": 0.494
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 2.991,
+        "qps": 8.36,
+        "lat_ms": {
+          "n": 25,
+          "p50": 120.758,
+          "p90": 134.116,
+          "p99": 138.603,
+          "mean": 119.578,
+          "min": 106.979,
+          "max": 138.603
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 25,
+        "ok": 25,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.109,
+        "qps": 22.54,
+        "lat_ms": {
+          "n": 25,
+          "p50": 30.861,
+          "p90": 76.058,
+          "p99": 102.096,
+          "mean": 44.318,
+          "min": 22.278,
+          "max": 102.096
+        }
+      },
+      "speedup_vs_bnbchain_p50": 682.2,
+      "speedup_vs_publicnode_p50": 174.4
+    },
+    {
+      "label": "hist_getBlock_1000",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x3e8', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.002,
+        "qps": 6267.21,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.098,
+          "p90": 0.151,
+          "p99": 0.171,
+          "mean": 0.11,
+          "min": 0.074,
+          "max": 0.171
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 2.153,
+        "qps": 6.97,
+        "lat_ms": {
+          "n": 15,
+          "p50": 121.027,
+          "p90": 183.488,
+          "p99": 371.603,
+          "mean": 143.465,
+          "min": 107.734,
+          "max": 371.603
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.363,
+        "qps": 41.37,
+        "lat_ms": {
+          "n": 15,
+          "p50": 23.7,
+          "p90": 26.045,
+          "p99": 31.948,
+          "mean": 24.108,
+          "min": 21.36,
+          "max": 31.948
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1235.0,
+      "speedup_vs_publicnode_p50": 241.8
+    },
+    {
+      "label": "hist_getBalance_1000",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x3e8']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 4476.23,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.179,
+          "p90": 0.218,
+          "p99": 0.221,
+          "mean": 0.181,
+          "min": 0.145,
+          "max": 0.221
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 2.09,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 7c45a189bfc5983dd822ff77641826eca4d9706362a4556ea82c9da12b011b6a (path ) state 0x7c45a189bfc5983dd822ff77641826eca4d9706362a4556ea82c9da12b011b6a is not available"
+        },
+        "wall_s": 0.433,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_1000",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x3e8']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 1908.76,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.446,
+          "p90": 0.517,
+          "p99": 0.542,
+          "mean": 0.454,
+          "min": 0.405,
+          "max": 0.542
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 2.45,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 7c45a189bfc5983dd822ff77641826eca4d9706362a4556ea82c9da12b011b6a (path ) state 0x7c45a189bfc5983dd822ff77641826eca4d9706362a4556ea82c9da12b011b6a is not available"
+        },
+        "wall_s": 0.335,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_100000",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x186a0', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.002,
+        "qps": 6400.46,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.103,
+          "p90": 0.134,
+          "p99": 0.137,
+          "mean": 0.1,
+          "min": 0.066,
+          "max": 0.137
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.906,
+        "qps": 7.87,
+        "lat_ms": {
+          "n": 15,
+          "p50": 123.525,
+          "p90": 143.571,
+          "p99": 154.828,
+          "mean": 127.03,
+          "min": 113.337,
+          "max": 154.828
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.343,
+        "qps": 43.68,
+        "lat_ms": {
+          "n": 15,
+          "p50": 22.375,
+          "p90": 24.97,
+          "p99": 25.036,
+          "mean": 22.842,
+          "min": 20.464,
+          "max": 25.036
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1199.3,
+      "speedup_vs_publicnode_p50": 217.2
+    },
+    {
+      "label": "hist_getBalance_100000",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x186a0']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 4922.02,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.15,
+          "p90": 0.187,
+          "p99": 0.205,
+          "mean": 0.158,
+          "min": 0.113,
+          "max": 0.205
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 2.0,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 3fd4b6f87a8f06aacc6658629e7cc151da23d7d8c98a85f4db0137dc242e4e00 (path ) state 0x3fd4b6f87a8f06aacc6658629e7cc151da23d7d8c98a85f4db0137dc242e4e00 is not available"
+        },
+        "wall_s": 0.568,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_100000",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x186a0']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.005,
+        "qps": 2353.43,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.384,
+          "p90": 0.427,
+          "p99": 0.444,
+          "mean": 0.38,
+          "min": 0.314,
+          "max": 0.444
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.365,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 3fd4b6f87a8f06aacc6658629e7cc151da23d7d8c98a85f4db0137dc242e4e00 (path ) state 0x3fd4b6f87a8f06aacc6658629e7cc151da23d7d8c98a85f4db0137dc242e4e00 is not available"
+        },
+        "wall_s": 0.3,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_9397477",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x8f64e5', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 5036.2,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.14,
+          "p90": 0.183,
+          "p99": 0.213,
+          "mean": 0.143,
+          "min": 0.097,
+          "max": 0.213
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.837,
+        "qps": 8.17,
+        "lat_ms": {
+          "n": 15,
+          "p50": 120.68,
+          "p90": 138.742,
+          "p99": 148.36,
+          "mean": 122.365,
+          "min": 107.048,
+          "max": 148.36
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.486,
+        "qps": 30.87,
+        "lat_ms": {
+          "n": 15,
+          "p50": 26.007,
+          "p90": 54.868,
+          "p99": 72.402,
+          "mean": 32.315,
+          "min": 22.04,
+          "max": 72.402
+        }
+      },
+      "speedup_vs_bnbchain_p50": 862.0,
+      "speedup_vs_publicnode_p50": 185.8
+    },
+    {
+      "label": "hist_getBalance_9397477",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x8f64e5']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.004,
+        "qps": 4028.78,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.179,
+          "p90": 0.274,
+          "p99": 0.471,
+          "mean": 0.211,
+          "min": 0.133,
+          "max": 0.471
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.66,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 23b5b38c7331591914991914ed9502635ad2496f48cfaa44f8496e5a0347b37f (path ) state 0x23b5b38c7331591914991914ed9502635ad2496f48cfaa44f8496e5a0347b37f is not available"
+        },
+        "wall_s": 0.41,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_9397477",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x8f64e5']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 1863.72,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.479,
+          "p90": 0.559,
+          "p99": 0.576,
+          "mean": 0.486,
+          "min": 0.402,
+          "max": 0.576
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.354,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 23b5b38c7331591914991914ed9502635ad2496f48cfaa44f8496e5a0347b37f (path ) state 0x23b5b38c7331591914991914ed9502635ad2496f48cfaa44f8496e5a0347b37f is not available"
+        },
+        "wall_s": 0.314,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_50000000",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x2faf080', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 5845.2,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.121,
+          "p90": 0.171,
+          "p99": 0.172,
+          "mean": 0.124,
+          "min": 0.093,
+          "max": 0.172
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.762,
+        "qps": 8.51,
+        "lat_ms": {
+          "n": 15,
+          "p50": 112.863,
+          "p90": 118.197,
+          "p99": 186.484,
+          "mean": 117.373,
+          "min": 107.345,
+          "max": 186.484
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.41,
+        "qps": 36.6,
+        "lat_ms": {
+          "n": 15,
+          "p50": 24.559,
+          "p90": 30.09,
+          "p99": 50.347,
+          "mean": 27.256,
+          "min": 21.156,
+          "max": 50.347
+        }
+      },
+      "speedup_vs_bnbchain_p50": 932.8,
+      "speedup_vs_publicnode_p50": 203.0
+    },
+    {
+      "label": "hist_getBalance_50000000",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x2faf080']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.004,
+        "qps": 4052.22,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.204,
+          "p90": 0.251,
+          "p99": 0.323,
+          "mean": 0.211,
+          "min": 0.164,
+          "max": 0.323
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.686,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 1a96975805650b8621c53dc1c9351e07f595a4dd72590de3931b8b40f28dfe6b (path ) state 0x1a96975805650b8621c53dc1c9351e07f595a4dd72590de3931b8b40f28dfe6b is not available"
+        },
+        "wall_s": 0.388,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_50000000",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x2faf080']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 2032.96,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.44,
+          "p90": 0.502,
+          "p99": 0.698,
+          "mean": 0.45,
+          "min": 0.317,
+          "max": 0.698
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.454,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 1a96975805650b8621c53dc1c9351e07f595a4dd72590de3931b8b40f28dfe6b (path ) state 0x1a96975805650b8621c53dc1c9351e07f595a4dd72590de3931b8b40f28dfe6b is not available"
+        },
+        "wall_s": 0.326,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_100000000",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x5f5e100', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 5569.05,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.112,
+          "p90": 0.188,
+          "p99": 0.214,
+          "mean": 0.124,
+          "min": 0.082,
+          "max": 0.214
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.767,
+        "qps": 8.49,
+        "lat_ms": {
+          "n": 15,
+          "p50": 118.132,
+          "p90": 127.963,
+          "p99": 129.996,
+          "mean": 117.728,
+          "min": 107.447,
+          "max": 129.996
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.409,
+        "qps": 36.69,
+        "lat_ms": {
+          "n": 15,
+          "p50": 24.338,
+          "p90": 40.85,
+          "p99": 40.902,
+          "mean": 27.189,
+          "min": 21.161,
+          "max": 40.902
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1054.8,
+      "speedup_vs_publicnode_p50": 217.3
+    },
+    {
+      "label": "hist_getBalance_100000000",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x5f5e100']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 4492.23,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.183,
+          "p90": 0.252,
+          "p99": 0.253,
+          "mean": 0.188,
+          "min": 0.138,
+          "max": 0.253
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.684,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 15ee42397b37c4084de1e277257c647fba706f5e0e9b7577802bd80b22d2ec61 (path ) state 0x15ee42397b37c4084de1e277257c647fba706f5e0e9b7577802bd80b22d2ec61 is not available"
+        },
+        "wall_s": 0.453,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_100000000",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x5f5e100']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 1928.22,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.457,
+          "p90": 0.505,
+          "p99": 0.714,
+          "mean": 0.474,
+          "min": 0.38,
+          "max": 0.714
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.344,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 15ee42397b37c4084de1e277257c647fba706f5e0e9b7577802bd80b22d2ec61 (path ) state 0x15ee42397b37c4084de1e277257c647fba706f5e0e9b7577802bd80b22d2ec61 is not available"
+        },
+        "wall_s": 0.308,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_150000000",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0x8f0d180', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 5148.43,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.116,
+          "p90": 0.221,
+          "p99": 0.498,
+          "mean": 0.147,
+          "min": 0.089,
+          "max": 0.498
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.941,
+        "qps": 7.73,
+        "lat_ms": {
+          "n": 15,
+          "p50": 121.514,
+          "p90": 179.514,
+          "p99": 183.604,
+          "mean": 129.319,
+          "min": 107.643,
+          "max": 183.604
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.387,
+        "qps": 38.8,
+        "lat_ms": {
+          "n": 15,
+          "p50": 23.299,
+          "p90": 27.611,
+          "p99": 49.301,
+          "mean": 25.709,
+          "min": 21.402,
+          "max": 49.301
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1047.5,
+      "speedup_vs_publicnode_p50": 200.9
+    },
+    {
+      "label": "hist_getBalance_150000000",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0x8f0d180']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 4453.39,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.163,
+          "p90": 0.279,
+          "p99": 0.387,
+          "mean": 0.188,
+          "min": 0.119,
+          "max": 0.387
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 2.321,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node aafe654602580eb83eed54e629ab8958c4933033deacf56cb47a960fd1f7b098 (path ) state 0xaafe654602580eb83eed54e629ab8958c4933033deacf56cb47a960fd1f7b098 is not available"
+        },
+        "wall_s": 0.413,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_150000000",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0x8f0d180']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 2010.92,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.451,
+          "p90": 0.501,
+          "p99": 0.502,
+          "mean": 0.448,
+          "min": 0.389,
+          "max": 0.502
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.548,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node aafe654602580eb83eed54e629ab8958c4933033deacf56cb47a960fd1f7b098 (path ) state 0xaafe654602580eb83eed54e629ab8958c4933033deacf56cb47a960fd1f7b098 is not available"
+        },
+        "wall_s": 0.301,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_203933263",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0xc27c64f', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.002,
+        "qps": 7974.72,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.085,
+          "p90": 0.126,
+          "p99": 0.154,
+          "mean": 0.092,
+          "min": 0.064,
+          "max": 0.154
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.814,
+        "qps": 8.27,
+        "lat_ms": {
+          "n": 15,
+          "p50": 118.931,
+          "p90": 142.436,
+          "p99": 143.78,
+          "mean": 120.855,
+          "min": 106.647,
+          "max": 143.78
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.37,
+        "qps": 40.53,
+        "lat_ms": {
+          "n": 15,
+          "p50": 24.559,
+          "p90": 30.198,
+          "p99": 30.692,
+          "mean": 24.605,
+          "min": 20.784,
+          "max": 30.692
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1399.2,
+      "speedup_vs_publicnode_p50": 288.9
+    },
+    {
+      "label": "hist_getBalance_203933263",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0xc27c64f']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 5027.05,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.16,
+          "p90": 0.219,
+          "p99": 0.232,
+          "mean": 0.168,
+          "min": 0.13,
+          "max": 0.232
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.807,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 9d67c1d0f6824c1bbdb92f6e1849b8aef9ceb2bf8feeeb389a61d7963a054eec (path ) state 0x9d67c1d0f6824c1bbdb92f6e1849b8aef9ceb2bf8feeeb389a61d7963a054eec is not available"
+        },
+        "wall_s": 0.372,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_203933263",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0xc27c64f']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 2180.05,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.371,
+          "p90": 0.584,
+          "p99": 0.683,
+          "mean": 0.414,
+          "min": 0.332,
+          "max": 0.683
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.428,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 9d67c1d0f6824c1bbdb92f6e1849b8aef9ceb2bf8feeeb389a61d7963a054eec (path ) state 0x9d67c1d0f6824c1bbdb92f6e1849b8aef9ceb2bf8feeeb389a61d7963a054eec is not available"
+        },
+        "wall_s": 0.323,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_204833263",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0xc3581ef', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.002,
+        "qps": 8362.14,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.077,
+          "p90": 0.121,
+          "p99": 0.126,
+          "mean": 0.086,
+          "min": 0.066,
+          "max": 0.126
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.697,
+        "qps": 8.84,
+        "lat_ms": {
+          "n": 15,
+          "p50": 109.373,
+          "p90": 125.705,
+          "p99": 126.0,
+          "mean": 113.046,
+          "min": 106.087,
+          "max": 126.0
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.351,
+        "qps": 42.73,
+        "lat_ms": {
+          "n": 15,
+          "p50": 22.685,
+          "p90": 27.236,
+          "p99": 29.573,
+          "mean": 23.34,
+          "min": 19.957,
+          "max": 29.573
+        }
+      },
+      "speedup_vs_bnbchain_p50": 1420.4,
+      "speedup_vs_publicnode_p50": 294.6
+    },
+    {
+      "label": "hist_getBalance_204833263",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0xc3581ef']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.003,
+        "qps": 4925.41,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.167,
+          "p90": 0.228,
+          "p99": 0.257,
+          "mean": 0.173,
+          "min": 0.123,
+          "max": 0.257
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.853,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 191f4e3e3c8c2e9f83f28b2832bfb4f12777557a5819677c4681d1c4951d29c6 (path ) state 0x191f4e3e3c8c2e9f83f28b2832bfb4f12777557a5819677c4681d1c4951d29c6 is not available"
+        },
+        "wall_s": 0.388,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_204833263",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0xc3581ef']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 1992.88,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.431,
+          "p90": 0.54,
+          "p99": 0.621,
+          "mean": 0.453,
+          "min": 0.365,
+          "max": 0.621
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.429,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 191f4e3e3c8c2e9f83f28b2832bfb4f12777557a5819677c4681d1c4951d29c6 (path ) state 0x191f4e3e3c8c2e9f83f28b2832bfb4f12777557a5819677c4681d1c4951d29c6 is not available"
+        },
+        "wall_s": 0.334,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_getBlock_204933263",
+      "method": "eth_getBlockByNumber",
+      "params_note": "['0xc37088f', False]",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.004,
+        "qps": 3823.87,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.144,
+          "p90": 0.272,
+          "p99": 0.59,
+          "mean": 0.186,
+          "min": 0.1,
+          "max": 0.59
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.865,
+        "qps": 8.04,
+        "lat_ms": {
+          "n": 15,
+          "p50": 118.192,
+          "p90": 143.84,
+          "p99": 187.926,
+          "mean": 124.263,
+          "min": 106.98,
+          "max": 187.926
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBlockByNumber",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.395,
+        "qps": 37.95,
+        "lat_ms": {
+          "n": 15,
+          "p50": 24.435,
+          "p90": 33.36,
+          "p99": 38.344,
+          "mean": 26.295,
+          "min": 19.97,
+          "max": 38.344
+        }
+      },
+      "speedup_vs_bnbchain_p50": 820.8,
+      "speedup_vs_publicnode_p50": 169.7
+    },
+    {
+      "label": "hist_getBalance_204933263",
+      "method": "eth_getBalance",
+      "params_note": "['0x4200000000000000000000000000000000000006', '0xc37088f']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 15,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.002,
+        "qps": 7138.68,
+        "lat_ms": {
+          "n": 15,
+          "p50": 0.112,
+          "p90": 0.15,
+          "p99": 0.159,
+          "mean": 0.116,
+          "min": 0.094,
+          "max": 0.159
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.759,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getBalance",
+        "n": 15,
+        "ok": 0,
+        "errors": 15,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 22fdfe3ba0718493d3a8d4de7a7976adc386b5c86e8e352aa2a4c47d2b6ed91d (path ) state 0x22fdfe3ba0718493d3a8d4de7a7976adc386b5c86e8e352aa2a4c47d2b6ed91d is not available"
+        },
+        "wall_s": 0.393,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "hist_eth_call_204933263",
+      "method": "eth_call",
+      "params_note": "[{'to': '0x4200000000000000000000000000000000000006', 'data': '0x18160ddd'}, '0xc37088f']",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 12,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.006,
+        "qps": 2039.89,
+        "lat_ms": {
+          "n": 12,
+          "p50": 0.359,
+          "p90": 0.442,
+          "p99": 1.521,
+          "mean": 0.453,
+          "min": 0.301,
+          "max": 1.521
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node"
+        },
+        "wall_s": 1.322,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_call",
+        "n": 12,
+        "ok": 0,
+        "errors": 12,
+        "last_err": {
+          "code": -32000,
+          "message": "missing trie node 22fdfe3ba0718493d3a8d4de7a7976adc386b5c86e8e352aa2a4c47d2b6ed91d (path ) state 0x22fdfe3ba0718493d3a8d4de7a7976adc386b5c86e8e352aa2a4c47d2b6ed91d is not available"
+        },
+        "wall_s": 0.345,
+        "qps": 0,
+        "lat_ms": null
+      },
+      "speedup_vs_bnbchain_p50": null,
+      "speedup_vs_publicnode_p50": null
+    },
+    {
+      "label": "getLogs_near_tip_2k",
+      "method": "eth_getLogs",
+      "params_note": "[{'fromBlock': '0xc3700bf', 'toBlock': '0xc37088f', 'address': '0x4200000000000000000000000000000000000006', 'topics': ['0xddf252ad1be2c89b69c2b068fc378daa952ba",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.021,
+        "qps": 387.48,
+        "lat_ms": {
+          "n": 8,
+          "p50": 2.373,
+          "p90": 2.617,
+          "p99": 2.684,
+          "mean": 2.401,
+          "min": 2.082,
+          "max": 2.684
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.939,
+        "qps": 8.52,
+        "lat_ms": {
+          "n": 8,
+          "p50": 114.856,
+          "p90": 122.951,
+          "p99": 134.442,
+          "mean": 117.24,
+          "min": 110.468,
+          "max": 134.442
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.309,
+        "qps": 25.89,
+        "lat_ms": {
+          "n": 8,
+          "p50": 34.772,
+          "p90": 41.176,
+          "p99": 58.683,
+          "mean": 38.516,
+          "min": 30.348,
+          "max": 58.683
+        }
+      },
+      "speedup_vs_bnbchain_p50": 48.4,
+      "speedup_vs_publicnode_p50": 14.7
+    },
+    {
+      "label": "getLogs_near_tip_10k",
+      "method": "eth_getLogs",
+      "params_note": "[{'fromBlock': '0xc36e17f', 'toBlock': '0xc37088f', 'address': '0x4200000000000000000000000000000000000006', 'topics': ['0xddf252ad1be2c89b69c2b068fc378daa952ba",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.074,
+        "qps": 107.83,
+        "lat_ms": {
+          "n": 8,
+          "p50": 9.081,
+          "p90": 9.397,
+          "p99": 9.426,
+          "mean": 8.941,
+          "min": 8.276,
+          "max": 9.426
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.016,
+        "qps": 7.88,
+        "lat_ms": {
+          "n": 8,
+          "p50": 126.552,
+          "p90": 128.309,
+          "p99": 130.283,
+          "mean": 126.733,
+          "min": 124.197,
+          "max": 130.283
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.33,
+        "qps": 24.25,
+        "lat_ms": {
+          "n": 8,
+          "p50": 42.207,
+          "p90": 44.871,
+          "p99": 45.989,
+          "mean": 41.043,
+          "min": 34.605,
+          "max": 45.989
+        }
+      },
+      "speedup_vs_bnbchain_p50": 13.9,
+      "speedup_vs_publicnode_p50": 4.6
+    },
+    {
+      "label": "getLogs_mid_2k",
+      "method": "eth_getLogs",
+      "params_note": "[{'fromBlock': '0x5f5e100', 'toBlock': '0x5f5e8d0', 'address': '0x4200000000000000000000000000000000000006', 'topics': ['0xddf252ad1be2c89b69c2b068fc378daa952ba",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.019,
+        "qps": 410.69,
+        "lat_ms": {
+          "n": 8,
+          "p50": 2.293,
+          "p90": 2.444,
+          "p99": 2.657,
+          "mean": 2.318,
+          "min": 2.07,
+          "max": 2.657
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 1.304,
+        "qps": 6.13,
+        "lat_ms": {
+          "n": 8,
+          "p50": 120.54,
+          "p90": 201.518,
+          "p99": 405.677,
+          "mean": 162.937,
+          "min": 109.186,
+          "max": 405.677
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.273,
+        "qps": 29.26,
+        "lat_ms": {
+          "n": 8,
+          "p50": 28.159,
+          "p90": 38.277,
+          "p99": 73.382,
+          "mean": 34.093,
+          "min": 23.767,
+          "max": 73.382
+        }
+      },
+      "speedup_vs_bnbchain_p50": 52.6,
+      "speedup_vs_publicnode_p50": 12.3
+    },
+    {
+      "label": "getLogs_fermat_2k",
+      "method": "eth_getLogs",
+      "params_note": "[{'fromBlock': '0x8f64e5', 'toBlock': '0x8f6cb5', 'address': '0x4200000000000000000000000000000000000006', 'topics': ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f",
+      "local_ipc": {
+        "side": "local_ipc",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.031,
+        "qps": 254.96,
+        "lat_ms": {
+          "n": 8,
+          "p50": 3.646,
+          "p90": 4.035,
+          "p99": 4.057,
+          "mean": 3.603,
+          "min": 3.103,
+          "max": 4.057
+        }
+      },
+      "public_bnbchain": {
+        "side": "public_bnbchain",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.939,
+        "qps": 8.52,
+        "lat_ms": {
+          "n": 8,
+          "p50": 112.125,
+          "p90": 120.1,
+          "p99": 145.918,
+          "mean": 117.178,
+          "min": 110.56,
+          "max": 145.918
+        }
+      },
+      "public_publicnode": {
+        "side": "public_publicnode",
+        "method": "eth_getLogs",
+        "n": 8,
+        "ok": 8,
+        "errors": 0,
+        "last_err": null,
+        "wall_s": 0.344,
+        "qps": 23.26,
+        "lat_ms": {
+          "n": 8,
+          "p50": 39.578,
+          "p90": 58.647,
+          "p99": 68.003,
+          "mean": 42.703,
+          "min": 26.115,
+          "max": 68.003
+        }
+      },
+      "speedup_vs_bnbchain_p50": 30.8,
+      "speedup_vs_publicnode_p50": 10.9
+    }
+  ]
+}

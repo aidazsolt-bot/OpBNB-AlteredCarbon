@@ -66,6 +66,25 @@ with live archive-node sync and protocol ports from [bnb-chain/op-geth](https://
 This is a community/hobbyist fork for **opBNB only** (binary **`op-reth`** / `make build-op`). See the
 project notice above for status, personal-use limits, and liability.
 
+### Why run a local archive? (RPC snapshot 2026-11-10)
+
+Live tip-following archive (~**204.93 M**). Same host: local **IPC** vs warm HTTPS to keyless public RPCs
+(official + PublicNode) — WAN + shared fleets included; still a blunt “own node vs free public” check:
+
+| Call | Local IPC p50 | Official public | PublicNode |
+| --- | ---: | ---: | ---: |
+| `eth_getBlockByNumber(latest)` | **0.09 ms** | 131 ms (~**1500×**) | 52 ms (~**600×**) |
+| `eth_call` (tip) | **0.18 ms** | 121 ms (~**680×**) | 31 ms (~**170×**) |
+| Historical `eth_getBlockByNumber` | **~0.1 ms** | ~110–120 ms | ~23–26 ms |
+| Historical `eth_getBalance` / `eth_call` | **~0.2–0.5 ms** | **missing trie node** | **state not available** |
+| `eth_getLogs` (2k–10k WBNB Transfers) | **2–9 ms** | 112–127 ms | 28–42 ms |
+
+**Archive depth:** public endpoints refused historical state; local archive answered sub-millisecond.
+Header spot-checks vs official public (hash / `stateRoot` / `transactionsRoot`) **MATCH** at `1000`,
+`100000`, Fermat `9397477`, and near tip.
+
+Details + JSON: [`docs/repo/opbnb-rpc-bench.md`](docs/repo/opbnb-rpc-bench.md) · Tip-follow / ENGINE-006: `plan.md`.
+
 > **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
 > this tree. Do not reintroduce BSC mainnet (chain 56) work here — use a **separate repository** if you need
 > both chains.
