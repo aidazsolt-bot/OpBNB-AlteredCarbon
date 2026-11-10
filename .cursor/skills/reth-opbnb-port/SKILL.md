@@ -29,14 +29,14 @@ description: >-
 
 Wenn BSC-Arbeit nötig ist: **anderes Repo**, nicht hier reintroducen.
 
-## Session-Memory / Status (Stand 2026-11-10 ~22:50 CEST)
+## Session-Memory / Status (Stand 2026-11-10 ~23:17 CET)
 
 Vor Analyse immer `plan.md` → **Aktueller Stand** (`#session-memory`) + Bugliste/FLOW-Matrix (kanonisch).
 
 | | |
 | --- | --- |
-| Live | Tip-Follow ~204 919 k · Finish≈CL · FCU `Valid` |
-| Engine | **005** ✅ · **006** ✅ milli FCU-Attrs + OP attrs-fail→`InvalidForkchoiceState` |
+| Live | Tip-Follow ~**204 928 k** · Finish≈Canonical≈public · Gap ~1–5 bl · FCU `Valid` |
+| Engine | **005** ✅ · **006** ✅ `ff96c53e52` milli FCU-Attrs + OP attrs-fail→`InvalidForkchoiceState` |
 | Tip-DoD | H07 ✅ · E03 ✅ · ENGINE-006 ✅ live |
 | Next | `X03`/`S02` · Point-4 wenn IPC ok |
 

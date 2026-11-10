@@ -343,6 +343,7 @@ Official reference for the throughput comparisons below: [Diversifying BNB Smart
 | Cursor Session 25 (2026-09-12 ~18:30–19:05 + 2026-09-13 ~08:40 CEST, `6cc355ee…` + follow-ups) | **~3–4 h** interactive; workspace reentry, Checkmk OAuth-MCP, `handshake_reject` P2P smoke, `sync-eta.sh` horizon fix, README hero + effort docs |
 | Cursor Session 26 (2026-09-13 ~20:00–21:15 CEST, `92a6866f…`) | **~1–1.5 h**; `gh` workflow-scope + push; CI Smoke `--debug.tip` @10 M; tip vs max-block Doku; live Stand ~83.6 % Exec; later: GHA Exec bench ~1 h 52 m / ~1 Ggas/s med (`docs/repo/ci.md`) |
 | Cursor Session 27 (2026-10-19 → 10-28, chat `7e9c999c…`) | **~34.2 h** interactive (Gap>90 min, **12** clusters); **204** user / **~1517** assistant; **~2668** tools; file **~2.1 MB** → proxy **~0.52M tokens**; parent Auto/Composer + Task models (`composer-2.5-fast`, `claude-*`, `gpt-5.6-sol-medium`, …). **FLOW-H07** Tip-DoD · **FLOW-E03/ENGINE-005** stale OP FCU fix+deploy · v2.8 rebase/docs scrub · `download`/`snapshot-manifest` CLI wire (`d1fe1552f8`/`d775b8110b`) |
+| Cursor Session 28 (2026-11-10, chat `7e9c999c…` cont.) | Tip-Freeze-Diagnose (Nov-4→10) · **PORT-ENGINE-006** milli FCU-Attrs + OP `InvalidForkchoiceState` · maxperf deploy · Merkle/History catch-up · **Tip-Follow live** ~**204 928 k** (`ff96c53e52`). Transcript file ~**2.24 MB** → proxy **~0.56M tokens**; cum. counts ~**227** user / **~1619** assistant / **~2822** tools (chat life) |
 | Cursor Session 6 activity | **15 agents**; 2,582 assistant msgs; ~11,722 tool-calls; **74,482** `ai_code_hashes`; transcript proxy **~0.58M tokens** |
 | Cursor Session 8 activity (op-evm→cli/bin→smoke) | Transcript **~0.45M chars → ~0.11M tokens** (÷4 proxy); **11,288** `ai_code_hashes`; 350 assistant / 18 user msgs in jsonl |
 | Cursor Session 9 activity (STOR-006 + Phase-5 nextest/EF) | Resume **~0.11M chars → ~28K tokens** + prior SCS chat **~0.28M chars → ~69K** (÷4 proxy, combined **~97K**); 12 user / 118 assistant; 250 tools resume |
@@ -370,11 +371,12 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - Session 12 (`ea987bef…`): early calendar span **~88 h** (08-12→16); **re-measured 09-10** Gap>90 min interactive sum **~25.1 h** / 18 clusters.
 - Aug-23 BSC chat `7bb73584…`: **~8.5 h** interactive. Sep follow-ups = recovery/docs/discoverability (not the original start window).
 - Session 27 (`7e9c999c…`): calendar **2026-10-19 → 10-28**; Gap>90 min interactive **~34.2 h** / 12 clusters (heavy days 10-19 / 10-21–25 / 10-28).
+- Session 28 (`7e9c999c…` cont.): **2026-11-10** ENGINE-006 Tip-Freeze→Tip-Follow (same chat file).
 
 ##### Cursor AI cost allocated to opBNB (operator statement)
 
-- **~EUR 70** allocated (unchanged through 2026-10-28; no new attributed invoice on disk for Sessions 22–27).
-- Larger Cursor account spend also covered other projects; Session 27 usage is reflected in **hours/token proxies** below, not as a new EUR line item.
+- **~EUR 70** allocated (unchanged through 2026-11-10; no new attributed invoice on disk for Sessions 22–28).
+- Larger Cursor account spend also covered other projects; Session 27–28 usage is reflected in **hours/token proxies** below, not as a new EUR line item.
 - Hours corrected below; EUR allocation not invented upward.
 
 ##### Cursor Session 12 activity (`ea987bef…`, re-measured 2026-09-10 ~10:35 CEST; +Session 24)
@@ -387,6 +389,11 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - File **~2.1 MB** → proxy **~0.52M tokens** (÷4); **204** user / **~1517** assistant; **~2668** tool_use; Gap>90 min **~34.2 h** (12 clusters).
 - Scope: Tip-DoD **FLOW-H07**; **FLOW-E03 / PORT-ENGINE-005** (stale OP FCU+attrs → `InvalidForkchoiceState` / op-node `ErrReset`; label advance; live backfill after deploy); upstream **v2.8.0** rebase + fork surface scrub; optimism CLI **`download` / `snapshot-manifest`** wired like upstream `reth`.
 - Cumulative Cursor interactive after Session 27: ~**91–92 h**.
+
+##### Cursor Session 28 activity (`7e9c999c…` cont., measured 2026-11-10 ~23:17 CET)
+
+- Same transcript file now **~2.24 MB** → proxy **~0.56M tokens**; cum. **~227** user / **~1619** assistant / **~2822** tool_use (chat life).
+- Scope: Tip-Freeze root (CONS-001 vs FCU-Attrs); **PORT-ENGINE-006** milli attrs + OP `InvalidForkchoiceState`; maxperf deploy; Heal/Merkle catch-up; Tip-Follow ~**204 928 k** live (`ff96c53e52`).
 
 ##### Copilot Session 21 activity (Wright L1FeeVault consensus fix, 2026-09-09)
 
@@ -488,6 +495,13 @@ Longer notes are listed below (not jammed into a single table cell). Bullet poin
 - **FLOW-H07** Tip-DoD live (10-25; re-verified with post-E03 backfill). CLI: `op-reth` **`download` / `snapshot-manifest`** wired (`d775b8110b`).
 - Details: `plan.md` § Portierungs-Bugliste / Änderungsnotiz 2026-10-28.
 
+##### Live sync + Session 28 / ENGINE-006 (2026-11-10 ~23:17 CET)
+
+- **Root Tip-Freeze (Nov-4→10):** CONS-001 Milli nur Header/NewPayload; FCU-Attrs second-only + fail→`InvalidPayloadAttributes`→op-node deposit-only **crit**. ENGINE-005 deckte nur stale **head**.
+- **PORT-ENGINE-006** (`ff96c53e52`): `OpEngineValidator` milli via `prevRandao`/`mixHash`; OP attrs-fail→`InvalidForkchoiceState` (ErrReset). FLOW-E03(4)(5).
+- **Live:** maxperf deploy → Heal/Merkle catch-up (~202.79 M→204.76 M) → Tip-Chase → **Tip-Follow**. Finish **204 928 446** · Canonical ~**204 928 485** · public ~**204 928 487** · peers **5** · val/invalid **0** · Status `latest_block`.
+- Tip-Lag ~**1–5** Blöcke vs public = Floor (MDBX/Exec @500 ms; vgl. BNB Reth Live-Sync-Blog / op-geth kurze Lags). Details: `plan.md` Änderungsnotiz 2026-11-10.
+
 ##### Storage-v2 recovery / Session 13 (2026-09-02, root cause 16:30 CEST)
 
 - Archive datadir had been running **continuously with `storage_v2=true` since at least 2026-08-14**; no manual layout change.
@@ -588,7 +602,8 @@ AI agents did not “run the archive alone.” A **senior operator / admin-dev**
 | Calendar (order of magnitude) | **2026-08-06 → 2026-08-17**: multi-day machine wall for Headers→Bodies→Sender→Execution; interactive operator clusters roughly track the agent sessions above (**tens of hours** directed review/ops across the window, not continuous keyboard time). Later September entries are incident/recovery follow-ups; October = tip-follow / ENGINE-005 / v2.8. |
 | September incident/recovery follow-ups (2026-09-02 → 09-13, order of magnitude) | Storage-v2 (09-02 genesis re-sync, historical); Wright mismatch **09-09** + re-exec path; Session 24 Tip-**10 M** ✅; Tip-**43.5 M** + **~18 h** History-Heal + Exec catch-up (**~4–5 d** rack machine wall cumulative). |
 | October tip-follow / Session 27 (2026-10-19 → 10-28) | Finish→tip stalls (H07/E03); **ENGINE-005** port fix + maxperf deploy; v2.8 rebase/docs; CLI snapshot wire. Agent interactive **~34 h**; rack machine wall continuous (archive always-on). |
-| Cost summary through 2026-10-28 **~16:00** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (Cursor allocation unchanged; Session 27 not a new EUR invoice). Electricity: **~EUR 163** (rack meter to 09-04 + linear carry-forward @ ~€1.93/d through 10-28). A1 fiber: **~EUR 360** (~12 mo @ €30). **Tracked opBNB total: ~EUR 763.** Wright recovery rack share **~EUR 8–10** (estimate). Session 21 ~USD 12.23 informational only. Hardware/labor excluded. |
+| November Tip-Freeze / Session 28 (2026-11-10) | **ENGINE-006** milli FCU-Attrs + ErrReset path; maxperf deploy; Merkle/History catch-up; Tip-Follow ~**204 928 k**. Rack wall continuous (archive always-on). |
+| Cost summary through 2026-10-28 **~16:00** CEST | AI: **~EUR 170 Copilot + ~EUR 70 Cursor** (Cursor allocation unchanged; Session 27 not a new EUR invoice). Electricity: **~EUR 163** (rack meter to 09-04 + linear carry-forward @ ~€1.93/d through 10-28). A1 fiber: **~EUR 360** (~12 mo @ €30). **Tracked opBNB total: ~EUR 763.** Wright recovery rack share **~EUR 8–10** (estimate). Session 21 ~USD 12.23 informational only. Hardware/labor excluded. Session 28: no new attributed EUR invoice on disk. |
 
 #### Human operations and senior-development effort
 
@@ -632,6 +647,7 @@ cross-check — neither is a substitute for an actual bill, and no invoice is cl
 | `make maxperf-op` fat-LTO rebuilds (documented, cumulative) | ≥10 full builds @ ~20–24 min each, plus smaller dev-host rebuilds; Session 27: ENGINE-005 + prior E03/H07 deploys | `plan.md` session log |
 | Wright recovery machine time (2026-09-09→13) | Build **22m25s** + unwind **72m35s**; Gate run 09-10; **~18 h** History-Heal 09-12/13; Exec **~1.5–2 d** remaining @ ~50–67 blk/s (09-13) | build/node logs + Mimir; `plan.md` *Wright-Recovery* |
 | Session 27 tip-follow machine wall (2026-10-19→28) | Archive always-on; ENGINE-005 maxperf deploy + Restart ~14:09Z 10-28; Headers backfill **262 940** | Mimir / `scripts/sync-eta.sh`; `plan.md` |
+| Session 28 Tip-Freeze→Follow (2026-11-10) | Archive always-on; ENGINE-006 maxperf deploy; Heal/Merkle catch-up Tip-Freeze-Lücke; Tip-Follow ~**204 928 k** | Mimir / `scripts/sync-eta.sh`; `plan.md` |
 | A1 fiber Internet 250/100, unlimited | **~EUR 30/month**, **~EUR 360/year**, active since October 2025 (~**12 mo** → **~EUR 360** through 2026-10); shared by all services/nodes, not attributable solely to opBNB | operator statement |
 | Hardware spec / archive datadir size | not tracked in this document (operator-owned infrastructure) | — |
 
@@ -700,10 +716,10 @@ cost of AI-assisted maintenance at this scale, not as a benchmark claim — no r
 optimization was attempted. Copilot token counts include tool/context repetition per turn; Cursor
 figures mix activity counts with content-size token **proxies** where a billed meter is unavailable.
 
-> **Current validation gate (2026-10-28):** Tip-follow after **ENGINE-005** deploy — Headers/Exec
-> @ **~200.32 M**; Merkle/Finish catch-up from **200 055 655**. Pass = no tip rewind under stale OP
-> FCU+attrs; pipeline backfill closes gap without process restart. Replace cost proxies with
-> billing/meter exports when available.
+> **Current validation gate (2026-11-10):** Tip-follow after **ENGINE-006** (`ff96c53e52`) —
+> Finish/Canonical ≈ public **~204 928 k**; FCU `Valid`; Gap ~1–5 blocks OK (Floor). Pass =
+> equal-second milli attrs accepted; attrs-fail → `InvalidForkchoiceState` (kein deposit-only crit);
+> no tip freeze after restart. Replace cost proxies with billing/meter exports when available.
 
 ### TODO (backlog): EIP-7702 / type-4 transactions — BEP-441 "Pascal" hardfork (BSC + opBNB)
 
