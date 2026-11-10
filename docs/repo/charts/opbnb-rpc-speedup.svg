@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="380" viewBox="0 0 920 380" role="img" aria-label="Local IPC speedup vs official public RPC">
+<title>Local IPC speedup vs official public RPC</title>
+<rect width="920" height="380" fill="#0f1419" rx="12"/>
+<rect x="16" y="16" width="888" height="348" fill="#171d25" rx="10"/>
+<text x="40" y="52" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" font-weight="700">Local IPC speedup vs official public RPC</text>
+<text x="40" y="76" fill="#8b9aab" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Same host · sequential p50 (latency) and parallel/batch throughput multiples</text>
+<text x="208" y="131.9" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">getBlock latest p50</text>
+<rect x="220" y="117.3" width="601.9" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="829.9" y="131.9" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">~1500× faster</text>
+<text x="208" y="168.5" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">eth_call tip p50</text>
+<rect x="220" y="154.0" width="272.8" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="500.8" y="168.5" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">~680×</text>
+<text x="208" y="205.2" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">hist getBlock p50</text>
+<rect x="220" y="190.7" width="401.2" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="629.2" y="205.2" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">~800–1400×</text>
+<text x="208" y="241.9" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">parallel getBlock QPS</text>
+<rect x="220" y="227.3" width="34.1" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="262.1" y="241.9" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">~85× QPS</text>
+<text x="208" y="278.5" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">batch getBlock call/s</text>
+<rect x="220" y="264.0" width="92.3" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="320.3" y="278.5" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">~230× call/s</text>
+<text x="208" y="315.2" fill="#e8eef4" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">hist state (archive)</text>
+<rect x="220" y="300.7" width="0.4" height="20.2" rx="4" fill="#2dd4bf"/>
+<text x="228.4" y="315.2" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="700">public: missing trie</text>
+</svg>

@@ -15,6 +15,17 @@ Raw numbers:
 - IPC tip suite: [`opbnb-ipc-rpc-bench-2026-11-10.json`](./opbnb-ipc-rpc-bench-2026-11-10.json)
 - Parallel + batch load: [`opbnb-rpc-parallel-batch-2026-11-10.json`](./opbnb-rpc-parallel-batch-2026-11-10.json)
 - Repro script: [`bench_rpc_parallel_batch.py`](./bench_rpc_parallel_batch.py)
+- Charts (SVG): [`charts/`](./charts/) · regenerate with `python3 docs/repo/charts/render_rpc_bench_charts.py`
+
+## Charts
+
+![Latency p50 local vs public](./charts/opbnb-rpc-latency-p50.svg)
+
+![Parallel QPS](./charts/opbnb-rpc-parallel-qps.svg)
+
+![Batch throughput](./charts/opbnb-rpc-batch-throughput.svg)
+
+![Speedup multiples](./charts/opbnb-rpc-speedup.svg)
 
 ## Headline (sequential latency)
 

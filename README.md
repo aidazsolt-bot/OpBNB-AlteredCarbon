@@ -79,6 +79,10 @@ Live tip-following archive (~**204.93 M**). Same host: local **IPC** vs warm H
 | Historical `eth_getBalance` / `eth_call` | **~0.2–0.5 ms** | **missing trie node** | **state not available** |
 | `eth_getLogs` (2k–10k WBNB Transfers) | **2–9 ms** | 112–127 ms | 28–42 ms |
 
+<p align="center">
+  <img src="docs/repo/charts/opbnb-rpc-latency-p50.svg" alt="opBNB RPC p50 latency: local IPC vs public" width="920" />
+</p>
+
 **Archive depth:** public endpoints refused historical state; local archive answered sub-millisecond.
 Header spot-checks vs official public (hash / `stateRoot` / `transactionsRoot`) **MATCH** at `1000`,
 `100000`, Fermat `9397477`, and near tip.
@@ -93,7 +97,13 @@ Header spot-checks vs official public (hash / `stateRoot` / `transactionsRoot`) 
 | Batch tip `getBlock` (100× / req) | **~65 k call/s** | ~275 call/s | collapses / errors |
 | Burst batch mixed (200×, c=32) | **~64 k call/s** | — | — |
 
-Details + JSON: [`docs/repo/opbnb-rpc-bench.md`](docs/repo/opbnb-rpc-bench.md) · Tip-follow / ENGINE-006: `plan.md`.
+<p align="center">
+  <img src="docs/repo/charts/opbnb-rpc-parallel-qps.svg" alt="Parallel RPC QPS local vs public" width="920" />
+  <img src="docs/repo/charts/opbnb-rpc-batch-throughput.svg" alt="JSON-RPC batch throughput local vs public" width="920" />
+  <img src="docs/repo/charts/opbnb-rpc-speedup.svg" alt="Local IPC speedup vs official public RPC" width="920" />
+</p>
+
+Details + JSON + chart sources: [`docs/repo/opbnb-rpc-bench.md`](docs/repo/opbnb-rpc-bench.md) · Tip-follow / ENGINE-006: `plan.md`.
 
 > **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
 > this tree. Do not reintroduce BSC mainnet (chain 56) work here — use a **separate repository** if you need

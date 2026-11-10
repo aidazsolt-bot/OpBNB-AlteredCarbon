@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="440" viewBox="0 0 920 440" role="img" aria-label="opBNB RPC latency (p50) — local IPC vs public">
+<title>opBNB RPC latency (p50) — local IPC vs public</title>
+<rect width="920" height="440" fill="#0f1419" rx="12"/>
+<rect x="16" y="16" width="888" height="408" fill="#171d25" rx="10"/>
+<text x="40" y="52" fill="#e8eef4" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" font-weight="700">opBNB RPC latency (p50) — local IPC vs public</text>
+<text x="40" y="76" fill="#8b9aab" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">2026-11-10 · tip ~204.93M · warm keep-alive on public HTTPS · log scale</text>
+<rect x="40" y="90" width="12" height="12" rx="2" fill="#2dd4bf"/>
+<text x="58" y="100" fill="#8b9aab" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Local IPC</text>
+<rect x="149" y="90" width="12" height="12" rx="2" fill="#f59e0b"/>
+<text x="167" y="100" fill="#8b9aab" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Official public</text>
+<rect x="300" y="90" width="12" height="12" rx="2" fill="#64748b"/>
+<text x="318" y="100" fill="#8b9aab" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">PublicNode</text>
+<line x1="90" y1="355.7" x2="880" y2="355.7" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="359.7" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">0.10 ms</text>
+<line x1="90" y1="334.4" x2="880" y2="334.4" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="338.4" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">0.20 ms</text>
+<line x1="90" y1="306.1" x2="880" y2="306.1" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="310.1" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">0.50 ms</text>
+<line x1="90" y1="284.7" x2="880" y2="284.7" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="288.7" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">1.0 ms</text>
+<line x1="90" y1="263.3" x2="880" y2="263.3" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="267.3" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">2.0 ms</text>
+<line x1="90" y1="235.1" x2="880" y2="235.1" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="239.1" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">5.0 ms</text>
+<line x1="90" y1="213.7" x2="880" y2="213.7" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="217.7" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">10 ms</text>
+<line x1="90" y1="192.3" x2="880" y2="192.3" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="196.3" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">20 ms</text>
+<line x1="90" y1="164.0" x2="880" y2="164.0" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="168.0" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">50 ms</text>
+<line x1="90" y1="142.6" x2="880" y2="142.6" stroke="#2a3441" stroke-width="1"/>
+<text x="80" y="146.6" fill="#8b9aab" text-anchor="end" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">100 ms</text>
+<text x="28" y="250" fill="#8b9aab" text-anchor="middle" transform="rotate(-90 28 250)" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">p50 latency</text>
+<text x="169.0" y="392" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">getBlock latest</text>
+<rect x="111.0" y="359.0" width="36.0" height="11.0" rx="3" fill="#2dd4bf"/>
+<text x="129.0" y="353.0" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">0.09 ms</text>
+<rect x="151.0" y="134.3" width="36.0" height="235.7" rx="3" fill="#f59e0b"/>
+<text x="169.0" y="128.3" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">131 ms</text>
+<rect x="191.0" y="162.8" width="36.0" height="207.2" rx="3" fill="#64748b"/>
+<text x="209.0" y="156.8" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">52 ms</text>
+<text x="327.0" y="392" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">eth_call tip</text>
+<rect x="269.0" y="337.6" width="36.0" height="32.4" rx="3" fill="#2dd4bf"/>
+<text x="287.0" y="331.6" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">0.18 ms</text>
+<rect x="309.0" y="136.8" width="36.0" height="233.2" rx="3" fill="#f59e0b"/>
+<text x="327.0" y="130.8" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">121 ms</text>
+<rect x="349.0" y="178.8" width="36.0" height="191.2" rx="3" fill="#64748b"/>
+<text x="367.0" y="172.8" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">31 ms</text>
+<text x="485.0" y="392" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">hist getBlock</text>
+<rect x="427.0" y="352.8" width="36.0" height="17.2" rx="3" fill="#2dd4bf"/>
+<text x="445.0" y="346.8" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">0.11 ms</text>
+<rect x="467.0" y="138.3" width="36.0" height="231.7" rx="3" fill="#f59e0b"/>
+<text x="485.0" y="132.3" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">115 ms</text>
+<rect x="507.0" y="186.7" width="36.0" height="183.3" rx="3" fill="#64748b"/>
+<text x="525.0" y="180.7" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">24 ms</text>
+<text x="643.0" y="392" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">hist getBalance</text>
+<rect x="585.0" y="321.9" width="36.0" height="48.1" rx="3" fill="#2dd4bf"/>
+<text x="603.0" y="315.9" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">0.30 ms</text>
+<rect x="625.0" y="352.0" width="36.0" height="18" rx="3" fill="#f87171" opacity="0.35"/>
+<text x="643.0" y="346.0" fill="#f87171" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">fail</text>
+<rect x="665.0" y="352.0" width="36.0" height="18" rx="3" fill="#f87171" opacity="0.35"/>
+<text x="683.0" y="346.0" fill="#f87171" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">fail</text>
+<text x="801.0" y="392" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">getLogs 2k</text>
+<rect x="743.0" y="250.8" width="36.0" height="119.2" rx="3" fill="#2dd4bf"/>
+<text x="761.0" y="244.8" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">3.0 ms</text>
+<rect x="783.0" y="138.1" width="36.0" height="231.9" rx="3" fill="#f59e0b"/>
+<text x="801.0" y="132.1" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">116 ms</text>
+<rect x="823.0" y="175.9" width="36.0" height="194.1" rx="3" fill="#64748b"/>
+<text x="841.0" y="169.9" fill="#e8eef4" text-anchor="middle" font-family="ui-sans-serif, system-ui, Segoe UI, Helvetica, Arial, sans-serif" font-size="10" font-weight="600">34 ms</text>
+<line x1="90" y1="370" x2="880" y2="370" stroke="#334155" stroke-width="1.5"/>
+</svg>
