@@ -83,6 +83,16 @@ Live tip-following archive (~**204.93 M**). Same host: local **IPC** vs warm H
 Header spot-checks vs official public (hash / `stateRoot` / `transactionsRoot`) **MATCH** at `1000`,
 `100000`, Fermat `9397477`, and near tip.
 
+**Under load (parallel + JSON-RPC batches):**
+
+| Mode | Local IPC | Official public | PublicNode |
+| --- | ---: | ---: | ---: |
+| Parallel `getBlock(latest)` (c=32) | **~5.7 k QPS** | ~67 QPS | ~61 QPS |
+| Parallel `eth_call` tip (c=32) | **~5.9 k QPS** | ~34 QPS | ~7 QPS (rate-limit errors) |
+| Parallel hist `getBalance` (c=128) | **~6.1 k QPS** | **0** (missing trie) | **0** |
+| Batch tip `getBlock` (100× / req) | **~65 k call/s** | ~275 call/s | collapses / errors |
+| Burst batch mixed (200×, c=32) | **~64 k call/s** | — | — |
+
 Details + JSON: [`docs/repo/opbnb-rpc-bench.md`](docs/repo/opbnb-rpc-bench.md) · Tip-follow / ENGINE-006: `plan.md`.
 
 > **Workspace scope (2026-08-24):** All **BSC / Parlia / `bsc-reth` / `crates/bsc`** code was removed from
