@@ -172,6 +172,28 @@ impl<B> EngineNodeLauncher<B> {
         // We always assume that node is syncing after a restart
         network_handle.update_sync_state(SyncState::Syncing);
 
+        // `--debug.tip` drives PipelineTarget::Sync(hash) → Headers SyncTarget::Tip(hash).
+        // Tip-DoD binds Tip(hash) from HeaderSeed (NewPayload). CI/smoke has no Engine
+        // payload, so fetch+seed the tip once up-front; live FCU path unchanged.
+        if let Some(tip_hash) = node_config.debug.tip {
+            let tip_header =
+                node_config.fetch_tip_from_network(network_client.clone(), tip_hash.into()).await;
+            if tip_header.hash() != tip_hash {
+                return Err(eyre::eyre!(
+                    "debug.tip header hash mismatch: expected {tip_hash}, got {}",
+                    tip_header.hash()
+                ));
+            }
+            let number = tip_header.number();
+            header_seed.insert(tip_hash, tip_header.into_header());
+            info!(
+                target: "reth::cli",
+                ?tip_hash,
+                %number,
+                "Seeded HeaderSeed for --debug.tip (no Engine NewPayload)"
+            );
+        }
+
         let max_block = ctx.max_block(network_client.clone()).await?;
 
         let static_file_producer = ctx.static_file_producer();

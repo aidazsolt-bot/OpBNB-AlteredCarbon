@@ -254,8 +254,8 @@ jobs:
           NODE_PID=$!
           echo "$NODE_PID" > "$RUNNER_TEMP/opbnb-node-${PROFILE}.pid"
 
-          # Fail fast if Headers never leave "Preparing" (typical when bootnodes
-          # are missing / wrong-chain). Do not burn the full 6h job timeout.
+          # Fail fast if Headers never leave "Preparing" (bootnodes / tip-seed /
+          # peer coverage). Do not burn the full 6h job timeout.
           WATCH_SECS=900
           WATCH_DEADLINE=$(( $(date +%s) + WATCH_SECS ))
           LOG_FILE=""
