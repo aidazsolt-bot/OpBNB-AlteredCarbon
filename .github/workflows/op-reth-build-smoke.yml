@@ -222,7 +222,7 @@ jobs:
           echo "binary=$BIN"
           df -hT "$DATA_DIR"
 
-          # shellcheck disable=SC2317 # invoked via trap EXIT
+          # shellcheck disable=SC2317,SC2329 # invoked via trap EXIT (SC2329 = current actionlint)
           cleanup() {
             if [ -n "${NODE_PID:-}" ] && kill -0 "$NODE_PID" 2>/dev/null; then
               kill -TERM "$NODE_PID" 2>/dev/null || true
